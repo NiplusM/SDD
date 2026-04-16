@@ -1,0 +1,322 @@
+/* ── Panel body ───────────────────────────────────────────────────────────── */
+.ws-panel-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Action buttons (disclosure items) ───────────────────────────────────── */
+.ws-actions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 12px;
+}
+
+.ws-disclosure-item,
+.ws-project-cell,
+.ws-action-tile,
+.ws-toolbar-btn {
+  transition:
+    background var(--motion-duration-fast, 0.18s) cubic-bezier(0.22, 1, 0.36, 1),
+    color var(--motion-duration-fast, 0.18s) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--motion-duration-fast, 0.18s) cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--motion-duration-medium, 0.24s) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ws-disclosure-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text-default);
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--transparent-white-10);
+}
+.ws-disclosure-item:hover { background: var(--transparent-white-20); }
+
+.ws-disclosure-item.primary {
+  background: var(--transparent-white-10);
+  color: var(--text-default);
+}
+.ws-disclosure-item.primary:hover {
+  background: var(--transparent-white-20);
+}
+.ws-disclosure-item.primary svg {
+  color: currentColor;
+}
+
+.ws-disclosure-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Recent projects section ──────────────────────────────────────────────── */
+.ws-recent-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  border-top: 1px solid var(--tool-window-border);
+}
+
+.ws-search-bar {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--tool-window-border);
+  flex-shrink: 0;
+}
+
+.ws-project-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.ws-project-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.ws-project-cell:hover    { background: var(--selection-bg-hovered); }
+.ws-project-cell.selected { background: var(--selection-bg-active); }
+
+.ws-project-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ws-project-badge span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.5px;
+}
+
+.ws-project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ws-project-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-default);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ws-project-path {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Center panel ────────────────────────────────────────────────────────── */
+.ws-center-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 44px;
+}
+
+.ws-center-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.ws-center-title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--text-default);
+}
+
+.ws-center-subtitle {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+
+.ws-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(128px, 128px));
+  gap: 16px;
+  justify-content: center;
+  width: min(100%, 416px);
+}
+
+
+.ws-action-tile {
+  all: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 128px;
+  height: 96px;
+  background: #212326;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  padding: 20px 16px;
+  position: relative;
+  overflow: hidden;
+  color: #d1d3d9;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+.ws-action-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 100%);
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast, 0.18s) cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ws-action-tile:hover {
+  background: #2b2d30;
+  transform: translateY(-1px);
+}
+.ws-action-tile:hover::before {
+  opacity: 1;
+}
+.ws-action-tile:active {
+  background: #25272a;
+  transform: translateY(0);
+}
+.ws-action-tile:focus-visible {
+  outline: 2px solid #548af7;
+  outline-offset: 2px;
+}
+
+.ws-action-tile-icon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.ws-action-tile-icon-agent {
+  color: #548af7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-action-tile-label {
+  width: 100px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  color: #d1d3d9;
+  position: relative;
+  z-index: 1;
+}
+
+/* Equal-width segments with extra horizontal padding */
+.ws-center-panel .segmented-button {
+  flex: 1;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.ws-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 20px;
+}
+
+.ws-footer-dropdowns {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ws-toolbar-btn {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--text-default);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.ws-toolbar-btn:hover { background: var(--transparent-white-10); }
+
+/* ── Gradient area (fills editor slot) ───────────────────────────────────── */
+.editor-top-bar:has(.ws-gradient-area) {
+  flex: 1;
+  display: flex;
+}
+.editor:has(.ws-gradient-area) .editor-body {
+  display: none;
+}
+.ws-gradient-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: auto;
+  background:
+    radial-gradient(ellipse 480px 380px at 50% -20%,  rgba(0,167,227,0.45) 0%, transparent 65%),
+    radial-gradient(ellipse 380px 300px at 68%  -2%,  rgba(0,243,98, 0.32) 0%, transparent 60%),
+    radial-gradient(ellipse 320px 280px at 32%  -2%,  rgba(253,251,0,0.22) 0%, transparent 60%),
+    var(--tool-window-bg);
+}
+
+@media (max-width: 840px) {
+  .ws-action-grid {
+    grid-template-columns: repeat(2, minmax(128px, 128px));
+    width: min(100%, 272px);
+  }
+}
+
+@media (max-width: 560px) {
+  .ws-center-panel {
+    gap: 32px;
+    padding: 32px 20px;
+  }
+
+  .ws-action-grid {
+    grid-template-columns: minmax(128px, 128px);
+    width: 128px;
+  }
+}
