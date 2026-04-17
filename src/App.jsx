@@ -894,7 +894,7 @@ function DoneSuccessBanner({
 /// Statuses shown after running Acceptance Criteria. Each item: { status, checks[] }
 const AC_RUN_STATUSES = [
   {
-    status: 'failed',
+    status: 'suggestChange',
     highlight: {
       match: 'available vets for the selected date/time',
       className: 'spec-inline-warning-highlight',
@@ -910,7 +910,7 @@ const AC_RUN_STATUSES = [
     ],
   },
   {
-    status: 'failed',
+    status: 'suggestChange',
     highlight: {
       match: 'e.g. hourly slots',
       className: 'spec-inline-warning-highlight',
@@ -3814,16 +3814,38 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
   const [expanded, setExpanded] = useState(false);
   const checks = checkItem.checks || [];
   const hasChecks = checks.length > 0;
+  // Vocabulary per spec-flow.md:
+  //   passed | failed | suggestChange | notChecked
+  // `suggestChange` maps to visual 'warning'; an explicit error severity maps to 'error'.
   const visualStatus = checkItem.status === 'passed'
     ? 'passed'
-    : (checkItem.issue?.severity === 'warning'
-        ? 'warning'
-        : (checkItem.issue?.severity === 'error'
-            ? 'error'
-            : checkItem.status));
+    : checkItem.status === 'suggestChange'
+      ? 'warning'
+      : checkItem.status === 'notChecked'
+        ? 'notChecked'
+        : (checkItem.issue?.severity === 'warning'
+            ? 'warning'
+            : (checkItem.issue?.severity === 'error'
+                ? 'error'
+                : checkItem.status));
+
+  const isOutdated = Boolean(checkItem.isOutdated);
+  const rootClassName = `spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`;
+
+  if (visualStatus === 'notChecked') {
+    return (
+      <div className={rootClassName}>
+        <div className={`ac-check-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
+          <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+          <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, checkItem.highlight)}</span>
+          {commentAdornment}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="spec-done-line spec-done-line-check ac-check-row">
+    <div className={rootClassName}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
         <CheckStatus status={visualStatus} />
         <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, checkItem.highlight)}</span>
@@ -4460,9 +4482,23 @@ function buildDiffTabContentFromRows(diffData = null) {
 
 function PlanStatusRow({ statusItem, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null }) {
   const diffTarget = issueTarget ?? checkTarget;
+  const isOutdated = Boolean(statusItem.isOutdated);
+  // Plan vocabulary per spec-flow.md: passed | failed | notChecked.
+  const isNotChecked = statusItem.status === 'notChecked';
+  const rootClassName = `spec-done-line spec-done-line-status plan-status-row spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`;
+
+  if (isNotChecked) {
+    return (
+      <div className={rootClassName}>
+        <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem.highlight)}</span>
+        {commentAdornment}
+      </div>
+    );
+  }
 
   return (
-    <div className={`spec-done-line spec-done-line-status spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
+    <div className={rootClassName}>
       <CheckStatus status={statusItem.status} />
       <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem.highlight)}</span>
       <button type="button" className="ac-checks-toggle" onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}>
@@ -5126,7 +5162,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, onLineEdited = null }) {
   const tradeoffCount = useMemo(
     () => countRecordedTradeoffs(documentSections),
     [documentSections]
@@ -5261,6 +5297,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       let checkTarget = null;
       let issueSeverity = null;
       let issueTarget = null;
+      let acVisibleIndex = null;
+      let planVisibleIndex = null;
 
       if (isCheckLine && inAcSection) {
         const visibleIndex = acCheckIdx;
@@ -5273,6 +5311,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           issueSeverity = checkStatus.status;
           issueTarget = { kind: 'ac', index: originalIndex };
         }
+        acVisibleIndex = visibleIndex;
         acCheckIdx += 1;
       }
 
@@ -5287,6 +5326,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           issueSeverity = planStatus.status;
           issueTarget = { kind: 'plan', index: originalIndex };
         }
+        planVisibleIndex = visibleIndex;
         planCheckIdx += 1;
       }
 
@@ -5309,6 +5349,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         checkTarget,
         issueSeverity,
         issueTarget,
+        acVisibleIndex,
+        planVisibleIndex,
       };
     });
   }, [acRunResult, displayRows, documentSections, matchedSerializedLineMetaByRow, planRunResult, removedIssueIndices]);
@@ -5671,10 +5713,28 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           : nextDraftCode
       ));
       updateEditedLinesState();
+
+      // Notify parent which AC/Plan visible row was edited, so it can mark
+      // the corresponding runtime status object as isOutdated (visual modifier
+      // per spec-flow.md §3).
+      if (typeof onLineEdited === 'function' && editable) {
+        const rowEl = editable.closest('.spec-done-row');
+        if (rowEl) {
+          const acAttr = rowEl.getAttribute('data-ac-visible-index');
+          const planAttr = rowEl.getAttribute('data-plan-visible-index');
+          if (acAttr != null && acAttr !== '') {
+            const idx = Number(acAttr);
+            if (Number.isInteger(idx)) onLineEdited({ kind: 'ac', visibleIndex: idx });
+          } else if (planAttr != null && planAttr !== '') {
+            const idx = Number(planAttr);
+            if (Number.isInteger(idx)) onLineEdited({ kind: 'plan', visibleIndex: idx });
+          }
+        }
+      }
     };
     el.addEventListener('input', handleInput);
     return () => el.removeEventListener('input', handleInput);
-  }, [onUserInput, updateEditedLinesState]);
+  }, [onLineEdited, onUserInput, updateEditedLinesState]);
 
   // Keyboard support for refPopupPos CompletionPopup
   useEffect(() => {
@@ -6183,6 +6243,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               data-raw-index={Number.isInteger(rowMeta.rawIndex) ? rowMeta.rawIndex : undefined}
               data-issue-severity={effectiveIssueSeverity ?? ''}
               data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
+              data-ac-visible-index={Number.isInteger(rowMeta.acVisibleIndex) ? rowMeta.acVisibleIndex : undefined}
+              data-plan-visible-index={Number.isInteger(rowMeta.planVisibleIndex) ? rowMeta.planVisibleIndex : undefined}
               onMouseEnter={isEmptyLine ? () => setHoveredRowKey(stableKey) : undefined}
               onMouseLeave={isEmptyLine ? (() => setHoveredRowKey(null)) : undefined}
               onClick={isEmptyLine ? (e) => {
@@ -6206,7 +6268,28 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="run/run" size={16} />
                   </button>
-                ) : (
+                ) : (<>
+                  {(Number.isInteger(rowMeta.acVisibleIndex) || Number.isInteger(rowMeta.planVisibleIndex)) && !showIssueBulb && (
+                    <button
+                      type="button"
+                      className="spec-done-gutter-item-run"
+                      aria-label="Run this item"
+                      title="Run this item"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const isAcItem = Number.isInteger(rowMeta.acVisibleIndex);
+                        onOpenTerminal?.({
+                          sectionTitle: isAcItem ? 'Acceptance Criteria' : 'Plan',
+                          targetKind: isAcItem ? 'ac' : 'plan',
+                          targetIndex: isAcItem ? rowMeta.acVisibleIndex : rowMeta.planVisibleIndex,
+                          commentEntries,
+                        });
+                      }}
+                    >
+                      <Icon name="run/run" size={16} />
+                    </button>
+                  )}
                   <div
                     className={`editor-gutter-line-number${showIssueBulb ? ' spec-done-gutter-line-number-intention' : ''}`}
                     role={showIssueBulb ? undefined : 'button'}
@@ -6250,7 +6333,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       breakpoints.has(stableKey) && <span className="editor-breakpoint-dot" />
                     )}
                   </div>
-                )}
+                </>)}
               </div>
               <div
                 className="spec-done-row-content"
@@ -6487,7 +6570,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, onDoneLineEdited = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -7167,7 +7250,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onLineEdited={onDoneLineEdited} />,
           doneOverlayHost
         )}
       </>
@@ -7182,7 +7265,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onLineEdited={onDoneLineEdited} />,
           doneOverlayHost
         )}
       </>
@@ -7321,7 +7404,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onLineEdited={onDoneLineEdited} />,
           doneOverlayHost
         )}
       </>
@@ -7387,7 +7470,13 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               <div className="at-vsep" />
 
-		              <button className="at-send-btn" onClick={handleGenerate}>
+		              <button
+		                className="at-send-btn"
+		                onClick={handleGenerate}
+		                disabled={genState !== 'done'}
+		                aria-disabled={genState !== 'done'}
+		                title={genState !== 'done' ? 'Generate the spec first' : undefined}
+		              >
 		                <Icon name="run/run" size={16} />
 		                <span className="at-send-label">Run</span>
 		              </button>
@@ -9314,6 +9403,18 @@ export default function App() {
       return;
     }
     const section = (lastRunSectionRef.current || '').toLowerCase();
+    // For non-selective reveal we carry the previous (outdated-marked) array
+    // as the seed so the dimmed rows stay visible until reveal overwrites them.
+    const buildFullRunSeed = (prevArray, nextLength) => {
+      const length = Number.isInteger(nextLength) ? nextLength : 0;
+      const next = new Array(length).fill(null);
+      if (Array.isArray(prevArray)) {
+        for (let i = 0; i < Math.min(length, prevArray.length); i += 1) {
+          next[i] = prevArray[i] ?? null;
+        }
+      }
+      return next;
+    };
     if (section === 'acceptance criteria') {
       const acRevealOptions = buildSelectiveRunRevealOptions({
         kind: 'ac',
@@ -9328,7 +9429,7 @@ export default function App() {
             initialResult: acRevealOptions.initialResult,
             indices: acRevealOptions.indices,
           }
-        : undefined);
+        : { initialResult: buildFullRunSeed(acRunResult, nextAcRunStatuses?.length) });
     } else if (section === 'plan') {
       const planRevealOptions = buildSelectiveRunRevealOptions({
         kind: 'plan',
@@ -9343,7 +9444,7 @@ export default function App() {
             initialResult: planRevealOptions.initialResult,
             indices: planRevealOptions.indices,
           }
-        : undefined);
+        : { initialResult: buildFullRunSeed(planRunResult, nextPlanRunStatuses?.length) });
       if (!cancelGeneration && lastRunRequest?.mode === 'section') {
         clearChainedRunTimeout();
         const revealSteps = planRevealOptions.hasSelectiveRerun
@@ -9810,13 +9911,24 @@ export default function App() {
     currentTerminalRunTabIdRef.current = nextTerminalTabId;
     setTerminalBlocksForTab([], nextTerminalTabId);
     setTerminalPermissionPromptForTab(null, nextTerminalTabId);
+    // Visual Outdated (spec-flow.md §3/§4): keep previously revealed statuses
+    // but mark them dimmed while the run re-executes. Reveal will overwrite
+    // these entries one by one with fresh objects.
+    const markArrayOutdated = (arr) => {
+      if (!Array.isArray(arr)) return null;
+      return arr.map((item) => (
+        item && typeof item === 'object' && !item.isOutdated
+          ? { ...item, isOutdated: true }
+          : item
+      ));
+    };
     if (!preserveAcRunResult) {
       clearStatusReveal('ac');
-      setAcRunResult(null);
+      setAcRunResult((prev) => markArrayOutdated(prev));
     }
     if (!preservePlanRunResult) {
       clearStatusReveal('plan');
-      setPlanRunResult(null);
+      setPlanRunResult((prev) => markArrayOutdated(prev));
     }
     if (!isTerminalAlreadyOpen) {
       bumpTerminalViewKeyForTab(nextTerminalTabId);
@@ -10081,6 +10193,25 @@ export default function App() {
     setRunStateForTab,
     setTerminalPermissionPromptForTab,
   ]);
+
+  // Visual-only Outdated modifier (spec-flow.md §3). When the user edits an
+  // AC/Plan line, we mark the matching runtime status object as isOutdated so
+  // the row is dimmed until the next run (which reveals a fresh status
+  // without isOutdated).
+  const handleDoneLineEdited = useCallback(({ kind, visibleIndex } = {}) => {
+    if (!Number.isInteger(visibleIndex)) return;
+    const setResult = kind === 'ac' ? setAcRunResult : kind === 'plan' ? setPlanRunResult : null;
+    if (!setResult) return;
+    setResult((prev) => {
+      if (!Array.isArray(prev)) return prev;
+      const item = prev[visibleIndex];
+      if (!item || typeof item !== 'object') return prev;
+      if (item.isOutdated) return prev;
+      const next = [...prev];
+      next[visibleIndex] = { ...item, isOutdated: true };
+      return next;
+    });
+  }, [setAcRunResult, setPlanRunResult]);
 
   useEffect(() => () => {
     terminalRunTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
@@ -11375,6 +11506,83 @@ export default function App() {
     const terminalTabId = sourceTabId ? buildTerminalSessionTabId(sourceTabId) : null;
     const isFullDoneRun = input == null;
 
+    // Per-item Run (spec-flow.md §4). Single AC/Plan item re-execution.
+    const perItemKind = input && typeof input === 'object' ? input.targetKind : null;
+    const perItemVisibleIndex = input && typeof input === 'object' ? input.targetIndex : null;
+    if ((perItemKind === 'ac' || perItemKind === 'plan') && Number.isInteger(perItemVisibleIndex)) {
+      const currentRemoved = commitResult?.currentRemovedIssueIndices ?? activeAgentTaskRemovedIssueIndices;
+      const originalIndex = mapVisibleIssueIndexToOriginal(perItemKind, perItemVisibleIndex, currentRemoved);
+      if (Number.isInteger(originalIndex)) {
+        if (terminalTabId) {
+          setAcWarningBannerForTab(null, terminalTabId);
+        }
+        if (perItemKind === 'ac') {
+          // spec-flow.md §4 «Перепроверка одного критерия AC»:
+          // целевой AC → Outdated, остальные AC и пункты Plan не затрагиваются.
+          const currentAc = commitResult?.currentAcRunResult ?? activeAgentTaskAcRunResult;
+          const seedAc = Array.isArray(currentAc)
+            ? currentAc.map((item, i) => (
+                i === perItemVisibleIndex && item && typeof item === 'object'
+                  ? { ...item, isOutdated: true }
+                  : item
+              ))
+            : [];
+          // Apply the seed immediately so the target row is dimmed on click,
+          // not only after revealRunStatuses fires at finishTerminalRun time.
+          setAcRunResult(seedAc);
+          queueTerminalRun({
+            mode: 'section',
+            sourceTabId,
+            sectionTitle: 'Acceptance Criteria',
+            taskLabel: currentAgentTaskLabel,
+            initialAcRunResult: seedAc,
+            initialPlanRunResult: null,
+            rerunAcOriginalIndices: [originalIndex],
+            rerunPlanOriginalIndices: [],
+          }, {
+            preserveAcRunResult: true,
+            preservePlanRunResult: true,
+          });
+        } else {
+          // spec-flow.md §4 «Переисполнение одного пункта плана»:
+          // целевой пункт → NotChecked, остальные пункты Plan → Outdated,
+          // все критерии AC → Outdated (последнее выполнит queueTerminalRun,
+          // т.к. AC не preserved).
+          const currentPlan = commitResult?.currentPlanRunResult ?? activeAgentTaskPlanRunResult;
+          const seedPlan = Array.isArray(currentPlan)
+            ? currentPlan.map((item, i) => {
+                if (i === perItemVisibleIndex) return null;
+                if (item && typeof item === 'object' && !item.isOutdated) {
+                  return { ...item, isOutdated: true };
+                }
+                return item;
+              })
+            : [];
+          // Apply seed upfront so target becomes NotChecked and others dim
+          // immediately on click.
+          setPlanRunResult(seedPlan);
+          // spec-flow.md §4 «Обновляет все статусы (Plan + AC)»: после терминала
+          // нужно перекрыть ВСЕ пункты Plan, поэтому оставляем rerun* пустыми,
+          // чтобы finishTerminalRun пошёл по non-selective reveal-ветке и
+          // постепенно заменил каждый элемент свежим статусом (сбрасывая Outdated).
+          queueTerminalRun({
+            mode: 'section',
+            sourceTabId,
+            sectionTitle: 'Plan',
+            taskLabel: currentAgentTaskLabel,
+            initialAcRunResult: null,
+            initialPlanRunResult: seedPlan,
+            rerunAcOriginalIndices: [],
+            rerunPlanOriginalIndices: [],
+          }, {
+            preserveAcRunResult: false,
+            preservePlanRunResult: true,
+          });
+        }
+        return;
+      }
+    }
+
     // Use pending rerun indices from Enhance if available
     const taskState = sourceTabId ? interactiveTaskStates[sourceTabId] : null;
     const rerunAcOriginalIndices = commitResult?.rerunAcOriginalIndices
@@ -11422,6 +11630,8 @@ export default function App() {
       }));
     }
 
+    // spec-flow.md §4 «Перепроверка всех AC»: пункты Plan не затрагиваются.
+    const sectionIsAc = (sectionTitle || '').toLowerCase() === 'acceptance criteria';
     queueTerminalRun({
       mode: 'section',
       sourceTabId,
@@ -11433,7 +11643,7 @@ export default function App() {
       rerunPlanOriginalIndices: hasSelectivePlanRerun ? rerunPlanOriginalIndices : [],
     }, {
       preserveAcRunResult: hasSelectiveAcRerun,
-      preservePlanRunResult: hasSelectivePlanRerun,
+      preservePlanRunResult: hasSelectivePlanRerun || sectionIsAc,
     });
   };
 
@@ -11769,7 +11979,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} onDoneLineEdited={handleDoneLineEdited} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea

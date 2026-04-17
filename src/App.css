@@ -631,6 +631,39 @@
   justify-content: center;
 }
 
+/* Per-item Run icon, only visible when hovering the row (spec-flow.md §4). */
+.spec-done-gutter-item-run {
+  all: unset;
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: auto;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.spec-done-gutter-item-run:hover {
+  background: var(--icon-button-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.spec-done-gutter-item-run svg {
+  display: block;
+}
+
+.spec-done-row:hover .spec-done-gutter-item-run {
+  display: inline-flex;
+}
+
+/* Hide the breakpoint dot while the hover Run button is visible. */
+.spec-done-row:hover .spec-done-gutter-item-run ~ .editor-gutter-line-number .editor-breakpoint-dot {
+  visibility: hidden;
+}
+
 .spec-done-gutter-line-number-intention .icon {
   display: block;
   width: 16px;
@@ -1323,6 +1356,11 @@
 .ac-check-row {
   flex-direction: column;
   gap: 0;
+}
+
+.ac-check-row.is-outdated,
+.plan-status-row.is-outdated {
+  opacity: 0.45;
 }
 
 .ac-check-main {
