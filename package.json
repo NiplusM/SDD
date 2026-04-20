@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "scenario:jvm": "node scripts/run-jvm-scenario.mjs"
   },
   "dependencies": {
     "@jetbrains/int-ui-kit": "git+https://github.com/helloeldar/my-component-library.git",
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
+    "playwright": "^1.59.1",
     "vite": "^5.4.0"
   }
 }

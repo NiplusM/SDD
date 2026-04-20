@@ -768,6 +768,7 @@ function TerminalPermissionPrompt({
               key={option.id}
               type="button"
               className={`terminal-permission-option${isSelected ? ' is-selected' : ''}`}
+              data-demo-id={`terminal-permission-${option.id}`}
               onMouseEnter={() => onHover(idx)}
               onClick={() => onSelect(option.id)}
             >
@@ -2131,6 +2132,21 @@ function normalizeCommentTarget(target) {
   }
 
   return null;
+}
+
+function formatDemoTargetId(target) {
+  const normalizedTarget = normalizeCommentTarget(target);
+  if (!normalizedTarget) return null;
+
+  return `${normalizedTarget.kind}-${normalizedTarget.index}`;
+}
+
+function toDemoSlug(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function doesEntryMatchCommentTarget(entry, target) {
@@ -3581,7 +3597,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
   );
 }
 
-function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen }) {
+function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = null }) {
   const hasComments = commentCount > 0;
 
   return (
@@ -3590,6 +3606,7 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen }) {
         type="button"
         className={`spec-done-comment-btn${isOpen ? ' is-open' : ''}${hasComments ? ' has-comments' : ''}`}
         aria-label={hasComments ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : 'Add comment'}
+        data-demo-id={demoId ?? undefined}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         onMouseDown={(event) => {
@@ -3620,7 +3637,7 @@ function DoneInlineCommentPreview({ comment }) {
   );
 }
 
-function DoneCommentAdornment({ comments = [], isOpen = false, onOpen }) {
+function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = null }) {
   const commentCount = comments.length;
   const latestComment = commentCount > 0 ? comments[commentCount - 1] : '';
 
@@ -3630,6 +3647,7 @@ function DoneCommentAdornment({ comments = [], isOpen = false, onOpen }) {
       <DoneCommentButton
         commentCount={commentCount}
         isOpen={isOpen}
+        demoId={demoId}
         onOpen={onOpen}
       />
     </span>
@@ -3724,14 +3742,15 @@ function DoneCommentPopup({
           <Input
             value={value}
             placeholder="Write a comment"
+            data-demo-id="spec-comment-input"
             onChange={(event) => onChange?.(event.target.value)}
           />
         </div>
         <div className="spec-done-comment-popup-actions">
-          <Button type="secondary" onClick={onCancel}>
+          <Button type="secondary" data-demo-id="spec-comment-cancel" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="primary" onClick={onSubmit}>
+          <Button type="primary" data-demo-id="spec-comment-submit" onClick={onSubmit}>
             {isEditing ? 'Save Comment' : 'Add a Comment'}
           </Button>
         </div>
@@ -4033,7 +4052,17 @@ function buildPlanDiffViewerData({
 }
 
 function getPlanCodeDiffPreset(issueTarget) {
-  const presetIndex = Number.isInteger(issueTarget?.index) ? issueTarget.index : 0;
+  const planIndex = Number.isInteger(issueTarget?.index) ? issueTarget.index : 0;
+  const presetIndexMap = {
+    0: 0,
+    1: 1,
+    2: 2,
+    3: 4,
+    4: 5,
+    5: 3,
+    6: 6,
+  };
+  const presetIndex = presetIndexMap[planIndex] ?? planIndex;
   return PLAN_CODE_DIFF_PRESETS[presetIndex] ?? PLAN_CODE_DIFF_PRESETS[0];
 }
 
@@ -4460,12 +4489,18 @@ function buildDiffTabContentFromRows(diffData = null) {
 
 function PlanStatusRow({ statusItem, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null }) {
   const diffTarget = issueTarget ?? checkTarget;
+  const demoTargetId = formatDemoTargetId(diffTarget);
 
   return (
     <div className={`spec-done-line spec-done-line-status spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
       <CheckStatus status={statusItem.status} />
       <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem.highlight)}</span>
-      <button type="button" className="ac-checks-toggle" onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}>
+      <button
+        type="button"
+        className="ac-checks-toggle"
+        data-demo-id={demoTargetId ? `plan-show-diff-${demoTargetId}` : undefined}
+        onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}
+      >
         Show diff
       </button>
       {commentAdornment}
@@ -4642,6 +4677,7 @@ function DoneInspectionWidget({
             type="button"
             className="spec-done-inspection-counts-btn"
             aria-label={problemLabelParts.join(' and ')}
+            data-demo-id="spec-inspection-counts"
             onClick={() => onOpenProblems?.()}
           >
             {hasWarnings && (
@@ -4973,6 +5009,7 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
 
 function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = null, onOpenProblems, onRegenerateSpec, onFixIssue, onClose }) {
   const actions = buildDoneIntentionPopupActions({ severity, canFixIssue, issueTarget });
+  const demoTargetId = formatDemoTargetId(issueTarget);
 
   const handleAction = (item) => {
     if (item.action === 'fix') {
@@ -4991,6 +5028,7 @@ function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = n
       key={key}
       type="button"
       className={`cmp-cell spec-done-intention-popup-item${primary ? ' spec-done-intention-popup-item-primary' : ''}`}
+      data-demo-id={demoTargetId ? `issue-popup-${item.id}-${demoTargetId}` : undefined}
       onMouseDown={(event) => {
         event.preventDefault();
         handleAction(item);
@@ -6151,13 +6189,17 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
             const isEmptyLine = !effectiveLine.trim();
+            const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
             const showCommentAdornment = commentCount > 0 || focusedCommentRowKey === stableKey || isCommentPopupOpen
-              || (isEmptyLine && hoveredRowKey === stableKey);
+              || (isEmptyLine && hoveredRowKey === stableKey)
+              || activeIssueRowKey === stableKey
+              || isNavigatedIssueRow;
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
                 comments={commentsForRow}
                 isOpen={isCommentPopupOpen}
+                demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
                 onOpen={(rect) => {
                   setCommentPopup((prev) => (
                     prev?.rowKey === stableKey
@@ -6180,18 +6222,29 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               className={`spec-done-row${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
+              data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
               data-raw-index={Number.isInteger(rowMeta.rawIndex) ? rowMeta.rawIndex : undefined}
               data-issue-severity={effectiveIssueSeverity ?? ''}
               data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
               onMouseEnter={isEmptyLine ? () => setHoveredRowKey(stableKey) : undefined}
               onMouseLeave={isEmptyLine ? (() => setHoveredRowKey(null)) : undefined}
-              onClick={isEmptyLine ? (e) => {
-                // Focus the caret editable when clicking anywhere in the empty row
-                // (skip if user clicked the comment button itself)
-                if (e.target.closest('.spec-done-comment-adornment')) return;
-                const editable = e.currentTarget.querySelector('.spec-done-line-empty-editable');
-                editable?.focus();
-              } : undefined}
+              onClick={(e) => {
+                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn')) {
+                  return;
+                }
+
+                if (isEmptyLine) {
+                  // Focus the caret editable when clicking anywhere in the empty row.
+                  const editable = e.currentTarget.querySelector('.spec-done-line-empty-editable');
+                  editable?.focus();
+                  return;
+                }
+
+                if (effectiveIssueSeverity) {
+                  setActiveIssueRowKey(stableKey);
+                  setNavigatedIssueRowKey(stableKey);
+                }
+              }}
             >
               <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-run' : ''}`}>
                 {showRunIcon ? (
@@ -6220,6 +6273,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                         type="button"
                         className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
                         aria-label="Open issue actions"
+                        data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
                         aria-haspopup="menu"
                         aria-expanded={isIssuePopupOpen}
                         onMouseDown={(event) => {
@@ -7245,7 +7299,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
                   <div className="at-vsep" />
 
-                  <button className="at-send-btn" onClick={() => {
+                  <button className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
                     // Suppress badge during and after the run — the run itself
                     // will produce authoritative statuses, so pre-run pending
                     // changes are no longer relevant.
@@ -7269,6 +7323,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   <button
                     className={`at-send-btn at-send-btn-enhance${shouldShowDoneEnhanceHint ? ' has-attention' : ''}`}
                     ref={doneEnhanceBtnRef}
+                    data-demo-id="agent-task-enhance"
                     onClick={handleDoneEnhance}
                     disabled={!isDoneEnhanceEnabled}
                     aria-disabled={!isDoneEnhanceEnabled}
@@ -7387,12 +7442,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               <div className="at-vsep" />
 
-		              <button className="at-send-btn" onClick={handleGenerate}>
+		              <button className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleGenerate}>
 		                <Icon name="run/run" size={16} />
 		                <span className="at-send-label">Run</span>
 		              </button>
 	              <div className="at-vsep" />
-	              <button className="at-send-btn" onClick={handleGenerate}>
+	              <button className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleGenerate}>
 	                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
 	                  <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#C4C4C4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 	                </svg>
@@ -7815,6 +7870,7 @@ function AgentTasksPanel({ ctx, tasks, selected, onAdd, onTaskSelect, dismissedS
           <div
             key={task.id}
             className={`agent-task-row${selected === task.id ? ' selected' : ''}`}
+            data-demo-id={`agent-task-row-${toDemoSlug(task.label || task.id)}`}
             style={{ paddingLeft: 48 }}
             role="button"
             tabIndex={0}

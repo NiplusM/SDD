@@ -212,6 +212,7 @@ export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, onNewAgent
             <button
               key={item.id}
               className={`ws-disclosure-item${item.primary ? ' primary' : ''}`}
+              data-demo-id={item.id === 'agent-tasks' ? 'welcome-new-agent-task' : undefined}
               onClick={(e) => handleActionClick(item, e)}
             >
               {item.customIcon === 'ssh' ? <SshIcon /> : (item.customIcon === 'agent' ? <AgentTasksIcon size={16} /> : <Icon name={item.icon} size={16} />)}
@@ -311,6 +312,7 @@ export function WelcomeGradientArea({ onNewAgentTask }) {
               key={action.id}
               type="button"
               className="ws-action-tile"
+              data-demo-id={action.id === 'agent-tasks' ? 'welcome-quick-new-agent-task' : undefined}
               onClick={action.id === 'agent-tasks' ? () => onNewAgentTask?.() : undefined}
             >
               <span className="ws-action-tile-icon">

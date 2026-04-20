@@ -247,6 +247,7 @@ function DiffInlineCommentPopup({ comments, value, editingIndex, showCompose = t
             <Input
               value={value}
               placeholder="Write a comment"
+              data-demo-id="diff-comment-input"
               onChange={(e) => onChange?.(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') { e.preventDefault(); onCancel?.(); }
@@ -255,8 +256,8 @@ function DiffInlineCommentPopup({ comments, value, editingIndex, showCompose = t
             />
           </div>
           <div className="spec-done-comment-popup-actions">
-            <Button type="secondary" onClick={onCancel}>Cancel</Button>
-            <Button type="primary" onClick={onSubmit}>{isEditing ? 'Save Comment' : 'Add a Comment'}</Button>
+            <Button type="secondary" data-demo-id="diff-comment-cancel" onClick={onCancel}>Cancel</Button>
+            <Button type="primary" data-demo-id="diff-comment-submit" onClick={onSubmit}>{isEditing ? 'Save Comment' : 'Add a Comment'}</Button>
           </div>
         </div>
       )}
@@ -445,6 +446,7 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
               <div
                 className={`plan-diff-row plan-diff-row-${row.kind}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}`}
                 data-diff-row-id={row.id}
+                data-demo-id={`diff-row-${row.id}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => activateRow(row.id)}
@@ -459,6 +461,7 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
                   <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>
                   <span
                     className="plan-diff-gutter-icon-slot"
+                    data-demo-id={`diff-comment-toggle-${row.id}`}
                     role="button"
                     tabIndex={row.id === activeRowId || rowComments.length > 0 ? 0 : -1}
                     onClick={(e) => {

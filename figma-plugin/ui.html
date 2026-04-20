@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, -apple-system, sans-serif; font-size: 12px; background: #1e2022; color: #d1d3d9; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 13px; font-weight: 600; color: #fff; }
+  .sub { font-size: 11px; color: #777; }
+  hr { border: none; border-top: 1px solid #2e3033; }
+  .section { display: flex; flex-direction: column; gap: 5px; }
+  .lbl { font-size: 10px; font-weight: 600; color: #777; text-transform: uppercase; letter-spacing: 0.5px; }
+  textarea { width: 100%; background: #16181a; border: 1px solid #2e3033; border-radius: 5px; padding: 8px 10px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: #c5c8cf; resize: vertical; outline: none; line-height: 1.55; transition: border-color 0.15s; }
+  textarea::placeholder { color: #444; }
+  textarea:focus { border-color: #4a7ddb; }
+  textarea.ok  { border-color: #499c54; }
+  textarea.err { border-color: #c75450; }
+  .status { font-size: 10px; min-height: 13px; }
+  .status.ok  { color: #499c54; }
+  .status.err { color: #c75450; }
+  .preview { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #777; background: #16181a; border: 1px solid #2e3033; border-radius: 4px; padding: 5px 8px; display: none; max-height: 60px; overflow-y: auto; line-height: 1.6; }
+  .preview.show { display: block; }
+  .gen-btn { background: #3574f0; color: #fff; border: none; border-radius: 5px; padding: 9px; font-size: 13px; font-weight: 500; cursor: pointer; width: 100%; transition: background 0.15s, opacity 0.15s; }
+  .gen-btn:hover:not(:disabled) { background: #4a85f5; }
+  .gen-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .progress-wrap { background: #2b2d30; border-radius: 3px; height: 4px; display: none; }
+  .progress-wrap.show { display: block; }
+  .progress-bar { background: #3574f0; height: 4px; border-radius: 3px; width: 0%; transition: width 0.25s; }
+  .log { background: #16181a; border: 1px solid #2e3033; border-radius: 4px; padding: 6px 8px; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; color: #9fa2a8; max-height: 130px; overflow-y: auto; display: none; line-height: 1.7; }
+  .log.show { display: block; }
+  .log .ok  { color: #499c54; }
+  .log .err { color: #c75450; }
+</style>
+</head>
+<body>
+
+<div class="section">
+  <h1>IDE Prototype Builder</h1>
+  <span class="sub">Paste two MD files → generates Figma frames</span>
+</div>
+<hr />
+
+<div class="section">
+  <div class="lbl">Design System MD</div>
+  <textarea id="ds-ta" rows="5" placeholder="Paste AGENT_DESIGN_GUIDE.md…"></textarea>
+  <div class="status" id="ds-status"></div>
+  <div class="preview" id="ds-preview"></div>
+</div>
+
+<div class="section">
+  <div class="lbl">Flows / Frames MD</div>
+  <textarea id="flows-ta" rows="5" placeholder="Paste FIGMA_REPRODUCTION_SPEC.md…"></textarea>
+  <div class="status" id="flows-status"></div>
+  <div class="preview" id="flows-preview"></div>
+</div>
+
+<hr />
+<button class="gen-btn" id="gen-btn" disabled>Generate Frames</button>
+<div class="progress-wrap" id="pw"><div class="progress-bar" id="pb"></div></div>
+<div class="log" id="log"></div>
+
+<script>
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function getSection(md, name) {
+  var re = new RegExp('##\\s+' + name + '[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)', 'i');
+  var m = md.match(re);
+  return m ? m[1] : '';
+}
+
+function parseTable(text) {
+  var rows = [], headers = null;
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (!line.trim().startsWith('|')) continue;
+    var cells = line.split('|').slice(1, -1).map(function(c) { return c.trim(); });
+    if (!headers) { headers = cells; continue; }
+    if (cells.every(function(c) { return /^[-:| ]+$/.test(c); })) continue;
+    var row = {};
+    headers.forEach(function(h, idx) { row[h.toLowerCase()] = cells[idx] || ''; });
+    rows.push(row);
+  }
+  return rows;
+}
+
+function stripBackticks(s) {
+  return s.replace(/`([^`]+)`/g, '$1').trim();
+}
+
+// ─── Design System Parser ─────────────────────────────────────────────────────
+
+function parseDesignSystem(md) {
+  var result = { colors: {}, typography: {}, spacing: {}, meta: {} };
+
+  // Colors — section containing "color"
+  var colorKey = null;
+  md.split('\n').forEach(function(line) {
+    var m = line.match(/^##\s+(.+)/);
+    if (m && /color/i.test(m[1]) && !colorKey) colorKey = m[1].trim();
+  });
+  if (colorKey) {
+    parseTable(getSection(md, colorKey)).forEach(function(row) {
+      var token = row['token'] || row['name'] || '';
+      var value = row['dark'] || row['value'] || row['hex'] || '';
+      if (token && value && value.startsWith('#')) result.colors[token] = value;
+    });
+  }
+
+  // Typography
+  var typKey = null;
+  md.split('\n').forEach(function(line) {
+    var m = line.match(/^##\s+(.+)/);
+    if (m && /typograph|font/i.test(m[1]) && !typKey) typKey = m[1].trim();
+  });
+  if (typKey) {
+    parseTable(getSection(md, typKey)).forEach(function(row) {
+      var token = row['token'] || row['style'] || row['name'] || '';
+      if (!token) return;
+      result.typography[token] = {
+        family: row['font'] || row['family'] || 'Inter',
+        size: parseInt(row['size'] || '12', 10),
+        weight: parseInt(row['weight'] || '400', 10),
+        lineHeight: parseInt(row['line height'] || row['lineheight'] || '16', 10),
+      };
+    });
+  }
+
+  // Spacing
+  var spKey = null;
+  md.split('\n').forEach(function(line) {
+    var m = line.match(/^##\s+(.+)/);
+    if (m && /spacing|space/i.test(m[1]) && !spKey) spKey = m[1].trim();
+  });
+  if (spKey) {
+    parseTable(getSection(md, spKey)).forEach(function(row) {
+      var token = row['token'] || row['name'] || '';
+      var value = parseInt(row['value'] || row['px'] || '0', 10);
+      if (token) result.spacing[token] = value;
+    });
+  }
+
+  return result;
+}
+
+// ─── Spec Parser ──────────────────────────────────────────────────────────────
+
+function parseSpec(md) {
+  var result = {
+    meta: {},
+    frames: [],
+    colors: {},
+    frameDetails: {},
+  };
+
+  // Global metadata table
+  var metaSection = getSection(md, 'Global Metadata');
+  if (metaSection) {
+    parseTable(metaSection).forEach(function(row) {
+      var key = (row['key'] || row['property'] || '').toLowerCase().replace(/\s+/g, '_');
+      var val = stripBackticks(row['value'] || '');
+      if (key) result.meta[key] = val;
+    });
+  }
+
+  // Required Frames table
+  var framesSection = getSection(md, 'Required Frames');
+  if (framesSection) {
+    parseTable(framesSection).forEach(function(row) {
+      var id = row['id'] || '';
+      var name = stripBackticks(row['frame'] || row['name'] || '');
+      var purpose = row['purpose'] || '';
+      if (id && name) result.frames.push({ id: id, name: name, purpose: purpose });
+    });
+  }
+
+  // Key Colors from Visual System
+  var colorLines = md.match(/[-*]\s+[\w\s/]+:\s+`(#[0-9a-fA-F]{3,8})`/g) || [];
+  colorLines.forEach(function(line) {
+    var m = line.match(/([\w\s/]+):\s+`(#[0-9a-fA-F]{3,8})`/);
+    if (m) {
+      var key = m[1].trim().toLowerCase().replace(/\s+/g, '_');
+      result.colors[key] = m[2];
+    }
+  });
+
+  // Window sizes
+  var w800 = md.match(/(\d{4})\s*[x×]\s*800/); var w900 = md.match(/(\d{4})\s*[x×]\s*900/);
+  result.welcomeSize = { w: 1100, h: 800 };
+  result.ideSize = { w: 1440, h: w900 ? 900 : 800 };
+
+  // Frame Details — parse each ### F-XX section
+  var detailsMatch = md.match(/### (F-\d+\w*[^\n]*)\n([\s\S]*?)(?=\n### F-|\n## |$)/g) || [];
+  detailsMatch.forEach(function(block) {
+    var idMatch = block.match(/### (F-\d+\w*)/);
+    if (!idMatch) return;
+    var id = idMatch[1];
+    result.frameDetails[id] = parseFrameDetail(block);
+  });
+
+  return result;
+}
+
+function parseFrameDetail(text) {
+  var detail = {
+    tabs: [],         // editor tabs listed
+    actions: [],      // action button labels
+    tasks: [],        // agent task rows
+    sections: [],     // content sections {heading, items:[{type,text,status}]}
+    command: '',      // terminal command
+    output: [],       // terminal output lines
+    problems: [],     // problem rows {sev, text, line}
+    diffFile: '',
+    bannerText: '',
+    recentProjects: [],
+    quickTiles: [],
+    segmented: [],
+  };
+
+  // Editor tabs
+  var tabMatch = text.match(/`VisitController\.java`|`Visit\.java`|`createOrUpdate[^`]+`|`schema\.sql`|`visit-booking\.md`|`vet-schedules\.md`|`Diff [^`]+`/g);
+  if (tabMatch) {
+    var seen = {};
+    tabMatch.forEach(function(t) {
+      var tab = t.replace(/`/g,'');
+      if (!seen[tab]) { seen[tab] = true; detail.tabs.push(tab); }
+    });
+  }
+
+  // Terminal command
+  var cmdMatch = text.match(/`(agent run [^`]+)`/);
+  if (cmdMatch) detail.command = cmdMatch[1];
+
+  // Terminal output lines (bullet lists after command)
+  var outMatch = text.match(/Output[^\n]*\n([\s\S]*?)(?=\n####|\n###|$)/i);
+  if (outMatch) {
+    outMatch[1].split('\n').forEach(function(line) {
+      var m = line.match(/^[-*]\s+`?([^`\n]+)`?/);
+      if (m) detail.output.push(m[1].trim());
+    });
+  }
+
+  // Problems
+  var probMatch = text.match(/^[-*]\s+(warning|error)\s+`([^`]+)`[^\n]*`([^`]+)`/gmi);
+  if (probMatch) {
+    probMatch.forEach(function(line) {
+      var m = line.match(/^[-*]\s+(warning|error)\s+`([^`]+)`[^\n]*`([^`]+)`/i);
+      if (m) detail.problems.push({ sev: m[1].toLowerCase(), text: m[2], line: m[3] });
+    });
+  }
+
+  // Recent projects (Welcome frame)
+  var projMatches = text.match(/\d+\.\s+`([^`]+)`\s*\/\s*`([^`]+)`\s*\/\s*initials\s*`([^`]+)`/g) || [];
+  projMatches.forEach(function(line) {
+    var m = line.match(/`([^`]+)`\s*\/\s*`([^`]+)`\s*\/\s*initials\s*`([^`]+)`/);
+    if (m) detail.recentProjects.push({ name: m[1], path: m[2], initials: m[3] });
+  });
+
+  // Quick action tiles
+  var tileSection = text.match(/Quick-action grid[^\n]*\n([\s\S]*?)(?=\n####|\n###|$)/i);
+  if (tileSection) {
+    tileSection[1].split('\n').forEach(function(line) {
+      var m = line.match(/^\d+\.\s+`([^`]+)`/);
+      if (m) detail.quickTiles.push(m[1]);
+    });
+  }
+
+  // Segmented control options
+  var segMatch = text.match(/Segmented control[^\n]*\n([\s\S]*?)(?=\n####|\n###|$)/i);
+  if (segMatch) {
+    segMatch[1].split('\n').forEach(function(line) {
+      var m = line.match(/^[-*]\s+`([^`]+)`/);
+      if (m) detail.segmented.push(m[1]);
+    });
+  }
+
+  // Content sections (Goal, Acceptance Criteria, Plan, etc.)
+  var sectionBlocks = text.match(/####\s+\S[^\n]*\n[\s\S]*?(?=\n####|\n###|$)/g) || [];
+  sectionBlocks.forEach(function(block) {
+    var headMatch = block.match(/####\s+(.+)/);
+    if (!headMatch) return;
+    var heading = headMatch[1].trim();
+    var items = [];
+    block.split('\n').forEach(function(line) {
+      // AC / Plan items with status
+      var acm = line.match(/^[-*]\s+(passed|failed|warning|error|done)?\s*`([^`]+)`/i);
+      if (acm) {
+        items.push({ type: 'item', status: (acm[1] || 'pass').toLowerCase(), text: acm[2] });
+        return;
+      }
+      // Plain bullet
+      var bm = line.match(/^[-*]\s+(.+)/);
+      if (bm && !line.match(/^[-*]\s+`/)) {
+        items.push({ type: 'text', text: stripBackticks(bm[1]) });
+      }
+    });
+    if (heading && heading !== 'Editor Tab Content Expectations') {
+      detail.sections.push({ heading: heading, items: items });
+    }
+  });
+
+  // Banner text
+  var bannerMatch = text.match(/Banner text[:\n]+\s*`([^`]+)`/i);
+  if (bannerMatch) detail.bannerText = bannerMatch[1];
+
+  // Diff file
+  var diffMatch = text.match(/`Diff ([^`]+)`/);
+  if (diffMatch) detail.diffFile = diffMatch[1];
+
+  return detail;
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+var dsData = null, flowsData = null;
+
+function checkReady() {
+  document.getElementById('gen-btn').disabled = !(dsData && flowsData);
+}
+
+function showPreview(id, data) {
+  var el = document.getElementById(id);
+  var lines = [];
+  if (data.colors && Object.keys(data.colors).length) {
+    var keys = Object.keys(data.colors).slice(0, 4);
+    lines = keys.map(function(k) { return k + ': ' + data.colors[k]; });
+    var extra = Object.keys(data.colors).length - 4;
+    if (extra > 0) lines.push('… +' + extra + ' more');
+  } else if (data.frames && data.frames.length) {
+    lines = data.frames.slice(0, 5).map(function(f) { return f.id + '  ' + f.name; });
+    var extra2 = data.frames.length - 5;
+    if (extra2 > 0) lines.push('… +' + extra2 + ' more');
+  }
+  el.textContent = lines.join('\n');
+  el.className = lines.length ? 'preview show' : 'preview';
+}
+
+function setStatus(id, ok, msg) {
+  var el = document.getElementById(id);
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+  el.textContent = msg;
+}
+
+function setupTextarea(taId, statusId, previewId, parser, onSuccess) {
+  var ta = document.getElementById(taId);
+  var timer;
+  function process() {
+    var text = ta.value.trim();
+    if (!text) { ta.className = ''; document.getElementById(statusId).textContent = ''; document.getElementById(previewId).className = 'preview'; return; }
+    try {
+      var parsed = parser(text);
+      onSuccess(parsed);
+      ta.className = 'ok';
+      setStatus(statusId, true, '✓ Parsed');
+      showPreview(previewId, parsed);
+      checkReady();
+    } catch(err) {
+      ta.className = 'err';
+      setStatus(statusId, false, '✗ ' + err.message);
+      console.error(err);
+    }
+  }
+  ta.addEventListener('input', function() { clearTimeout(timer); timer = setTimeout(process, 500); });
+  ta.addEventListener('paste', function() { setTimeout(function() { ta.dispatchEvent(new Event('input')); }, 50); });
+}
+
+setupTextarea('ds-ta', 'ds-status', 'ds-preview', parseDesignSystem, function(d) { dsData = d; });
+setupTextarea('flows-ta', 'flows-status', 'flows-preview', parseSpec, function(d) { flowsData = d; });
+
+// ─── Generate ─────────────────────────────────────────────────────────────────
+
+function logMsg(text, cls) {
+  var el = document.getElementById('log');
+  el.className = 'log show';
+  var line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('pw').className = 'progress-wrap show';
+  document.getElementById('pb').style.width = pct + '%';
+}
+
+document.getElementById('gen-btn').addEventListener('click', function() {
+  document.getElementById('log').innerHTML = '';
+  setProgress(5);
+  logMsg('Sending to Figma…');
+  parent.postMessage({ pluginMessage: { type: 'generate', ds: dsData, flows: flowsData } }, '*');
+});
+
+window.onmessage = function(e) {
+  var msg = e.data.pluginMessage;
+  if (!msg) return;
+  if (msg.type === 'log')      logMsg(msg.text, msg.cls || '');
+  if (msg.type === 'progress') setProgress(msg.pct);
+  if (msg.type === 'done')     { logMsg('✓ Done!', 'ok'); setProgress(100); }
+  if (msg.type === 'error')    logMsg('✗ ' + msg.text, 'err');
+};
+</script>
+</body>
+</html>
