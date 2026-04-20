@@ -1,339 +1,302 @@
 # Spec Flow: Agent Task Specification Lifecycle
 
-Документ описывает полный жизненный цикл спецификации агентной задачи: от промпта в файле до исполнения плана и проверки Acceptance Criteria.
+This document describes the full lifecycle of an agent task specification: from a prompt in a file through plan execution and Acceptance Criteria verification.
 
 ---
 
-## Полная карта состояний
+## Full state map
 
 ```mermaid
 flowchart TD
-    subgraph INIT["1. Initial State"]
-        I1[".md файл с промптом"]
-        I2["Run 🔒 | Generate/Enhance: 'Generate'"]
+    subgraph DRAFT["1. Draft"]
+        D1["Prompt or spec with edits; text and comments"]
+        D2["Run ✓ | Generate/Enhance: 'Generate' or 'Enhance' ✓"]
     end
 
     subgraph SPEC["2. Spec Generated"]
         S1["Goal + AC + Plan + Notes"]
         S2["Run ✓ | Generate/Enhance: 'Enhance' 🔒"]
-        S3["Текст редактируемый"]
-        S4["Комментарии доступны"]
+        S3["Text editable"]
+        S4["Comments available"]
     end
 
-    subgraph EDIT["3. Spec Editing"]
-        E1["Текст изменён / комментарии добавлены"]
-        E2["Generate/Enhance: 'Enhance' ✓"]
-    end
-
-    subgraph EXEC["4. Plan/AC Executed"]
+    subgraph EXEC["3. Plan/AC Executed"]
         direction TB
-        subgraph AC_States["AC: 4 состояния"]
-            AC1["✅ Passed — чеки видны"]
-            AC2["❌ Failed — чеки + ошибки"]
-            AC3["⚠ SuggestChange — чеки + предложение"]
-            AC4["⬜ NotChecked — без чеков"]
+        subgraph AC_States["AC: 4 states"]
+            AC1["✅ Passed — checks visible"]
+            AC2["❌ Failed — checks + errors"]
+            AC3["⚠ SuggestChange — checks + suggestion"]
+            AC4["⬜ NotChecked — no checks"]
         end
-        subgraph Plan_States["Plan: 3 состояния"]
-            P1["✅ Passed — diff доступен"]
-            P2["❌ Failed — diff если есть"]
-            P3["⬜ NotChecked — без diff"]
+        subgraph Plan_States["Plan: 3 states"]
+            P1["✅ Passed — diff available"]
+            P2["❌ Failed — diff if present"]
+            P3["⬜ NotChecked — no diff"]
         end
-        subgraph Outdated_Note["Любой пункт AC / Plan"]
-            O1["🔘 Outdated — предыдущий статус, но засерен"]
+        subgraph Outdated_Note["Any AC / Plan item"]
+            O1["🔘 Outdated — previous status, grayed out"]
         end
     end
 
-    INIT -->|"Generate"| SPEC
-    SPEC -->|"Edit / Comment"| EDIT
-    EDIT -->|"Enhance"| SPEC
+    DRAFT -->|"Generate / Enhance"| SPEC
+    SPEC -->|"Edit / Comment"| DRAFT
     SPEC -->|"Run (Plan / AC / Toolbar)"| EXEC
-    EXEC -->|"Edit / Comment"| EDIT
+    EXEC -->|"Edit / Comment"| DRAFT
     EXEC -->|"Re-run Plan / AC"| EXEC
 
-    style INIT fill:#2d2d3d,color:#fff
+    style DRAFT fill:#2d2d3d,color:#fff
     style SPEC fill:#1a3a5c,color:#fff
-    style EDIT fill:#5c3a1a,color:#fff
     style EXEC fill:#1a5c3a,color:#fff
 ```
 
 ---
 
-## Статус Outdated
+## Outdated status
 
-Общий статус для пунктов AC и Plan. Не является отдельным состоянием — это **модификатор отображения**: пункт сохраняет свой предыдущий статус (Passed, Failed, SuggestChange, NotChecked), но отрисовывается **приглушённым засеренным цветом**.
+A shared status for AC and Plan items. It is **not** a separate state — it is a **display modifier**: the item keeps its previous status (Passed, Failed, SuggestChange, NotChecked) but is rendered in a **muted, grayed-out** color.
 
-Пункт становится Outdated когда:
-- **AC**: текст критерия отредактирован после проверки
-- **Plan**: текст пункта отредактирован после исполнения
-- **Любой**: запущено переисполнение другого пункта или всего плана (массовый сброс)
-
-Пункт перестаёт быть Outdated когда:
-- Проведена перепроверка / переисполнение этого пункта — статус обновляется на актуальный
+An item stops being Outdated when:
+- It is re-checked or re-executed — the status updates to the current value
 
 ---
 
-## 1. Initial State
+## 1. Draft
 
-### Контент
+A single draft state: you can **edit text** and **leave comments**. **Run** and **Generate/Enhance** are both enabled; the Generate/Enhance label depends on whether a spec has already been generated and whether there are edits.
 
-- Открыт `.md` файл с текстовым промптом (описание задачи)
-- Файл содержит только промпт, спецификация ещё не сгенерирована
+### Content
 
-### Состояние кнопок
+- An `.md` file is open: either a plain-text prompt only, or a structured spec (Goal, AC, Plan, Notes) — including user edits and comments
+- **Text** is **editable**; **comments** are available
 
-| Кнопка | Состояние | Условие |
-|--------|-----------|---------|
-| **Run** | 🔒 Disabled | Спецификации нет, или она не соответствует формату (эвристика) |
-| **Generate/Enhance** | ✓ Enabled, текст: **"Generate"** | Спецификации нет — предлагается сгенерировать |
+### Button state
 
-### Переходы
+| Button | State | Condition |
+|--------|-------|-----------|
+| **Run** (toolbar) | ✓ Enabled | Specification is valid (format heuristic) |
+| **Run** (AC) | ✓ Enabled | Acceptance Criteria section exists |
+| **Run** (Plan) | ✓ Enabled | Plan section exists |
+| **Generate/Enhance** | ✓ Enabled | Label: **"Generate"** if there is no spec yet; **"Enhance"** if a spec was already generated and there are edits or comments |
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 2. Spec Generated** | Нажата кнопка **Generate** | Агент генерирует спецификацию из промпта. Появляются секции: Goal, Acceptance Criteria, Plan, Notes. |
+### Transitions
+
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 2. Spec Generated** | **Generate** is clicked | The agent generates a specification from the prompt. Sections appear: Goal, Acceptance Criteria, Plan, Notes. |
+| **→ 2. Spec Generated** | **Enhance** is clicked | The agent regenerates the spec with edits and comments applied. After a successful Enhance, the button behaves like **2. Spec Generated** again (🔒 until the next edits). |
 
 ---
 
 ## 2. Spec Generated
 
-### Контент
+### Content
 
-Спецификация отображена в структурированном виде:
+The specification is shown in structured form:
 
-| Секция | Описание |
-|--------|----------|
-| **Goal** | Краткое описание цели задачи |
-| **Acceptance Criteria** | Список критериев приёмки (чекбоксы) |
-| **Plan** | Список шагов реализации |
-| **Notes** | Дополнительные заметки |
+| Section | Description |
+|---------|-------------|
+| **Goal** | Short description of the task goal |
+| **Acceptance Criteria** | List of acceptance criteria (checkboxes) |
+| **Plan** | List of implementation steps |
+| **Notes** | Additional notes |
 
-- В верхнем тулбаре отображается **саммари** спецификации
-- Текст во всех секциях **редактируемый**
-- Во всех секциях можно **оставлять комментарии**
+- The toolbar shows a **summary** of the specification
+- **Text** in all sections is **editable**
+- **Comments** can be left in all sections
 
-> **TODO (Notes)**: в текущем прототипе вместо единой секции **Notes** используются три: **Implementation Notes**, **Tradeoffs**, **Other**. Нужно решить, сводить ли их в одну `Notes` или оставить разбивку (см. «Открытые вопросы»).
+### Button state
 
-### Состояние кнопок
+| Button | State | Condition |
+|--------|-------|-----------|
+| **Run** (toolbar) | ✓ Enabled | Specification is valid |
+| **Run** (AC) | ✓ Enabled | Runs AC checks only |
+| **Run** (Plan) | ✓ Enabled | Executes the plan, then checks AC |
+| **Generate/Enhance** | 🔒 Disabled, label: **"Enhance"** | No edits or comments |
 
-| Кнопка | Состояние | Условие |
-|--------|-----------|---------|
-| **Run** (toolbar) | ✓ Enabled | Спецификация корректна |
-| **Run** (AC) — иконка в гуттере у заголовка `## Acceptance Criteria` | ✓ Enabled | Проверяет только AC |
-| **Run** (Plan) — иконка в гуттере у заголовка `## Plan` | ✓ Enabled | Исполняет план, затем проверяет AC |
-| **Generate/Enhance** | 🔒 Disabled, текст: **"Enhance"** | Нет правок и комментариев |
+### Transitions
 
-> В текущем прототипе «Run (AC)» и «Run (Plan)» — это **иконки запуска в гуттере** рядом с заголовками секций `## Acceptance Criteria` и `## Plan`, а не отдельные кнопки в тулбаре. В тулбаре есть только общая кнопка **Run** (Toolbar).
-
-### Переходы
-
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 3. Spec Editing** | Пользователь **редактирует текст** или **оставляет комментарий** | Кнопка Enhance разблокируется. Контент изменён, но спека ещё не перегенерирована. |
-| **→ 4. Executed** | Нажата кнопка **Run** (Toolbar или Plan) | Все пункты плана исполняются последовательно, затем проверяются все AC. У каждого пункта появляется статус. |
-| **→ 4. Executed** | Нажата кнопка **Run** (AC) | Проверяются только Acceptance Criteria без исполнения плана. У каждого критерия появляется статус. |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 1. Draft** | User **edits text** or **adds a comment** | Content changed but the spec is not regenerated yet; **Run** and **Enhance** are available in Draft. |
+| **→ 3. Executed** | **Run** (Toolbar or Plan) is clicked | All plan items run in sequence, then all AC are checked. Each item gets a status. |
+| **→ 3. Executed** | **Run** (AC) is clicked | Only Acceptance Criteria are checked; the plan is not executed. Each criterion gets a status. |
 
 ---
 
-## 3. Spec Editing
+## 3. Plan/AC Executed
 
-### Контент
+### Content — Acceptance Criteria
 
-Контент идентичен **2. Spec Generated**, но с пользовательскими изменениями:
-- Текст в одной или нескольких секциях отредактирован
-- И/или добавлены комментарии к пунктам
-
-### Состояние кнопок
-
-| Кнопка | Состояние | Условие |
-|--------|-----------|---------|
-| **Run** (toolbar) | ✓ Enabled | Спецификация корректна |
-| **Generate/Enhance** | ✓ Enabled, текст: **"Enhance"** | Есть правки или комментарии |
-
-### Переходы
-
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 2. Spec Generated** | Нажата кнопка **Enhance** | Агент перегенерирует спеку с учётом правок и комментариев. Enhance снова блокируется. |
-
----
-
-## 4. Plan/AC Executed
-
-### Контент — Acceptance Criteria
-
-Каждый критерий AC имеет одно из 4 состояний (+ Outdated-модификатор):
+Each AC criterion is in one of 4 states (+ Outdated modifier):
 
 ```mermaid
 stateDiagram-v2
     [*] --> NotChecked
 
-    NotChecked --> Passed: Проверка пройдена
-    NotChecked --> Failed: Проверка не пройдена
-    NotChecked --> SuggestChange: Агент предлагает изменить критерий
+    NotChecked --> Passed: Check passed
+    NotChecked --> Failed: Check failed
+    NotChecked --> SuggestChange: Agent suggests changing the criterion
 
-    Passed --> Outdated: Текст отредактирован / массовый сброс
-    Failed --> Outdated: Текст отредактирован / массовый сброс
-    SuggestChange --> Outdated: Текст отредактирован / массовый сброс
-    NotChecked --> Outdated: Массовый сброс
+    Passed --> Outdated: Text edited / bulk reset
+    Failed --> Outdated: Text edited / bulk reset
+    SuggestChange --> Outdated: Text edited / bulk reset
+    NotChecked --> Outdated: Bulk reset
 
-    SuggestChange --> NotChecked: Принятие / отклонение предложения
+    SuggestChange --> NotChecked: Accept / reject suggestion
 
-    Outdated --> Passed: Перепроверка
-    Outdated --> Failed: Перепроверка
-    Outdated --> SuggestChange: Перепроверка
-    Outdated --> NotChecked: Перепроверка
+    Outdated --> Passed: Re-check
+    Outdated --> Failed: Re-check
+    Outdated --> SuggestChange: Re-check
+    Outdated --> NotChecked: Re-check
 ```
 
-| Состояние | Иконка | Чеки | Описание |
-|-----------|--------|------|----------|
-| **Passed** | ✅ | Отображены (зелёные) | Критерий пройден |
-| **Failed** | ❌ | Отображены, непройденные выделены | Критерий не пройден |
-| **SuggestChange** | ⚠ | Отображены + предложение изменить критерий | Агент считает, что критерий нужно скорректировать |
-| **NotChecked** | ⬜ | Нет | Критерий не проверялся, галка unchecked |
-| **Outdated** | 🔘 | Засерены (grayed out) | Предыдущий статус сохранён, но отображается приглушённо |
+| State | Icon | Checks | Description |
+|-------|------|--------|-------------|
+| **Passed** | ✅ | Shown (green) | Criterion passed |
+| **Failed** | ❌ | Shown, failed highlights | Criterion not passed |
+| **SuggestChange** | ⚠ | Shown + suggestion to change the criterion | Agent thinks the criterion should be adjusted |
+| **NotChecked** | ⬜ | None | Criterion not checked; unchecked |
+| **Outdated** | 🔘 | Grayed out | Previous status kept, shown muted |
 
-### Контент — Plan
+### Content — Plan
 
-Каждый пункт плана имеет одно из 3 состояний (+ Outdated-модификатор):
+Each plan item is in one of 3 states (+ Outdated modifier):
 
 ```mermaid
 stateDiagram-v2
     [*] --> NotChecked
 
-    NotChecked --> Passed: Выполнен успешно
-    NotChecked --> Failed: Не выполнен
+    NotChecked --> Passed: Completed successfully
+    NotChecked --> Failed: Not completed
 
-    Passed --> Outdated: Редактирование / массовый сброс
-    Failed --> Outdated: Редактирование / массовый сброс
-    NotChecked --> Outdated: Массовый сброс
+    Passed --> Outdated: Edit / bulk reset
+    Failed --> Outdated: Edit / bulk reset
+    NotChecked --> Outdated: Bulk reset
 
-    Outdated --> Passed: Переисполнение (успех)
-    Outdated --> Failed: Переисполнение (неудача)
-    Outdated --> NotChecked: Переисполнение
+    Outdated --> Passed: Re-run (success)
+    Outdated --> Failed: Re-run (failure)
+    Outdated --> NotChecked: Re-run
 ```
 
-| Состояние | Иконка | Diff | Описание |
-|-----------|--------|------|----------|
-| **Passed** | ✅ | Доступен (Show diff) | Пункт выполнен успешно |
-| **Failed** | ❌ | Доступен, если есть изменения | Пункт не выполнен |
-| **NotChecked** | ⬜ | Нет | Пункт не проверялся |
-| **Outdated** | 🔘 | — | Предыдущий статус сохранён, но отображается приглушённо |
+| State | Icon | Diff | Description |
+|-------|------|------|-------------|
+| **Passed** | ✅ | Available (Show diff) | Item completed successfully |
+| **Failed** | ❌ | Available if there are changes | Item not completed |
+| **NotChecked** | ⬜ | None | Item not checked |
+| **Outdated** | 🔘 | — | Previous status kept, shown muted |
 
-### Состояние кнопок
+### Button state
 
-| Кнопка | Состояние | Условие |
-|--------|-----------|---------|
-| **Run** (toolbar) | ✓ Enabled | Переисполняет весь план + AC |
-| **Run** (AC) — иконка в гуттере у `## Acceptance Criteria` | ✓ Enabled | Перепроверяет все AC |
-| **Run** (Plan) — иконка в гуттере у `## Plan` | ✓ Enabled | Переисполняет весь план + AC |
-| **Generate/Enhance** | 🔒 Disabled, текст: **"Enhance"** | Нет правок (Enabled если есть правки/комментарии) |
-| **Run** (per AC/Plan item) — иконка в гуттере конкретной строки | ✓ Enabled | Перепроверяет конкретный пункт |
+| Button | State | Condition |
+|--------|-------|-----------|
+| **Run** (toolbar) | ✓ Enabled | Re-runs full plan + AC |
+| **Run** (AC) | ✓ Enabled | Re-checks all AC |
+| **Run** (Plan) | ✓ Enabled | Re-runs full plan + AC |
+| **Generate/Enhance** | 🔒 Disabled, label: **"Enhance"** | No edits (Enabled if there are edits/comments) |
+| **Run** (per AC item) | ✓ Enabled | Re-checks that criterion |
 
-> **Per-item Run**: Run-иконка на конкретном пункте AC/Plan отображается в гуттере **только при hover** соответствующей строки.
+### Transitions
 
-### Переходы
-
-#### Переисполнение плана целиком
+#### Re-run full plan
 
 ```mermaid
 sequenceDiagram
-    participant U as Пользователь
+    participant U as User
     participant UI as UI
-    participant A as Агент
+    participant A as Agent
 
     U->>UI: Run (Plan / Toolbar)
-    UI->>UI: Все пункты Plan → Outdated
-    UI->>UI: Все критерии AC → Outdated
-    UI->>A: Запуск
+    UI->>UI: All Plan items → Outdated
+    UI->>UI: All AC criteria → Outdated
+    UI->>A: Start
 
-    loop Каждый пункт плана
-        A->>UI: Статус пункта → Passed / Failed
-        A->>UI: Обновление diff
+    loop Each plan item
+        A->>UI: Item status → Passed / Failed
+        A->>UI: Update diff
     end
 
-    loop Каждый критерий AC
-        A->>UI: Статус критерия → Passed / Failed / SuggestChange / NotChecked
-        A->>UI: Обновление чеков
+    loop Each AC criterion
+        A->>UI: Criterion status → Passed / Failed / SuggestChange / NotChecked
+        A->>UI: Update checks
     end
 ```
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 4. Executed** (self) | Нажата кнопка **Run** (Toolbar / Plan) | 1. Все пункты Plan → Outdated. 2. Все критерии AC → Outdated. 3. Агент последовательно исполняет каждый пункт плана, обновляя статусы и diffs. 4. Агент проверяет каждый критерий AC, обновляя статусы и чеки. |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 3. Executed** (self) | **Run** (Toolbar / Plan) is clicked | 1. All Plan items → Outdated. 2. All AC criteria → Outdated. 3. Agent runs each plan item in order, updating statuses and diffs. 4. Agent checks each AC criterion, updating statuses and checks. |
 
-#### Переисполнение одного пункта плана
+#### Re-run a single plan item
 
 ```mermaid
 sequenceDiagram
-    participant U as Пользователь
+    participant U as User
     participant UI as UI
-    participant A as Агент
+    participant A as Agent
 
-    U->>UI: Run на конкретном пункте плана
-    UI->>UI: Целевой пункт → NotChecked
-    UI->>UI: Остальные пункты Plan → Outdated
-    UI->>UI: Все критерии AC → Outdated
-    UI->>A: Передаёт полную спеку
+    U->>UI: Run on a specific plan item
+    UI->>UI: Target item → NotChecked
+    UI->>UI: Other Plan items → Outdated
+    UI->>UI: All AC criteria → Outdated
+    UI->>A: Sends full spec
 
-    A->>A: Исполняет выбранный пункт
-    A->>UI: Обновляет все статусы (Plan + AC)
+    A->>A: Executes selected item
+    A->>UI: Updates all statuses (Plan + AC)
 ```
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 4. Executed** (self) | Нажата кнопка **Run** на конкретном пункте | 1. Целевой пункт → NotChecked. 2. Остальные пункты Plan → Outdated. 3. Все критерии AC → Outdated. 4. Агент получает полную спеку, исполняет пункт и заново обновляет все стейты (Plan + AC). |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 3. Executed** (self) | **Run** on a specific plan item is clicked | 1. Target item → NotChecked. 2. Other Plan items → Outdated. 3. All AC criteria → Outdated. 4. Agent receives the full spec, runs the item, and refreshes all Plan + AC states. |
 
-#### Перепроверка всех AC
+#### Re-check all AC
 
 ```mermaid
 sequenceDiagram
-    participant U as Пользователь
+    participant U as User
     participant UI as UI
-    participant A as Агент
+    participant A as Agent
 
     U->>UI: Run (AC)
-    UI->>UI: Все критерии AC → Outdated
-    UI->>UI: Все пункты Plan остаются без изменений
-    UI->>A: Запуск проверки AC
+    UI->>UI: All AC criteria → Outdated
+    UI->>UI: Plan items unchanged
+    UI->>A: Start AC check
 
-    loop Каждый критерий AC
-        A->>UI: Статус критерия → Passed / Failed / SuggestChange / NotChecked
-        A->>UI: Обновление чеков
+    loop Each AC criterion
+        A->>UI: Criterion status → Passed / Failed / SuggestChange / NotChecked
+        A->>UI: Update checks
     end
 ```
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 4. Executed** (self) | Нажата кнопка **Run** (AC) | 1. Все критерии AC → Outdated. 2. Пункты Plan не затрагиваются. 3. Агент проверяет каждый критерий, обновляя статусы и чеки. |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 3. Executed** (self) | **Run** (AC) is clicked | 1. All AC criteria → Outdated. 2. Plan items unchanged. 3. Agent checks each criterion, updating statuses and checks. |
 
-#### Перепроверка одного критерия AC
+#### Re-check a single AC criterion
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 4. Executed** (self) | Нажата кнопка **Run** на конкретном критерии | 1. Целевой критерий → Outdated. 2. Остальные критерии AC и пункты Plan не затрагиваются. 3. Агент проверяет критерий, обновляя его статус и чеки. |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 3. Executed** (self) | **Run** on a specific criterion is clicked | 1. Target criterion → Outdated. 2. Other AC criteria and Plan items unchanged. 3. Agent checks the criterion, updating its status and checks. |
 
-#### Редактирование
+#### Editing
 
-| Переход | Действие | Что происходит |
-|---------|----------|----------------|
-| **→ 3. Spec Editing** | Пользователь **редактирует текст** AC | Изменённый критерий → Outdated. Остальные не затрагиваются. Enhance разблокируется. |
-| **→ 3. Spec Editing** | Пользователь **редактирует текст** Plan | Изменённый пункт → Outdated. Остальные не затрагиваются. Enhance разблокируется. |
-| **→ 3. Spec Editing** | Пользователь **оставляет комментарий** | Enhance разблокируется. Статусы не меняются. |
+| Transition | Action | What happens |
+|------------|--------|--------------|
+| **→ 1. Draft** | User **edits** AC **text** | Edited criterion → Outdated. Others unchanged. |
+| **→ 1. Draft** | User **edits** Plan **text** | Edited item → Outdated. Others unchanged. |
+| **→ 1. Draft** | User **adds a comment** | Statuses unchanged. |
 
 ---
 
-## Матрица переходов: действие → что меняется
+## Transition matrix: action → what changes
 
-| Аспект | Run (Toolbar) | Enhance | AC Run | AC Item Run | Plan Item Run | Edit AC | Edit Plan | Comment |
+| Aspect | Run (Toolbar) | Enhance | AC Run | AC Item Run | Plan Item Run | Edit AC | Edit Plan | Comment |
 |--------|---------------|---------|--------|-------------|---------------|---------|-----------|---------|
-| **Plan статусы** | All → Outdated → Re-exec | — | Не меняются | Не меняются | Target → NotChecked, rest → Outdated → Re-exec | Не меняются | Item → Outdated | Не меняются |
-| **AC статусы** | All → Outdated → Re-check | — | All → Outdated → Re-check | Target → Outdated → Re-check, rest не меняются | All → Outdated → Re-check | Item → Outdated | Не меняются | Не меняются |
-| **Diffs** | Обновляются | — | Не меняются | Не меняются | Обновляются | Не меняются | Не меняются | Не меняются |
-| **Enhance** | Не меняется | 🔒 после использования | Не меняется | Не меняется | Не меняется | ✓ Enabled | ✓ Enabled | ✓ Enabled |
+| **Plan statuses** | All → Outdated → Re-exec | — | Unchanged | Unchanged | Target → NotChecked, rest → Outdated → Re-exec | Unchanged | Item → Outdated | Unchanged |
+| **AC statuses** | All → Outdated → Re-check | — | All → Outdated → Re-check | Target → Outdated → Re-check, rest unchanged | All → Outdated → Re-check | Item → Outdated | Unchanged | Unchanged |
+| **Diffs** | Updated | — | Unchanged | Unchanged | Updated | Unchanged | Unchanged | Unchanged |
+| **Enhance** | Unchanged | 🔒 after use | Unchanged | Unchanged | Unchanged | ✓ Enabled | ✓ Enabled | ✓ Enabled |
 
 ---
 
-## Открытые вопросы
+## Open questions
 
-- [ ] **Как обновляются дифы?** При переисполнении пункта плана — diff пересчитывается относительно чего? Относительно состояния до первого исполнения? Относительно предыдущего исполнения? Накапливаются ли дифы между запусками?
-- [ ] **Секции Notes — единая или разбитая?** В прототипе используется разбивка на `Implementation Notes` / `Tradeoffs` / `Other`. Сводить ли их в одну секцию `Notes`, как в спеке?
+- [ ] **How are diffs updated?** When a plan item is re-run — is the diff recomputed relative to what? Relative to state before first run? Relative to the previous run? Do diffs accumulate across runs?
