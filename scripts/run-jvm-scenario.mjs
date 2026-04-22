@@ -14,8 +14,13 @@ const outputDir = path.join(projectRoot, 'test-results', 'jvm-scenario');
 const baseUrl = process.env.SCENARIO_URL || 'http://127.0.0.1:4173/';
 const headless = process.argv.includes('--headless') || process.env.HEADLESS === '1';
 const reuseExistingServer = process.argv.includes('--reuse-existing') || Boolean(process.env.SCENARIO_URL);
-const slowMo = Number(process.env.SLOW_MO ?? (headless ? 0 : 140));
+const slowMo = Number(process.env.SLOW_MO ?? (headless ? 0 : 280));
 const startupTimeoutMs = Number(process.env.SCENARIO_STARTUP_TIMEOUT_MS ?? 30000);
+const demoPace = Number(process.env.SCENARIO_DEMO_PACE ?? (headless ? 1 : 1.6));
+const screenshotMode = (
+  process.env.SCENARIO_SCREENSHOT_MODE
+  || (headless ? 'full' : 'off')
+).toLowerCase();
 let screenshotIndex = 1;
 let devServer = null;
 
@@ -26,6 +31,14 @@ function slugify(value) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     || 'step';
+}
+
+async function pause(ms) {
+  const duration = Math.max(0, Math.round(ms * demoPace));
+  if (!duration) {
+    return;
+  }
+  await delay(duration);
 }
 
 async function waitForServer(url, timeoutMs) {
@@ -43,7 +56,7 @@ async function waitForServer(url, timeoutMs) {
       lastError = error;
     }
 
-    await delay(250);
+    await pause(250);
   }
 
   throw lastError ?? new Error(`Timed out waiting for ${url}`);
@@ -81,7 +94,7 @@ async function stopServer() {
   devServer.kill('SIGTERM');
   await Promise.race([
     new Promise((resolve) => devServer.once('exit', resolve)),
-    delay(4000).then(() => {
+    pause(4000).then(() => {
       if (!devServer.killed) {
         devServer.kill('SIGKILL');
       }
@@ -97,6 +110,16 @@ async function ensureOutputDir() {
 async function installScenarioOverlay(page) {
   await page.addStyleTag({
     content: `
+      html {
+        scroll-behavior: auto !important;
+      }
+      *, *::before, *::after {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 1ms !important;
+        transition-delay: 0ms !important;
+        caret-color: transparent !important;
+      }
       #jvm-scenario-overlay {
         position: fixed;
         inset: 0;
@@ -246,7 +269,7 @@ async function waitForEnabled(locator, timeoutMs = 20000) {
       return;
     }
 
-    await delay(150);
+    await pause(150);
   }
 
   throw new Error('Timed out waiting for an enabled control');
@@ -255,16 +278,16 @@ async function waitForEnabled(locator, timeoutMs = 20000) {
 async function demoFocus(page, locator, beat, text, pauseMs = 520) {
   const point = await getLocatorPoint(locator);
   await updateOverlay(page, { ...point, beat, text });
-  await delay(pauseMs);
+  await pause(pauseMs);
 }
 
 async function demoClick(page, locator, beat, text, options = {}) {
   await demoFocus(page, locator, beat, text, options.focusPauseMs ?? 520);
   await pulseCursor(page, true);
   await locator.click({ force: true, timeout: 20000 });
-  await delay(options.clickPauseMs ?? 180);
+  await pause(options.clickPauseMs ?? 180);
   await pulseCursor(page, false);
-  await delay(options.afterPauseMs ?? 340);
+  await pause(options.afterPauseMs ?? 340);
 }
 
 async function demoType(page, locator, beat, text, value) {
@@ -274,13 +297,22 @@ async function demoType(page, locator, beat, text, value) {
   await page.keyboard.press(`${modifier}+A`).catch(() => {});
   await page.keyboard.press('Backspace').catch(() => {});
   await page.keyboard.type(value, { delay: 18 });
-  await delay(280);
+  await pause(280);
 }
 
 async function capture(page, name) {
+  if (screenshotMode === 'off' || screenshotMode === 'none') {
+    return;
+  }
+
   const fileName = `${String(screenshotIndex).padStart(2, '0')}-${slugify(name)}.png`;
   screenshotIndex += 1;
-  await page.screenshot({ path: path.join(outputDir, fileName), fullPage: true });
+  await page.screenshot({
+    path: path.join(outputDir, fileName),
+    fullPage: screenshotMode === 'full',
+    animations: 'disabled',
+    caret: 'hide',
+  });
 }
 
 async function clickByDemoId(page, demoId, beat, text, options = {}) {
@@ -300,10 +332,10 @@ async function clickTaskRow(page, label, beat, text) {
   await demoFocus(page, locator, beat, text);
   await pulseCursor(page, true);
   await locator.evaluate((node) => node.click());
-  await delay(180);
+  await pause(180);
   await pulseCursor(page, false);
   await page.locator('.main-window-editor-tabs .tab.tab-selected', { hasText: label }).first().waitFor({ state: 'visible', timeout: 10000 });
-  await delay(250);
+  await pause(250);
 }
 
 async function clickByText(page, selector, text, beat, description, options = {}) {
@@ -321,7 +353,7 @@ async function runScenario(page) {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await installScenarioOverlay(page);
   await updateOverlay(page, { beat: 'Beat 1', text: 'Preparing project setup…' });
-  await delay(400);
+  await pause(400);
 
   await clickByDemoId(page, 'welcome-new-agent-task', 'Beat 1', 'Open “New Task for Agent”.');
   await capture(page, 'beat-1-new-task');
@@ -333,7 +365,7 @@ async function runScenario(page) {
   await clickByDemoId(page, 'agent-task-generate', 'Beat 1', 'Generate the first spec draft.');
   await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 1', 'Allow the agent execution for this run.');
   await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await delay(1600);
+  await pause(1600);
   await capture(page, 'beat-1-generated-spec');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 2', 'Open visit-booking.md from Agent Tasks.');
@@ -341,44 +373,44 @@ async function runScenario(page) {
   await capture(page, 'beat-2-visit-booking');
 
   await clickByDemoId(page, 'spec-inspection-counts', 'Beat 2', 'Open the issues detected in the spec.');
-  await delay(700);
+  await pause(700);
 
   await focusSpecRow(page, 'spec-row-ac-0', 'Beat 2', 'Focus AC #1 and inspect the mismatch.');
   await clickByDemoId(page, 'spec-issue-actions-ac-0', 'Beat 2', 'Open quick actions for AC #1.');
   await clickByDemoId(page, 'issue-popup-apply-fix-ac-0', 'Beat 2', 'Apply the vet availability quick fix.');
-  await delay(700);
+  await pause(700);
 
   await focusSpecRow(page, 'spec-row-ac-1', 'Beat 2', 'Focus AC #2 and add a clarifying comment.');
   await clickByDemoId(page, 'spec-comment-ac-1', 'Beat 2', 'Open inline comments for AC #2.');
   const specCommentInput = page.getByPlaceholder('Write a comment').first();
   await demoType(page, specCommentInput, 'Beat 2', 'Describe the exact time-slot behavior.', acComment);
   await demoClick(page, page.getByRole('button', { name: 'Add a Comment', exact: true }).first(), 'Beat 2', 'Save the AC #2 comment.');
-  await delay(600);
+  await pause(600);
 
   await focusSpecRow(page, 'spec-row-plan-2', 'Beat 2', 'Focus the race-condition plan step.');
   await clickByDemoId(page, 'spec-issue-actions-plan-2', 'Beat 2', 'Open issue actions for the race-condition warning.');
   await clickByDemoId(page, 'issue-popup-apply-fix-plan-2', 'Beat 2', 'Add the booking constraint quick fix.');
-  await delay(600);
+  await pause(600);
 
   await focusSpecRow(page, 'spec-row-plan-4', 'Beat 2', 'Focus the missing formatter plan step.');
   await clickByDemoId(page, 'spec-issue-actions-plan-4', 'Beat 2', 'Open issue actions for the formatter error.');
   await clickByDemoId(page, 'issue-popup-apply-fix-plan-4', 'Beat 2', 'Add the VetFormatter follow-up step.');
-  await delay(600);
+  await pause(600);
   await capture(page, 'beat-2-fixes-applied');
 
   const enhanceButton = page.locator('[data-demo-id="agent-task-enhance"]').first();
   await waitForEnabled(enhanceButton);
   await demoClick(page, enhanceButton, 'Beat 2', 'Regenerate the spec with the fixes and comment context.');
   await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await delay(1800);
+  await pause(1800);
   await capture(page, 'beat-2-enhanced-spec');
 
   await clickByDemoId(page, 'agent-task-run', 'Beat 3', 'Run the execution loop for the refined spec.');
-  await delay(9000);
+  await pause(9000);
   await capture(page, 'beat-3-run-results');
 
   await clickByDemoId(page, 'plan-show-diff-plan-3', 'Beat 4', 'Open the VisitController diff for review.');
-  await delay(1200);
+  await pause(1200);
   await capture(page, 'beat-4-diff-open');
 
   const diffRow = page.locator('.plan-diff-row', { hasText: 'return this.timeSlots;' }).first();
@@ -390,32 +422,32 @@ async function runScenario(page) {
   await capture(page, 'beat-4-diff-comment');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 4', 'Return from the diff to visit-booking.md.');
-  await delay(1000);
+  await pause(1000);
   await capture(page, 'beat-4-review-comment-synced');
 
   await clickTaskRow(page, 'vet-schedules.md', 'Beat 5', 'Switch to the parallel vet-schedules task.');
-  await delay(800);
+  await pause(800);
   await capture(page, 'beat-5-vet-schedules');
   await clickByDemoId(page, 'agent-task-generate', 'Beat 5', 'Generate the vet-schedules spec draft.');
   await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 5', 'Allow the parallel task execution.');
   await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await delay(1500);
+  await pause(1500);
   await capture(page, 'beat-5-vet-schedules-generated');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 6', 'Return to visit-booking for wrap-up.');
-  await delay(800);
+  await pause(800);
   await clickByDemoId(page, 'agent-task-run', 'Beat 6', 'Re-run acceptance checks after the review update.');
-  await delay(9000);
+  await pause(9000);
 
   const addToProjectContext = page.getByText('Add to project context').first();
   if (await addToProjectContext.isVisible().catch(() => false)) {
     await demoClick(page, addToProjectContext, 'Beat 6', 'Extract the decision into project context.');
-    await delay(1200);
+    await pause(1200);
   }
 
   await capture(page, 'beat-6-wrap-up');
   await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });
-  await delay(1400);
+  await pause(1400);
 }
 
 async function main() {
@@ -439,6 +471,7 @@ async function main() {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
+    reducedMotion: 'reduce',
   });
 
   const page = await context.newPage();
@@ -461,7 +494,11 @@ async function main() {
   try {
     await runScenario(page);
     await cleanup();
-    process.stdout.write(`\nSaved scenario screenshots to ${outputDir}\n`);
+    if (screenshotMode === 'off' || screenshotMode === 'none') {
+      process.stdout.write('\nScenario run finished with screenshots disabled.\n');
+    } else {
+      process.stdout.write(`\nSaved scenario screenshots to ${outputDir}\n`);
+    }
   } catch (error) {
     await capture(page, 'failed').catch(() => {});
     await cleanup();
