@@ -1,7 +1,12 @@
-import { Fragment, cloneElement, isValidElement, useState, useRef, useEffect, useCallback, useId, useMemo } from 'react';
+import { Fragment, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
-import { DiffTabIcon, PlanDiffEditorArea } from './PlanDiffView.jsx';
+import {
+  DiffTabIcon,
+  PlanDiffEditorArea,
+  arePlanDiffUiStatesEqual,
+  normalizePlanDiffUiState,
+} from './PlanDiffView.jsx';
 import {
   ThemeProvider,
   MainWindow,
@@ -17,6 +22,7 @@ import {
   Button,
   Input,
   Checkbox,
+  Tree,
   getIcon,
   DEFAULT_EDITOR_TABS,
   DEFAULT_EDITOR_TAB_CONTENTS,
@@ -787,7 +793,7 @@ function TerminalPermissionPrompt({
 function areAllChecklistStatusesPassed(statuses = null) {
   return Array.isArray(statuses)
     && statuses.length > 0
-    && statuses.every((statusItem) => statusItem?.status === 'passed');
+    && statuses.every((statusItem) => statusItem?.status === 'passed' && !isRunStatusItemOutdated(statusItem));
 }
 
 function hasChecklistStatuses(statuses = null) {
@@ -899,6 +905,10 @@ const AC_RUN_STATUSES = [
     highlight: {
       match: 'available vets for the selected date/time',
       className: 'spec-inline-warning-highlight',
+      tooltip: {
+        title: 'Still shows all vets before availability filtering.',
+        hint: 'Replace with only vets free for the chosen slot.',
+      },
     },
     issue: {
       severity: 'warning',
@@ -915,6 +925,10 @@ const AC_RUN_STATUSES = [
     highlight: {
       match: 'e.g. hourly slots',
       className: 'spec-inline-warning-highlight',
+      tooltip: {
+        title: 'Slot size is open, so this AC is not testable.',
+        hint: 'Replace with hourly slots from 09:00 to 16:00.',
+      },
     },
     issue: {
       severity: 'warning',
@@ -961,6 +975,10 @@ const PLAN_RUN_STATUSES = [
     highlight: {
       match: 'double-booking check',
       className: 'spec-inline-warning-highlight',
+      tooltip: {
+        title: 'Concurrent requests can still bypass this check.',
+        hint: 'Replace with DB UNIQUE plus the existing lookup.',
+      },
     },
     issue: {
       severity: 'warning',
@@ -974,6 +992,10 @@ const PLAN_RUN_STATUSES = [
     highlight: {
       match: '<select> for vet',
       className: 'spec-inline-error-highlight',
+      tooltip: {
+        title: 'Vet select is added, but binding is still missing.',
+        hint: 'Replace with vet select, VetFormatter, and time slot.',
+      },
     },
     issue: {
       severity: 'error',
@@ -1089,6 +1111,44 @@ function buildResolvedRunStatuses(baseStatuses, kind, appliedIssueFixes, removed
   }, []);
 }
 
+function cloneRunStatusItem(statusItem) {
+  if (!statusItem || typeof statusItem !== 'object') {
+    return statusItem;
+  }
+
+  return {
+    ...statusItem,
+    checks: Array.isArray(statusItem.checks)
+      ? statusItem.checks.map((check) => ({ ...check }))
+      : statusItem.checks,
+    issue: statusItem.issue ? { ...statusItem.issue } : statusItem.issue,
+    highlight: statusItem.highlight
+      ? {
+          ...statusItem.highlight,
+          tooltip: statusItem.highlight.tooltip ? { ...statusItem.highlight.tooltip } : statusItem.highlight.tooltip,
+        }
+      : statusItem.highlight,
+  };
+}
+
+function withRunStatusOutdated(statusItem, isOutdated = true) {
+  const nextStatusItem = statusItem && typeof statusItem === 'object'
+    ? cloneRunStatusItem(statusItem)
+    : { status: 'pending' };
+
+  if (isOutdated) {
+    nextStatusItem.isOutdated = true;
+  } else {
+    delete nextStatusItem.isOutdated;
+  }
+
+  return nextStatusItem;
+}
+
+function isRunStatusItemOutdated(statusItem) {
+  return Boolean(statusItem?.isOutdated);
+}
+
 function cloneIssueStateMap(issueState = null) {
   return {
     ac: { ...(issueState?.ac ?? {}) },
@@ -1119,7 +1179,7 @@ function getDocumentCheckRawIndex(documentSections, kind, visibleIndex) {
 
   for (let rawIndex = 0; rawIndex < lineMap.length; rawIndex += 1) {
     const entry = lineMap[rawIndex];
-    if (entry?.type !== 'item' || entry.itemType !== 'check') continue;
+    if (entry?.type !== 'item' || entry.itemType !== 'check' || (entry.nestingLevel ?? 0) > 0) continue;
 
     const section = documentSections[entry.sectionIndex];
     if (section?.title?.toLowerCase() !== targetSectionTitle) continue;
@@ -1171,6 +1231,11 @@ function normalizeDocumentCheckItemForComparison(item) {
   return {
     text: typeof item.text === 'string' ? item.text.trim() : '',
     checked: Boolean(item.checked),
+    children: Array.isArray(item.children)
+      ? item.children
+          .map((child) => normalizeDocumentCheckItemForComparison(child))
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -1232,6 +1297,7 @@ function buildRunStatusesRevealSeed({
   currentRemovedIssueIndices = null,
   nextRemovedIssueIndices = null,
   rerunOriginalIndices = [],
+  allowPendingOutdated = true,
 } = {}) {
   if (!Array.isArray(nextStatuses)) {
     return nextStatuses;
@@ -1242,25 +1308,72 @@ function buildRunStatusesRevealSeed({
   const nextResult = new Array(nextStatuses.length).fill(null);
 
   for (let originalIndex = 0; originalIndex < baseStatuses.length; originalIndex += 1) {
+    const currentVisibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, currentRemovedIssueIndices);
     const nextVisibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, nextRemovedIssueIndices);
     if (!Number.isInteger(nextVisibleIndex) || nextVisibleIndex < 0) {
       continue;
     }
 
-    if (rerunOriginalIndexSet.has(originalIndex)) {
-      nextResult[nextVisibleIndex] = null;
-      continue;
-    }
-
-    const currentVisibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, currentRemovedIssueIndices);
-    const preservedStatus = Array.isArray(currentStatuses) && currentVisibleIndex >= 0
+    const currentStatus = Array.isArray(currentStatuses) && currentVisibleIndex >= 0
       ? currentStatuses[currentVisibleIndex]
       : undefined;
 
-    nextResult[nextVisibleIndex] = preservedStatus !== undefined
-      ? preservedStatus
+    if (rerunOriginalIndexSet.has(originalIndex)) {
+      nextResult[nextVisibleIndex] = currentStatus == null && !allowPendingOutdated
+        ? null
+        : withRunStatusOutdated(currentStatus);
+      continue;
+    }
+
+    nextResult[nextVisibleIndex] = currentStatus !== undefined
+      ? currentStatus
       : (nextStatuses[nextVisibleIndex] ?? null);
   }
+
+  return nextResult;
+}
+
+function mergeOriginalIssueIndices(...groups) {
+  return Array.from(new Set(
+    groups.flatMap((group) => (
+      Array.isArray(group)
+        ? group.filter((index) => Number.isInteger(index) && index >= 0)
+        : []
+    ))
+  )).sort((left, right) => left - right);
+}
+
+function buildRunStatusesSeedWithPendingOriginalIndices({
+  kind,
+  currentStatuses = null,
+  nextStatuses = null,
+  currentRemovedIssueIndices = null,
+  nextRemovedIssueIndices = null,
+  rerunOriginalIndices = [],
+  pendingOriginalIndices = [],
+  allowPendingOutdated = true,
+} = {}) {
+  const seededStatuses = buildRunStatusesRevealSeed({
+    kind,
+    currentStatuses,
+    nextStatuses,
+    currentRemovedIssueIndices,
+    nextRemovedIssueIndices,
+    rerunOriginalIndices,
+    allowPendingOutdated,
+  });
+
+  if (!Array.isArray(seededStatuses) || !Array.isArray(pendingOriginalIndices) || pendingOriginalIndices.length === 0) {
+    return seededStatuses;
+  }
+
+  const nextResult = [...seededStatuses];
+  pendingOriginalIndices.forEach((originalIndex) => {
+    const visibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, nextRemovedIssueIndices);
+    if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
+      nextResult[visibleIndex] = null;
+    }
+  });
 
   return nextResult;
 }
@@ -1326,6 +1439,20 @@ function mapOriginalIssueIndicesToVisible(kind, originalIndices = [], removedIss
     : [];
 
   return Array.from(new Set(visibleIndices)).sort((left, right) => left - right);
+}
+
+function getVisibleIssueOriginalIndices(kind, removedIssueIndices = null) {
+  const baseStatuses = getBaseRunStatusesForKind(kind);
+  const visibleOriginalIndices = [];
+
+  for (let originalIndex = 0; originalIndex < baseStatuses.length; originalIndex += 1) {
+    const visibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, removedIssueIndices);
+    if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
+      visibleOriginalIndices.push(originalIndex);
+    }
+  }
+
+  return visibleOriginalIndices;
 }
 
 function buildProblemTreeNodeId(issue, fallbackIndex) {
@@ -1394,6 +1521,88 @@ function updateDocumentCheckItem(documentSections, { kind, index, updater }) {
   return targetFound ? nextSections : documentSections;
 }
 
+function applyUpdaterToDocumentCheckItem(item, childPath = [], updater) {
+  if (!item || typeof updater !== 'function') {
+    return item;
+  }
+
+  if (!Array.isArray(childPath) || childPath.length === 0) {
+    return updater(item);
+  }
+
+  if (item.type !== 'check' || !Array.isArray(item.children)) {
+    return item;
+  }
+
+  const [childIndex, ...restChildPath] = childPath;
+  let didChange = false;
+
+  const nextChildren = item.children.reduce((result, childItem, nextChildIndex) => {
+    if (nextChildIndex !== childIndex) {
+      result.push(childItem);
+      return result;
+    }
+
+    const nextChildItem = applyUpdaterToDocumentCheckItem(childItem, restChildPath, updater);
+    if (nextChildItem !== childItem) {
+      didChange = true;
+    }
+    if (nextChildItem) {
+      result.push(nextChildItem);
+    }
+    return result;
+  }, []);
+
+  if (!didChange) {
+    return item;
+  }
+
+  return {
+    ...item,
+    children: nextChildren,
+  };
+}
+
+function updateDocumentItemAtLineMapEntry(documentSections, lineMapEntry, updater) {
+  if (
+    !Array.isArray(documentSections)
+    || !lineMapEntry
+    || lineMapEntry.type !== 'item'
+    || !Number.isInteger(lineMapEntry.sectionIndex)
+    || !Number.isInteger(lineMapEntry.itemIndex)
+    || typeof updater !== 'function'
+  ) {
+    return documentSections;
+  }
+
+  return documentSections.map((section, sectionIndex) => {
+    if (sectionIndex !== lineMapEntry.sectionIndex) return section;
+
+    let sectionChanged = false;
+    const nextItems = (section.items ?? []).reduce((result, item, itemIndex) => {
+      if (itemIndex !== lineMapEntry.itemIndex) {
+        result.push(item);
+        return result;
+      }
+
+      const nextItem = applyUpdaterToDocumentCheckItem(
+        item,
+        Array.isArray(lineMapEntry.childPath) ? lineMapEntry.childPath : [],
+        updater,
+      );
+      if (nextItem !== item) {
+        sectionChanged = true;
+      }
+      if (nextItem) {
+        result.push(nextItem);
+      }
+      return result;
+    }, []);
+
+    return sectionChanged ? { ...section, items: nextItems } : section;
+  });
+}
+
 function applyIssueQuickFixToDocumentSections(documentSections, { kind, index, replacementText }) {
   if (!replacementText) return documentSections;
 
@@ -1410,6 +1619,41 @@ function buildSerializedDocumentLines(documentSections) {
 
   (documentSections ?? []).forEach((section, sectionIndex) => {
     const sectionStableId = section?.id ?? `section-${sectionIndex}`;
+    const pushCheckLine = (item, itemIndex, { nestingLevel = 0, childPath = [] } = {}) => {
+      const normalizedChildPath = Array.isArray(childPath) ? childPath : [];
+      const itemStableId = item?.id ?? (
+        normalizedChildPath.length === 0
+          ? `${sectionStableId}:item-${itemIndex}`
+          : `${sectionStableId}:item-${itemIndex}:child-${normalizedChildPath.join('-')}`
+      );
+      const parentItemId = normalizedChildPath.length > 0
+        ? (section.items?.[itemIndex]?.id ?? `${sectionStableId}:item-${itemIndex}`)
+        : null;
+
+      lines.push(`${'  '.repeat(nestingLevel)}- [${item.checked ? 'x' : ' '}] ${item.text}`);
+      lineMap.push({
+        type: 'item',
+        sectionIndex,
+        itemIndex,
+        itemType: item.type,
+        sectionId: sectionStableId,
+        itemId: itemStableId,
+        parentItemId,
+        childIndex: normalizedChildPath.length > 0 ? normalizedChildPath[normalizedChildPath.length - 1] : null,
+        childPath: normalizedChildPath,
+        nestingLevel,
+        stableKey: `section-item:${itemStableId}`,
+      });
+
+      (item.children ?? []).forEach((childItem, childIndex) => {
+        if (childItem?.type !== 'check') return;
+        pushCheckLine(childItem, itemIndex, {
+          nestingLevel: nestingLevel + 1,
+          childPath: [...normalizedChildPath, childIndex],
+        });
+      });
+    };
+
     lines.push(`## ${section.title}`);
     lineMap.push({
       type: 'heading',
@@ -1433,16 +1677,7 @@ function buildSerializedDocumentLines(documentSections) {
         });
       }
       if (item.type === 'check') {
-        lines.push(`- [${item.checked ? 'x' : ' '}] ${item.text}`);
-        lineMap.push({
-          type: 'item',
-          sectionIndex,
-          itemIndex,
-          itemType: item.type,
-          sectionId: sectionStableId,
-          itemId: itemStableId,
-          stableKey: `section-item:${itemStableId}`,
-        });
+        pushCheckLine(item, itemIndex);
       }
       if (item.type === 'bullet') {
         lines.push(`- ${item.text}`);
@@ -1518,7 +1753,13 @@ function buildDisplayRowSerializedLineMatches(displayRows = [], serializedLines 
       return;
     }
 
-    matches[rowIndex] = lineMap[matchedIndex] ?? null;
+    matches[rowIndex] = lineMap[matchedIndex]
+      ? {
+          ...lineMap[matchedIndex],
+          matchedIndex,
+          sourceLine: serializedLines[matchedIndex] ?? '',
+        }
+      : null;
     searchStart = matchedIndex + 1;
   });
 
@@ -1536,13 +1777,7 @@ function removeDocumentLineAtRawIndex(documentSections, rawIndex) {
     return documentSections;
   }
 
-  return documentSections.map((section, sectionIndex) => {
-    if (sectionIndex !== target.sectionIndex) return section;
-    return {
-      ...section,
-      items: (section.items ?? []).filter((_, itemIndex) => itemIndex !== target.itemIndex),
-    };
-  });
+  return updateDocumentItemAtLineMapEntry(documentSections, target, () => null);
 }
 
 function removeLineFromCode(code, rawIndex) {
@@ -1678,22 +1913,7 @@ function updateDocumentItemAtRawIndex(documentSections, rawIndex, updater) {
     return documentSections;
   }
 
-  return documentSections.map((section, sectionIndex) => {
-    if (sectionIndex !== target.sectionIndex) return section;
-
-    let sectionChanged = false;
-    const nextItems = (section.items ?? []).map((item, itemIndex) => {
-      if (itemIndex !== target.itemIndex) return item;
-
-      const nextItem = updater(item);
-      if (nextItem !== item) {
-        sectionChanged = true;
-      }
-      return nextItem;
-    });
-
-    return sectionChanged ? { ...section, items: nextItems } : section;
-  });
+  return updateDocumentItemAtLineMapEntry(documentSections, target, updater);
 }
 
 function getDocumentItemLocationForCommentEntry(documentSections, entry, removedIssueIndices = null) {
@@ -1759,24 +1979,7 @@ function updateDocumentItemForCommentEntry(documentSections, entry, removedIssue
     return documentSections;
   }
 
-  const { sectionIndex, itemIndex } = location.lineMapEntry;
-
-  return documentSections.map((section, nextSectionIndex) => {
-    if (nextSectionIndex !== sectionIndex) return section;
-
-    let sectionChanged = false;
-    const nextItems = (section.items ?? []).map((item, nextItemIndex) => {
-      if (nextItemIndex !== itemIndex) return item;
-
-      const nextItem = updater(item);
-      if (nextItem !== item) {
-        sectionChanged = true;
-      }
-      return nextItem;
-    });
-
-    return sectionChanged ? { ...section, items: nextItems } : section;
-  });
+  return updateDocumentItemAtLineMapEntry(documentSections, location.lineMapEntry, updater);
 }
 
 function buildCommentTargetEntryMetadata(documentSections, target, removedIssueIndices = null) {
@@ -1872,7 +2075,9 @@ function applyCommentCommandsToSpec({
       nextCode = removeLineFromCode(nextCode, location.rawIndex);
       nextDocument = removeDocumentLineAtRawIndex(nextDocument, location.rawIndex);
 
-      if (entry.deleteTarget) {
+      const isNestedChildRow = Array.isArray(location.lineMapEntry?.childPath) && location.lineMapEntry.childPath.length > 0;
+
+      if (entry.deleteTarget && !isNestedChildRow) {
         nextRemovedIssueIndices[entry.deleteTarget.kind][entry.deleteTarget.index] = true;
         delete nextAppliedIssueFixes[entry.deleteTarget.kind][entry.deleteTarget.index];
       }
@@ -1995,6 +2200,212 @@ const HASH_COMPLETIONS = [
   { label: 'createOrUpdateVisitForm.html', description: 'templates/pets' },
   { label: 'schema.sql',                   description: 'db/h2'          },
 ];
+
+const COMPLETION_PREVIEW_MAX_LINES = 5;
+const COMPLETION_PREVIEW_MAX_SECTIONS = 6;
+
+const COMPLETION_PREVIEW_LIBRARY = {
+  'New Task.md': {
+    previewLines: [
+      '## Goal',
+      'Describe the capability or workflow the agent should deliver.',
+      '## Acceptance Criteria',
+      '- Make the result testable and concrete.',
+      '## Plan',
+    ],
+    sections: ['Goal', 'Acceptance Criteria', 'Plan', 'Implementation Notes'],
+  },
+  'Configuration.md': {
+    previewLines: [
+      '## Context',
+      '- VetRepository.findAll() is @Cacheable("vets").',
+      '- Formatter<T> is required for entity-backed form selects.',
+      '## Constraints',
+      '- Keep H2, MySQL, and PostgreSQL schema updates aligned.',
+    ],
+    sections: ['Context', 'Constraints', 'Dependencies', 'Related Files'],
+  },
+  'visit-booking-inspections.md': {
+    previewLines: [
+      '## Acceptance Criteria Findings',
+      '- AC/Plan mismatch around available vets filtering.',
+      '- Ambiguous time-slot granularity in AC #2.',
+      '## Plan Findings',
+      '- Missing VetFormatter step for form binding.',
+    ],
+    sections: ['Acceptance Criteria Findings', 'Plan Findings', 'Quick Fixes'],
+  },
+  'visit-booking-beat-3-execution.md': {
+    previewLines: [
+      '## Command',
+      'agent run "visit-booking.md" --section "Acceptance Criteria"',
+      '## Pause',
+      'Paused - AC 1 requires spec update.',
+      '## Rerun',
+    ],
+    sections: ['Command', 'Execution Log', 'Pause', 'Rerun'],
+  },
+  'visit-booking-code-review-moment.md': {
+    previewLines: [
+      '## Review Summary',
+      '- Time slots are rebuilt on every request.',
+      '- Race condition still needs DB-backed protection.',
+      '## Follow-up',
+      '- Tighten the implementation notes and rerun checks.',
+    ],
+    sections: ['Review Summary', 'Blocking Findings', 'Follow-up'],
+  },
+  'VisitController.java': {
+    sections: ['populateVets()', 'populateTimeSlots()', 'initNewVisitForm()', 'processNewVisitForm()'],
+  },
+  'Visit.java': {
+    sections: ['Fields', 'Relationships', 'Accessors'],
+  },
+  'VetFormatter.java': {
+    previewLines: [
+      'public class VetFormatter implements Formatter<Vet> {',
+      '    public Vet parse(String text, Locale locale) {',
+      '        return this.vetRepository.findById(Integer.parseInt(text));',
+      '    }',
+      '}',
+    ],
+    sections: ['parse()', 'print()'],
+  },
+  'createOrUpdateVisitForm.html': {
+    sections: ['vet-select', 'time-slot-select', 'validation-message'],
+  },
+  'schema.sql': {
+    sections: ['visits-table', 'unique-constraint', 'seed-data'],
+  },
+};
+
+function buildCompletionPreviewLinesFromText(text = '', maxLines = COMPLETION_PREVIEW_MAX_LINES) {
+  const lines = String(text)
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\u00A0/g, ' ').trimEnd())
+    .filter((line) => line.trim().length > 0)
+    .slice(0, maxLines);
+
+  return lines.length > 0 ? lines : ['No preview available'];
+}
+
+function slugifyCompletionAnchor(text = '') {
+  return String(text)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'section';
+}
+
+function normalizeCompletionPreviewSections(sections = []) {
+  return (sections ?? [])
+    .map((section, index) => {
+      if (typeof section === 'string') {
+        return {
+          id: `${slugifyCompletionAnchor(section)}-${index}`,
+          title: section,
+          anchor: slugifyCompletionAnchor(section),
+        };
+      }
+
+      if (!section || typeof section.title !== 'string' || section.title.trim().length === 0) {
+        return null;
+      }
+
+      return {
+        id: section.id ?? `${slugifyCompletionAnchor(section.title)}-${index}`,
+        title: section.title,
+        anchor: section.anchor ?? slugifyCompletionAnchor(section.title),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, COMPLETION_PREVIEW_MAX_SECTIONS);
+}
+
+function buildCompletionPreviewSectionsFromDocument(documentSections = []) {
+  return normalizeCompletionPreviewSections(
+    (documentSections ?? [])
+      .filter((section) => typeof section?.title === 'string' && section.title.trim().length > 0)
+      .map((section) => ({
+        id: section.id ?? section.title,
+        title: section.title.trim(),
+      }))
+  );
+}
+
+function getEditorTabContentByLabel(label = '') {
+  if (label === 'VisitController.java') return MY_EDITOR_TAB_CONTENTS['1'] ?? null;
+  if (label === 'Visit.java') return MY_EDITOR_TAB_CONTENTS['2'] ?? null;
+  if (label === 'createOrUpdateVisitForm.html') return MY_EDITOR_TAB_CONTENTS['3'] ?? null;
+  if (label === 'schema.sql') return MY_EDITOR_TAB_CONTENTS['4'] ?? null;
+  return null;
+}
+
+function buildDocumentCompletionPreview(item, documentSections = []) {
+  return {
+    label: item.label,
+    description: item.description,
+    previewLines: buildCompletionPreviewLinesFromText(serializeSpecDocument(documentSections)),
+    sections: buildCompletionPreviewSectionsFromDocument(documentSections),
+  };
+}
+
+function getCompletionPreviewData(item) {
+  if (!item) return null;
+
+  if (item.label === 'visit-booking.md') {
+    return buildDocumentCompletionPreview(item, createSpecDocument());
+  }
+
+  if (item.label === 'vet-schedules.md') {
+    return buildDocumentCompletionPreview(item, createVetSchedulesSpecDocument());
+  }
+
+  const editorTabContent = getEditorTabContentByLabel(item.label);
+  const preset = COMPLETION_PREVIEW_LIBRARY[item.label] ?? null;
+
+  return {
+    label: item.label,
+    description: item.description,
+    previewLines: preset?.previewLines
+      ? buildCompletionPreviewLinesFromText(preset.previewLines.join('\n'))
+      : buildCompletionPreviewLinesFromText(editorTabContent?.code ?? item.description),
+    sections: normalizeCompletionPreviewSections(preset?.sections ?? []),
+  };
+}
+
+function buildCompletionSelection(item, section = null) {
+  if (!item) return null;
+
+  return {
+    ...item,
+    insertText: `${item.label}${section?.anchor ? `#${section.anchor}` : ''}`,
+    attachment: {
+      label: item.label,
+      description: item.description,
+    },
+    section: section ? { ...section } : null,
+  };
+}
+
+function getCompletionInsertText(item) {
+  return item?.insertText ?? item?.label ?? '';
+}
+
+function getCompletionAttachment(item) {
+  if (item?.attachment?.label) {
+    return item.attachment;
+  }
+
+  if (typeof item?.label === 'string' && item.label.trim().length > 0) {
+    return {
+      label: item.label,
+      description: item.description,
+    };
+  }
+
+  return null;
+}
 
 const BOTTOM_TOOL_WINDOW_IDS = new Set(['terminal', 'git', 'problems']);
 const BOTTOM_TOOL_WINDOW_TITLES = {
@@ -2661,41 +3072,188 @@ function resolveRuntimeInspectionItem(item) {
   };
 }
 
+function CompletionNestedChevron() {
+  return (
+    <svg className="cmp-nested-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.25 4.5L9.75 8L6.25 11.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style }) {
-  const items = trigger === '@' ? AT_COMPLETIONS : HASH_COMPLETIONS;
-  const filtered = items.filter(item =>
-    item.label.toLowerCase().includes(query.toLowerCase())
-  ).slice(0, COMPLETION_POPUP_MAX_ITEMS);
+  const filtered = useMemo(() => {
+    const items = trigger === '@' ? AT_COMPLETIONS : HASH_COMPLETIONS;
+    return items.filter(item =>
+      item.label.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, COMPLETION_POPUP_MAX_ITEMS);
+  }, [query, trigger]);
+  const [expandedIdx, setExpandedIdx] = useState(selectedIdx);
+  const rootRef = useRef(null);
+  const mainRef = useRef(null);
+  const bodyRef = useRef(null);
+  const rowRefs = useRef(new Map());
+  const [submenuLayout, setSubmenuLayout] = useState({ top: 4, maxHeight: 320 });
+
+  const setRowRef = useCallback((label, node) => {
+    if (!label) return;
+
+    if (node) {
+      rowRefs.current.set(label, node);
+    } else {
+      rowRefs.current.delete(label);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (filtered.length === 0) return;
+    setExpandedIdx(Math.min(selectedIdx, filtered.length - 1));
+  }, [filtered.length, query, selectedIdx, trigger]);
+
+  const expandedItem = filtered[expandedIdx] ?? null;
+  const expandedPreview = expandedItem ? getCompletionPreviewData(expandedItem) : null;
+
+  const updateSubmenuLayout = useCallback(() => {
+    const rootEl = rootRef.current;
+    const mainEl = mainRef.current;
+    const bodyEl = bodyRef.current;
+    const rowEl = expandedItem ? rowRefs.current.get(expandedItem.label) : null;
+    if (!(rootEl instanceof HTMLElement) || !(mainEl instanceof HTMLElement) || !(bodyEl instanceof HTMLElement) || !(rowEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const rootRect = rootEl.getBoundingClientRect();
+    const rowRect = rowEl.getBoundingClientRect();
+    const rowTop = rowRect.top - rootRect.top;
+    const top = Math.max(4, Math.round(rowTop - 4));
+    const maxHeight = Math.max(180, Math.round(window.innerHeight - rowRect.top - 16));
+
+    setSubmenuLayout((prev) => (
+      prev.top === top && prev.maxHeight === maxHeight
+        ? prev
+        : { top, maxHeight }
+    ));
+  }, [expandedItem]);
+
+  useLayoutEffect(() => {
+    updateSubmenuLayout();
+  }, [expandedIdx, filtered, updateSubmenuLayout]);
+
+  useEffect(() => {
+    const bodyEl = bodyRef.current;
+    if (!(bodyEl instanceof HTMLElement)) return undefined;
+
+    bodyEl.addEventListener('scroll', updateSubmenuLayout, { passive: true });
+    window.addEventListener('resize', updateSubmenuLayout);
+
+    return () => {
+      bodyEl.removeEventListener('scroll', updateSubmenuLayout);
+      window.removeEventListener('resize', updateSubmenuLayout);
+    };
+  }, [updateSubmenuLayout]);
 
   if (filtered.length === 0) return null;
 
   return (
-    <div className="cmp-popup" style={style}>
-      {filtered.map((item, i) => {
-        const matchLen = query.length;
-        const matchesStart = item.label.toLowerCase().startsWith(query.toLowerCase());
-        return (
-          <div
-            key={item.label}
-            className={`cmp-cell${i === selectedIdx ? ' cmp-cell-selected' : ''}`}
-            onMouseDown={e => { e.preventDefault(); onSelect(item); }}
-          >
-            <IconMdTask />
-            <div className="cmp-content">
-              <span className="cmp-label">
-                {matchesStart && matchLen > 0
-                  ? <><span className="cmp-match">{item.label.slice(0, matchLen)}</span>{item.label.slice(matchLen)}</>
-                  : item.label}
-              </span>
-              <span className="cmp-desc">{item.description}</span>
-            </div>
-          </div>
-        );
-      })}
-      <div className="cmp-footer">
-        <span className="cmp-footer-text">Press ⌃⇧Space to show only variants suitable by type</span>
-        <span className="cmp-footer-tip">Next Tip</span>
+    <div ref={rootRef} className="cmp-popup-completion-root" style={style}>
+      <div ref={mainRef} className="cmp-popup cmp-popup-completion-main">
+        <div ref={bodyRef} className="cmp-popup-completion-body">
+          {filtered.map((item, i) => {
+            const matchLen = query.length;
+            const matchesStart = item.label.toLowerCase().startsWith(query.toLowerCase());
+            const isExpanded = i === expandedIdx;
+            return (
+              <div
+                key={item.label}
+                ref={(node) => setRowRef(item.label, node)}
+                className={`cmp-item${isExpanded ? ' cmp-item-expanded' : ''}`}
+                onMouseEnter={() => setExpandedIdx(i)}
+              >
+                <div
+                  className={`cmp-cell${i === selectedIdx ? ' cmp-cell-selected' : ''}`}
+                  onMouseDown={e => {
+                    e.preventDefault();
+                    onSelect(buildCompletionSelection(item));
+                  }}
+                >
+                  <IconMdTask />
+                  <div className="cmp-content">
+                    <span className="cmp-label">
+                      {matchesStart && matchLen > 0
+                        ? <><span className="cmp-match">{item.label.slice(0, matchLen)}</span>{item.label.slice(matchLen)}</>
+                        : item.label}
+                    </span>
+                    <span className="cmp-desc">{item.description}</span>
+                  </div>
+                  <CompletionNestedChevron />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="cmp-footer">
+          <span className="cmp-footer-text">Press ⌃⇧Space to show only variants suitable by type</span>
+          <span className="cmp-footer-tip">Next Tip</span>
+        </div>
       </div>
+      {expandedItem && expandedPreview && (
+        <div
+          className="cmp-popup cmp-submenu-window"
+          style={{ top: submenuLayout.top, maxHeight: submenuLayout.maxHeight }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="cmp-submenu-window-body">
+            <div className="cmp-submenu-head">
+              <div className="cmp-submenu-meta">
+                <span className="cmp-submenu-title">Preview</span>
+                <span className="cmp-submenu-caption">{expandedItem.label}</span>
+              </div>
+              <button
+                type="button"
+                className="cmp-submenu-link-btn"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelect(buildCompletionSelection(expandedItem));
+                }}
+              >
+                Reference file
+              </button>
+            </div>
+            <div className="cmp-submenu-preview">
+              {expandedPreview.previewLines.map((line, lineIndex) => (
+                <span key={`${expandedItem.label}-preview-${lineIndex}`} className="cmp-submenu-line">
+                  {line}
+                </span>
+              ))}
+            </div>
+            {expandedPreview.sections.length > 0 && (
+              <div className="cmp-submenu-sections">
+                <span className="cmp-submenu-sections-title">Reference section</span>
+                <div className="cmp-submenu-section-list">
+                  {expandedPreview.sections.map((section) => {
+                    const selection = buildCompletionSelection(expandedItem, section);
+                    return (
+                      <button
+                        key={`${expandedItem.label}-${section.id}`}
+                        type="button"
+                        className="cmp-submenu-section-btn"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelect(selection);
+                        }}
+                      >
+                        <span className="cmp-submenu-section-label">{section.title}</span>
+                        <span className="cmp-submenu-section-anchor">#{section.anchor}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2813,7 +3371,8 @@ function AddPopup({ onClose, onSelectFile, style, files = ADD_RECENT_FILES }) {
 
 const SPEC_LINES = [
   { text: 'Goal',                                                                                            type: 'heading' },
-  { text: 'Add vet assignment and time slot selection to the visit creation flow. When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
+  { text: 'Add vet assignment and time slot selection to the visit creation flow.',                         type: 'text' },
+  { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Acceptance Criteria',                                                                             type: 'heading' },
   { text: '\u2610 Visit form shows a dropdown of available vets for the selected date/time.',                type: 'check'   },
@@ -2845,6 +3404,149 @@ const SPEC_LINES = [
   { text: '// Vet specialties matching \u2014 not in prompt, out of scope',                                   type: 'comment' },
 ];
 
+const VISIT_BOOKING_GOAL_LINE_ONE = 'Add vet assignment and time slot selection to the visit creation flow.';
+const VISIT_BOOKING_GOAL_LINE_TWO = 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).';
+const LEGACY_VISIT_BOOKING_GOAL_TEXT = `${VISIT_BOOKING_GOAL_LINE_ONE} ${VISIT_BOOKING_GOAL_LINE_TWO}`;
+
+function isLegacyVisitBookingGoalText(text = '') {
+  return String(text)
+    .replace(/\s+/g, ' ')
+    .trim() === LEGACY_VISIT_BOOKING_GOAL_TEXT;
+}
+
+function normalizeLegacyVisitBookingGoalCode(code = '') {
+  if (typeof code !== 'string' || !code) {
+    return code;
+  }
+
+  const lines = code.split(/\r?\n/);
+  let inGoalSection = false;
+  let replaced = false;
+  const nextLines = [];
+
+  lines.forEach((line) => {
+    const headingTitle = getDoneHeadingTitle(line);
+    if (headingTitle !== null) {
+      inGoalSection = headingTitle.toLowerCase() === 'goal';
+      nextLines.push(line);
+      return;
+    }
+
+    if (inGoalSection && !replaced && isLegacyVisitBookingGoalText(line)) {
+      nextLines.push(VISIT_BOOKING_GOAL_LINE_ONE, VISIT_BOOKING_GOAL_LINE_TWO);
+      replaced = true;
+      return;
+    }
+
+    nextLines.push(line);
+  });
+
+  return replaced ? nextLines.join('\n') : code;
+}
+
+function normalizeLegacyVisitBookingGoalDocumentSections(documentSections = []) {
+  if (!Array.isArray(documentSections)) {
+    return [];
+  }
+
+  let hasChanges = false;
+
+  const nextSections = documentSections.map((section) => {
+    if (section?.title?.toLowerCase() !== 'goal') {
+      return section;
+    }
+
+    let sectionChanged = false;
+    const nextItems = [];
+
+    (section.items ?? []).forEach((item) => {
+      if (item?.type === 'paragraph' && isLegacyVisitBookingGoalText(item.text)) {
+        const baseId = item.id ?? 'goal-text';
+        nextItems.push(
+          {
+            ...item,
+            id: `${baseId}-1`,
+            text: VISIT_BOOKING_GOAL_LINE_ONE,
+          },
+          {
+            ...item,
+            id: `${baseId}-2`,
+            text: VISIT_BOOKING_GOAL_LINE_TWO,
+          },
+        );
+        hasChanges = true;
+        sectionChanged = true;
+        return;
+      }
+
+      nextItems.push(item);
+    });
+
+    return sectionChanged ? { ...section, items: nextItems } : section;
+  });
+
+  return hasChanges ? nextSections : documentSections;
+}
+
+function normalizeLegacyDerivedPlanChildrenCode(code = '') {
+  if (typeof code !== 'string' || !code) {
+    return code;
+  }
+
+  const lines = code.split(/\r?\n/);
+  let inPlanSection = false;
+  let currentLegacyChildren = [];
+  let currentScopedChildren = [];
+  let currentChildIndex = 0;
+  let changed = false;
+
+  const nextLines = lines.map((line) => {
+    const headingTitle = getDoneHeadingTitle(line);
+    if (headingTitle !== null) {
+      inPlanSection = headingTitle.toLowerCase() === 'plan';
+      currentLegacyChildren = [];
+      currentScopedChildren = [];
+      currentChildIndex = 0;
+      return line;
+    }
+
+    if (!inPlanSection) {
+      return line;
+    }
+
+    const parentMatch = line.match(/^- \[[ x]\]\s+(.*)$/i);
+    if (parentMatch) {
+      const parentText = parentMatch[1].trim();
+      currentLegacyChildren = buildPlanContentSubitems({ text: parentText, includeScope: false }).map((item) => item.text);
+      currentScopedChildren = buildPlanContentSubitems({ text: parentText, includeScope: true }).map((item) => item.text);
+      currentChildIndex = 0;
+      return line;
+    }
+
+    const childMatch = line.match(/^(\s{2,}- \[[ x]\]\s+)(.*)$/i);
+    if (childMatch) {
+      const currentChildText = childMatch[2].trim();
+      const legacyText = currentLegacyChildren[currentChildIndex] ?? null;
+      const scopedText = currentScopedChildren[currentChildIndex] ?? null;
+      currentChildIndex += 1;
+
+      if (legacyText && scopedText && currentChildText === legacyText && currentChildText !== scopedText) {
+        changed = true;
+        return `${childMatch[1]}${scopedText}`;
+      }
+
+      return line;
+    }
+
+    currentLegacyChildren = [];
+    currentScopedChildren = [];
+    currentChildIndex = 0;
+    return line;
+  });
+
+  return changed ? nextLines.join('\n') : code;
+}
+
 function formatWalkthroughLine(line) {
   if (line.type === 'heading') return `## ${line.text}`;
   if (line.type === 'check') return `- [ ] ${line.text.replace(/^☐\s*/, '')}`;
@@ -2873,9 +3575,14 @@ function createSpecDocument() {
       title: 'Goal',
       items: [
         {
-          id: 'goal-text',
+          id: 'goal-text-1',
           type: 'paragraph',
-          text: 'Add vet assignment and time slot selection to the visit creation flow. When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).',
+          text: VISIT_BOOKING_GOAL_LINE_ONE,
+        },
+        {
+          id: 'goal-text-2',
+          type: 'paragraph',
+          text: VISIT_BOOKING_GOAL_LINE_TWO,
         },
       ],
     },
@@ -2928,27 +3635,11 @@ function createSpecDocument() {
         { id: 'other-2', type: 'comment', text: 'Vet specialties matching \u2014 not in prompt, out of scope' },
       ],
     },
-  ];
+  ].map((section) => withDerivedPlanChildren(section));
 }
 
 function serializeSpecDocument(documentSections) {
-  return documentSections.map((section) => {
-    const lines = [`## ${section.title}`];
-
-    // Hidden for now, kept here for easy restore:
-    // if (section.meta?.text) {
-    //   lines.push(`Reference file: ${section.meta.text}`);
-    // }
-
-    section.items.forEach((item) => {
-      if (item.type === 'paragraph') lines.push(item.text);
-      if (item.type === 'check') lines.push(`- [${item.checked ? 'x' : ' '}] ${item.text}`);
-      if (item.type === 'bullet') lines.push(`- ${item.text}`);
-      if (item.type === 'comment') lines.push(`// ${item.text}`);
-    });
-
-    return lines.join('\n');
-  }).join('\n\n');
+  return buildSerializedDocumentLines(documentSections).code;
 }
 
 function findBaseSectionForParsedCode(baseDocumentSections = [], nextSections = [], title = '') {
@@ -2968,6 +3659,9 @@ function parseSpecCodeToDocumentSections(code, baseDocumentSections = []) {
   let currentSection = null;
   let currentBaseSection = null;
   let itemIndex = 0;
+  let activeParentCheckItem = null;
+  let activeParentBaseItem = null;
+  let activeParentChildIndex = 0;
 
   const startSection = (title) => {
     const nextTitle = typeof title === 'string' && title.trim().length > 0
@@ -2984,17 +3678,47 @@ function parseSpecCodeToDocumentSections(code, baseDocumentSections = []) {
     };
     nextSections.push(currentSection);
     itemIndex = 0;
+    activeParentCheckItem = null;
+    activeParentBaseItem = null;
+    activeParentChildIndex = 0;
   };
 
   const pushItem = (item) => {
     if (!currentSection || !item) return;
 
     const baseItem = currentBaseSection?.items?.[itemIndex] ?? null;
-    currentSection.items.push({
+    const nextItem = {
       id: baseItem?.id ?? `${currentSection.id}:item-${itemIndex}`,
       ...item,
-    });
+    };
+    currentSection.items.push(nextItem);
     itemIndex += 1;
+
+    if (item.type === 'check') {
+      activeParentCheckItem = nextItem;
+      activeParentBaseItem = baseItem;
+      activeParentChildIndex = 0;
+    } else {
+      activeParentCheckItem = null;
+      activeParentBaseItem = null;
+      activeParentChildIndex = 0;
+    }
+  };
+
+  const pushChildCheckItem = (item) => {
+    if (!activeParentCheckItem || !item) return;
+
+    const baseChildItem = activeParentBaseItem?.children?.[activeParentChildIndex] ?? null;
+    const nextChildItem = {
+      id: baseChildItem?.id ?? `${activeParentCheckItem.id}:child-${activeParentChildIndex + 1}`,
+      ...item,
+    };
+
+    activeParentCheckItem.children = [
+      ...(activeParentCheckItem.children ?? []),
+      nextChildItem,
+    ];
+    activeParentChildIndex += 1;
   };
 
   lines.forEach((line) => {
@@ -3005,6 +3729,9 @@ function parseSpecCodeToDocumentSections(code, baseDocumentSections = []) {
     }
 
     if (!currentSection || line.trim().length === 0) {
+      activeParentCheckItem = null;
+      activeParentBaseItem = null;
+      activeParentChildIndex = 0;
       return;
     }
 
@@ -3015,6 +3742,19 @@ function parseSpecCodeToDocumentSections(code, baseDocumentSections = []) {
         kind: 'chip',
         text: refFileMatch[1].trim(),
       };
+      activeParentCheckItem = null;
+      activeParentBaseItem = null;
+      activeParentChildIndex = 0;
+      return;
+    }
+
+    const childCheckMatch = line.match(/^\s{2,}-\s+\[([ x])\]\s+(.*)$/i);
+    if (childCheckMatch && activeParentCheckItem?.type === 'check') {
+      pushChildCheckItem({
+        type: 'check',
+        checked: childCheckMatch[1].toLowerCase() === 'x',
+        text: childCheckMatch[2].trim(),
+      });
       return;
     }
 
@@ -3077,6 +3817,10 @@ function normalizeSpecCodeForComparison(code = '') {
     .trimEnd();
 }
 
+function normalizeSpecLineForComparison(line = '') {
+  return normalizeSpecCodeForComparison(String(line)).trim();
+}
+
 function getVisibleDoneOverlayElement() {
   if (typeof document === 'undefined') {
     return null;
@@ -3122,17 +3866,19 @@ function extractSnapshotLineFromDoneRow(rowEl, originalLine = '') {
   }
 
   const nextText = normalizeDoneEditableText(editableEl.textContent ?? sourceLine);
-  const checkMatch = sourceLine.match(/^(-\s+\[[ x]\]\s+)(.*)$/i);
+  const checkMatch = sourceLine.match(/^(\s*-\s+\[[ x]\]\s+)(.*)$/i);
   if (checkMatch) {
     return `${checkMatch[1]}${nextText}`;
   }
 
-  if (/^-\s+/.test(sourceLine)) {
-    return `- ${nextText}`;
+  const bulletMatch = sourceLine.match(/^(\s*-\s+)(.*)$/);
+  if (bulletMatch) {
+    return `${bulletMatch[1]}${nextText}`;
   }
 
-  if (/^\/\/\s?/.test(sourceLine)) {
-    return `// ${nextText}`;
+  const commentMatch = sourceLine.match(/^(\s*\/\/\s?)(.*)$/);
+  if (commentMatch) {
+    return `${commentMatch[1]}${nextText}`;
   }
 
   return nextText;
@@ -3465,26 +4211,6 @@ function extractGoalTitleFromMarkdown(code) {
 }
 
 function renderDoneInlineText(text, keyPrefix = 'inline') {
-  const normalizedText = typeof text === 'string'
-    ? text.replace(/\s+/g, ' ').trim()
-    : '';
-  const visitBookingGoalLineOne = 'Add vet assignment and time slot selection to the visit creation flow.';
-  const visitBookingGoalTail = 'The system prevents double-booking (same vet, same date+time).';
-
-  if (
-    normalizedText.startsWith(visitBookingGoalLineOne)
-    && normalizedText.includes(visitBookingGoalTail)
-  ) {
-    const afterFirst = normalizedText.slice(visitBookingGoalLineOne.length);
-    const trailingSpace = afterFirst.length > 0 && afterFirst[0] === ' ' ? ' ' : '';
-    const secondLine = afterFirst.trimStart();
-    return [
-      visitBookingGoalLineOne + trailingSpace,
-      <br key={`${keyPrefix}-break`} />,
-      secondLine,
-    ];
-  }
-
   const parts = text.split(/(@\w+)/g);
   if (parts.length === 1) return text;
   return parts.map((part, index) =>
@@ -3494,7 +4220,144 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
   );
 }
 
-function renderDoneMarkdownInline(text, highlight = null) {
+const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
+
+function getInlineInspectionTooltipData(highlight = null, issue = null) {
+  const title = typeof highlight?.tooltip?.title === 'string'
+    ? highlight.tooltip.title.trim()
+    : (typeof issue?.label === 'string' ? issue.label.trim() : '');
+
+  if (!title) {
+    return null;
+  }
+
+  const hint = typeof highlight?.tooltip?.hint === 'string'
+    ? highlight.tooltip.hint.trim()
+    : (typeof issue?.label === 'string' && issue.label.trim().length > 0
+        ? issue.label.trim()
+        : (issue?.severity === 'error'
+            ? 'Inspection error'
+            : issue?.severity === 'warning'
+              ? 'Inspection warning'
+              : 'Inspection issue'));
+
+  return {
+    title,
+    hint,
+  };
+}
+
+function InlineInspectionHoverTooltip({ rect, tooltip }) {
+  if (!rect || !tooltip?.title || typeof document === 'undefined' || typeof window === 'undefined') {
+    return null;
+  }
+
+  const cornerMaskId = useId().replace(/:/g, '-');
+  const width = Math.min(INLINE_INSPECTION_TOOLTIP_WIDTH, Math.max(160, window.innerWidth - 16));
+  const idealLeft = rect.left + rect.width / 2 - width / 2;
+  const left = Math.min(
+    Math.max(8, idealLeft),
+    Math.max(8, window.innerWidth - width - 8),
+  );
+  const arrowLeft = Math.min(
+    Math.max(16, Math.round(rect.left + rect.width / 2 - left)),
+    width - 16,
+  );
+
+  return createPortal(
+    <div
+      className="spec-inline-hover-tooltip"
+      style={{
+        top: rect.top - 8,
+        left,
+        width,
+        '--spec-inline-hover-tooltip-arrow-left': `${arrowLeft}px`,
+      }}
+    >
+      <div className="spec-inline-hover-tooltip-body" role="tooltip">
+        <span className="spec-inline-hover-tooltip-title">{tooltip.title}</span>
+        {tooltip.hint ? (
+          <span className="spec-inline-hover-tooltip-hint">{tooltip.hint}</span>
+        ) : null}
+      </div>
+      <svg
+        className="spec-inline-hover-tooltip-corner"
+        width="16"
+        height="8"
+        viewBox="0 0 16 8"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path d="M8 8L16.5 -0.5L-0.5 -0.5L8 8Z" fill="#393B40" />
+        <mask id={cornerMaskId} fill="white">
+          <path d="M15.7929 -0.500001L16.5 -0.500001L8 8L-0.5 -0.499999L0.207108 -0.5L8 7.29289L15.7929 -0.500001Z" />
+        </mask>
+        <path
+          d="M15.7929 -0.500001L16.5 -0.500001L8 8L-0.5 -0.499999L0.207108 -0.5L8 7.29289L15.7929 -0.500001Z"
+          fill="#43454A"
+        />
+        <path
+          d="M16.5 -0.500001L17.2071 0.207106L18.9142 -1.5L16.5 -1.5V-0.500001ZM15.7929 -0.500001V-1.5H15.3787L15.0858 -1.20711L15.7929 -0.500001ZM8 8L7.29289 8.70711L8 9.41421L8.70711 8.70711L8 8ZM-0.5 -0.499999L-0.5 -1.5L-2.91421 -1.5L-1.20711 0.207107L-0.5 -0.499999ZM0.207108 -0.5L0.914214 -1.20711L0.621321 -1.5L0.207107 -1.5L0.207108 -0.5ZM8 7.29289L7.29289 8L8 8.70711L8.70711 8L8 7.29289ZM16.5 -0.500001V-1.5L15.7929 -1.5V-0.500001V0.499999L16.5 0.499999V-0.500001ZM8 8L8.70711 8.70711L17.2071 0.207106L16.5 -0.500001L15.7929 -1.20711L7.29289 7.29289L8 8ZM-0.5 -0.499999L-1.20711 0.207107L7.29289 8.70711L8 8L8.70711 7.29289L0.207107 -1.20711L-0.5 -0.499999ZM0.207108 -0.5L0.207107 -1.5L-0.5 -1.5L-0.5 -0.499999L-0.5 0.5H0.207108L0.207108 -0.5ZM0.207108 -0.5L-0.499999 0.207107L7.29289 8L8 7.29289L8.70711 6.58579L0.914214 -1.20711L0.207108 -0.5ZM8 7.29289L8.70711 8L16.5 0.207107L15.7929 -0.500001L15.0858 -1.20711L7.2929 6.58578L8 7.29289Z"
+          fill="black"
+          mask={`url(#${cornerMaskId})`}
+        />
+      </svg>
+    </div>,
+    document.body
+  );
+}
+
+function InlineInspectionHighlight({ className, tooltip = null, children }) {
+  const anchorRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const hasTooltip = Boolean(tooltip?.title);
+
+  const updateRect = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!(anchor instanceof HTMLElement)) return;
+
+    const nextRect = anchor.getBoundingClientRect();
+    setRect({
+      top: nextRect.top,
+      left: nextRect.left,
+      width: nextRect.width,
+      height: nextRect.height,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !hasTooltip) return undefined;
+
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [hasTooltip, isOpen, updateRect]);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className={`${className}${hasTooltip ? ' spec-inline-hover-trigger' : ''}`}
+        onMouseEnter={hasTooltip ? () => {
+          updateRect();
+          setIsOpen(true);
+        } : undefined}
+        onMouseLeave={hasTooltip ? () => setIsOpen(false) : undefined}
+      >
+        {children}
+      </span>
+      {hasTooltip && isOpen && rect ? <InlineInspectionHoverTooltip rect={rect} tooltip={tooltip} /> : null}
+    </>
+  );
+}
+
+function renderDoneMarkdownInline(text, highlight = null, issue = null) {
   if (!highlight?.match || !highlight?.className) {
     return renderDoneInlineText(text);
   }
@@ -3517,10 +4380,16 @@ function renderDoneMarkdownInline(text, highlight = null) {
       return <Fragment key={`segment-${index}`}>{content}</Fragment>;
     }
 
+    const tooltip = getInlineInspectionTooltipData(highlight, issue);
+
     return (
-      <span key={`segment-${index}`} className={segment.className}>
+      <InlineInspectionHighlight
+        key={`segment-${index}`}
+        className={segment.className}
+        tooltip={tooltip}
+      >
         {content}
-      </span>
+      </InlineInspectionHighlight>
     );
   });
 }
@@ -3651,6 +4520,29 @@ function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = 
         onOpen={onOpen}
       />
     </span>
+  );
+}
+
+function DoneInlineRunButton({ onRun, demoId = null, title = 'Run item' }) {
+  return (
+    <button
+      type="button"
+      className="spec-done-gutter-line-number-run spec-done-gutter-item-run-btn"
+      aria-label={title}
+      title={title}
+      data-demo-id={demoId ?? undefined}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRun?.();
+      }}
+    >
+      <Icon name="run/run" size={16} />
+    </button>
   );
 }
 
@@ -3800,14 +4692,25 @@ function shouldShowDoneRunIcon(line) {
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
-function CheckStatus({ status }) {
+function CheckStatus({ status, outdated = false }) {
+  const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
+
   return (
-    <span className={`spec-check-status spec-check-status-${status}`} aria-label={status} title={status}>
+    <span
+      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}`}
+      aria-label={normalizedStatus}
+      title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
+    >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
-        {status === 'passed'
+        {normalizedStatus === 'pending'
+          ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
+          : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
+        }
+        {normalizedStatus === 'passed'
           ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
+          : normalizedStatus === 'pending'
+            ? null
+            : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
         }
       </svg>
     </span>
@@ -3833,6 +4736,7 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
   const [expanded, setExpanded] = useState(false);
   const checks = checkItem.checks || [];
   const hasChecks = checks.length > 0;
+  const isOutdated = isRunStatusItemOutdated(checkItem);
   const visualStatus = checkItem.status === 'passed'
     ? 'passed'
     : (checkItem.issue?.severity === 'warning'
@@ -3842,10 +4746,10 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
             : checkItem.status));
 
   return (
-    <div className="spec-done-line spec-done-line-check ac-check-row">
-      <div className={`ac-check-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
-        <CheckStatus status={visualStatus} />
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, checkItem.highlight)}</span>
+    <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
+      <div className={`ac-check-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
+        <CheckStatus status={visualStatus} outdated={isOutdated} />
+        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, checkItem.highlight, checkItem.issue)}</span>
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {checks.length} checks
@@ -3859,7 +4763,7 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
       {expanded && (
         <div className="ac-subcheck-list">
           {checks.map((check, i) => (
-            <div key={i} className="ac-subcheck-item">
+            <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
               <span className="ac-subcheck-text">{check.text}</span>
               {check.chip && <span className="ac-subcheck-chip">{check.chip}</span>}
@@ -4031,14 +4935,19 @@ function buildPlanDiffViewerData({
     const isCurrent = diffTarget?.kind === 'plan' && diffTarget.index === originalIndex;
     const currentDiffFiles = isCurrent && diffData?.sourceTabLabel ? [diffData.sourceTabLabel] : [];
     const presetFile = canUsePresetFileMapping ? PLAN_CODE_DIFF_PRESETS[originalIndex]?.fileLabel ?? null : null;
-    const status = planRunResult?.[visibleIndex]?.status ?? null;
+    const statusItem = planRunResult?.[visibleIndex] ?? null;
+    const status = statusItem?.status ?? null;
 
     items.push({
       id: item.id ?? `plan-viewer-item-${originalIndex}`,
       text: item.text ?? '',
       status,
+      statusItem,
+      isOutdated: isRunStatusItemOutdated(statusItem),
       files: [presetFile, ...currentDiffFiles].filter((file, index, files) => typeof file === 'string' && file.trim().length > 0 && files.indexOf(file) === index),
       isCurrent,
+      originalIndex,
+      visibleIndex,
     });
 
     visibleIndex += 1;
@@ -4487,28 +5396,271 @@ function buildDiffTabContentFromRows(diffData = null) {
   }).join('\n');
 }
 
-function PlanStatusRow({ statusItem, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null }) {
+function normalizePlanSubitemPreviewText(text = '') {
+  return String(text)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function splitPlanParentText(text = '') {
+  const normalizedText = normalizePlanSubitemPreviewText(text);
+  const dashMatch = normalizedText.match(/^(.+?)\s+[—-]\s+(.+)$/);
+
+  if (!dashMatch) {
+    return {
+      scope: '',
+      detail: normalizedText,
+    };
+  }
+
+  return {
+    scope: dashMatch[1].trim(),
+    detail: dashMatch[2].trim(),
+  };
+}
+
+function capitalizePlanSubitemText(text = '') {
+  const normalizedText = normalizePlanSubitemPreviewText(text).replace(/[.;:,\s]+$/g, '');
+  if (!normalizedText) return '';
+  return normalizedText.charAt(0).toUpperCase() + normalizedText.slice(1);
+}
+
+function normalizePlanSharedTail(tail = '') {
+  const normalizedTail = normalizePlanSubitemPreviewText(tail);
+  if (!normalizedTail) return '';
+  return normalizedTail
+    .replace(/^columns\b/i, 'column')
+    .replace(/^fields\b/i, 'field');
+}
+
+function splitPlanSegmentByAnd(segment = '') {
+  const normalizedSegment = normalizePlanSubitemPreviewText(segment);
+  if (!normalizedSegment || !/\sand\s/i.test(normalizedSegment)) {
+    return normalizedSegment ? [normalizedSegment] : [];
+  }
+
+  const repeatedSubjectMatch = normalizedSegment.match(
+    /^(add|inject|seed|validate|show|store|reject|define|keep|persist|update|load|expose|populate|use|create|run)\s+(.+?)\s+for\s+(.+?)\s+and\s+\2\s+for\s+(.+)$/i,
+  );
+  if (repeatedSubjectMatch) {
+    return [
+      `${repeatedSubjectMatch[1]} ${repeatedSubjectMatch[2]} for ${normalizePlanSubitemPreviewText(repeatedSubjectMatch[3])}`,
+      `${repeatedSubjectMatch[1]} ${repeatedSubjectMatch[2]} for ${normalizePlanSubitemPreviewText(repeatedSubjectMatch[4])}`,
+    ];
+  }
+
+  const actionMatch = normalizedSegment.match(/^(add|inject|seed|validate|show|store|reject|define|keep|persist|update|load|expose|populate|use|create|run)\s+(.+)$/i);
+  if (!actionMatch) {
+    return [normalizedSegment];
+  }
+
+  const action = actionMatch[1];
+  const remainder = actionMatch[2];
+  const sharedTailMatch = remainder.match(/^(.+?)\s+and\s+(.+?)\s+((?:column|columns|field|fields|constraint|constraints|query|queries)?\s*(?:to|for|in|on|under|into)\s+.+)$/i);
+
+  if (sharedTailMatch) {
+    const leftPart = normalizePlanSubitemPreviewText(sharedTailMatch[1]);
+    const rightPart = normalizePlanSubitemPreviewText(sharedTailMatch[2]);
+    const sharedTail = normalizePlanSharedTail(sharedTailMatch[3]);
+
+    if (/\b(to|for|in|on|under|into)\b/i.test(leftPart)) {
+      return [normalizedSegment];
+    }
+
+    return [
+      `${action} ${leftPart} ${sharedTail}`,
+      `${action} ${rightPart} ${sharedTail}`,
+    ];
+  }
+
+  return [normalizedSegment];
+}
+
+function expandSinglePlanSegment(segment = '') {
+  const normalizedSegment = normalizePlanSubitemPreviewText(segment);
+  if (!normalizedSegment) {
+    return [];
+  }
+
+  const withAnnotationMatch = normalizedSegment.match(/^(add|inject|seed|validate|show|store|reject|define|keep|persist|update|load|expose|populate|use|create|run)\s+(.+?)\s+with\s+(@[\w()."-]+.*)$/i);
+  if (withAnnotationMatch) {
+    return [
+      `${withAnnotationMatch[1]} ${withAnnotationMatch[2]}`,
+      `Apply ${withAnnotationMatch[3]}`,
+    ];
+  }
+
+  const withCallMatch = normalizedSegment.match(/^(add|inject|seed|validate|show|store|reject|define|keep|persist|update|load|expose|populate|use|create|run)\s+(.+?)\s+with\s+([\w.]+\(\))$/i);
+  if (withCallMatch) {
+    return [
+      `${withCallMatch[1]} ${withCallMatch[2]}`,
+      `Use ${withCallMatch[3]}`,
+    ];
+  }
+
+  return [normalizedSegment];
+}
+
+function dedupePlanSubitemTexts(items = []) {
+  const seen = new Set();
+  return items.reduce((result, item) => {
+    const normalizedItem = capitalizePlanSubitemText(item);
+    if (!normalizedItem) {
+      return result;
+    }
+
+    const dedupeKey = normalizedItem.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      return result;
+    }
+
+    seen.add(dedupeKey);
+    result.push(normalizedItem);
+    return result;
+  }, []);
+}
+
+function buildScopedPlanSubitemText(scope = '', itemText = '') {
+  const normalizedScope = normalizePlanSubitemPreviewText(scope);
+  const normalizedItemText = capitalizePlanSubitemText(itemText);
+
+  if (!normalizedItemText) {
+    return '';
+  }
+
+  if (!normalizedScope) {
+    return normalizedItemText;
+  }
+
+  if (normalizedItemText.toLowerCase().startsWith(`${normalizedScope.toLowerCase()}:`)) {
+    return normalizedItemText;
+  }
+
+  if (/^tests?$/i.test(normalizedScope)) {
+    if (/^verify\b/i.test(normalizedItemText)) {
+      return `${normalizedScope}: ${lowercaseLeadingCharacter(normalizedItemText)}`;
+    }
+
+    return `${normalizedScope}: verify ${lowercaseLeadingCharacter(normalizedItemText)}`;
+  }
+
+  return `${normalizedScope}: ${lowercaseLeadingCharacter(normalizedItemText)}`;
+}
+
+function buildPlanContentSubitems({ text = '', includeScope = true } = {}) {
+  const { scope, detail } = splitPlanParentText(text);
+  if (!detail) {
+    return [];
+  }
+
+  const commaParts = detail
+    .split(/\s*,\s*/g)
+    .map((part) => normalizePlanSubitemPreviewText(part))
+    .filter(Boolean);
+  const splitByAnd = (commaParts.length > 0 ? commaParts : [detail]).flatMap((part) => splitPlanSegmentByAnd(part));
+  const expandedParts = (splitByAnd.length > 0 ? splitByAnd : [detail]).flatMap((part) => expandSinglePlanSegment(part));
+  const finalItems = dedupePlanSubitemTexts(expandedParts).slice(0, 4);
+
+  if (finalItems.length < 2) {
+    return [];
+  }
+
+  return finalItems.map((itemText, index) => ({
+    id: `parent-derived-${index}`,
+    text: includeScope ? buildScopedPlanSubitemText(scope, itemText) : itemText,
+  }));
+}
+
+function buildDerivedPlanCheckChildren(text = '', parentId = 'plan-item', { includeScope = true } = {}) {
+  return buildPlanContentSubitems({ text, includeScope }).map((subitem, index) => ({
+    id: `${parentId}:child-${index + 1}`,
+    type: 'check',
+    checked: false,
+    text: subitem.text,
+  }));
+}
+
+function arePlanCheckChildTextsEqual(children = [], candidateChildren = []) {
+  if (!Array.isArray(children) || !Array.isArray(candidateChildren) || children.length !== candidateChildren.length) {
+    return false;
+  }
+
+  return children.every((child, index) => (
+    child?.type === 'check'
+    && normalizePlanSubitemPreviewText(child?.text ?? '') === normalizePlanSubitemPreviewText(candidateChildren[index]?.text ?? '')
+  ));
+}
+
+function withDerivedPlanChildren(section) {
+  if (!section || section.title?.toLowerCase() !== 'plan') {
+    return section;
+  }
+
+  return {
+    ...section,
+    items: (section.items ?? []).map((item) => {
+      if (item?.type !== 'check') {
+        return item;
+      }
+
+      const scopedDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item');
+      const legacyDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item', { includeScope: false });
+      const hasExistingChildren = Array.isArray(item.children) && item.children.length > 0;
+      const shouldUpgradeLegacyChildren = hasExistingChildren && arePlanCheckChildTextsEqual(item.children, legacyDerivedChildren);
+
+      return {
+        ...item,
+        children: shouldUpgradeLegacyChildren
+          ? item.children.map((child, childIndex) => ({
+              ...child,
+              id: child?.id ?? scopedDerivedChildren[childIndex]?.id ?? `${item.id ?? 'plan-item'}:child-${childIndex + 1}`,
+              text: scopedDerivedChildren[childIndex]?.text ?? child?.text ?? '',
+            }))
+          : (hasExistingChildren
+              ? item.children
+              : scopedDerivedChildren),
+      };
+    }),
+  };
+}
+
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0 }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
+  const isOutdated = isRunStatusItemOutdated(statusItem);
+  const canShowDiff = Boolean(statusItem) && statusItem?.status !== 'pending';
+  const isNested = nestingLevel > 0;
+  const planLineStyle = isNested
+    ? { '--spec-plan-nesting-level': nestingLevel }
+    : undefined;
 
   return (
-    <div className={`spec-done-line spec-done-line-status spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}`}>
-      <CheckStatus status={statusItem.status} />
-      <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem.highlight)}</span>
-      <button
-        type="button"
-        className="ac-checks-toggle"
-        data-demo-id={demoTargetId ? `plan-show-diff-${demoTargetId}` : undefined}
-        onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}
-      >
-        Show diff
-      </button>
+    <div
+      className={`spec-done-line spec-done-line-check spec-done-plan-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isNested ? ' spec-done-plan-child-line' : ''}`}
+      data-plan-nesting-level={isNested ? nestingLevel : undefined}
+      style={planLineStyle}
+    >
+      {statusItem
+        ? <CheckStatus status={statusItem.status} outdated={isOutdated} />
+        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+      }
+      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
+      {canShowDiff && !isNested && (
+        <button
+          type="button"
+          className="ac-checks-toggle"
+          data-demo-id={demoTargetId ? `plan-show-diff-${demoTargetId}` : undefined}
+          onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}
+        >
+          Show diff
+        </button>
+      )}
       {commentAdornment}
     </div>
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueLineActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -4536,19 +5688,31 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   if (refFileMatch) {
     return <DoneReferenceFileLine key={key} label={refFileMatch[1]} addPopupFiles={addPopupFiles} commentAdornment={commentAdornment} />;
   }
-  const checkMatch = line.match(/^- \[([ x])\]\s+(.*)$/i);
+  const checkMatch = line.match(/^(\s*)- \[([ x])\]\s+(.*)$/i);
   if (checkMatch) {
-    const checked = checkMatch[1].toLowerCase() === 'x';
+    const checked = checkMatch[2].toLowerCase() === 'x';
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[2]} isIssueActive={isIssueLineActive} commentAdornment={commentAdornment} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} />;
     }
-    if (planStatus != null) {
-      return <PlanStatusRow key={key} statusItem={planStatus} text={checkMatch[2]} issueTarget={issueTarget} checkTarget={checkTarget} isIssueActive={isIssueLineActive} commentAdornment={commentAdornment} onOpenDiffTab={onOpenDiffTab} />;
+    if (checkTarget?.kind === 'plan') {
+      return (
+        <PlanCheckRow
+          key={key}
+          statusItem={planStatus}
+          text={checkMatch[3]}
+          issueTarget={issueTarget}
+          checkTarget={checkTarget}
+          isIssueActive={isIssueActive}
+          commentAdornment={commentAdornment}
+          onOpenDiffTab={onOpenDiffTab}
+          nestingLevel={nestingLevel}
+        />
+      );
     }
     return (
       <div key={key} className="spec-done-line spec-done-line-check">
         <Checkbox className="spec-done-checkbox" checked={checked} onChange={() => {}} />
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(checkMatch[2])}</span>
+        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(checkMatch[3])}</span>
         {commentAdornment}
       </div>
     );
@@ -5165,15 +6329,27 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
 }
 
 function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
-  const tradeoffCount = useMemo(
-    () => countRecordedTradeoffs(documentSections),
+  const effectiveDocumentSections = useMemo(
+    () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
     [documentSections]
+  );
+  const effectiveCode = useMemo(
+    () => normalizeLegacyDerivedPlanChildrenCode(
+      normalizeLegacyVisitBookingGoalCode(
+        typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
+      )
+    ),
+    [code, effectiveDocumentSections]
+  );
+  const tradeoffCount = useMemo(
+    () => countRecordedTradeoffs(effectiveDocumentSections),
+    [effectiveDocumentSections]
   );
   const acceptanceCriteriaCount = Array.isArray(acRunResult) ? acRunResult.length : 0;
   const planItemCount = Array.isArray(planRunResult) ? planRunResult.length : 0;
   const projectContextFile = useMemo(
-    () => getProjectContextFile(documentSections, addPopupFiles),
-    [addPopupFiles, documentSections]
+    () => getProjectContextFile(effectiveDocumentSections, addPopupFiles),
+    [addPopupFiles, effectiveDocumentSections]
   );
   const [projectContextBannerDismissed, setProjectContextBannerDismissed] = useState(false);
   const successBannerMessage = useMemo(
@@ -5191,7 +6367,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     [acRunResult, acWarningBanner, planRunResult]
   );
   const shouldRenderSuccessBanner = showSuccessBanner && !projectContextBannerDismissed;
-  const [draftCode, setDraftCode] = useState(() => (typeof code === 'string' ? code : ''));
+  const [draftCode, setDraftCode] = useState(() => effectiveCode);
   const draftCodeRef = useRef(draftCode);
   draftCodeRef.current = draftCode;
 
@@ -5200,8 +6376,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [projectContextFile?.label, showSuccessBanner]);
 
   useEffect(() => {
-    setDraftCode(typeof code === 'string' ? code : '');
-  }, [code, commentResetToken]);
+    setDraftCode(effectiveCode);
+  }, [commentResetToken, effectiveCode]);
 
   const displayRows = useMemo(() => {
     const rawLines = draftCode ? draftCode.split(/\r?\n/) : [];
@@ -5222,8 +6398,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return nextRows;
   }, [draftCode]);
   const serializedDocumentModel = useMemo(
-    () => buildSerializedDocumentLines(documentSections),
-    [documentSections]
+    () => buildSerializedDocumentLines(effectiveDocumentSections),
+    [effectiveDocumentSections]
   );
   const serializedDocumentLineMap = serializedDocumentModel.lineMap;
   const serializedDocumentLines = serializedDocumentModel.lines;
@@ -5265,18 +6441,80 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [commentPopup, setCommentPopup] = useState(null);
   const [intentionPopup, setIntentionPopup] = useState(null);
   const normalizedCode = useMemo(
-    () => normalizeSpecCodeForComparison(code),
-    [code]
+    () => normalizeSpecCodeForComparison(effectiveCode),
+    [effectiveCode]
   );
+  const runStatusMetaByStableKey = useMemo(() => {
+    const nextMeta = new Map();
+    let acVisibleIndex = 0;
+    let planVisibleIndex = 0;
+    let currentAcVisibleIndex = null;
+    let currentPlanVisibleIndex = null;
+
+    serializedDocumentLineMap.forEach((lineMeta) => {
+      if (lineMeta?.type !== 'item' || lineMeta.itemType !== 'check') {
+        return;
+      }
+
+      const sectionTitle = effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '';
+      const normalizedSectionTitle = sectionTitle.toLowerCase();
+
+      if (normalizedSectionTitle === 'acceptance criteria') {
+        if ((lineMeta.nestingLevel ?? 0) === 0) {
+          currentAcVisibleIndex = acVisibleIndex;
+          acVisibleIndex += 1;
+        }
+
+        if (!Number.isInteger(currentAcVisibleIndex) || currentAcVisibleIndex < 0) {
+          return;
+        }
+
+        const originalIndex = mapVisibleIssueIndexToOriginal('ac', currentAcVisibleIndex, removedIssueIndices);
+        nextMeta.set(lineMeta.stableKey, {
+          kind: 'ac',
+          visibleIndex: currentAcVisibleIndex,
+          originalIndex,
+          statusItem: acRunResult?.[currentAcVisibleIndex] ?? null,
+        });
+        return;
+      }
+
+      if (normalizedSectionTitle === 'plan') {
+        if ((lineMeta.nestingLevel ?? 0) === 0) {
+          currentPlanVisibleIndex = planVisibleIndex;
+          planVisibleIndex += 1;
+        }
+
+        if (!Number.isInteger(currentPlanVisibleIndex) || currentPlanVisibleIndex < 0) {
+          return;
+        }
+
+        const originalIndex = mapVisibleIssueIndexToOriginal('plan', currentPlanVisibleIndex, removedIssueIndices);
+        nextMeta.set(lineMeta.stableKey, {
+          kind: 'plan',
+          visibleIndex: currentPlanVisibleIndex,
+          originalIndex,
+          statusItem: planRunResult?.[currentPlanVisibleIndex] ?? null,
+        });
+      }
+    });
+
+    return nextMeta;
+  }, [acRunResult, effectiveDocumentSections, planRunResult, removedIssueIndices, serializedDocumentLineMap]);
   const rowMetaList = useMemo(() => {
     const sectionMetaByTitle = new Map(
-      (documentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
+      (effectiveDocumentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
     );
+    const hasNestedPlanChildren = matchedSerializedLineMetaByRow.some((lineMeta) => (
+      lineMeta?.itemType === 'check'
+      && (lineMeta?.nestingLevel ?? 0) > 0
+      && (effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '').toLowerCase() === 'plan'
+    ));
     let inAcSection = false;
     let inPlanSection = false;
-    let acCheckIdx = 0;
-    let planCheckIdx = 0;
     let currentSectionTitle = null;
+    let acItemCount = 0;
+    let planParentCount = 0;
 
     return displayRows.map((row, rowIndex) => {
       const line = row.line;
@@ -5289,43 +6527,89 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         currentSectionTitle = headingTitle;
         inAcSection = headingTitle.toLowerCase() === 'acceptance criteria';
         inPlanSection = headingTitle.toLowerCase() === 'plan';
-        if (!inAcSection) acCheckIdx = 0;
-        if (!inPlanSection) planCheckIdx = 0;
+        if (inAcSection) {
+          acItemCount = 0;
+        }
+        if (inPlanSection) {
+          planParentCount = 0;
+        }
       }
 
-      const isCheckLine = /^- \[([ x])\]\s+/i.test(line);
+      const effectiveIsCheckLine = /^\s*-\s+\[([ x])\]\s+/i.test(line);
+      const isTopLevelAcItem = Boolean(
+        effectiveIsCheckLine
+        && inAcSection
+        && serializedLineMeta?.itemType === 'check'
+        && (serializedLineMeta?.nestingLevel ?? 0) === 0
+      );
+      const isFirstTopLevelAcItem = isTopLevelAcItem && acItemCount === 0;
+      if (isTopLevelAcItem) {
+        acItemCount += 1;
+      }
+      const isTopLevelPlanParent = Boolean(
+        effectiveIsCheckLine
+        && inPlanSection
+        && serializedLineMeta?.itemType === 'check'
+        && (serializedLineMeta?.nestingLevel ?? 0) === 0
+      );
+      const isFirstTopLevelPlanParent = isTopLevelPlanParent && planParentCount === 0;
+      if (isTopLevelPlanParent) {
+        planParentCount += 1;
+      }
+      const isFlatTopLevelPlanParent = isTopLevelPlanParent && !hasNestedPlanChildren;
+      const isNestedPlanChild = Boolean(
+        effectiveIsCheckLine
+        && inPlanSection
+        && serializedLineMeta?.itemType === 'check'
+        && (serializedLineMeta?.nestingLevel ?? 0) > 0
+      );
+      const isFirstNestedPlanChild = isNestedPlanChild && (
+        Array.isArray(serializedLineMeta?.childPath)
+          ? serializedLineMeta.childPath[serializedLineMeta.childPath.length - 1] === 0
+          : false
+      );
       let checkStatus = null;
       let planStatus = null;
       let checkTarget = null;
       let issueSeverity = null;
       let issueTarget = null;
+      const statusMeta = serializedLineMeta?.stableKey
+        ? (runStatusMetaByStableKey.get(serializedLineMeta.stableKey) ?? null)
+        : null;
+      const isDraftStatusOutdated = Boolean(
+        effectiveIsCheckLine
+        && statusMeta?.statusItem
+        && normalizeSpecLineForComparison(line) !== normalizeSpecLineForComparison(serializedLineMeta?.sourceLine ?? line)
+      );
+      const displayStatusItem = statusMeta?.statusItem
+        ? ((isDraftStatusOutdated || isRunStatusItemOutdated(statusMeta.statusItem))
+            ? withRunStatusOutdated(statusMeta.statusItem)
+            : statusMeta.statusItem)
+        : null;
+      const statusIssueSeverity = displayStatusItem?.issue?.severity ?? displayStatusItem?.status ?? null;
 
-      if (isCheckLine && inAcSection) {
-        const visibleIndex = acCheckIdx;
-        const originalIndex = mapVisibleIssueIndexToOriginal('ac', visibleIndex, removedIssueIndices);
+      if (effectiveIsCheckLine && inAcSection && statusMeta?.kind === 'ac') {
+        const originalIndex = statusMeta.originalIndex;
         if (Number.isInteger(originalIndex)) {
           checkTarget = { kind: 'ac', index: originalIndex };
         }
-        checkStatus = acRunResult?.[visibleIndex] ?? null;
-        if (checkStatus && (checkStatus.status === 'warning' || checkStatus.status === 'failed') && Number.isInteger(originalIndex)) {
-          issueSeverity = checkStatus.status;
+        checkStatus = displayStatusItem;
+        if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(originalIndex)) {
+          issueSeverity = statusIssueSeverity;
           issueTarget = { kind: 'ac', index: originalIndex };
         }
-        acCheckIdx += 1;
       }
 
-      if (isCheckLine && inPlanSection) {
-        const visibleIndex = planCheckIdx;
-        const originalIndex = mapVisibleIssueIndexToOriginal('plan', visibleIndex, removedIssueIndices);
+      if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
+        const originalIndex = statusMeta.originalIndex;
         if (Number.isInteger(originalIndex)) {
           checkTarget = { kind: 'plan', index: originalIndex };
         }
-        planStatus = planRunResult?.[visibleIndex] ?? null;
-        if (planStatus && (planStatus.status === 'warning' || planStatus.status === 'failed') && Number.isInteger(originalIndex)) {
-          issueSeverity = planStatus.status;
+        planStatus = displayStatusItem;
+        if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(originalIndex)) {
+          issueSeverity = statusIssueSeverity;
           issueTarget = { kind: 'plan', index: originalIndex };
         }
-        planCheckIdx += 1;
       }
 
       const stableKey = serializedLineMeta?.stableKey
@@ -5342,6 +6626,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         sectionMeta,
         showRunIcon,
         currentSectionTitle,
+        nestingLevel: serializedLineMeta?.nestingLevel ?? 0,
+        isTopLevelAcItem,
+        isFirstTopLevelAcItem,
+        isTopLevelPlanParent,
+        isFirstTopLevelPlanParent,
+        isFlatTopLevelPlanParent,
+        isNestedPlanChild,
+        isFirstNestedPlanChild,
         checkStatus,
         planStatus,
         checkTarget,
@@ -5349,7 +6641,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         issueTarget,
       };
     });
-  }, [acRunResult, displayRows, documentSections, matchedSerializedLineMetaByRow, planRunResult, removedIssueIndices]);
+  }, [displayRows, effectiveDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
   const rowMetaByKey = useMemo(
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
@@ -5376,7 +6668,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [highlightedProblemLocation, rowMetaList]);
   const issueRowKeys = useMemo(() => (
     rowMetaList
-      .filter((rowMeta) => rowMeta.issueSeverity === 'warning' || rowMeta.issueSeverity === 'failed')
+      .filter((rowMeta) => (
+        rowMeta.issueSeverity === 'warning'
+        || rowMeta.issueSeverity === 'failed'
+        || rowMeta.issueSeverity === 'error'
+      ))
       .map((rowMeta) => rowMeta.stableKey)
   ), [rowMetaList]);
 
@@ -5559,7 +6855,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     const nextValue = commentPopup.value.trim();
     if (!nextValue) return;
 
-    const { rowKey, rowCommentKey, editingIndex } = commentPopup;
+    const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
 
     if (Number.isInteger(editingIndex)) {
       updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
@@ -5569,12 +6865,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       updateRowComments(rowCommentKey, (comments) => [...comments, nextValue]);
     }
 
-    setCommentPopup((prev) => (
-      prev && prev.rowKey === rowKey
-        ? { ...prev, value: '', editingIndex: null }
-        : prev
-    ));
-  }, [commentPopup, updateRowComments]);
+    closeCommentPopup(rowIndex);
+  }, [closeCommentPopup, commentPopup, updateRowComments]);
 
   const handleCommentDelete = useCallback((rowKey, rowCommentKey, commentIndex) => {
     updateRowComments(rowCommentKey, (comments) => comments.filter((_, index) => index !== commentIndex));
@@ -5628,7 +6920,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     range.deleteContents();
     const span = document.createElement('span');
     span.className = 'spec-ref';
-    span.textContent = `@${item.label}`;
+    span.textContent = `@${getCompletionInsertText(item)}`;
     range.insertNode(span);
     const space = document.createTextNode(' ');
     span.after(space);
@@ -5725,7 +7017,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         const item = filtered[refCmpSelectedIdx];
-        if (item) { if (refSpanRef.current) refSpanRef.current.textContent = `@${item.label}`; setRefPopupPos(null); }
+        const selection = buildCompletionSelection(item);
+        if (selection) {
+          if (refSpanRef.current) refSpanRef.current.textContent = `@${getCompletionInsertText(selection)}`;
+          setRefPopupPos(null);
+        }
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -5743,7 +7039,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         const item = filtered[doneCmpSelectedIdx];
-        if (item) { applyDoneCompletion(item); setDoneCmpPos(null); }
+        const selection = buildCompletionSelection(item);
+        if (selection) { applyDoneCompletion(selection); setDoneCmpPos(null); }
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -5919,7 +7216,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const activeRowSeverity = activeRow?.dataset.issueSeverity;
       const activeRowKey = typeof activeRow?.dataset.rowKey === 'string' ? activeRow.dataset.rowKey : null;
       const nextActiveIssueRowKey =
-        activeRowSeverity === 'warning' || activeRowSeverity === 'failed'
+        activeRowSeverity === 'warning'
+        || activeRowSeverity === 'failed'
+        || activeRowSeverity === 'error'
           ? activeRowKey
           : null;
       setActiveIssueRowKey(nextActiveIssueRowKey);
@@ -6179,12 +7478,21 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const effectiveIssueSeverity = clearedRowKeys.has(stableKey) ? null : issueSeverity;
             const effectiveIssueTarget = clearedRowKeys.has(stableKey) ? null : issueTarget;
             const effectiveCheckTarget = clearedRowKeys.has(stableKey) ? null : checkTarget;
+            const isRunOutdated = Boolean(effectiveCheckStatus?.isOutdated || effectivePlanStatus?.isOutdated);
 
             const rowCommentKey = getRowMetaCommentStorageKey(rowMeta);
             const isIssuePopupOpen = intentionPopup?.rowKey === stableKey;
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
-            const showIssueBulb = (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen) && Boolean(effectiveIssueSeverity);
+            const isRowHovered = hoveredRowKey === stableKey;
+            const hasIssueBulb = Boolean(effectiveIssueSeverity);
+            const showIssueBulb = hasIssueBulb
+              && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
+            const showItemRunButton = Boolean(effectiveCheckTarget)
+              && isRowHovered
+              && !isCommentPopupOpen
+              && !isIssuePopupOpen
+              && !showIssueBulb;
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
@@ -6219,17 +7527,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <div
               key={stableKey}
-              className={`spec-done-row${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
               data-raw-index={Number.isInteger(rowMeta.rawIndex) ? rowMeta.rawIndex : undefined}
               data-issue-severity={effectiveIssueSeverity ?? ''}
+              data-run-outdated={isRunOutdated ? 'true' : undefined}
               data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
-              onMouseEnter={isEmptyLine ? () => setHoveredRowKey(stableKey) : undefined}
-              onMouseLeave={isEmptyLine ? (() => setHoveredRowKey(null)) : undefined}
+              onMouseEnter={() => setHoveredRowKey(stableKey)}
+              onMouseLeave={() => {
+                setHoveredRowKey(null);
+              }}
               onClick={(e) => {
-                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn')) {
+                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn')) {
                   return;
                 }
 
@@ -6238,6 +7549,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   const editable = e.currentTarget.querySelector('.spec-done-line-empty-editable');
                   editable?.focus();
                   return;
+                }
+
+                const targetEditable = e.target instanceof Element
+                  ? e.target.closest('[contenteditable]')
+                  : null;
+                if (targetEditable instanceof HTMLElement) {
+                  targetEditable.focus({ preventScroll: true });
+                } else {
+                  focusDoneRowEditable(rowIndex);
                 }
 
                 if (effectiveIssueSeverity) {
@@ -6259,50 +7579,59 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="run/run" size={16} />
                   </button>
+                ) : showIssueBulb ? (
+                  <button
+                    type="button"
+                    className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
+                    aria-label="Open issue actions"
+                    data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
+                    aria-haspopup="menu"
+                    aria-expanded={isIssuePopupOpen}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setActiveIssueRowKey(stableKey);
+                      setNavigatedIssueRowKey(stableKey);
+                      setIntentionPopup((prev) => (
+                        prev?.rowKey === stableKey
+                          ? null
+                          : {
+                              rowKey: stableKey,
+                              rowIndex,
+                              rect,
+                              severity: issueSeverity,
+                              sectionTitle: currentSectionTitle,
+                              issueTarget,
+                            }
+                      ));
+                    }}
+                  >
+                    <Icon name="codeInsight/intentionBulb" size={16} />
+                  </button>
+                ) : showItemRunButton ? (
+                  <DoneInlineRunButton
+                    demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
+                    title={effectiveCheckTarget?.kind === 'ac' ? 'Run acceptance criterion' : 'Run plan item'}
+                    onRun={() => onOpenTerminal?.({
+                      sectionTitle: currentSectionTitle,
+                      checkTarget: effectiveCheckTarget,
+                    })}
+                  />
                 ) : (
                   <div
-                    className={`editor-gutter-line-number${showIssueBulb ? ' spec-done-gutter-line-number-intention' : ''}`}
-                    role={showIssueBulb ? undefined : 'button'}
-                    tabIndex={showIssueBulb ? -1 : 0}
-                    aria-label={showIssueBulb ? undefined : (breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint')}
-                    onClick={showIssueBulb ? undefined : () => toggleBreakpoint(stableKey)}
-                    onKeyDown={showIssueBulb ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
+                    className="editor-gutter-line-number"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
+                    onClick={() => toggleBreakpoint(stableKey)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
                   >
-                    {showIssueBulb ? (
-                      <button
-                        type="button"
-                        className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
-                        aria-label="Open issue actions"
-                        data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
-                        aria-haspopup="menu"
-                        aria-expanded={isIssuePopupOpen}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          setIntentionPopup((prev) => (
-                            prev?.rowKey === stableKey
-                              ? null
-                              : {
-                                  rowKey: stableKey,
-                                  rowIndex,
-                                  rect,
-                                  severity: issueSeverity,
-                                  sectionTitle: currentSectionTitle,
-                                  issueTarget,
-                                }
-                          ));
-                        }}
-                      >
-                        <Icon name="codeInsight/intentionBulb" size={16} />
-                      </button>
-                    ) : (
-                      breakpoints.has(stableKey) && <span className="editor-breakpoint-dot" />
-                    )}
+                    {breakpoints.has(stableKey) && <span className="editor-breakpoint-dot" />}
                   </div>
                 )}
               </div>
@@ -6310,7 +7639,21 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 className="spec-done-row-content"
                 data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
               >
-                {renderDoneLine(effectiveLine, `line-${stableKey}`, addPopupFiles, attachedFiles, effectiveCheckStatus, sectionMeta, effectivePlanStatus, showIssueLineHighlight, commentAdornment, effectiveIssueTarget, onOpenDiffTab, effectiveCheckTarget)}
+                {renderDoneLine(
+                  effectiveLine,
+                  `line-${stableKey}`,
+                  addPopupFiles,
+                  attachedFiles,
+                  effectiveCheckStatus,
+                  sectionMeta,
+                  effectivePlanStatus,
+                  showIssueLineHighlight,
+                  commentAdornment,
+                  effectiveIssueTarget,
+                  onOpenDiffTab,
+                  effectiveCheckTarget,
+                  rowMeta.nestingLevel ?? 0,
+                )}
               </div>
             </div>
           );
@@ -6325,7 +7668,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           query={refCmpQuery}
           selectedIdx={refCmpSelectedIdx}
           onSelect={(item) => {
-            if (refSpanRef.current) refSpanRef.current.textContent = `@${item.label}`;
+            if (refSpanRef.current) refSpanRef.current.textContent = `@${getCompletionInsertText(item)}`;
             setRefPopupPos(null);
           }}
           onClose={() => setRefPopupPos(null)}
@@ -7032,7 +8375,8 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     } else if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault();
       const item = filtered[completion.selectedIdx];
-      if (item) applyCompletion(item);
+      const selection = buildCompletionSelection(item);
+      if (selection) applyCompletion(selection);
     } else if (e.key === 'Escape') {
       setCompletion(null);
     }
@@ -7041,10 +8385,13 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   function applyCompletion(item) {
     const triggerIdx = Math.max(value.lastIndexOf('@'), value.lastIndexOf('#'));
     const before = value.slice(0, triggerIdx + 1);
-    setValue(before + item.label + ' ');
+    const insertText = getCompletionInsertText(item);
+    setValue(before + insertText + ' ');
     setCompletion(null);
-    // Add file to attached files list
-    onAddAttached?.(item);
+    const attachment = getCompletionAttachment(item);
+    if (attachment) {
+      onAddAttached?.(attachment);
+    }
   }
 
   const focusDoneToolbarInput = useCallback(() => {
@@ -7564,7 +8911,7 @@ function createVetSchedulesSpecDocument() {
         { id: 'note-2', type: 'bullet', text: 'Does not change the current visit-booking acceptance criteria yet.' },
       ],
     },
-  ];
+  ].map((section) => withDerivedPlanChildren(section));
 }
 
 function createVetSchedulesTaskDraft() {
@@ -7817,26 +9164,257 @@ function IconChevron({ expanded }) {
   );
 }
 
-function AgentTasksPanel({ ctx, tasks, selected, onAdd, onTaskSelect, dismissedSuccessTaskIds = [], onDismissSuccess = null }) {
-  const [expanded, setExpanded] = useState(true);
+function resolveAgentTaskPlanFileIcon(fileName = '') {
+  const normalized = String(fileName).toLowerCase();
+  const candidateIconIds = [];
+
+  if (normalized.endsWith('.java')) candidateIconIds.push('fileTypes/java');
+  if (normalized.endsWith('.html')) candidateIconIds.push('fileTypes/html');
+  if (normalized.endsWith('.md')) candidateIconIds.push('fileTypes/markdown');
+  if (normalized.endsWith('.py')) candidateIconIds.push('fileTypes/python');
+  if (normalized.endsWith('.js')) candidateIconIds.push('fileTypes/javaScript');
+
+  candidateIconIds.push('fileTypes/text');
+
+  return candidateIconIds.find((iconId) => Boolean(getIcon(iconId))) ?? 'fileTypes/text';
+}
+
+function AgentTaskPlanFileChanges({ added = 0, removed = 0 }) {
+  return (
+    <span className="agent-task-plan-file-changes">
+      {added > 0 && <span className="agent-task-plan-file-added">+{added}</span>}
+      {removed > 0 && <span className="agent-task-plan-file-removed">-{removed}</span>}
+    </span>
+  );
+}
+
+const AGENT_TASK_TREE_ROOT_NODE_ID = 'agent-task-tree-root';
+
+function buildAgentTaskTreeTaskNodeId(taskId) {
+  return `agent-task-tree-task:${taskId}`;
+}
+
+function buildAgentTaskPlanTreeModel({
+  task = null,
+  sourceTabId = null,
+  sourceCode = '',
+  documentSections = [],
+  planRunResult = null,
+  removedIssueIndices = null,
+} = {}) {
+  if (!task?.id || !sourceTabId) {
+    return {
+      treeData: [],
+      navigationByNodeId: {},
+    };
+  }
+
+  const viewerData = buildPlanDiffViewerData({
+    documentSections,
+    planRunResult,
+    removedIssueIndices,
+  });
+
+  if (!Array.isArray(viewerData.planItems) || viewerData.planItems.length === 0) {
+    return {
+      treeData: [],
+      navigationByNodeId: {},
+    };
+  }
+
+  const navigationByNodeId = {};
+  const fileNodes = viewerData.planItems.flatMap((item, itemIndex) => {
+    const originalIndex = Number.isInteger(item?.originalIndex) ? item.originalIndex : itemIndex;
+    const visibleIndex = Number.isInteger(item?.visibleIndex) ? item.visibleIndex : itemIndex;
+    const issueTarget = { kind: 'plan', index: originalIndex };
+    const statusItem = item?.statusItem ?? planRunResult?.[visibleIndex] ?? { status: item?.status ?? 'pending' };
+    const diffData = buildPlanDiffData({
+      sourceCode,
+      text: item?.text ?? '',
+      statusItem,
+      issueTarget,
+      sourceTabLabel: task.label,
+    });
+    const changedRows = (diffData?.rows ?? []).filter((row) => row?.kind === 'added' || row?.kind === 'removed');
+    const rowsByFile = changedRows.reduce((groups, row) => {
+      const fileName = row?.file ?? diffData?.sourceTabLabel ?? task.label;
+      if (!groups.has(fileName)) {
+        groups.set(fileName, {
+          rows: [],
+          added: 0,
+          removed: 0,
+        });
+      }
+      const bucket = groups.get(fileName);
+      bucket.rows.push(row);
+      if (row?.kind === 'added') bucket.added += 1;
+      if (row?.kind === 'removed') bucket.removed += 1;
+      return groups;
+    }, new Map());
+
+    const orderedFileNames = Array.from(new Set([
+      ...(Array.isArray(item?.files) ? item.files : []),
+      ...Array.from(rowsByFile.keys()),
+    ])).filter((fileName) => typeof fileName === 'string' && fileName.trim().length > 0);
+
+    return orderedFileNames.map((fileName, fileIndex) => {
+      const fileMeta = rowsByFile.get(fileName) ?? { rows: [], added: 0, removed: 0 };
+      const fileRows = Array.isArray(fileMeta?.rows) ? fileMeta.rows : [];
+      const fileNodeId = `agent-task-tree-file:${task.id}:${originalIndex}:${fileIndex}`;
+      navigationByNodeId[fileNodeId] = {
+        type: 'file',
+        taskId: task.id,
+        sourceTabId,
+        sourceLabel: task.label,
+        text: item?.text ?? '',
+        statusItem,
+        issueTarget,
+        activeRowId: fileRows[0]?.id ?? diffData?.focusRowId ?? null,
+      };
+
+      return {
+        id: fileNodeId,
+        label: (
+          <span className="agent-task-plan-file-label">
+            <span className="agent-task-plan-file-name">{fileName}</span>
+            <AgentTaskPlanFileChanges added={fileMeta?.added ?? 0} removed={fileMeta?.removed ?? 0} />
+          </span>
+          ),
+        icon: resolveAgentTaskPlanFileIcon(fileName),
+      };
+    });
+  });
+
+  return {
+    treeData: fileNodes,
+    navigationByNodeId,
+  };
+}
+
+function AgentTasksPanel({
+  ctx,
+  tasks,
+  selected,
+  onAdd,
+  onTaskSelect,
+  dismissedSuccessTaskIds = [],
+  onDismissSuccess = null,
+  planTreesByTaskId = {},
+  onPlanTreeNodeSelect = null,
+}) {
+  const [treeSelectionResetKey, setTreeSelectionResetKey] = useState(0);
+  const [selectedTreeNodeId, setSelectedTreeNodeId] = useState(
+    () => (selected ? buildAgentTaskTreeTaskNodeId(selected) : AGENT_TASK_TREE_ROOT_NODE_ID),
+  );
+  const lastTreeDrivenTaskIdRef = useRef(selected ?? null);
   const dismissedSuccessTaskIdSet = useMemo(
     () => new Set(Array.isArray(dismissedSuccessTaskIds) ? dismissedSuccessTaskIds : []),
     [dismissedSuccessTaskIds]
   );
-  const handleFolderToggleKeyDown = useCallback((event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    setExpanded((prev) => !prev);
-  }, []);
+  const { treeData, navigationByNodeId, defaultSelectedNodeId } = useMemo(() => {
+    const nextNavigationByNodeId = {};
+    const taskNodes = tasks.map((task) => {
+      const taskNodeId = buildAgentTaskTreeTaskNodeId(task.id);
+      const taskTree = planTreesByTaskId?.[task.id] ?? null;
+      const hasChanges = Array.isArray(taskTree?.treeData) && taskTree.treeData.length > 0;
+      const isTaskSelected = selected === task.id;
+      const shouldShowSuccessIcon =
+        task.indicator === 'success' && !dismissedSuccessTaskIdSet.has(task.id) && !isTaskSelected;
 
-  const handleTaskRowKeyDown = useCallback((event, task) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    if (task?.indicator === 'success') {
-      onDismissSuccess?.(task.id);
+      nextNavigationByNodeId[taskNodeId] = {
+        type: 'task',
+        taskId: task.id,
+      };
+
+      if (taskTree?.navigationByNodeId) {
+        Object.assign(nextNavigationByNodeId, taskTree.navigationByNodeId);
+      }
+
+      return {
+        id: taskNodeId,
+        label: (
+          <span
+            className="agent-task-tree-task-label"
+            data-demo-id={`agent-task-row-${toDemoSlug(task.label || task.id)}`}
+          >
+            <span className="agent-task-tree-task-name">{task.label}</span>
+            {task.indicator === 'loading' && (
+              <span className="agent-task-tree-task-meta">
+                <Loader size={16} />
+              </span>
+            )}
+            {task.indicator === 'warning' && !isTaskSelected && (
+              <span className="agent-task-tree-task-meta">
+                <IconWarning />
+              </span>
+            )}
+            {shouldShowSuccessIcon && (
+              <span className="agent-task-tree-task-meta">
+                <IconDone />
+              </span>
+            )}
+          </span>
+        ),
+        icon: <IconMdTask />,
+        secondaryText: task.time || undefined,
+        children: hasChanges ? taskTree.treeData : undefined,
+      };
+    });
+
+    return {
+      treeData: [{
+        id: AGENT_TASK_TREE_ROOT_NODE_ID,
+        label: PROJECT_NAME,
+        icon: 'nodes/folder',
+        isExpanded: true,
+        children: taskNodes,
+      }],
+      navigationByNodeId: nextNavigationByNodeId,
+      defaultSelectedNodeId:
+        selectedTreeNodeId === AGENT_TASK_TREE_ROOT_NODE_ID || nextNavigationByNodeId[selectedTreeNodeId]
+          ? selectedTreeNodeId
+          : (selected ? buildAgentTaskTreeTaskNodeId(selected) : AGENT_TASK_TREE_ROOT_NODE_ID),
+    };
+  }, [dismissedSuccessTaskIdSet, planTreesByTaskId, selected, selectedTreeNodeId, tasks]);
+  useEffect(() => {
+    if (!selected) return;
+
+    const nextTaskNodeId = buildAgentTaskTreeTaskNodeId(selected);
+
+    if (lastTreeDrivenTaskIdRef.current === selected) {
+      lastTreeDrivenTaskIdRef.current = null;
+      setSelectedTreeNodeId((prev) => (prev === nextTaskNodeId ? prev : nextTaskNodeId));
+      return;
     }
-    onTaskSelect?.(task);
-  }, [onDismissSuccess, onTaskSelect]);
+
+    setSelectedTreeNodeId(nextTaskNodeId);
+    setTreeSelectionResetKey((prev) => prev + 1);
+  }, [selected]);
+  const handleTreeNodeSelect = useCallback((nodeId, isSelected) => {
+    const navigationEntry = navigationByNodeId[nodeId] ?? null;
+    if (!navigationEntry) return;
+
+    setSelectedTreeNodeId((prev) => (prev === nodeId ? prev : nodeId));
+
+    if (!isSelected) {
+      setTreeSelectionResetKey((prev) => prev + 1);
+    }
+
+    if (navigationEntry.type === 'task') {
+      const task = tasks.find((item) => item?.id === navigationEntry.taskId) ?? null;
+      if (!task) return;
+
+      lastTreeDrivenTaskIdRef.current = task.id;
+      if (task.indicator === 'success') {
+        onDismissSuccess?.(task.id);
+      }
+      onTaskSelect?.(task);
+      return;
+    }
+
+    lastTreeDrivenTaskIdRef.current = navigationEntry.taskId ?? null;
+    onPlanTreeNodeSelect?.(navigationEntry.taskId, nodeId);
+  }, [navigationByNodeId, onDismissSuccess, onPlanTreeNodeSelect, onTaskSelect, tasks]);
 
   return (
     <ToolWindow
@@ -7850,53 +9428,15 @@ function AgentTasksPanel({ ctx, tasks, selected, onAdd, onTaskSelect, dismissedS
         if (action === 'minimize') ctx.setShowLeftPanel(false);
         if (action === 'add' && onAdd) onAdd();
       }}
-      className="main-window-tool-window main-window-tool-window-left"
+      className="agent-tasks-window main-window-tool-window main-window-tool-window-left"
     >
-      <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
-        <div
-          className="agent-task-row"
-          style={{ paddingLeft: 16 }}
-          role="button"
-          tabIndex={0}
-          aria-expanded={expanded}
-          onClick={() => setExpanded((prev) => !prev)}
-          onKeyDown={handleFolderToggleKeyDown}
-        >
-          <IconChevron expanded={expanded} />
-          <Icon name="nodes/folder" size={16} />
-          <span className="agent-task-label">{PROJECT_NAME}</span>
-        </div>
-        {expanded && tasks.map(task => (
-          <div
-            key={task.id}
-            className={`agent-task-row${selected === task.id ? ' selected' : ''}`}
-            data-demo-id={`agent-task-row-${toDemoSlug(task.label || task.id)}`}
-            style={{ paddingLeft: 48 }}
-            role="button"
-            tabIndex={0}
-            aria-current={selected === task.id ? 'page' : undefined}
-            onClick={() => {
-              if (task.indicator === 'success') {
-                onDismissSuccess?.(task.id);
-              }
-              onTaskSelect?.(task);
-            }}
-            onKeyDown={(event) => handleTaskRowKeyDown(event, task)}
-          >
-            <IconMdTask />
-            <span className="agent-task-label">{task.label}</span>
-            {task.indicator === 'loading'
-              ? <Loader size={16} />
-              : selected === task.id
-                ? null
-                : <>
-                    {task.indicator === 'warning' && <IconWarning />}
-                    {task.indicator === 'success' && !dismissedSuccessTaskIdSet.has(task.id) && <IconDone />}
-                  </>
-            }
-            <span className="agent-task-time">{task.time}</span>
-          </div>
-        ))}
+      <div className="agent-task-tree">
+        <Tree
+          key={`agent-task-tree-${treeSelectionResetKey}`}
+          data={treeData}
+          defaultSelectedId={defaultSelectedNodeId}
+          onNodeSelect={handleTreeNodeSelect}
+        />
       </div>
     </ToolWindow>
   );
@@ -8067,10 +9607,29 @@ export default function App() {
     const resolvedTabId = tabId ?? activeEditorTabId;
     if (!resolvedTabId) return;
 
-    setPlanDiffUiStates((prev) => ({
-      ...prev,
-      [resolvedTabId]: uiState && typeof uiState === 'object' ? uiState : {},
-    }));
+    const normalizedNextUiState = normalizePlanDiffUiState(uiState);
+
+    setPlanDiffUiStates((prev) => {
+      const previousUiState = prev[resolvedTabId] ?? null;
+
+      if (arePlanDiffUiStatesEqual(previousUiState, normalizedNextUiState)) {
+        return prev;
+      }
+
+      if (arePlanDiffUiStatesEqual(normalizedNextUiState, null)) {
+        if (!(resolvedTabId in prev)) {
+          return prev;
+        }
+
+        const { [resolvedTabId]: _removedUiState, ...rest } = prev;
+        return rest;
+      }
+
+      return {
+        ...prev,
+        [resolvedTabId]: normalizedNextUiState,
+      };
+    });
   }, [activeEditorTabId]);
 
   const resolveRunStateTabId = useCallback((tabId = null) => (
@@ -8963,8 +10522,8 @@ export default function App() {
       currentViewState?.planRunResult
       ?? runtimeState?.taskState?.planRunResult
       ?? planRunResult;
-    // Enhance only updates content. It does not confirm checks as a run.
-    // Changed AC/Plan items must reset back to unchecked (null).
+    // Status carry-over after Enhance follows the current draft edits only.
+    // Comment-driven rewrites do not introduce new outdated items by themselves.
     const nextAcRunResult = Array.isArray(currentAcRunResult)
       ? remapRunStatusesForRemovedIssueIndices(
           'ac',
@@ -8984,7 +10543,7 @@ export default function App() {
     const rerunAcOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'ac',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: nextDocument,
+      nextDocumentSections: snapshotDocument,
       currentStatuses: currentAcRunResult,
       nextStatuses: nextAcRunResult,
       currentRemovedIssueIndices,
@@ -8993,7 +10552,7 @@ export default function App() {
     const rerunPlanOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'plan',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: nextDocument,
+      nextDocumentSections: snapshotDocument,
       currentStatuses: currentPlanRunResult,
       nextStatuses: nextPlanRunResult,
       currentRemovedIssueIndices,
@@ -9037,53 +10596,62 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget }) => {
-    const sourceTabIndex = activeEditorTab ?? 0;
-    const sourceTab = ideTabs[sourceTabIndex];
-    if (!sourceTab) return;
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null }) => {
+    const sourceTab = source?.tabId
+      ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
+      : (ideTabs[activeEditorTab ?? 0] ?? null);
+    const sourceTabId = source?.tabId ?? sourceTab?.id ?? null;
+    const sourceTabLabel = source?.label ?? sourceTab?.label ?? null;
+    if (!sourceTabId || !sourceTabLabel) return;
 
     const diffTarget = normalizeCommentTarget(issueTarget);
-    const sourceViewState = getCommentDrivenViewStateForTaskTab(sourceTab.id);
-    const sourceCode = sourceViewState?.code ?? ideTabContents[sourceTab.id]?.code ?? '';
-    const diffTabId = buildPlanDiffTabId(sourceTab.id);
+    const sourceViewState = getCommentDrivenViewStateForTaskTab(sourceTabId);
+    const sourceCode = typeof source?.code === 'string'
+      ? source.code
+      : (sourceViewState?.code ?? ideTabContents[sourceTabId]?.code ?? '');
+    const diffTabId = buildPlanDiffTabId(sourceTabId);
     const diffData = buildPlanDiffData({
       sourceCode,
       text,
       statusItem,
       issueTarget,
-      sourceTabLabel: sourceTab.label,
+      sourceTabLabel,
     });
     const diffCode = buildPlanDiffTabContent({
       sourceCode,
       text,
       statusItem,
       issueTarget,
-      sourceTabLabel: sourceTab.label,
+      sourceTabLabel,
     });
-    const diffTabLabel = diffData.title || `Diff ${diffData.sourceTabLabel || sourceTab.label}`;
-    const currentTaskCommentEntries = getCommentEntriesForTaskTab(sourceTab.id);
+    const diffTabLabel = diffData.title || `Diff ${diffData.sourceTabLabel || sourceTabLabel}`;
+    const currentTaskCommentEntries = getCommentEntriesForTaskTab(sourceTabId);
     const initialDiffComments = buildPlanDiffInitialComments(
       currentTaskCommentEntries,
       diffData,
       diffTarget,
     );
 
+    const sourceTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
     const existingDiffTabIndex = ideTabs.findIndex((tab) => tab.id === diffTabId);
-    const nextActiveTabIndex = existingDiffTabIndex >= 0 ? existingDiffTabIndex : sourceTabIndex + 1;
+    const insertIndex = sourceTabIndex >= 0
+      ? sourceTabIndex + 1
+      : Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
+    const nextActiveTabIndex = existingDiffTabIndex >= 0 ? existingDiffTabIndex : insertIndex;
     const diffTab = {
       id: diffTabId,
       label: diffTabLabel,
       icon: <DiffTabIcon />,
       closable: true,
-      sourceTabId: sourceTab.id,
+      sourceTabId,
     };
 
     setIdeTabs(existingDiffTabIndex >= 0
       ? ideTabs.map((tab, index) => (index === existingDiffTabIndex ? diffTab : tab))
       : [
-          ...ideTabs.slice(0, sourceTabIndex + 1),
+          ...ideTabs.slice(0, insertIndex),
           diffTab,
-          ...ideTabs.slice(sourceTabIndex + 1),
+          ...ideTabs.slice(insertIndex),
         ]);
     setIdeTabContents((prev) => ({
       ...prev,
@@ -9091,20 +10659,48 @@ export default function App() {
         language: diffData.language || 'text',
         code: diffCode,
         diffData,
-        diffSourceTabId: sourceTab.id,
+        diffSourceTabId: sourceTabId,
         diffTarget,
         diffLineText: text,
         initialDiffComments,
       },
     }));
+    updatePlanDiffUiStateForTab(
+      navigation?.activeRowId
+        ? {
+            activeRowId: navigation.activeRowId,
+            commentRowId: null,
+            commentValue: '',
+            commentEditingIndex: null,
+            caretState: {
+              rowId: navigation.activeRowId,
+              left: 12,
+            },
+          }
+        : {},
+      diffTabId,
+    );
+    if (source?.taskId) {
+      setSelectedTask(source.taskId);
+    } else {
+      const matchingTaskId = getAgentTaskIdForEditorTab({ id: sourceTabId, label: sourceTabLabel }, agentTasks);
+      if (matchingTaskId) {
+        setSelectedTask(matchingTaskId);
+      }
+    }
+    setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+    ));
     setActiveEditorTab(nextActiveTabIndex);
   }, [
     activeEditorTab,
+    agentTasks,
     getCommentDrivenViewStateForTaskTab,
     getCommentEntriesForTaskTab,
     ideTabContents,
     ideTabs,
-    syncDiffCommentsToTaskTarget,
+    updatePlanDiffUiStateForTab,
   ]);
 
   const openSpecVersionDiffTab = useCallback(({
@@ -9270,6 +10866,7 @@ export default function App() {
       nextRemovedIssueIndices = null,
       rerunPlanOriginalIndices = [],
       rerunAcOriginalIndices = [],
+      allowPendingOutdated = true,
     } = options ?? {};
     clearChainedRunTimeout();
     clearStatusReveal('plan');
@@ -9296,6 +10893,7 @@ export default function App() {
         currentRemovedIssueIndices,
         nextRemovedIssueIndices,
         rerunOriginalIndices,
+        allowPendingOutdated,
       });
 
       setResult(initialResult);
@@ -9379,12 +10977,12 @@ export default function App() {
       });
       // Clear applied AC fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, ac: {} }));
-      revealRunStatuses('ac', nextAcRunStatuses, acRevealOptions.hasSelectiveRerun
-        ? {
-            initialResult: acRevealOptions.initialResult,
-            indices: acRevealOptions.indices,
-          }
-        : undefined);
+      revealRunStatuses('ac', nextAcRunStatuses, {
+        initialResult: acRevealOptions.initialResult,
+        ...(acRevealOptions.hasSelectiveRerun
+          ? { indices: acRevealOptions.indices }
+          : {}),
+      });
     } else if (section === 'plan') {
       const planRevealOptions = buildSelectiveRunRevealOptions({
         kind: 'plan',
@@ -9394,12 +10992,12 @@ export default function App() {
       });
       // Clear applied plan fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, plan: {} }));
-      revealRunStatuses('plan', nextPlanRunStatuses, planRevealOptions.hasSelectiveRerun
-        ? {
-            initialResult: planRevealOptions.initialResult,
-            indices: planRevealOptions.indices,
-          }
-        : undefined);
+      revealRunStatuses('plan', nextPlanRunStatuses, {
+        initialResult: planRevealOptions.initialResult,
+        ...(planRevealOptions.hasSelectiveRerun
+          ? { indices: planRevealOptions.indices }
+          : {}),
+      });
       if (!cancelGeneration && lastRunRequest?.mode === 'section') {
         clearChainedRunTimeout();
         const revealSteps = planRevealOptions.hasSelectiveRerun
@@ -9412,7 +11010,7 @@ export default function App() {
             ...lastRunRequest,
             sectionTitle: 'Acceptance Criteria',
           }, {
-            preserveAcRunResult: Array.isArray(lastRunRequest?.initialAcRunResult),
+            preserveAcRunResult: true,
             preservePlanRunResult: true,
           });
         }, revealDuration + CHAINED_SECTION_START_DELAY_MS);
@@ -9674,12 +11272,12 @@ export default function App() {
         if (!shouldPauseOnWarning) {
           // Clear applied AC fixes — run result is now authoritative
           setAppliedIssueFixes((prev) => ({ ...prev, ac: {} }));
-          revealRunStatuses('ac', nextAcRunStatuses, acRevealOptions.hasSelectiveRerun
-            ? {
-                initialResult: acRevealOptions.initialResult,
-                indices: acRevealOptions.indices,
-              }
-            : undefined);
+          revealRunStatuses('ac', nextAcRunStatuses, {
+            initialResult: acRevealOptions.initialResult,
+            ...(acRevealOptions.hasSelectiveRerun
+              ? { indices: acRevealOptions.indices }
+              : {}),
+          });
           runTerminalLineAnimation(buildAcceptanceCriteriaContinuationLines('allow-session'), {
             baseLines: introLines,
             onComplete: () => {
@@ -9693,9 +11291,9 @@ export default function App() {
         // Clear applied AC fixes — run result is now authoritative
         setAppliedIssueFixes((prev) => ({ ...prev, ac: {} }));
         revealRunStatuses('ac', nextAcRunStatuses, {
+          initialResult: acRevealOptions.initialResult,
           ...(acRevealOptions.hasSelectiveRerun
             ? {
-                initialResult: acRevealOptions.initialResult,
                 indices: acRevealOptions.indices,
               }
             : {}),
@@ -10360,23 +11958,27 @@ export default function App() {
         if (filtered.length > 0) {
           e.preventDefault();
           const item = filtered[completion.selectedIdx];
-          if (item) {
+          const selection = buildCompletionSelection(item);
+          if (selection) {
             const value = textarea.value;
             const cursorPos = textarea.selectionStart;
             const textBeforeCursor = value.slice(0, cursorPos);
             const triggerIdx = Math.max(textBeforeCursor.lastIndexOf('@'), textBeforeCursor.lastIndexOf('#'));
             const before = value.slice(0, triggerIdx + 1);
             const after = value.slice(cursorPos);
-            const newValue = before + item.label + ' ' + after;
+            const insertText = getCompletionInsertText(selection);
+            const newValue = before + insertText + ' ' + after;
             textarea.value = newValue;
-            const newPos = triggerIdx + 1 + item.label.length + 1;
+            const newPos = triggerIdx + 1 + insertText.length + 1;
             textarea.setSelectionRange(newPos, newPos);
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            // Add file to attached files list
-            updateAttachedFilesForTab(files => {
-              if (files.some(f => f.label === item.label)) return files;
-              return [...files, { label: item.label, description: item.description }];
-            });
+            const attachment = getCompletionAttachment(selection);
+            if (attachment) {
+              updateAttachedFilesForTab(files => {
+                if (files.some(f => f.label === attachment.label)) return files;
+                return [...files, attachment];
+              });
+            }
             setEditorCompletion(null);
           }
         }
@@ -10809,6 +12411,7 @@ export default function App() {
             nextRemovedIssueIndices,
             rerunPlanOriginalIndices,
             rerunAcOriginalIndices,
+            allowPendingOutdated: false,
           });
           // Store rerun indices so Run knows what to check after Enhance
           if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
@@ -10859,6 +12462,7 @@ export default function App() {
             nextRemovedIssueIndices,
             rerunPlanOriginalIndices,
             rerunAcOriginalIndices,
+            allowPendingOutdated: false,
           });
           setGenProgress(1);
           setGenState('done');
@@ -10912,6 +12516,7 @@ export default function App() {
             nextRemovedIssueIndices,
             rerunPlanOriginalIndices,
             rerunAcOriginalIndices,
+            allowPendingOutdated: false,
           });
           // Store rerun indices so Run knows what to check after Enhance
           if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
@@ -11042,7 +12647,15 @@ export default function App() {
     if (doneEnhanceFlowRef.current?.commentsAlreadyCleared) {
       return;
     }
-    setAgentTaskCommentEntries(nextEntries);
+
+    const normalizedNextEntries = Array.isArray(nextEntries) ? nextEntries : [];
+    const nextSignature = buildSpecVersionCommentEntriesSignature(normalizedNextEntries);
+
+    setAgentTaskCommentEntries((prev) => (
+      buildSpecVersionCommentEntriesSignature(prev) === nextSignature
+        ? prev
+        : normalizedNextEntries
+    ));
   }, []);
   const activeAgentTaskViewState = useMemo(
     () => (
@@ -11135,6 +12748,70 @@ export default function App() {
     () => getAgentTaskIdForEditorTab(currentProblemsTab, agentTasks),
     [agentTasks, currentProblemsTab],
   );
+  const activeAgentTaskPanelSelectionId = navigatedAgentTaskId ?? selectedTask ?? agentTaskPanelTasks[0]?.id ?? null;
+  const agentTaskPlanTreesByTaskId = useMemo(() => (
+    agentTaskPanelTasks.reduce((nextTrees, task) => {
+      if (!task?.id) return nextTrees;
+
+      const sourceTabId = task?.taskTabId ?? getAgentTaskTabId(task.id);
+      if (!sourceTabId) return nextTrees;
+
+      const viewState = getCommentDrivenViewStateForTaskTab(sourceTabId);
+      const runtimeState = getTaskRuntimeState(sourceTabId);
+      const resolvedPlanRunResult =
+        viewState?.planRunResult
+        ?? runtimeState?.taskState?.planRunResult
+        ?? null;
+      const shouldShowPlanTree =
+        runtimeState?.taskState?.genState === 'done'
+        && Array.isArray(resolvedPlanRunResult)
+        && resolvedPlanRunResult.length > 0;
+
+      if (!shouldShowPlanTree) {
+        return nextTrees;
+      }
+
+      nextTrees[task.id] = buildAgentTaskPlanTreeModel({
+        task,
+        sourceTabId,
+        sourceCode: viewState?.code ?? runtimeState?.baseCode ?? '',
+        documentSections:
+          viewState?.documentSections
+          ?? runtimeState?.taskState?.documentSections
+          ?? runtimeState?.scenario?.defaultDocument
+          ?? [],
+        planRunResult: resolvedPlanRunResult,
+        removedIssueIndices:
+          viewState?.removedIssueIndices
+          ?? runtimeState?.taskState?.removedIssueIndices
+          ?? null,
+      });
+
+      return nextTrees;
+    }, {})
+  ), [
+    agentTaskPanelTasks,
+    getCommentDrivenViewStateForTaskTab,
+    getTaskRuntimeState,
+  ]);
+  const handleAgentTaskPlanTreeNodeSelect = useCallback((taskId, nodeId) => {
+    const navigationEntry = agentTaskPlanTreesByTaskId?.[taskId]?.navigationByNodeId?.[nodeId] ?? null;
+    if (!navigationEntry) return;
+
+    openPlanDiffTab({
+      text: navigationEntry.text,
+      statusItem: navigationEntry.statusItem,
+      issueTarget: navigationEntry.issueTarget,
+      source: {
+        taskId: navigationEntry.taskId,
+        tabId: navigationEntry.sourceTabId,
+        label: navigationEntry.sourceLabel,
+      },
+      navigation: {
+        activeRowId: navigationEntry.activeRowId,
+      },
+    });
+  }, [agentTaskPlanTreesByTaskId, openPlanDiffTab]);
   useEffect(() => {
     const now = Date.now();
 
@@ -11337,79 +13014,114 @@ export default function App() {
       hasSpecChanges,
       hasPendingComments,
     } = pendingDoneSpecState;
+    const normalizedRunSectionTitle = typeof options?.runSectionTitle === 'string'
+      ? options.runSectionTitle.trim().toLowerCase()
+      : '';
+    const normalizedRunTarget = normalizeCommentTarget(options?.runTarget);
+    const allVisibleAcOriginalIndices = getVisibleIssueOriginalIndices('ac', nextRemovedIssueIndices);
+    const allVisiblePlanOriginalIndices = getVisibleIssueOriginalIndices('plan', nextRemovedIssueIndices);
+    let requestAcRerunOriginalIndices = [];
+    let requestPlanRerunOriginalIndices = [];
+    let seededAcRerunOriginalIndices = rerunAcOriginalIndices;
+    let seededPlanRerunOriginalIndices = rerunPlanOriginalIndices;
 
-    if (!hasSpecChanges && !hasPendingComments) {
-      return {
-        didCommit: false,
-        sourceTabId,
-        nextAcRunResult,
-        nextPlanRunResult,
-        currentAcRunResult,
-        currentPlanRunResult,
-        currentRemovedIssueIndices,
-        nextRemovedIssueIndices,
-        rerunAcOriginalIndices,
-        rerunPlanOriginalIndices,
-        hasPendingReruns,
-      };
+    if (normalizedRunTarget?.kind === 'ac') {
+      requestAcRerunOriginalIndices = [normalizedRunTarget.index];
+      seededAcRerunOriginalIndices = mergeOriginalIssueIndices(rerunAcOriginalIndices, requestAcRerunOriginalIndices);
+    } else if (normalizedRunTarget?.kind === 'plan') {
+      requestPlanRerunOriginalIndices = [normalizedRunTarget.index];
+      requestAcRerunOriginalIndices = allVisibleAcOriginalIndices;
+      seededPlanRerunOriginalIndices = mergeOriginalIssueIndices(rerunPlanOriginalIndices, allVisiblePlanOriginalIndices);
+      seededAcRerunOriginalIndices = mergeOriginalIssueIndices(rerunAcOriginalIndices, allVisibleAcOriginalIndices);
+    } else if (normalizedRunSectionTitle === 'acceptance criteria') {
+      requestAcRerunOriginalIndices = allVisibleAcOriginalIndices;
+      seededAcRerunOriginalIndices = mergeOriginalIssueIndices(rerunAcOriginalIndices, allVisibleAcOriginalIndices);
+    } else if (normalizedRunSectionTitle === 'plan') {
+      requestAcRerunOriginalIndices = allVisibleAcOriginalIndices;
+      requestPlanRerunOriginalIndices = allVisiblePlanOriginalIndices;
+      seededAcRerunOriginalIndices = mergeOriginalIssueIndices(rerunAcOriginalIndices, allVisibleAcOriginalIndices);
+      seededPlanRerunOriginalIndices = mergeOriginalIssueIndices(rerunPlanOriginalIndices, allVisiblePlanOriginalIndices);
     }
-
-    const terminalTabId = buildTerminalSessionTabId(sourceTabId);
-
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [sourceTabId]: {
-        ...(prev[sourceTabId] ?? {}),
-        language: 'markdown',
-        code: nextCode,
-      },
-    }));
-    setGeneratedDocument(nextDocument);
-    setAppliedIssueFixes(cloneIssueStateMap(nextAppliedIssueFixes));
-    setRemovedIssueIndices(cloneIssueStateMap(nextRemovedIssueIndices));
-    setAcRunResult(buildRunStatusesRevealSeed({
+    const committedAcRunResult = buildRunStatusesRevealSeed({
       kind: 'ac',
       currentStatuses: currentAcRunResult,
       nextStatuses: nextAcRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
-      rerunOriginalIndices: rerunAcOriginalIndices,
-    }));
-    setPlanRunResult(buildRunStatusesRevealSeed({
-      kind: 'plan',
-      currentStatuses: currentPlanRunResult,
-      nextStatuses: nextPlanRunResult,
-      currentRemovedIssueIndices,
-      nextRemovedIssueIndices,
-      rerunOriginalIndices: rerunPlanOriginalIndices,
-    }));
-    if (options?.applyPendingComments !== false) {
-      resetDoneComments();
+      rerunOriginalIndices: seededAcRerunOriginalIndices,
+    });
+    const committedPlanRunResult = normalizedRunTarget?.kind === 'plan'
+      ? buildRunStatusesSeedWithPendingOriginalIndices({
+          kind: 'plan',
+          currentStatuses: currentPlanRunResult,
+          nextStatuses: nextPlanRunResult,
+          currentRemovedIssueIndices,
+          nextRemovedIssueIndices,
+          rerunOriginalIndices: seededPlanRerunOriginalIndices,
+          pendingOriginalIndices: [normalizedRunTarget.index],
+        })
+      : buildRunStatusesRevealSeed({
+          kind: 'plan',
+          currentStatuses: currentPlanRunResult,
+          nextStatuses: nextPlanRunResult,
+          currentRemovedIssueIndices,
+          nextRemovedIssueIndices,
+          rerunOriginalIndices: seededPlanRerunOriginalIndices,
+        });
+    const shouldApplyContentChanges = hasSpecChanges || hasPendingComments;
+    const shouldApplyStatusSeed =
+      normalizedRunSectionTitle.length > 0
+      || !areComparableValuesEqual(currentAcRunResult, committedAcRunResult)
+      || !areComparableValuesEqual(currentPlanRunResult, committedPlanRunResult);
+    const terminalTabId = buildTerminalSessionTabId(sourceTabId);
+
+    if (shouldApplyContentChanges) {
+      setIdeTabContents((prev) => ({
+        ...prev,
+        [sourceTabId]: {
+          ...(prev[sourceTabId] ?? {}),
+          language: 'markdown',
+          code: nextCode,
+        },
+      }));
+      setGeneratedDocument(nextDocument);
+      setAppliedIssueFixes(cloneIssueStateMap(nextAppliedIssueFixes));
+      setRemovedIssueIndices(cloneIssueStateMap(nextRemovedIssueIndices));
+      if (options?.applyPendingComments !== false) {
+        resetDoneComments();
+      }
+      if (hasSpecChanges) {
+        updateSpecVersionsForTab((prevHistory) => appendSpecVersionHistoryEntry(prevHistory, {
+          currentCode,
+          nextCode,
+          currentCommentEntries: pendingCommentEntriesSnapshot,
+        }), sourceTabId);
+      }
     }
-    setAcWarningBannerForTab(null, terminalTabId);
-    setPendingTerminalRunForTab(null, terminalTabId);
-    setTerminalPermissionPromptForTab(null, terminalTabId);
-    setRunStateForTab('default', sourceTabId);
-    currentRunSourceTabIdRef.current = null;
-    if (hasSpecChanges) {
-      updateSpecVersionsForTab((prevHistory) => appendSpecVersionHistoryEntry(prevHistory, {
-        currentCode,
-        nextCode,
-        currentCommentEntries: pendingCommentEntriesSnapshot,
-      }), sourceTabId);
+
+    if (shouldApplyStatusSeed) {
+      setAcRunResult(committedAcRunResult);
+      setPlanRunResult(committedPlanRunResult);
+      setAcWarningBannerForTab(null, terminalTabId);
+      setPendingTerminalRunForTab(null, terminalTabId);
+      setTerminalPermissionPromptForTab(null, terminalTabId);
+      setRunStateForTab('default', sourceTabId);
+      currentRunSourceTabIdRef.current = null;
     }
 
     return {
-      didCommit: true,
+      didCommit: shouldApplyContentChanges || shouldApplyStatusSeed,
       sourceTabId,
       nextAcRunResult,
       nextPlanRunResult,
+      committedAcRunResult,
+      committedPlanRunResult,
       currentAcRunResult,
       currentPlanRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
-      rerunAcOriginalIndices,
-      rerunPlanOriginalIndices,
+      rerunAcOriginalIndices: requestAcRerunOriginalIndices,
+      rerunPlanOriginalIndices: requestPlanRerunOriginalIndices,
       hasPendingReruns,
     };
   }, [
@@ -11425,48 +13137,38 @@ export default function App() {
   ]);
 
   const handleDoneOpenTerminal = (input) => {
-    const commitResult = commitDoneSpecUpdate({ applyPendingComments: false });
+    const runTarget = normalizeCommentTarget(typeof input === 'object' ? input?.runTarget ?? input?.checkTarget : null);
+    const sectionTitle = typeof input === 'string'
+      ? input
+      : (input?.sectionTitle
+          ?? (runTarget?.kind === 'ac'
+            ? 'Acceptance Criteria'
+            : runTarget?.kind === 'plan'
+              ? 'Plan'
+              : null));
+    const resolvedRunSectionTitle = typeof sectionTitle === 'string' && sectionTitle.trim().length > 0
+      ? sectionTitle
+      : 'Plan';
+    const commitResult = commitDoneSpecUpdate({
+      applyPendingComments: false,
+      runSectionTitle: resolvedRunSectionTitle,
+      runTarget,
+    });
     const sourceTabId = commitResult?.sourceTabId ?? generationTabId ?? activeEditorTabId;
-    const sectionTitle = typeof input === 'string' ? input : input?.sectionTitle;
     const terminalTabId = sourceTabId ? buildTerminalSessionTabId(sourceTabId) : null;
-    const isFullDoneRun = input == null;
-
-    // Use pending rerun indices from Enhance if available
     const taskState = sourceTabId ? interactiveTaskStates[sourceTabId] : null;
-    const rerunAcOriginalIndices = commitResult?.rerunAcOriginalIndices
-      ?? taskState?.pendingRerunAcOriginalIndices
-      ?? [];
-    const rerunPlanOriginalIndices = commitResult?.rerunPlanOriginalIndices
-      ?? taskState?.pendingRerunPlanOriginalIndices
-      ?? [];
-    const hasSelectiveAcRerun = !isFullDoneRun && rerunAcOriginalIndices.length > 0;
-    const hasSelectivePlanRerun = !isFullDoneRun && rerunPlanOriginalIndices.length > 0;
-
-    const initialAcRunResult = hasSelectiveAcRerun
-      ? buildRunStatusesRevealSeed({
-          kind: 'ac',
-          currentStatuses: commitResult?.currentAcRunResult ?? activeAgentTaskAcRunResult,
-          nextStatuses: commitResult?.nextAcRunResult ?? activeAgentTaskAcRunResult,
-          currentRemovedIssueIndices: commitResult?.currentRemovedIssueIndices ?? activeAgentTaskRemovedIssueIndices,
-          nextRemovedIssueIndices: commitResult?.nextRemovedIssueIndices ?? activeAgentTaskRemovedIssueIndices,
-          rerunOriginalIndices: rerunAcOriginalIndices,
-        })
-      : null;
-    const initialPlanRunResult = hasSelectivePlanRerun
-      ? buildRunStatusesRevealSeed({
-          kind: 'plan',
-          currentStatuses: commitResult?.currentPlanRunResult ?? activeAgentTaskPlanRunResult,
-          nextStatuses: commitResult?.nextPlanRunResult ?? activeAgentTaskPlanRunResult,
-          currentRemovedIssueIndices: commitResult?.currentRemovedIssueIndices ?? activeAgentTaskRemovedIssueIndices,
-          nextRemovedIssueIndices: commitResult?.nextRemovedIssueIndices ?? activeAgentTaskRemovedIssueIndices,
-          rerunOriginalIndices: rerunPlanOriginalIndices,
-        })
-      : null;
+    const initialAcRunResult =
+      commitResult?.committedAcRunResult
+      ?? activeAgentTaskAcRunResult
+      ?? null;
+    const initialPlanRunResult =
+      commitResult?.committedPlanRunResult
+      ?? activeAgentTaskPlanRunResult
+      ?? null;
     if (terminalTabId) {
       setAcWarningBannerForTab(null, terminalTabId);
     }
 
-    // Clear pending rerun indices after using them
     if (sourceTabId && (taskState?.pendingRerunAcOriginalIndices || taskState?.pendingRerunPlanOriginalIndices)) {
       setInteractiveTaskStates((prev) => ({
         ...prev,
@@ -11485,11 +13187,11 @@ export default function App() {
       taskLabel: currentAgentTaskLabel,
       initialAcRunResult,
       initialPlanRunResult,
-      rerunAcOriginalIndices: hasSelectiveAcRerun ? rerunAcOriginalIndices : [],
-      rerunPlanOriginalIndices: hasSelectivePlanRerun ? rerunPlanOriginalIndices : [],
+      rerunAcOriginalIndices: commitResult?.rerunAcOriginalIndices ?? [],
+      rerunPlanOriginalIndices: commitResult?.rerunPlanOriginalIndices ?? [],
     }, {
-      preserveAcRunResult: hasSelectiveAcRerun,
-      preservePlanRunResult: hasSelectivePlanRerun,
+      preserveAcRunResult: true,
+      preservePlanRunResult: true,
     });
   };
 
@@ -11583,6 +13285,82 @@ export default function App() {
     }),
     [activePlanDiffDataForMemo, activePlanDiffSourceViewState, activePlanDiffTargetForMemo],
   );
+  const activeTabId = activeEditorTabMeta?.id ?? null;
+  const activeTabContent = activeEditorTabContentEntry;
+  const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
+  const isDiffTab = Boolean(activeTabContent?.diffData);
+  const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
+  const currentPersistedSpecCode = visibleEditorStateTabId
+    ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
+        ? (doneEnhanceFlowRef.current.initialCode ?? '')
+        : (ideTabContents[visibleEditorStateTabId]?.code ?? ''))
+    : '';
+  const activeVersionHistory = visibleEditorStateTabId
+    ? syncSpecVersionHistoryCurrentCode(
+        specVersionsByTab[visibleEditorStateTabId] ?? null,
+        currentPersistedSpecCode,
+      )
+    : null;
+  const activeEditorAcWarningBanner = isAgentTaskTab && activeSourceEditorTabId
+    ? (terminalSessions[buildTerminalSessionTabId(activeSourceEditorTabId)]?.acWarningBanner ?? null)
+    : null;
+  const activeDoneOverlayUiState = visibleEditorStateTabId
+    ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
+    : null;
+  const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
+  const activePlanDiffTarget = isDiffTab
+    ? normalizeCommentTarget(activeTabContent?.diffTarget)
+    : null;
+  const activePlanDiffSourceTabId = isDiffTab
+    ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
+    : null;
+  const activePlanDiffComments =
+    isDiffTab && activePlanDiffData
+      ? (activePlanDiffTarget && activePlanDiffSourceTabId
+          ? buildPlanDiffInitialComments(
+              getCommentEntriesForTaskTab(activePlanDiffSourceTabId),
+              activePlanDiffData,
+              activePlanDiffTarget,
+            )
+          : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments))
+      : {};
+  const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
+  const activePlanDiffLineText = isDiffTab ? (activeTabContent?.diffLineText ?? '') : '';
+  const handleDoneVersionSelect = (version) => {
+    if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
+      return;
+    }
+
+    const currentVersion = activeVersionHistory.versions[activeVersionHistory.versions.length - 1] ?? null;
+    if (!currentVersion || version.id === currentVersion.id) {
+      return;
+    }
+
+    openSpecVersionDiffTab({
+      sourceTabId: visibleEditorStateTabId,
+      fromVersion: version,
+      toVersion: currentVersion,
+    });
+  };
+  const handleActivePlanDiffCommentsChange = useCallback((comments) => {
+    if (!activePlanDiffTarget || !activePlanDiffSourceTabId) return;
+
+    syncDiffCommentsToTaskTarget({
+      sourceTabId: activePlanDiffSourceTabId,
+      target: activePlanDiffTarget,
+      comments,
+      sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+      line: activePlanDiffLineText,
+    });
+  }, [
+    activePlanDiffLineText,
+    activePlanDiffSourceTabId,
+    activePlanDiffTarget,
+    syncDiffCommentsToTaskTarget,
+  ]);
+  const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
+    updatePlanDiffUiStateForTab(uiState, activeTabId);
+  }, [activeTabId, updatePlanDiffUiStateForTab]);
 
   if (screen === 'welcome') {
     return (
@@ -11628,7 +13406,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={navigatedAgentTaskId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} />;
+            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} />;
             return defaultLeftPanelContent(id, ctx);
           }}
           rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -11652,63 +13430,6 @@ export default function App() {
       </ThemeProvider>
     );
   }
-
-  const activeTabId = activeEditorTabMeta?.id ?? null;
-  const activeTabContent = activeEditorTabContentEntry;
-  const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
-  const isDiffTab = Boolean(activeTabContent?.diffData);
-  const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
-  const currentPersistedSpecCode = visibleEditorStateTabId
-    ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
-        ? (doneEnhanceFlowRef.current.initialCode ?? '')
-        : (ideTabContents[visibleEditorStateTabId]?.code ?? ''))
-    : '';
-  const activeVersionHistory = visibleEditorStateTabId
-    ? syncSpecVersionHistoryCurrentCode(
-        specVersionsByTab[visibleEditorStateTabId] ?? null,
-        currentPersistedSpecCode,
-      )
-    : null;
-  const activeEditorAcWarningBanner = isAgentTaskTab && activeSourceEditorTabId
-    ? (terminalSessions[buildTerminalSessionTabId(activeSourceEditorTabId)]?.acWarningBanner ?? null)
-    : null;
-  const activeDoneOverlayUiState = visibleEditorStateTabId
-    ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
-    : null;
-  const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
-  const activePlanDiffTarget = isDiffTab
-    ? normalizeCommentTarget(activeTabContent?.diffTarget)
-    : null;
-  const activePlanDiffSourceTabId = isDiffTab
-    ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
-    : null;
-  const activePlanDiffComments =
-    isDiffTab && activePlanDiffData
-      ? (activePlanDiffTarget && activePlanDiffSourceTabId
-          ? buildPlanDiffInitialComments(
-              getCommentEntriesForTaskTab(activePlanDiffSourceTabId),
-              activePlanDiffData,
-              activePlanDiffTarget,
-            )
-          : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments))
-      : {};
-  const handleDoneVersionSelect = (version) => {
-    if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
-      return;
-    }
-
-    const currentVersion = activeVersionHistory.versions[activeVersionHistory.versions.length - 1] ?? null;
-    if (!currentVersion || version.id === currentVersion.id) {
-      return;
-    }
-
-    openSpecVersionDiffTab({
-      sourceTabId: visibleEditorStateTabId,
-      fromVersion: version,
-      toVersion: currentVersion,
-    });
-  };
-  const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
   const handlePlanDiffRowDelete = (rowId, comment) => {
     if (!activeTabId || !isDiffTab) return;
 
@@ -11832,20 +13553,11 @@ export default function App() {
                     diffData={activePlanDiffData}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffComments}
-                    onDiffCommentsChange={(comments) => {
-                      if (!activePlanDiffTarget || !activePlanDiffSourceTabId) return;
-                      syncDiffCommentsToTaskTarget({
-                        sourceTabId: activePlanDiffSourceTabId,
-                        target: activePlanDiffTarget,
-                        comments,
-                        sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-                        line: activeTabContent?.diffLineText ?? '',
-                      });
-                    }}
+                    onDiffCommentsChange={handleActivePlanDiffCommentsChange}
                     onRowDelete={handlePlanDiffRowDelete}
                     onRowFix={handlePlanDiffRowFix}
                     uiState={activePlanDiffUiState}
-                    onUiStateChange={(uiState) => updatePlanDiffUiStateForTab(uiState, activeTabId)}
+                    onUiStateChange={handleActivePlanDiffUiStateChange}
                   />
                 )
                 : undefined)
@@ -11865,7 +13577,7 @@ export default function App() {
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={navigatedAgentTaskId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} />;
+          if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} />;
           return defaultLeftPanelContent(id, ctx);
         }}
         rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -11919,18 +13631,21 @@ export default function App() {
               const triggerIdx = Math.max(textBeforeCursor.lastIndexOf('@'), textBeforeCursor.lastIndexOf('#'));
               const before = value.slice(0, triggerIdx + 1);
               const after = value.slice(cursorPos);
-              const newValue = before + item.label + ' ' + after;
+              const insertText = getCompletionInsertText(item);
+              const newValue = before + insertText + ' ' + after;
               textarea.value = newValue;
-              const newPos = triggerIdx + 1 + item.label.length + 1;
+              const newPos = triggerIdx + 1 + insertText.length + 1;
               textarea.setSelectionRange(newPos, newPos);
               textarea.dispatchEvent(new Event('input', { bubbles: true }));
               textarea.focus();
             }
-            // Add file to attached files list
-            updateAttachedFilesForTab(files => {
-              if (files.some(f => f.label === item.label)) return files;
-              return [...files, { label: item.label, description: item.description }];
-            });
+            const attachment = getCompletionAttachment(item);
+            if (attachment) {
+              updateAttachedFilesForTab(files => {
+                if (files.some(f => f.label === attachment.label)) return files;
+                return [...files, attachment];
+              });
+            }
             setEditorCompletion(null);
           }}
           onClose={() => setEditorCompletion(null)}

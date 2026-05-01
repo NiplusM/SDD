@@ -287,7 +287,7 @@ function flattenDiffCommentsState(diffComments = {}) {
   return Object.values(normalizeDiffCommentsState(diffComments)).flat();
 }
 
-function normalizePlanDiffUiState(uiState = null) {
+export function normalizePlanDiffUiState(uiState = null) {
   const normalizedState = uiState && typeof uiState === 'object' ? uiState : {};
   const caretState = normalizedState.caretState && typeof normalizedState.caretState === 'object'
     ? normalizedState.caretState
@@ -317,6 +317,20 @@ function normalizePlanDiffUiState(uiState = null) {
   };
 }
 
+export function arePlanDiffUiStatesEqual(left = null, right = null) {
+  const normalizedLeft = normalizePlanDiffUiState(left);
+  const normalizedRight = normalizePlanDiffUiState(right);
+
+  return (
+    normalizedLeft.activeRowId === normalizedRight.activeRowId
+    && normalizedLeft.commentRowId === normalizedRight.commentRowId
+    && normalizedLeft.commentValue === normalizedRight.commentValue
+    && normalizedLeft.commentEditingIndex === normalizedRight.commentEditingIndex
+    && normalizedLeft.caretState.rowId === normalizedRight.caretState.rowId
+    && normalizedLeft.caretState.left === normalizedRight.caretState.left
+  );
+}
+
 function shouldDeleteRow(comment) {
   const normalized = (comment || '').trim().toLowerCase();
   return normalized === 'delete' || normalized === 'delete this';
@@ -329,13 +343,25 @@ function shouldFixRow(comment) {
 
 function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsChange = null, onRowDelete = null, onRowFix = null, uiState = null, onUiStateChange = null }) {
   const scrollRef = useRef(null);
-  const initialUiState = normalizePlanDiffUiState(uiState);
-  const [activeRowId, setActiveRowId] = useState(initialUiState.activeRowId);
-  const [commentRowId, setCommentRowId] = useState(initialUiState.commentRowId);
-  const [commentValue, setCommentValue] = useState(initialUiState.commentValue);
-  const [commentEditingIndex, setCommentEditingIndex] = useState(initialUiState.commentEditingIndex);
+  const normalizedUiState = useMemo(
+    () => normalizePlanDiffUiState(uiState),
+    [uiState],
+  );
+  const hasExternalUiState = useMemo(
+    () => Boolean(uiState && typeof uiState === 'object' && Object.keys(uiState).length > 0),
+    [uiState],
+  );
+  const initialActiveRowId = normalizedUiState.activeRowId || diffData?.focusRowId || null;
+  const initialCaretRowId = normalizedUiState.caretState.rowId || initialActiveRowId;
+  const [activeRowId, setActiveRowId] = useState(initialActiveRowId);
+  const [commentRowId, setCommentRowId] = useState(normalizedUiState.commentRowId);
+  const [commentValue, setCommentValue] = useState(normalizedUiState.commentValue);
+  const [commentEditingIndex, setCommentEditingIndex] = useState(normalizedUiState.commentEditingIndex);
   const [diffComments, setDiffComments] = useState(() => normalizeDiffCommentsState(initialDiffComments));
-  const [caretState, setCaretState] = useState(initialUiState.caretState);
+  const [caretState, setCaretState] = useState({
+    rowId: initialCaretRowId,
+    left: normalizedUiState.caretState.left,
+  });
   const diffResetKey = JSON.stringify({
     title: diffData?.title ?? '',
     focusRowId: diffData?.focusRowId ?? null,
@@ -395,16 +421,42 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
     }
 
     previousDiffResetKeyRef.current = diffResetKey;
-    setActiveRowId(null);
-    setCommentRowId(null);
-    setCommentValue('');
-    setCommentEditingIndex(null);
+    const nextActiveRowId = normalizedUiState.activeRowId || diffData?.focusRowId || null;
+    const nextCaretRowId = normalizedUiState.caretState.rowId || nextActiveRowId;
+    setActiveRowId(nextActiveRowId);
+    setCommentRowId(normalizedUiState.commentRowId);
+    setCommentValue(normalizedUiState.commentValue);
+    setCommentEditingIndex(normalizedUiState.commentEditingIndex);
     setDiffComments(normalizeDiffCommentsState(initialDiffComments));
     setCaretState({
-      rowId: null,
-      left: PLAN_DIFF_DEFAULT_CARET_LEFT,
+      rowId: nextCaretRowId,
+      left: normalizedUiState.caretState.left,
     });
-  }, [diffResetKey, initialDiffComments]);
+  }, [diffData?.focusRowId, diffResetKey, initialDiffComments, normalizedUiState]);
+
+  useEffect(() => {
+    if (!hasExternalUiState) {
+      return;
+    }
+
+    const nextActiveRowId = normalizedUiState.activeRowId || diffData?.focusRowId || null;
+    const nextCaretRowId = normalizedUiState.caretState.rowId || nextActiveRowId;
+
+    setActiveRowId((prev) => (prev === nextActiveRowId ? prev : nextActiveRowId));
+    setCommentRowId((prev) => (prev === normalizedUiState.commentRowId ? prev : normalizedUiState.commentRowId));
+    setCommentValue((prev) => (prev === normalizedUiState.commentValue ? prev : normalizedUiState.commentValue));
+    setCommentEditingIndex((prev) => (
+      prev === normalizedUiState.commentEditingIndex ? prev : normalizedUiState.commentEditingIndex
+    ));
+    setCaretState((prev) => (
+      prev.rowId === nextCaretRowId && prev.left === normalizedUiState.caretState.left
+        ? prev
+        : {
+            rowId: nextCaretRowId,
+            left: normalizedUiState.caretState.left,
+          }
+    ));
+  }, [diffData?.focusRowId, hasExternalUiState, normalizedUiState]);
 
   useEffect(() => {
     onDiffCommentsChange?.(normalizeDiffCommentsState(diffComments));
