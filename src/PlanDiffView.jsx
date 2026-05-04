@@ -341,7 +341,7 @@ function shouldFixRow(comment) {
   return normalized === 'fix' || normalized === 'fix this';
 }
 
-function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsChange = null, onRowDelete = null, onRowFix = null, uiState = null, onUiStateChange = null }) {
+function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsChange = null, onRowDelete = null, onRowFix = null, uiState = null, onUiStateChange = null, globalDiffSections = [] }) {
   const scrollRef = useRef(null);
   const normalizedUiState = useMemo(
     () => normalizePlanDiffUiState(uiState),
@@ -488,6 +488,21 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
 
   return (
     <div className="plan-diff-overlay">
+      {Array.isArray(globalDiffSections) && globalDiffSections.length > 0 && (
+        <div className="plan-diff-global-comments">
+          <div className="plan-diff-global-comments-header">From global diff</div>
+          {globalDiffSections.map((section) => (
+            <div key={section.fileName} className="plan-diff-global-comments-file">
+              <div className="plan-diff-global-comments-file-name">{section.fileName}</div>
+              <ul className="plan-diff-global-comments-list">
+                {(section.comments ?? []).map((text, idx) => (
+                  <li key={idx} className="plan-diff-global-comments-item">{text}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
         <div className="plan-diff-code">
           {(diffData?.rows ?? []).map((row) => {
@@ -659,6 +674,8 @@ export function PlanDiffEditorArea({
   onRowFix = null,
   uiState = null,
   onUiStateChange = null,
+  onOpenComments = null,
+  globalDiffSections = [],
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
@@ -730,6 +747,24 @@ export function PlanDiffEditorArea({
             </div>
           </div>
           <div className="plan-diff-toolbar-right">
+            {(() => {
+              const commentCount = flattenDiffCommentsState(initialDiffComments).length;
+              if (commentCount === 0) return null;
+              return (
+                <button
+                  type="button"
+                  className="plan-diff-toolbar-comments"
+                  onClick={() => onOpenComments?.()}
+                  title="Open Comments tool window"
+                  aria-label={`${commentCount} comment${commentCount === 1 ? '' : 's'}`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M3.14258 1.64307L12.8564 1.64307C13.6849 1.64307 14.3564 2.31464 14.3564 3.14307L14.3564 14.9595L9.45508 11.0386C9.38853 10.9853 9.30968 10.9502 9.22656 10.936L9.14258 10.9292L3.14258 10.9292C2.31429 10.9292 1.6428 10.2574 1.64258 9.4292L1.64258 3.14307C1.64258 2.31464 2.31415 1.64307 3.14258 1.64307Z" stroke="currentColor" strokeLinejoin="round" />
+                  </svg>
+                  <span>{commentCount}</span>
+                </button>
+              );
+            })()}
             <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
           </div>
         </div>
@@ -743,6 +778,7 @@ export function PlanDiffEditorArea({
           onRowFix={onRowFix}
           uiState={uiState}
           onUiStateChange={onUiStateChange}
+          globalDiffSections={globalDiffSections}
         />,
         overlayHost
       )}

@@ -9650,6 +9650,7 @@ function buildAgentTaskPlanTreeModel({
   documentSections = [],
   planRunResult = null,
   removedIssueIndices = null,
+  globalDiffCommentsByFile = {},
 } = {}) {
   if (!task?.id || !sourceTabId) {
     return {
@@ -9710,11 +9711,15 @@ function buildAgentTaskPlanTreeModel({
       const fileMeta = rowsByFile.get(fileName) ?? { rows: [], added: 0, removed: 0 };
       const fileRows = Array.isArray(fileMeta?.rows) ? fileMeta.rows : [];
       const fileNodeId = `agent-task-tree-file:${task.id}:${originalIndex}:${fileIndex}`;
+      const fileGlobalCommentCount = Array.isArray(globalDiffCommentsByFile?.[fileName])
+        ? globalDiffCommentsByFile[fileName].length
+        : 0;
       navigationByNodeId[fileNodeId] = {
         type: 'file',
         taskId: task.id,
         sourceTabId,
         sourceLabel: task.label,
+        fileName,
         text: item?.text ?? '',
         statusItem,
         issueTarget,
@@ -9727,6 +9732,14 @@ function buildAgentTaskPlanTreeModel({
           <span className="agent-task-plan-file-label">
             <span className="agent-task-plan-file-name">{fileName}</span>
             <AgentTaskPlanFileChanges added={fileMeta?.added ?? 0} removed={fileMeta?.removed ?? 0} />
+            {fileGlobalCommentCount > 0 && (
+              <span className="agent-task-plan-file-comments" title={`${fileGlobalCommentCount} comment${fileGlobalCommentCount === 1 ? '' : 's'} from global diff`}>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3.14 1.64h9.71c.83 0 1.5.68 1.5 1.5v11.82l-4.9-3.92a.5.5 0 0 0-.31-.11h-6c-.83 0-1.5-.67-1.5-1.5V3.14c0-.82.67-1.5 1.5-1.5Z" stroke="currentColor" strokeLinejoin="round" />
+                </svg>
+                <span>{fileGlobalCommentCount}</span>
+              </span>
+            )}
           </span>
           ),
         icon: resolveAgentTaskPlanFileIcon(fileName),
@@ -9918,6 +9931,212 @@ function AgentTasksPanel({
   );
 }
 
+// ─── Comments Panel ───────────────────────────────────────────────────────────
+
+const COMMENTS_ICON = (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3.5 3.5H16.5C17.0523 3.5 17.5 3.94772 17.5 4.5V13.5C17.5 14.0523 17.0523 14.5 16.5 14.5H10.5L7 17.5V14.5H3.5C2.94772 14.5 2.5 14.0523 2.5 13.5V4.5C2.5 3.94772 2.94772 3.5 3.5 3.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+  </svg>
+);
+
+function aggregateCommentsForTab({ tabId, taskLabel, commentEntries, globalDiffComments }) {
+  const items = [];
+  const safeEntries = Array.isArray(commentEntries) ? commentEntries : [];
+
+  safeEntries.forEach((entry) => {
+    const targetLine = (entry?.line ?? '').trim();
+    const sectionTitle = entry?.sectionTitle ?? null;
+    // Spec-level comments
+    const specComments = Array.isArray(entry?.comments) ? entry.comments : [];
+    specComments.forEach((text, idx) => {
+      items.push({
+        id: `${tabId}:spec:${entry?.rowStableKey ?? entry?.rawIndex ?? targetLine}:${idx}`,
+        source: 'spec',
+        tabId,
+        taskLabel,
+        sectionTitle,
+        snippet: targetLine,
+        text,
+        target: entry?.checkTarget ?? null,
+      });
+    });
+    // Local-diff comments (per-row, stored on the same entry)
+    const diffMap = entry?.diffComments && typeof entry.diffComments === 'object' ? entry.diffComments : {};
+    Object.entries(diffMap).forEach(([rowId, comments]) => {
+      const list = Array.isArray(comments) ? comments : [];
+      list.forEach((text, idx) => {
+        items.push({
+          id: `${tabId}:local-diff:${entry?.rowStableKey ?? entry?.rawIndex ?? targetLine}:${rowId}:${idx}`,
+          source: 'local-diff',
+          tabId,
+          taskLabel,
+          sectionTitle,
+          snippet: targetLine,
+          text,
+          target: entry?.checkTarget ?? null,
+          diffRowId: rowId,
+        });
+      });
+    });
+  });
+
+  // Global-diff comments (file-level, stored separately)
+  const globalMap = globalDiffComments && typeof globalDiffComments === 'object' ? globalDiffComments : {};
+  Object.entries(globalMap).forEach(([fileName, comments]) => {
+    const list = Array.isArray(comments) ? comments : [];
+    list.forEach((text, idx) => {
+      items.push({
+        id: `${tabId}:global-diff:${fileName}:${idx}`,
+        source: 'global-diff',
+        tabId,
+        taskLabel,
+        sectionTitle: 'Changed file',
+        snippet: fileName,
+        text,
+        target: null,
+        fileName,
+      });
+    });
+  });
+
+  return items;
+}
+
+function CommentSourceBadge({ source }) {
+  if (source === 'spec') {
+    return <span className="comments-panel-source comments-panel-source-spec">spec</span>;
+  }
+  if (source === 'local-diff') {
+    return <span className="comments-panel-source comments-panel-source-local">local diff</span>;
+  }
+  if (source === 'global-diff') {
+    return <span className="comments-panel-source comments-panel-source-global">global diff</span>;
+  }
+  return null;
+}
+
+function CommentsPanel({ ctx, items = [], onItemClick = null, onMinimize = null, composeFiles = [], onAddGlobalDiffComment = null }) {
+  const grouped = useMemo(() => {
+    const byTab = new Map();
+    items.forEach((item) => {
+      if (!byTab.has(item.tabId)) {
+        byTab.set(item.tabId, { tabId: item.tabId, taskLabel: item.taskLabel, items: [] });
+      }
+      byTab.get(item.tabId).items.push(item);
+    });
+    return Array.from(byTab.values());
+  }, [items]);
+
+  const [composeFileKey, setComposeFileKey] = useState('');
+  const [composeText, setComposeText] = useState('');
+  const canCompose = composeFiles.length > 0 && typeof onAddGlobalDiffComment === 'function';
+
+  useEffect(() => {
+    if (composeFiles.length === 0) {
+      setComposeFileKey('');
+      return;
+    }
+    if (!composeFiles.some((entry) => entry.key === composeFileKey)) {
+      setComposeFileKey(composeFiles[0].key);
+    }
+  }, [composeFiles, composeFileKey]);
+
+  const handleSubmit = () => {
+    const trimmed = composeText.trim();
+    if (!trimmed) return;
+    const target = composeFiles.find((entry) => entry.key === composeFileKey);
+    if (!target) return;
+    onAddGlobalDiffComment?.({ tabId: target.tabId, fileName: target.fileName }, trimmed);
+    setComposeText('');
+  };
+
+  return (
+    <ToolWindow
+      title="Comments"
+      width="100%"
+      height="auto"
+      actions={['minimize']}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
+      onActionClick={(action) => {
+        if (action === 'minimize') onMinimize?.();
+      }}
+      className="comments-window main-window-tool-window main-window-tool-window-left"
+    >
+      <div className="comments-panel">
+        {canCompose && (
+          <div className="comments-panel-compose">
+            <div className="comments-panel-compose-header">Add comment to changed file</div>
+            <select
+              className="comments-panel-compose-select"
+              value={composeFileKey}
+              onChange={(event) => setComposeFileKey(event.target.value)}
+            >
+              {composeFiles.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.fileName} — {entry.taskLabel}
+                </option>
+              ))}
+            </select>
+            <textarea
+              className="comments-panel-compose-input"
+              placeholder="Comment text"
+              rows={2}
+              value={composeText}
+              onChange={(event) => setComposeText(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
+                  event.preventDefault();
+                  handleSubmit();
+                }
+              }}
+            />
+            <div className="comments-panel-compose-actions">
+              <button
+                type="button"
+                className="comments-panel-compose-submit"
+                onClick={handleSubmit}
+                disabled={!composeText.trim()}
+              >
+                Add comment
+              </button>
+            </div>
+          </div>
+        )}
+        {items.length === 0 && (
+          <div className="comments-panel-empty">
+            No comments yet. Add comments inline in the spec, in the local diff, or on changed files via the form above.
+          </div>
+        )}
+        {grouped.map((group) => (
+          <div key={group.tabId} className="comments-panel-group">
+            <div className="comments-panel-group-header">{group.taskLabel}</div>
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="comments-panel-item"
+                onClick={() => onItemClick?.(item)}
+                title={`Open ${item.snippet || 'comment source'}`}
+              >
+                <CommentSourceBadge source={item.source} />
+                <div className="comments-panel-item-body">
+                  <div className="comments-panel-item-text">{item.text}</div>
+                  {item.snippet && (
+                    <div className="comments-panel-item-snippet">
+                      {item.sectionTitle ? `${item.sectionTitle} — ` : ''}{item.snippet}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </ToolWindow>
+  );
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -9933,6 +10152,9 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState('t1');
   const [ideOpenWindows, setIdeOpenWindows] = useState(['project']);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
+  // Per-tab file-level comments left in the global (Agent Tasks) diff view.
+  // Shape: { [tabId]: { [fileName]: string[] } }
+  const [globalDiffComments, setGlobalDiffComments] = useState({});
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
   const [terminalSessions, setTerminalSessions] = useState({});
@@ -10384,6 +10606,25 @@ export default function App() {
   ]);
 
   const resetDoneComments = useCallback(() => {
+    setAgentTaskCommentEntries([]);
+    setDoneCommentResetToken((prev) => prev + 1);
+  }, []);
+
+  // Wipe all comments associated with a run's source tab — fired after each
+  // Run completes (per spec: "Комменты чистятся после каждого рана").
+  const wipeCommentsForRun = useCallback((sourceTabId) => {
+    setInteractiveTaskStates((prev) => {
+      if (!sourceTabId || !prev[sourceTabId]) return prev;
+      return {
+        ...prev,
+        [sourceTabId]: { ...prev[sourceTabId], commentEntries: [] },
+      };
+    });
+    setGlobalDiffComments((prev) => {
+      if (!sourceTabId || !prev[sourceTabId]) return prev;
+      const { [sourceTabId]: _removed, ...rest } = prev;
+      return rest;
+    });
     setAgentTaskCommentEntries([]);
     setDoneCommentResetToken((prev) => prev + 1);
   }, []);
@@ -11460,6 +11701,7 @@ export default function App() {
       return;
     }
     const section = (lastRunSectionRef.current || '').toLowerCase();
+    const runSourceTabId = lastRunRequest?.sourceTabId ?? null;
     if (section === 'acceptance criteria') {
       const acRevealOptions = buildSelectiveRunRevealOptions({
         kind: 'ac',
@@ -11474,6 +11716,7 @@ export default function App() {
         ...(acRevealOptions.hasSelectiveRerun
           ? { indices: acRevealOptions.indices }
           : {}),
+        onComplete: () => wipeCommentsForRun(runSourceTabId),
       });
     } else if (section === 'plan') {
       const planRevealOptions = buildSelectiveRunRevealOptions({
@@ -11484,16 +11727,19 @@ export default function App() {
       });
       // Clear applied plan fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, plan: {} }));
+      // Chain AC run after Plan, but skip if partial run with no selected AC items
+      const skipAcChain = lastRunRequest?.isPartialRun
+        && (!Array.isArray(lastRunRequest?.rerunAcOriginalIndices) || lastRunRequest.rerunAcOriginalIndices.length === 0);
+      const willChainAc = !cancelGeneration && lastRunRequest?.mode === 'section' && !skipAcChain;
       revealRunStatuses('plan', nextPlanRunStatuses, {
         initialResult: planRevealOptions.initialResult,
         ...(planRevealOptions.hasSelectiveRerun
           ? { indices: planRevealOptions.indices }
           : {}),
+        // Only wipe comments if this Run won't chain into AC; otherwise the AC reveal will wipe.
+        onComplete: willChainAc ? undefined : (() => wipeCommentsForRun(runSourceTabId)),
       });
-      // Chain AC run after Plan, but skip if partial run with no selected AC items
-      const skipAcChain = lastRunRequest?.isPartialRun
-        && (!Array.isArray(lastRunRequest?.rerunAcOriginalIndices) || lastRunRequest.rerunAcOriginalIndices.length === 0);
-      if (!cancelGeneration && lastRunRequest?.mode === 'section' && !skipAcChain) {
+      if (willChainAc) {
         clearChainedRunTimeout();
         const revealSteps = planRevealOptions.hasSelectiveRerun
           ? planRevealOptions.indices.length
@@ -11530,6 +11776,7 @@ export default function App() {
     setAppliedIssueFixes,
     setRunStateForTab,
     setTerminalStreamingForTab,
+    wipeCommentsForRun,
   ]);
 
   const resetTerminalOutput = useCallback(() => {
@@ -13335,6 +13582,7 @@ export default function App() {
           viewState?.removedIssueIndices
           ?? runtimeState?.taskState?.removedIssueIndices
           ?? null,
+        globalDiffCommentsByFile: globalDiffComments?.[sourceTabId] ?? {},
       });
 
       return nextTrees;
@@ -13343,6 +13591,7 @@ export default function App() {
     agentTaskPanelTasks,
     getCommentDrivenViewStateForTaskTab,
     getTaskRuntimeState,
+    globalDiffComments,
   ]);
   const handleAgentTaskPlanTreeNodeSelect = useCallback((taskId, nodeId) => {
     const navigationEntry = agentTaskPlanTreesByTaskId?.[taskId]?.navigationByNodeId?.[nodeId] ?? null;
@@ -14100,6 +14349,117 @@ export default function App() {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
   }, [activeTabId, updatePlanDiffUiStateForTab]);
 
+  // ─── Comments aggregation across all tabs ──────────────────────────────────
+  const commentsPanelItems = useMemo(() => {
+    const tabIds = new Set();
+    if (Array.isArray(agentTasks)) {
+      agentTasks.forEach((task) => {
+        if (task?.taskTabId) tabIds.add(task.taskTabId);
+        if (task?.id) tabIds.add(task.id);
+      });
+    }
+    Object.keys(interactiveTaskStates ?? {}).forEach((tabId) => tabIds.add(tabId));
+    Object.keys(globalDiffComments ?? {}).forEach((tabId) => tabIds.add(tabId));
+    if (activeSourceEditorTabId) tabIds.add(activeSourceEditorTabId);
+
+    const findLabel = (tabId) => {
+      const tab = ideTabs.find((t) => t.id === tabId);
+      if (tab?.label) return tab.label;
+      const task = agentTasks.find((t) => t.id === tabId || t.taskTabId === tabId);
+      return task?.label ?? tabId;
+    };
+
+    const result = [];
+    tabIds.forEach((tabId) => {
+      const entries = getCommentEntriesForTaskTab(tabId);
+      const tabGlobalComments = globalDiffComments?.[tabId] ?? {};
+      result.push(...aggregateCommentsForTab({
+        tabId,
+        taskLabel: findLabel(tabId),
+        commentEntries: entries,
+        globalDiffComments: tabGlobalComments,
+      }));
+    });
+    return result;
+  }, [agentTasks, interactiveTaskStates, globalDiffComments, activeSourceEditorTabId, ideTabs, getCommentEntriesForTaskTab]);
+
+  const openCommentsToolWindow = useCallback(() => {
+    setIdeOpenWindows((prev) => (
+      prev.includes('comments') ? prev : [...prev, 'comments']
+    ));
+  }, []);
+
+  const closeCommentsToolWindow = useCallback(() => {
+    setIdeOpenWindows((prev) => prev.filter((id) => id !== 'comments'));
+  }, []);
+
+  const handleCommentsItemClick = useCallback((item) => {
+    if (!item?.tabId) return;
+    const tabIndex = ideTabs.findIndex((tab) => tab.id === item.tabId);
+    if (tabIndex >= 0) {
+      setActiveEditorTab(tabIndex);
+    }
+  }, [ideTabs]);
+
+  // Targets available in the Comments tool window's compose section: every changed
+  // file across every active spec's plan tree.
+  const commentsComposeFiles = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    Object.entries(agentTaskPlanTreesByTaskId ?? {}).forEach(([_taskId, treeModel]) => {
+      const navMap = treeModel?.navigationByNodeId ?? {};
+      Object.values(navMap).forEach((entry) => {
+        if (entry?.type !== 'file' || !entry?.fileName || !entry?.sourceTabId) return;
+        const key = `${entry.sourceTabId}:::${entry.fileName}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push({
+          key,
+          tabId: entry.sourceTabId,
+          fileName: entry.fileName,
+          taskLabel: entry.sourceLabel ?? entry.fileName,
+        });
+      });
+    });
+    return out;
+  }, [agentTaskPlanTreesByTaskId]);
+
+  // For the active local diff: collect global-diff comments for each file present in
+  // the diff rows. Rendered as a "From global diff" section above the diff.
+  const activePlanDiffGlobalSections = useMemo(() => {
+    if (!isDiffTab || !activePlanDiffData || !activePlanDiffSourceTabId) return [];
+    const tabBucket = globalDiffComments?.[activePlanDiffSourceTabId] ?? {};
+    const seenFiles = new Set();
+    const orderedFiles = [];
+    (activePlanDiffData?.rows ?? []).forEach((row) => {
+      const fileName = row?.file;
+      if (!fileName || seenFiles.has(fileName)) return;
+      seenFiles.add(fileName);
+      orderedFiles.push(fileName);
+    });
+    if (orderedFiles.length === 0 && activePlanDiffData?.sourceTabLabel) {
+      orderedFiles.push(activePlanDiffData.sourceTabLabel);
+    }
+    return orderedFiles
+      .filter((fileName) => Array.isArray(tabBucket[fileName]) && tabBucket[fileName].length > 0)
+      .map((fileName) => ({ fileName, comments: tabBucket[fileName] }));
+  }, [isDiffTab, activePlanDiffData, activePlanDiffSourceTabId, globalDiffComments]);
+
+  const handleAddGlobalDiffComment = useCallback(({ tabId, fileName }, text) => {
+    if (!tabId || !fileName || !text) return;
+    setGlobalDiffComments((prev) => {
+      const tabBucket = prev?.[tabId] ?? {};
+      const existing = Array.isArray(tabBucket[fileName]) ? tabBucket[fileName] : [];
+      return {
+        ...prev,
+        [tabId]: {
+          ...tabBucket,
+          [fileName]: [...existing, text],
+        },
+      };
+    });
+  }, []);
+
   if (screen === 'welcome') {
     return (
       <ThemeProvider defaultTheme="dark">
@@ -14296,6 +14656,8 @@ export default function App() {
                     onRowFix={handlePlanDiffRowFix}
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
+                    onOpenComments={openCommentsToolWindow}
+                    globalDiffSections={activePlanDiffGlobalSections}
                   />
                 )
                 : undefined)
@@ -14307,6 +14669,7 @@ export default function App() {
           ...MY_LEFT_STRIPE,
           { id: '_sep',        separator: true,                                                    section: 'top' },
           { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
+          { id: 'comments',    icon: COMMENTS_ICON,   tooltip: 'Comments',     section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
@@ -14316,6 +14679,7 @@ export default function App() {
 
         leftPanelContent={(id, ctx) => {
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} />;
+          if (id === 'comments') return <CommentsPanel ctx={ctx} items={commentsPanelItems} onItemClick={handleCommentsItemClick} onMinimize={closeCommentsToolWindow} composeFiles={commentsComposeFiles} onAddGlobalDiffComment={handleAddGlobalDiffComment} />;
           return defaultLeftPanelContent(id, ctx);
         }}
         rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
