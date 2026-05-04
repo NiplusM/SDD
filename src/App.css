@@ -1451,7 +1451,7 @@ body {
 }
 
 .spec-check-status.is-outdated {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.4;
 }
 
 .spec-done-checkbox.checkbox-container {
@@ -1480,7 +1480,7 @@ body {
 .spec-done-run-outdated-row .spec-done-line-text,
 .spec-done-run-outdated-row .spec-done-line-bullet,
 .spec-done-run-outdated-row .spec-done-line-comment {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .ac-checks-toggle {
@@ -1502,12 +1502,12 @@ body {
 
 .ac-check-row.is-outdated .ac-checks-toggle,
 .spec-done-line-status.is-outdated .ac-checks-toggle {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .ac-check-row.is-outdated .ac-checks-toggle:hover,
 .spec-done-line-status.is-outdated .ac-checks-toggle:hover {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.6;
 }
 
 .ac-checks-arrow {
@@ -1535,7 +1535,7 @@ body {
 }
 
 .ac-subcheck-item.is-outdated {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .ac-subcheck-icon {
@@ -1574,11 +1574,11 @@ body {
 }
 
 .spec-done-plan-main.is-outdated {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .spec-done-plan-main.is-outdated .spec-done-plan-text {
-  color: inherit;
+  opacity: 1;
 }
 
 .spec-done-plan-text {
@@ -1622,7 +1622,7 @@ body {
 .spec-plan-subitem-list.is-outdated,
 .spec-done-plan-row.is-outdated .spec-plan-subitem-shell,
 .spec-done-plan-row.is-outdated .spec-plan-subitem-row {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .spec-plan-subitem-shell {
@@ -3444,11 +3444,11 @@ body {
 }
 
 .agent-task-plan-node-label.is-outdated .agent-task-plan-node-text {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.5;
 }
 
 .agent-task-plan-node-label.is-outdated .spec-check-status {
-  color: var(--gray-90, #8b8e94);
+  opacity: 0.4;
 }
 
 .agent-task-plan-file-name {
@@ -3891,6 +3891,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   flex-shrink: 0;
+  pointer-events: auto;
 }
 .spec-counter-btn:hover { background: rgba(255, 255, 255, 0.06); }
 .spec-counter-comment span { color: #548AF7; }
@@ -3969,4 +3970,267 @@ body {
 }
 .enhance-hint-body strong {
   font-weight: 600;
+}
+
+/* ─── Spec Flow picker ──────────────────────────────────────────────────────── */
+
+.at-spec-flow-btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border-radius: 4px;
+  border: 1px solid #4b4f56;
+  background: #1f2024;
+  color: #868A91;
+  font-family: Inter, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  margin-right: 4px;
+}
+.at-spec-flow-btn:hover,
+.at-spec-flow-btn:focus-within {
+  border-color: #5d6168;
+  background: #24262b;
+  color: #CED0D6;
+}
+.at-spec-flow-btn.is-open {
+  border-color: var(--control-focus-border-brand, #548AF7);
+  background: #24262b;
+  color: #CED0D6;
+}
+.at-spec-flow-name-link {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  color: #87B0F2;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.at-spec-flow-name-link:hover,
+.at-spec-flow-name-link:focus-visible {
+  text-decoration: underline;
+  color: #ADC8F5;
+}
+.at-spec-flow-chevron {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.at-spec-flow-chevron:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.at-spec-flow-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-flow-popup {
+  min-width: 240px;
+}
+.spec-flow-popup-item {
+  gap: 8px;
+}
+.spec-flow-popup-icon {
+  flex-shrink: 0;
+}
+.spec-flow-popup-footer {
+  border-top: 1px solid #2b2d31;
+}
+
+/* ─── Multi-select gutter ───────────────────────────────────────────────────── */
+
+.spec-done-gutter-select-btn {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  width: 20px;
+  height: 20px;
+  min-height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.spec-done-gutter-select-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.spec-done-gutter-select-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.spec-done-gutter-select-btn svg {
+  display: block;
+}
+.spec-done-gutter-cell-selected {
+  align-items: flex-start;
+}
+
+/* ─── Selected row highlight ────────────────────────────────────────────────── */
+
+.spec-done-row.spec-done-row-selected {
+  position: relative;
+  /* Collapse margins between consecutive selected rows so background is seamless */
+  margin-top: 0 !important;
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.spec-done-row.spec-done-row-selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(84, 138, 247, 0.08);
+  border-left: 2px solid rgba(84, 138, 247, 0.5);
+  pointer-events: none;
+  z-index: 0;
+}
+/* First selected row in a run keeps its top margin, last gets bottom padding */
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected {
+  margin-top: 3px !important;
+  border-radius: 4px 4px 0 0;
+}
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected::before {
+  border-radius: 4px 4px 0 0;
+}
+.spec-done-row.spec-done-row-selected:has(+ .spec-done-row:not(.spec-done-row-selected)),
+.spec-done-row.spec-done-row-selected:last-child {
+  border-radius: 0 0 4px 4px;
+}
+.spec-done-row.spec-done-row-selected:has(+ .spec-done-row:not(.spec-done-row-selected))::before,
+.spec-done-row.spec-done-row-selected:last-child::before {
+  border-radius: 0 0 4px 4px;
+}
+/* Single selected row (not adjacent to another selected) */
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected:has(+ .spec-done-row:not(.spec-done-row-selected)),
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected:last-child {
+  border-radius: 4px;
+}
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected:has(+ .spec-done-row:not(.spec-done-row-selected))::before,
+.spec-done-row:not(.spec-done-row-selected) + .spec-done-row.spec-done-row-selected:last-child::before {
+  border-radius: 4px;
+}
+/* First child in the scroll container */
+.spec-done-row.spec-done-row-selected:first-child {
+  margin-top: 0 !important;
+  border-radius: 4px 4px 0 0;
+}
+.spec-done-row.spec-done-row-selected:first-child::before {
+  border-radius: 4px 4px 0 0;
+}
+
+/* ─── Extract to subtask button ─────────────────────────────────────────────── */
+
+.at-send-btn-extract {
+  color: #868A91;
+}
+.at-send-btn-extract:hover {
+  color: #CED0D6;
+}
+
+/* ─── Outdated: muted current color instead of gray ─────────────────────────── */
+
+.spec-check-status.is-outdated {
+  opacity: 0.4;
+}
+.ac-check-main.is-outdated,
+.spec-done-line-status.is-outdated,
+.spec-done-plan-main.is-outdated {
+  opacity: 0.5;
+}
+.ac-check-row.is-outdated .ac-checks-toggle,
+.spec-done-line-status.is-outdated .ac-checks-toggle {
+  opacity: 0.5;
+}
+.ac-subcheck-item.is-outdated {
+  opacity: 0.5;
+}
+.spec-done-run-outdated-row .spec-done-line-text,
+.spec-done-run-outdated-row .spec-done-line-bullet,
+.spec-done-run-outdated-row .spec-done-line-comment {
+  opacity: 0.5;
+}
+.spec-plan-subitem-list.is-outdated,
+.spec-done-plan-row.is-outdated .spec-plan-subitem-shell,
+.spec-done-plan-row.is-outdated .spec-plan-subitem-row {
+  opacity: 0.5;
+}
+
+/* ─── Changed files in inspection widget ────────────────────────────────────── */
+
+.spec-counter-files {
+  gap: 3px;
+}
+.spec-counter-files span {
+  color: #868A91;
+}
+
+.spec-done-inspection-run-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.spec-done-run-label {
+  white-space: nowrap;
+  font-weight: 500;
+  color: #868A91;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+/* ─── Changed files popup ───────────────────────────────────────────────────── */
+
+.spec-changed-files-popup {
+  min-width: 280px;
+}
+.spec-changed-files-popup-header {
+  padding: 8px 12px 4px;
+  color: #868A91;
+  font-size: 12px;
+  font-weight: 500;
+}
+.spec-changed-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.spec-changed-file-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.spec-changed-file-icon {
+  flex-shrink: 0;
+}
+.spec-changed-file-stats {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.spec-diff-added {
+  color: #4CAF50;
+}
+.spec-diff-removed {
+  color: #DB5C5C;
 }

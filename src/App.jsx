@@ -35,6 +35,9 @@ import {
   defaultBottomPanelContent,
 } from '@jetbrains/int-ui-kit';
 import './App.css';
+import newFeatureInstructionRaw from './Specifications/instructions/new-feature.md?raw';
+import bugFixInstructionRaw     from './Specifications/instructions/bug-fix.md?raw';
+import refactoringInstructionRaw from './Specifications/instructions/refactoring.md?raw';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +54,49 @@ const AGENT_TASK_LOADING_STEP_DELAY_MS = 1200;
 const AGENT_TASK_CONTENT_MORPH_MAX_FRAMES = 24;
 const AGENT_TASK_CONTENT_MORPH_INLINE_MAX_FRAMES = 18;
 const AGENT_TASK_CONTENT_MORPH_STEP_DELAY_MS = 36;
+
+// ─── Spec Flow instruction files ────────────────────────────────────────────
+// Real disk files live under src/Specifications/instructions/. The picker and
+// the Project tree both read this list; `name` and `description` mirror each
+// file's YAML frontmatter.
+const SPEC_FLOW_INSTRUCTIONS = [
+  { id: 'new-feature', filename: 'new-feature.md', name: 'New Feature', description: 'Build a new capability — scope it, plan, verify with tests', isDefault: true, content: newFeatureInstructionRaw },
+  { id: 'bug-fix',     filename: 'bug-fix.md',     name: 'Bug Fix',     description: 'Reproduce, root-cause, fix, and lock in with a regression test', content: bugFixInstructionRaw },
+  { id: 'refactoring', filename: 'refactoring.md', name: 'Refactoring', description: 'Restructure code without changing behavior — preserve tests, improve shape', content: refactoringInstructionRaw },
+];
+
+const SPEC_FLOW_OPTIONS = SPEC_FLOW_INSTRUCTIONS;
+
+// ─── Run history & changed files (prototype data) ───────────────────────────
+const DEMO_RUN_HISTORY = [
+  {
+    id: 'run-1',
+    label: 'Run #1',
+    timestamp: Date.now() - 300000,
+    status: 'passed',
+    itemCount: 13,
+    changedFiles: [
+      { name: 'schema.sql', added: 8, removed: 2 },
+      { name: 'Visit.java', added: 12, removed: 1 },
+      { name: 'VisitRepository.java', added: 3, removed: 0 },
+      { name: 'VisitController.java', added: 30, removed: 5 },
+      { name: 'createOrUpdateVisitForm.html', added: 15, removed: 2 },
+      { name: 'ownerDetails.html', added: 8, removed: 0 },
+    ],
+  },
+  {
+    id: 'run-2',
+    label: 'Run #2',
+    timestamp: Date.now() - 120000,
+    status: 'passed',
+    itemCount: 3,
+    changedFiles: [
+      { name: 'VisitController.java', added: 5, removed: 12 },
+      { name: 'VisitRepository.java', added: 8, removed: 0 },
+      { name: 'schema.sql', added: 2, removed: 0 },
+    ],
+  },
+];
 
 const MY_PROJECTS = [
   { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
@@ -538,6 +584,27 @@ const MY_PROJECT_TREE = [
           { id: 'test2', label: 'ClinicServiceTests.java',   icon: 'fileTypes/java' },
         ],
       },
+    ],
+  },
+  {
+    id: 'agents-tasks-root',
+    label: 'Agents Tasks',
+    icon: 'nodes/folder',
+    isExpanded: true,
+    children: [
+      {
+        id: 'instructions',
+        label: 'instructions',
+        icon: 'nodes/folder',
+        isExpanded: true,
+        children: SPEC_FLOW_INSTRUCTIONS.map((flow) => ({
+          id: `instruction-${flow.id}`,
+          label: flow.filename,
+          icon: <IconMdTask />,
+        })),
+      },
+      { id: 'spec-visit-booking', label: 'visit-booking.md', icon: <IconMdTask /> },
+      { id: 'spec-vet-schedules', label: 'vet-schedules.md', icon: <IconMdTask /> },
     ],
   },
 ];
@@ -3601,7 +3668,6 @@ function createSpecDocument() {
     {
       id: 'plan',
       title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
         { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull' },
@@ -4687,9 +4753,8 @@ function getDoneHeadingTitle(line) {
   return headingMatch ? headingMatch[1].trim() : null;
 }
 
-function shouldShowDoneRunIcon(line) {
-  const headingTitle = getDoneHeadingTitle(line)?.toLowerCase();
-  return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
+function shouldShowDoneRunIcon(_line) {
+  return false;
 }
 
 function CheckStatus({ status, outdated = false }) {
@@ -5645,16 +5710,6 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
         : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
       }
       <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
-      {canShowDiff && !isNested && (
-        <button
-          type="button"
-          className="ac-checks-toggle"
-          data-demo-id={demoTargetId ? `plan-show-diff-${demoTargetId}` : undefined}
-          onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}
-        >
-          Show diff
-        </button>
-      )}
       {commentAdornment}
     </div>
   );
@@ -5663,18 +5718,6 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
 function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
-    if (headingTitle.toLowerCase() === 'plan') {
-      const initialFiles = getDonePlanHeadingFiles(sectionMeta, attachedFiles);
-      return (
-        <DoneHeadingWithFiles
-          key={key}
-          title={headingTitle}
-          initialFiles={initialFiles}
-          addPopupFiles={addPopupFiles}
-          commentAdornment={commentAdornment}
-        />
-      );
-    }
     return (
       <div key={key} className="spec-done-heading-row">
         <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
@@ -5764,6 +5807,9 @@ function DoneInspectionWidget({
   commentCount = 0,
   versions = [],
   onVersionSelect = null,
+  runHistory = [],
+  onRunNavigate = null,
+  onOpenChangedFiles = null,
 }) {
   const [versionPopupRect, setVersionPopupRect] = useState(null);
   const versionEntries = Array.isArray(versions) && versions.length > 0
@@ -5785,6 +5831,14 @@ function DoneInspectionWidget({
     hasErrors ? `${errorCount} error${errorCount === 1 ? '' : 's'}` : null,
     hasComments ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : null,
   ].filter(Boolean);
+  const [changedFilesPopupRect, setChangedFilesPopupRect] = useState(null);
+  const [activeRunIdx, setActiveRunIdx] = useState(runHistory.length > 0 ? runHistory.length - 1 : -1);
+  const hasRuns = runHistory.length > 0;
+  const activeRun = hasRuns ? runHistory[activeRunIdx] ?? runHistory[runHistory.length - 1] : null;
+  const changedFilesCount = activeRun?.changedFiles?.length ?? 0;
+  const hasChangedFiles = changedFilesCount > 0;
+  const canNavigatePrevRun = activeRunIdx > 0;
+  const canNavigateNextRun = activeRunIdx < runHistory.length - 1;
 
   useEffect(() => {
     if (!versionPopupRect) return undefined;
@@ -5834,6 +5888,81 @@ function DoneInspectionWidget({
           <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="#818594" strokeLinecap="round" />
         </svg>
       </button>
+      {hasChangedFiles && (
+        <>
+          <div className="spec-done-inspection-separator" />
+          <button
+            type="button"
+            className="spec-counter-btn spec-counter-files"
+            aria-label={`${changedFilesCount} changed file${changedFilesCount === 1 ? '' : 's'}`}
+            onClick={(event) => {
+              if (changedFilesPopupRect) {
+                setChangedFilesPopupRect(null);
+                return;
+              }
+              setChangedFilesPopupRect(event.currentTarget.getBoundingClientRect());
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M4 2C3.44772 2 3 2.44772 3 3V13C3 13.5523 3.44772 14 4 14H12C12.5523 14 13 13.5523 13 13V5.41421C13 5.14899 12.8946 4.89464 12.7071 4.70711L9.29289 1.29289C9.10536 1.10536 8.851 1 8.58579 1H4C3.44772 1 3 1.44772 3 2Z" stroke="#868A91" strokeWidth="1.2" />
+              <path d="M9 1V4C9 4.55228 9.44772 5 10 5H13" stroke="#868A91" strokeWidth="1.2" />
+            </svg>
+            <span className="spec-done-inspection-text">{changedFilesCount}</span>
+          </button>
+        </>
+      )}
+      {hasRuns && (
+        <>
+          <div className="spec-done-inspection-separator" />
+          <div className="spec-done-inspection-run-nav">
+            {runHistory.length > 1 && (
+              <button
+                type="button"
+                className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
+                aria-label="Previous run"
+                disabled={!canNavigatePrevRun}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (canNavigatePrevRun) {
+                    setActiveRunIdx((prev) => {
+                      const next = prev - 1;
+                      onRunNavigate?.(next);
+                      return next;
+                    });
+                  }
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M9.5 4L5.5 8L9.5 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            <span className="spec-done-inspection-text spec-done-run-label">{activeRun?.label ?? 'Run #1'}</span>
+            {runHistory.length > 1 && (
+              <button
+                type="button"
+                className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
+                aria-label="Next run"
+                disabled={!canNavigateNextRun}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  if (canNavigateNextRun) {
+                    setActiveRunIdx((prev) => {
+                      const next = prev + 1;
+                      onRunNavigate?.(next);
+                      return next;
+                    });
+                  }
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M6.5 4L10.5 8L6.5 12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </>
+      )}
       {hasIssues && (
         <>
           <div className="spec-done-inspection-separator" />
@@ -5945,6 +6074,40 @@ function DoneInspectionWidget({
           <div className="cmp-footer spec-done-version-popup-footer">
             <span className="cmp-footer-text">New versions appear after enhance.</span>
           </div>
+        </div>
+      </PositionedPopup>
+    )}
+    {changedFilesPopupRect && activeRun && (
+      <PositionedPopup triggerRect={changedFilesPopupRect} onDismiss={() => setChangedFilesPopupRect(null)} gap={4}>
+        <div className="cmp-popup spec-changed-files-popup">
+          <div className="spec-changed-files-popup-header">
+            <span className="cmp-label">{activeRun.label} — {Math.round((Date.now() - activeRun.timestamp) / 60000)} min ago</span>
+          </div>
+          {(activeRun.changedFiles ?? []).map((file, idx) => (
+            <div
+              key={idx}
+              className="cmp-cell spec-changed-file-item"
+              role="button"
+              tabIndex={0}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                setChangedFilesPopupRect(null);
+                onOpenChangedFiles?.(file);
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="spec-changed-file-icon" aria-hidden="true">
+                <path d="M4 2C3.44772 2 3 2.44772 3 3V13C3 13.5523 3.44772 14 4 14H12C12.5523 14 13 13.5523 13 13V5.41421C13 5.14899 12.8946 4.89464 12.7071 4.70711L9.29289 1.29289C9.10536 1.10536 8.851 1 8.58579 1H4C3.44772 1 3 1.44772 3 2Z" stroke="#868A91" strokeWidth="1.2" />
+                <path d="M9 1V4C9 4.55228 9.44772 5 10 5H13" stroke="#868A91" strokeWidth="1.2" />
+              </svg>
+              <div className="cmp-content">
+                <span className="cmp-label">{file.name}</span>
+              </div>
+              <span className="spec-changed-file-stats">
+                {file.added > 0 && <span className="spec-diff-added">+{file.added}</span>}
+                {file.removed > 0 && <span className="spec-diff-removed"> −{file.removed}</span>}
+              </span>
+            </div>
+          ))}
         </div>
       </PositionedPopup>
     )}
@@ -6328,7 +6491,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, selectedItemKeys, onSelectedItemKeysChange, runHistory = [] }) {
   const effectiveDocumentSections = useMemo(
     () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
     [documentSections]
@@ -6598,9 +6761,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           issueSeverity = statusIssueSeverity;
           issueTarget = { kind: 'ac', index: originalIndex };
         }
-      }
-
-      if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
+      } else if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
         const originalIndex = statusMeta.originalIndex;
         if (Number.isInteger(originalIndex)) {
           checkTarget = { kind: 'plan', index: originalIndex };
@@ -6610,6 +6771,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           issueSeverity = statusIssueSeverity;
           issueTarget = { kind: 'plan', index: originalIndex };
         }
+      }
+
+      // Ensure all checkbox items have a checkTarget so gutter selection works
+      if (effectiveIsCheckLine && !checkTarget) {
+        checkTarget = { kind: inAcSection ? 'ac' : inPlanSection ? 'plan' : 'item', index: rowIndex };
       }
 
       const stableKey = serializedLineMeta?.stableKey
@@ -6646,6 +6812,58 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
   );
+  // Build selection groups: top-level parent → [parent, ...children]
+  // When a parent is selected, all its children are also selected visually.
+  const selectionGroupByKey = useMemo(() => {
+    const groupMap = new Map(); // stableKey → [stableKey, ...]
+    let currentParentKey = null;
+    let currentGroup = [];
+    for (const rm of rowMetaList) {
+      if (rm.isTopLevelPlanParent || rm.isTopLevelAcItem) {
+        // Save previous group
+        if (currentParentKey && currentGroup.length > 0) {
+          for (const k of currentGroup) {
+            groupMap.set(k, currentGroup);
+          }
+        }
+        currentParentKey = rm.stableKey;
+        currentGroup = [rm.stableKey];
+      } else if (rm.isNestedPlanChild && currentParentKey) {
+        currentGroup.push(rm.stableKey);
+      } else {
+        // Non-check row → flush
+        if (currentParentKey && currentGroup.length > 0) {
+          for (const k of currentGroup) {
+            groupMap.set(k, currentGroup);
+          }
+        }
+        currentParentKey = null;
+        currentGroup = [];
+      }
+    }
+    // Flush last group
+    if (currentParentKey && currentGroup.length > 0) {
+      for (const k of currentGroup) {
+        groupMap.set(k, currentGroup);
+      }
+    }
+    return groupMap;
+  }, [rowMetaList]);
+
+  // Expand selectedItemKeys to include children of selected parents
+  const expandedSelectedKeys = useMemo(() => {
+    const expanded = new Set(selectedItemKeys);
+    for (const key of selectedItemKeys) {
+      const group = selectionGroupByKey.get(key);
+      if (group) {
+        for (const k of group) {
+          expanded.add(k);
+        }
+      }
+    }
+    return expanded;
+  }, [selectedItemKeys, selectionGroupByKey]);
+
   const hydratedRowComments = useMemo(
     () => buildRowCommentsStateFromEntries(rowMetaList, persistedCommentEntries),
     [persistedCommentEntries, rowMetaList]
@@ -7440,6 +7658,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         commentCount={totalCommentCount}
         versions={versionHistory?.versions ?? []}
         onVersionSelect={onOpenVersionDiff}
+        runHistory={runHistory}
+        onOpenChangedFiles={(file) => {
+          // Open diff tab for the selected file
+          onOpenDiffTab?.({
+            text: file.name,
+            statusItem: { status: 'passed' },
+            issueTarget: { kind: 'plan', index: 0 },
+          });
+        }}
       />
       <div className="spec-done-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
         {rowMetaList.map((rowMeta) => {
@@ -7488,11 +7715,19 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
             const showIssueBulb = hasIssueBulb
               && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
-            const showItemRunButton = Boolean(effectiveCheckTarget)
+            const isCheckItem = Boolean(effectiveCheckTarget);
+            const isItemSelected = expandedSelectedKeys.has(stableKey);
+            const isDirectlySelected = selectedItemKeys.has(stableKey);
+            const hasSelection = selectedItemKeys.size > 0;
+            const isSelectableItem = isCheckItem;
+            const showSelectionCheckbox = isSelectableItem
               && isRowHovered
               && !isCommentPopupOpen
               && !isIssuePopupOpen
-              && !showIssueBulb;
+              && !showIssueBulb
+              && !isDirectlySelected;
+            // Inline run button only when hovering without any selection active
+            const showItemRunButton = false;
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
@@ -7527,7 +7762,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <div
               key={stableKey}
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}${isItemSelected ? ' spec-done-row-selected' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -7566,20 +7801,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 }
               }}
             >
-              <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-run' : ''}`}>
-                {showRunIcon ? (
-                  <button
-                    type="button"
-                    className="editor-gutter-line-number spec-done-gutter-line-number-run"
-                    aria-label="Open Terminal"
-                    onClick={() => onOpenTerminal?.({
-                      sectionTitle: headingTitle,
-                      commentEntries,
-                    })}
-                  >
-                    <Icon name="run/run" size={16} />
-                  </button>
-                ) : showIssueBulb ? (
+              <div className={`editor-gutter-row spec-done-gutter-cell${isItemSelected ? ' spec-done-gutter-cell-selected' : ''}`}>
+                {showIssueBulb ? (
                   <button
                     type="button"
                     className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
@@ -7613,15 +7836,62 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="codeInsight/intentionBulb" size={16} />
                   </button>
+                ) : isItemSelected ? (
+                  <button
+                    type="button"
+                    className="spec-done-gutter-select-btn is-selected"
+                    aria-label="Deselect item"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onSelectedItemKeysChange?.((prev) => {
+                        const next = new Set(prev);
+                        next.delete(stableKey);
+                        return next;
+                      });
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="1" y="1" width="14" height="14" rx="3" fill="#548AF7" />
+                      <path d="M5 8L7 10L11 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 ) : showItemRunButton ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
-                    title={effectiveCheckTarget?.kind === 'ac' ? 'Run acceptance criterion' : 'Run plan item'}
+                    title="Run item"
                     onRun={() => onOpenTerminal?.({
                       sectionTitle: currentSectionTitle,
                       checkTarget: effectiveCheckTarget,
                     })}
                   />
+                ) : showSelectionCheckbox ? (
+                  <button
+                    type="button"
+                    className="spec-done-gutter-select-btn"
+                    aria-label="Select item for run"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onSelectedItemKeysChange?.((prev) => {
+                        const next = new Set(prev);
+                        next.add(stableKey);
+                        return next;
+                      });
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke="#6B7078" strokeWidth="1" />
+                    </svg>
+                  </button>
                 ) : (
                   <div
                     className="editor-gutter-line-number"
@@ -7884,7 +8154,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, handleExtractToSubtask = null, pendingExtractEnhance = false, onOpenInstructionFile = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -7893,7 +8163,16 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const [popupPos, setPopupPos] = useState(null);
   const [cmpPos, setCmpPos] = useState(null);
   const [doneOverlayHost, setDoneOverlayHost] = useState(null);
-  const [hasPendingDoneEnhanceChanges, setHasPendingDoneEnhanceChanges] = useState(false);
+  const [hasPendingDoneEnhanceChanges, setHasPendingDoneEnhanceChanges] = useState(pendingExtractEnhance);
+  const [selectedSpecFlow, setSelectedSpecFlow] = useState(SPEC_FLOW_OPTIONS[0]);
+  const [specFlowPopupRect, setSpecFlowPopupRect] = useState(null);
+  const [changedFilesPopupRect, setChangedFilesPopupRect] = useState(null);
+  const [currentRunIndex, setCurrentRunIndex] = useState(0);
+  const [selectedItemKeys, setSelectedItemKeys] = useState(new Set());
+  const selectedItemCount = selectedItemKeys.size;
+  // Run history: only show after a run has produced results
+  const hasRunResults = Boolean(acRunResult) || Boolean(planRunResult);
+  const effectiveRunHistory = hasRunResults ? DEMO_RUN_HISTORY : [];
   const [doneEnhanceLocksBySession, setDoneEnhanceLocksBySession] = useState({});
   const [doneEnhanceHintRect, setDoneEnhanceHintRect] = useState(null);
   const [isDoneEnhanceHintDismissing, setIsDoneEnhanceHintDismissing] = useState(false);
@@ -8176,6 +8455,18 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
     prevNullSlotCountRef.current = currentNullCount;
   }, [acRunResult, commentResetToken, currentCode, planRunResult, resetDoneEnhanceAttention, specSessionKey]);
+
+  // After extract-to-subtask, force the Enhance badge on (overrides the baseline reset above)
+  useEffect(() => {
+    if (!pendingExtractEnhance) return;
+    // Delay to override the resetDoneEnhanceAttention suppression timer
+    const timer = setTimeout(() => {
+      allowDoneEnhanceAttentionRef.current = true;
+      suppressEnhanceBadgeRef.current = false;
+      setHasPendingDoneEnhanceChanges(true);
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, [pendingExtractEnhance, specSessionKey]);
 
   // When a quick fix is applied the affected run-result slot is set to null.
   // Treat that as a pending change so the Enhance badge + popup appear.
@@ -8568,7 +8859,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} selectedItemKeys={selectedItemKeys} onSelectedItemKeysChange={setSelectedItemKeys} runHistory={effectiveRunHistory} />,
           doneOverlayHost
         )}
       </>
@@ -8583,7 +8874,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} selectedItemKeys={selectedItemKeys} onSelectedItemKeysChange={setSelectedItemKeys} runHistory={effectiveRunHistory} />,
           doneOverlayHost
         )}
       </>
@@ -8627,17 +8918,38 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <span className="at-send-label">Stop</span>
                   </button>
                 ) : (<>
-                  {attachedFiles && attachedFiles.length > 0 && (
-                    <div className="attached-files-list">
-                      {attachedFiles.map((file, idx) => (
-                        <AttachedFileChip
-                          key={file.label + idx}
-                          label={file.label}
-                          onRemove={() => onRemoveAttached?.(idx)}
-                        />
-                      ))}
-                    </div>
-                  )}
+                  {/* Spec Flow picker */}
+                  <div className={`at-spec-flow-btn${specFlowPopupRect ? ' is-open' : ''}`}>
+                    <AddFileIcon type="md" />
+                    <button
+                      type="button"
+                      className="at-spec-flow-name-link"
+                      onClick={() => onOpenInstructionFile?.(selectedSpecFlow)}
+                      title={`Open ${selectedSpecFlow?.filename ?? 'instruction file'}`}
+                    >
+                      {selectedSpecFlow?.name ?? 'Choose flow'}
+                    </button>
+                    <button
+                      type="button"
+                      className="at-spec-flow-chevron"
+                      onClick={(event) => {
+                        if (specFlowPopupRect) {
+                          setSpecFlowPopupRect(null);
+                          return;
+                        }
+                        const triggerEl = event.currentTarget.closest('.at-spec-flow-btn') ?? event.currentTarget;
+                        setSpecFlowPopupRect(triggerEl.getBoundingClientRect());
+                      }}
+                      aria-haspopup="menu"
+                      aria-expanded={Boolean(specFlowPopupRect)}
+                      aria-label="Choose Spec Flow"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                        <path d="M3 4.5L6 7.5L9 4.5" stroke="#868A91" strokeWidth="1.2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+
                   <button className="at-icon-btn" ref={addBtnRef} onClick={handleAddToolbarClick}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                       <path fillRule="evenodd" clipRule="evenodd" d="M7.5 1C7.77614 1 8 1.22386 8 1.5V7H13.5C13.7761 7 14 7.22386 14 7.5C14 7.77614 13.7761 8 13.5 8H8V13.5C8 13.7761 7.77614 14 7.5 14C7.22386 14 7 13.7761 7 13.5V8H1.5C1.22386 8 1 7.77614 1 7.5C1 7.22386 1.22386 7 1.5 7H7V1.5C7 1.22386 7.22386 1 7.5 1Z" fill="#C4C4C4" />
@@ -8647,9 +8959,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   <div className="at-vsep" />
 
                   <button className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
-                    // Suppress badge during and after the run — the run itself
-                    // will produce authoritative statuses, so pre-run pending
-                    // changes are no longer relevant.
                     setHasPendingDoneEnhanceChanges(false);
                     if (suppressEnhanceBadgeTimerRef.current) {
                       clearTimeout(suppressEnhanceBadgeTimerRef.current);
@@ -8659,11 +8968,63 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       suppressEnhanceBadgeRef.current = false;
                       suppressEnhanceBadgeTimerRef.current = 0;
                     }, 4000);
-                    onOpenTerminal?.(null);
+                    if (selectedItemCount > 0) {
+                      // Partial run: parse selectedItemKeys to AC/Plan indices
+                      const selectedAcIndices = [];
+                      const selectedPlanIndices = [];
+                      for (const key of selectedItemKeys) {
+                        const acMatch = key.match(/section-item:ac-(\d+)/);
+                        if (acMatch) { selectedAcIndices.push(parseInt(acMatch[1], 10) - 1); continue; }
+                        const planMatch = key.match(/section-item:plan-(\d+)/);
+                        if (planMatch) { selectedPlanIndices.push(parseInt(planMatch[1], 10) - 1); continue; }
+                      }
+                      onOpenTerminal?.({
+                        selectedAcIndices,
+                        selectedPlanIndices,
+                      });
+                    } else {
+                      onOpenTerminal?.(null);
+                    }
+                    // Clear selection after starting run
+                    setSelectedItemKeys(new Set());
                   }}>
-                    <Icon name="run/run" size={16} />
-                    <span className="at-send-label">Run</span>
+                    {selectedItemCount > 1 ? (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <path d="M3 3L7.5 8L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M8 3L12.5 8L8 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <Icon name="run/run" size={16} />
+                    )}
+                    <span className="at-send-label">{selectedItemCount > 1 ? `Run ${selectedItemCount}` : 'Run'}</span>
                   </button>
+
+                  {selectedItemCount > 1 && (
+                    <button
+                      className="at-send-btn at-send-btn-extract"
+                      onClick={() => {
+                        // Collect selected item texts for subtask generation
+                        const selectedTexts = [];
+                        for (const key of selectedItemKeys) {
+                          const acMatch = key.match(/section-item:ac-(\d+)/);
+                          const planMatch = key.match(/section-item:plan-(\d+)/);
+                          if (acMatch || planMatch) {
+                            selectedTexts.push(key);
+                          }
+                        }
+                        // Create subtask in Agent Tasks tree
+                        handleExtractToSubtask?.(selectedTexts);
+                        setSelectedItemKeys(new Set());
+                      }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                        <path d="M4 2V10M4 10L8 6M4 10L8 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M8 6H14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                        <path d="M8 14H14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                      </svg>
+                      <span className="at-send-label">Extract</span>
+                    </button>
+                  )}
 
                   <div className="at-vsep" />
 
@@ -8721,9 +9082,37 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               />
             </PositionedPopup>
           )}
+          {specFlowPopupRect && (
+            <PositionedPopup triggerRect={specFlowPopupRect} onDismiss={() => setSpecFlowPopupRect(null)} gap={4}>
+              <div className="cmp-popup spec-flow-popup">
+                {SPEC_FLOW_OPTIONS.map((option) => (
+                  <div
+                    key={option.id}
+                    className={`cmp-cell spec-flow-popup-item${option.id === selectedSpecFlow?.id ? ' cmp-cell-selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      setSelectedSpecFlow(option);
+                      setSpecFlowPopupRect(null);
+                    }}
+                  >
+                    <AddFileIcon type="md" />
+                    <div className="cmp-content">
+                      <span className="cmp-label">{option.name}</span>
+                      <span className="cmp-desc">{option.filename}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="cmp-footer spec-flow-popup-footer">
+                  <span className="cmp-footer-text">Select instruction file for spec execution.</span>
+                </div>
+              </div>
+            </PositionedPopup>
+          )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} selectedItemKeys={selectedItemKeys} onSelectedItemKeysChange={setSelectedItemKeys} runHistory={effectiveRunHistory} />,
           doneOverlayHost
         )}
       </>
@@ -8770,6 +9159,38 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
             {/* Default state — right */}
             <div className="agent-task-toolbar-right">
+              {/* Spec Flow picker (also on empty spec) */}
+              <div className={`at-spec-flow-btn${specFlowPopupRect ? ' is-open' : ''}`}>
+                <AddFileIcon type="md" />
+                <button
+                  type="button"
+                  className="at-spec-flow-name-link"
+                  onClick={() => onOpenInstructionFile?.(selectedSpecFlow)}
+                  title={`Open ${selectedSpecFlow?.filename ?? 'instruction file'}`}
+                >
+                  {selectedSpecFlow?.name ?? 'Choose flow'}
+                </button>
+                <button
+                  type="button"
+                  className="at-spec-flow-chevron"
+                  onClick={(event) => {
+                    if (specFlowPopupRect) {
+                      setSpecFlowPopupRect(null);
+                      return;
+                    }
+                    const triggerEl = event.currentTarget.closest('.at-spec-flow-btn') ?? event.currentTarget;
+                    setSpecFlowPopupRect(triggerEl.getBoundingClientRect());
+                  }}
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(specFlowPopupRect)}
+                  aria-label="Choose Spec Flow"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="#868A91" strokeWidth="1.2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
               {attachedFiles && attachedFiles.length > 0 && (
                 <div className="attached-files-list">
                   {attachedFiles.map((file, idx) => (
@@ -8822,6 +9243,34 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           <AddPopup onClose={() => setShowAddPopup(false)} onSelectFile={(item) => onAddAttached?.(item)} files={addPopupFiles} style={{ position: 'fixed', top: popupPos.top, right: popupPos.right }} />
         </>,
         document.body
+      )}
+      {specFlowPopupRect && (
+        <PositionedPopup triggerRect={specFlowPopupRect} onDismiss={() => setSpecFlowPopupRect(null)} gap={4}>
+          <div className="cmp-popup spec-flow-popup">
+            {SPEC_FLOW_OPTIONS.map((option) => (
+              <div
+                key={option.id}
+                className={`cmp-cell spec-flow-popup-item${option.id === selectedSpecFlow?.id ? ' cmp-cell-selected' : ''}`}
+                role="button"
+                tabIndex={0}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  setSelectedSpecFlow(option);
+                  setSpecFlowPopupRect(null);
+                }}
+              >
+                <AddFileIcon type="md" />
+                <div className="cmp-content">
+                  <span className="cmp-label">{option.name}</span>
+                  <span className="cmp-desc">{option.filename}</span>
+                </div>
+              </div>
+            ))}
+            <div className="cmp-footer spec-flow-popup-footer">
+              <span className="cmp-footer-text">Select instruction file for spec execution.</span>
+            </div>
+          </div>
+        </PositionedPopup>
       )}
     </div>
   );
@@ -9357,7 +9806,34 @@ function AgentTasksPanel({
         ),
         icon: <IconMdTask />,
         secondaryText: task.time || undefined,
-        children: hasChanges ? taskTree.treeData : undefined,
+        children: (() => {
+          const childNodes = [];
+          // Subtask nodes (child specs)
+          if (Array.isArray(task.subtasks)) {
+            task.subtasks.forEach((sub) => {
+              const subNodeId = buildAgentTaskTreeTaskNodeId(sub.id);
+              nextNavigationByNodeId[subNodeId] = { type: 'task', taskId: sub.id };
+              childNodes.push({
+                id: subNodeId,
+                label: (
+                  <span className="agent-task-tree-task-label">
+                    <span className="agent-task-tree-task-name">{sub.label}</span>
+                    {sub.indicator === 'loading' && (
+                      <span className="agent-task-tree-task-meta"><Loader size={16} /></span>
+                    )}
+                  </span>
+                ),
+                icon: <IconMdTask />,
+                secondaryText: sub.time || undefined,
+              });
+            });
+          }
+          // Plan tree file nodes
+          if (hasChanges) {
+            childNodes.push(...taskTree.treeData);
+          }
+          return childNodes.length > 0 ? childNodes : undefined;
+        })(),
       };
     });
 
@@ -10305,6 +10781,22 @@ export default function App() {
     setTerminalPermissionPromptForTab,
   ]);
 
+  const handleOpenInstructionFile = useCallback((flow) => {
+    if (!flow?.id) return;
+    const tabId = `instruction-${flow.id}`;
+    const existingIndex = ideTabs.findIndex((tab) => tab.id === tabId);
+    if (existingIndex < 0) {
+      setIdeTabs((prev) => [
+        ...prev,
+        { id: tabId, label: flow.filename, icon: 'fileTypes/markdown', closable: true },
+      ]);
+      setIdeTabContents((prev) => (
+        prev[tabId] ? prev : { ...prev, [tabId]: { language: 'markdown', code: flow.content ?? '' } }
+      ));
+    }
+    setActiveEditorTab(existingIndex >= 0 ? existingIndex : ideTabs.length);
+  }, [ideTabs]);
+
   const handleEditorTabChange = useCallback((nextIndex) => {
     setActiveEditorTab(nextIndex);
 
@@ -10998,7 +11490,10 @@ export default function App() {
           ? { indices: planRevealOptions.indices }
           : {}),
       });
-      if (!cancelGeneration && lastRunRequest?.mode === 'section') {
+      // Chain AC run after Plan, but skip if partial run with no selected AC items
+      const skipAcChain = lastRunRequest?.isPartialRun
+        && (!Array.isArray(lastRunRequest?.rerunAcOriginalIndices) || lastRunRequest.rerunAcOriginalIndices.length === 0);
+      if (!cancelGeneration && lastRunRequest?.mode === 'section' && !skipAcChain) {
         clearChainedRunTimeout();
         const revealSteps = planRevealOptions.hasSelectiveRerun
           ? planRevealOptions.indices.length
@@ -11560,21 +12055,14 @@ export default function App() {
     });
   };
 
-  const handleDoneRegenerate = (payload = {}) => {
-    const commentEntries = payload?.commentEntries?.length
-      ? payload.commentEntries
-      : agentTaskCommentEntries;
-    const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
-
-    if (!currentTabId) return;
-
+  const doneRegenerateCore = useCallback((currentTabId, commentEntries, extractInfo = null) => {
     const pendingDoneSpecState = buildPendingDoneSpecState({
       tabId: currentTabId,
       commentEntries,
     });
     if (!pendingDoneSpecState) return;
 
-    const {
+    let {
       currentCode,
       targetCode,
       nextDocument,
@@ -11592,6 +12080,38 @@ export default function App() {
       hasPendingComments,
       hasSpecChanges,
     } = pendingDoneSpecState;
+
+    // Inject subtask links into targetCode and nextDocument when extract enhance is pending
+    if (extractInfo && extractInfo.subtaskLabel && Array.isArray(extractInfo.extractedTexts)) {
+      const { subtaskLabel, extractedTexts } = extractInfo;
+
+      // Modify targetCode: replace extracted item texts with subtask links
+      extractedTexts.forEach((text) => {
+        const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(`(- \\[[ x]\\]\\s*)${escaped}`, 'ig');
+        targetCode = targetCode.replace(
+          pattern,
+          `$1See [${subtaskLabel}] — ${text.split('—')[0].trim()}`
+        );
+      });
+
+      // Modify nextDocument: update plan/check items that match extracted texts
+      nextDocument = nextDocument.map((section) => ({
+        ...section,
+        items: (section.items ?? []).map((item) => {
+          if (item.type !== 'check') return item;
+          const matchedText = extractedTexts.find((t) => item.text === t);
+          if (!matchedText) return item;
+          return {
+            ...item,
+            text: `See [${subtaskLabel}] — ${matchedText.split('—')[0].trim()}`,
+          };
+        }),
+      }));
+
+      hasSpecChanges = true;
+    }
+
     if (!hasSpecChanges && !hasPendingComments && !hasPendingReruns) {
       return;
     }
@@ -11642,6 +12162,36 @@ export default function App() {
       clearTaskCommentsForTab(currentTabId);
     }
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
+  }, [buildPendingDoneSpecState, clearChainedRunTimeout, clearStatusReveal, clearTaskCommentsForTab, generatedDocument, generationTabId, resetRunUiForTab, specVersionsByTab]);
+
+  const handleDoneRegenerate = (payload = {}) => {
+    const commentEntries = payload?.commentEntries?.length
+      ? payload.commentEntries
+      : agentTaskCommentEntries;
+    const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
+
+    if (!currentTabId) return;
+
+    // Check if this tab has a pending extract-to-subtask enhance
+    const extractEnhanceInfo = interactiveTaskStates[currentTabId]?.pendingExtractEnhance;
+
+    // Clear the pending extract enhance flag
+    if (extractEnhanceInfo) {
+      setInteractiveTaskStates((prev) => {
+        const tabState = prev[currentTabId];
+        if (!tabState) return prev;
+        const { pendingExtractEnhance: _, ...rest } = tabState;
+        return { ...prev, [currentTabId]: rest };
+      });
+    }
+
+    // Pass extract info to doneRegenerateCore which will inject subtask links
+    // into targetCode/nextDocument AFTER buildPendingDoneSpecState reads from DOM
+    const extractParam = (extractEnhanceInfo && typeof extractEnhanceInfo === 'object' && extractEnhanceInfo.subtaskLabel)
+      ? extractEnhanceInfo
+      : null;
+
+    doneRegenerateCore(currentTabId, commentEntries, extractParam);
   };
 
   const handleDoneIssueFix = useCallback(({ kind, index }) => {
@@ -13136,7 +13686,149 @@ export default function App() {
     updateSpecVersionsForTab,
   ]);
 
+  const handleExtractToSubtask = useCallback((selectedKeys) => {
+    const parentTask = agentTasks.find((t) => t.id === selectedTask);
+    const parentLabel = parentTask?.label ?? 'task.md';
+
+    // Resolve selected item texts from the current document sections
+    const currentSections = activeAgentTaskDocumentSections ?? [];
+    const selectedTexts = [];
+    for (const key of selectedKeys) {
+      const acMatch = key.match(/section-item:ac-(\d+)/);
+      if (acMatch) {
+        const idx = parseInt(acMatch[1], 10) - 1;
+        const acSection = currentSections.find((s) => s.title?.toLowerCase() === 'acceptance criteria');
+        const acItems = (acSection?.items ?? []).filter((i) => i.type === 'check');
+        if (acItems[idx]) selectedTexts.push(acItems[idx].text);
+      }
+      const planMatch = key.match(/section-item:plan-(\d+)/);
+      if (planMatch) {
+        const idx = parseInt(planMatch[1], 10) - 1;
+        const planSection = currentSections.find((s) => s.title?.toLowerCase() === 'plan');
+        const planItems = (planSection?.items ?? []).filter((i) => i.type === 'check');
+        if (planItems[idx]) selectedTexts.push(planItems[idx].text);
+      }
+    }
+
+    // Generate a meaningful subtask name from selected item texts
+    const firstText = selectedTexts[0] ?? 'subtask';
+    const nameSlug = firstText
+      .replace(/\s*—\s*.*/g, '')
+      .replace(/[^a-zA-Z0-9\s]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .join('-')
+      .toLowerCase() || 'subtask';
+    const subtaskId = `${selectedTask}-sub-${Date.now()}`;
+    const subtaskLabel = `${nameSlug}.md`;
+    const subtaskTabId = `agent-task-${subtaskId}`;
+
+    // Build subtask document — just copy selected items as-is, Enhance will elaborate
+    const subtaskDocumentSections = [
+      {
+        id: 'goal',
+        title: 'Goal',
+        items: [{ id: 'goal-text', type: 'paragraph', text: `Extracted from ${parentLabel}` }],
+      },
+      {
+        id: 'plan',
+        title: 'Plan',
+        items: selectedTexts.map((text, i) => ({
+          id: `plan-${i + 1}`,
+          type: 'check',
+          checked: false,
+          text,
+        })),
+      },
+    ].map((section) => withDerivedPlanChildren(section));
+
+    const subtaskCode = serializeSpecDocument(subtaskDocumentSections);
+    const subtaskTaskState = createInteractiveTaskState({
+      documentSections: subtaskDocumentSections,
+      genState: 'done',
+    });
+
+    // 1. Add subtask to agent tasks tree
+    setAgentTasks((prev) => prev.map((task) => {
+      if (task.id === selectedTask) {
+        return {
+          ...task,
+          subtasks: [...(task.subtasks ?? []), {
+            id: subtaskId,
+            label: subtaskLabel,
+            time: '',
+            status: null,
+            indicator: null,
+            parentId: selectedTask,
+          }],
+        };
+      }
+      return task;
+    }));
+
+    // 2. Create editor tab for subtask immediately (no simulation)
+    const subtaskTab = {
+      id: subtaskTabId,
+      label: subtaskLabel,
+      icon: 'fileTypes/markdown',
+      closable: true,
+    };
+
+    setIdeTabs((prev) => {
+      if (prev.some((t) => t.id === subtaskTabId)) return prev;
+      return [subtaskTab, ...prev];
+    });
+
+    setIdeTabContents((prev) => ({
+      ...prev,
+      [subtaskTabId]: { language: 'markdown', code: subtaskCode },
+    }));
+
+    setInteractiveTaskStates((prev) => ({
+      ...prev,
+      [subtaskTabId]: subtaskTaskState,
+    }));
+
+    // 3. Switch to the subtask tab
+    setIdeTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === subtaskTabId);
+      if (idx >= 0) setActiveEditorTab(idx);
+      return prev;
+    });
+
+    applyInteractiveTaskState(subtaskTabId, subtaskTaskState);
+    setRunStateForTab('default', subtaskTabId);
+
+    // 4. Mark Enhance as pending on BOTH subtask and parent
+    //    Subtask: Enhance will elaborate the copied items into a full spec
+    //    Parent: Enhance will replace extracted items with links to subtask
+    const parentTabId = getAgentTaskTabId(selectedTask);
+    setInteractiveTaskStates((prev) => ({
+      ...prev,
+      // Subtask: needs Enhance to elaborate raw copy into full spec
+      [subtaskTabId]: {
+        ...(prev[subtaskTabId] ?? {}),
+        pendingExtractEnhance: true,
+      },
+      // Parent: needs Enhance to add subtask links in place of extracted items
+      ...(parentTabId ? {
+        [parentTabId]: {
+          ...(prev[parentTabId] ?? {}),
+          pendingExtractEnhance: {
+            subtaskLabel,
+            subtaskTabId,
+            extractedTexts: selectedTexts,
+          },
+        },
+      } : {}),
+    }));
+  }, [agentTasks, selectedTask, activeAgentTaskDocumentSections, applyInteractiveTaskState, setRunStateForTab]);
+
   const handleDoneOpenTerminal = (input) => {
+    const isPartialRun = typeof input === 'object' && input !== null
+      && (Array.isArray(input.selectedAcIndices) || Array.isArray(input.selectedPlanIndices));
+
     const runTarget = normalizeCommentTarget(typeof input === 'object' ? input?.runTarget ?? input?.checkTarget : null);
     const sectionTitle = typeof input === 'string'
       ? input
@@ -13157,14 +13849,59 @@ export default function App() {
     const sourceTabId = commitResult?.sourceTabId ?? generationTabId ?? activeEditorTabId;
     const terminalTabId = sourceTabId ? buildTerminalSessionTabId(sourceTabId) : null;
     const taskState = sourceTabId ? interactiveTaskStates[sourceTabId] : null;
-    const initialAcRunResult =
+
+    let initialAcRunResult =
       commitResult?.committedAcRunResult
       ?? activeAgentTaskAcRunResult
       ?? null;
-    const initialPlanRunResult =
+    let initialPlanRunResult =
       commitResult?.committedPlanRunResult
       ?? activeAgentTaskPlanRunResult
       ?? null;
+
+    // Partial run: mark non-selected items as outdated in the initial results
+    let partialRerunAcIndices = commitResult?.rerunAcOriginalIndices ?? [];
+    let partialRerunPlanIndices = commitResult?.rerunPlanOriginalIndices ?? [];
+
+    // Get current scenario statuses to use as base for outdated
+    const currentScenario = getCurrentAgentTaskScenario();
+    const acBase = buildResolvedRunStatuses(
+      currentScenario.acBaseStatuses, 'ac',
+      appliedIssueFixes, removedIssueIndices, { runComplete: true }
+    );
+    const planBase = buildResolvedRunStatuses(
+      currentScenario.planBaseStatuses, 'plan',
+      appliedIssueFixes, removedIssueIndices, { runComplete: true }
+    );
+
+    if (isPartialRun) {
+      const selectedAc = new Set(input.selectedAcIndices ?? []);
+      const selectedPlan = new Set(input.selectedPlanIndices ?? []);
+
+      // Partial run: outdated for non-selected, null (pending) for selected
+      initialAcRunResult = acBase.map((status, idx) =>
+        selectedAc.has(idx)
+          ? null  // will be revealed by revealRunStatuses
+          : withRunStatusOutdated(status ?? { status: 'pending' })
+      );
+      initialPlanRunResult = planBase.map((status, idx) =>
+        selectedPlan.has(idx)
+          ? null  // will be revealed by revealRunStatuses
+          : withRunStatusOutdated(status ?? { status: 'pending' })
+      );
+
+      partialRerunAcIndices = [...selectedAc];
+      partialRerunPlanIndices = [...selectedPlan];
+    } else {
+      // Full run (I4): all items → Outdated initially, revealed as agent reports results
+      initialAcRunResult = acBase.map((status) =>
+        withRunStatusOutdated(status ?? { status: 'pending' })
+      );
+      initialPlanRunResult = planBase.map((status) =>
+        withRunStatusOutdated(status ?? { status: 'pending' })
+      );
+    }
+
     if (terminalTabId) {
       setAcWarningBannerForTab(null, terminalTabId);
     }
@@ -13183,12 +13920,13 @@ export default function App() {
     queueTerminalRun({
       mode: 'section',
       sourceTabId,
-      sectionTitle,
+      sectionTitle: isPartialRun ? 'Plan' : sectionTitle,
       taskLabel: currentAgentTaskLabel,
       initialAcRunResult,
       initialPlanRunResult,
-      rerunAcOriginalIndices: commitResult?.rerunAcOriginalIndices ?? [],
-      rerunPlanOriginalIndices: commitResult?.rerunPlanOriginalIndices ?? [],
+      rerunAcOriginalIndices: partialRerunAcIndices,
+      rerunPlanOriginalIndices: partialRerunPlanIndices,
+      isPartialRun: isPartialRun || false,
     }, {
       preserveAcRunResult: true,
       preservePlanRunResult: true,
@@ -13546,7 +14284,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} handleExtractToSubtask={handleExtractToSubtask} pendingExtractEnhance={Boolean(interactiveTaskStates[activeEditorTabId]?.pendingExtractEnhance)} onOpenInstructionFile={handleOpenInstructionFile} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
