@@ -257,15 +257,15 @@ async function drawAgentPanel(parent, X, Y, H, activeTask) {
   await tx(projRow, '▾  ' + META.project, 8, 5, C.textDefault, 12, 500);
   var tasks = [
     { name: META.primaryTask,   time: '2m',  status: 'done' },
-    { name: META.secondaryTask, time: '15m', status: 'running' },
+    { name: META.secondaryTask, time: '15m', status: 'building' },
   ];
   var ty = 60;
   for (var i = 0; i < tasks.length; i++) {
     var t = tasks[i];
     var sel = t.name === activeTask;
     var row = fr(panel, t.name, 0, ty, PANEL_W, 24, sel ? C.selection : 'transparent');
-    var ic = t.status === 'done' ? C.green : t.status === 'running' ? C.blue : C.textMuted;
-    var ch = t.status === 'done' ? '✓' : t.status === 'running' ? '◌' : '·';
+    var ic = t.status === 'done' ? C.green : t.status === 'building' ? C.blue : C.textMuted;
+    var ch = t.status === 'done' ? '✓' : t.status === 'building' ? '◌' : '·';
     await tx(row, ch, 20, 5, ic, 12, 500);
     await tx(row, t.name, 36, 5, sel ? C.textPrimary : C.textDefault, 12, 500);
     await tx(row, t.time, PANEL_W - 32, 5, C.textMuted, 11, 400, true);
@@ -322,7 +322,7 @@ async function drawSpecOverlay(parent, X, Y, W, H, opts, detail) {
   stroke(topBar, C.border, 1);
   var taskLabel = detail && detail.tabs && detail.tabs[0] ? detail.tabs[0] : META.primaryTask;
   await tx(topBar, '◈  ' + taskLabel + '  —  Add vet assignment and time slot selection', 12, 10, C.textDefault, 12, 500);
-  var btnLabels = ['Run', 'Enhance'];
+  var btnLabels = ['Build', 'Specify'];
   var rbx = W - 8;
   for (var ri = 0; ri < btnLabels.length; ri++) {
     var rbw = btnLabels[ri].length * 7 + 20;
@@ -805,8 +805,8 @@ figma.ui.onmessage = async function(msg) {
     await buildSpecFrame(x, spec, 'F-04', 'visit-booking Done', {});
     x += 1440 + GAP; progress(40);
 
-    log('F-05  Terminal / Generate');
-    await buildTerminalFrame(x, spec, 'F-05', 'Terminal – Generate', { showPrompt: true });
+    log('F-05  Terminal / Specify');
+    await buildTerminalFrame(x, spec, 'F-05', 'Terminal – Specify', { showPrompt: true });
     x += 1440 + GAP; progress(47);
 
     log('F-06  Terminal / Plan');

@@ -20,11 +20,11 @@ The prompt area collapses but remains accessible — visually distinct from the 
 
 The resulting spec is already alive: code references highlighted, md affordances rendered, etc.
 
-In a special task view, `visit-booking.md` appears. There is also another spec there, marked as running.
+In a special task view, `visit-booking.md` appears. There is also another spec there, marked as building.
 
-The developer expands the prompt area — it's clear he can retype it, and the spec will be regenerated when he hits Enter. No need to create a new file for a new prompt.
+The developer expands the prompt area — it's clear he can retype it, and the spec will be updated when he hits Enter. No need to create a new file for a new prompt.
 
-> "If I don't like what came out, I can go back to the prompt and regenerate the whole spec — same file, fresh start. But this looks reasonable, so let's see what's missing."
+> "If I don't like what came out, I can go back to the prompt and Specify again on the whole spec — same file, fresh start. But this looks reasonable, so let's see what's missing."
 
 He minimises the prompt back.
 
@@ -32,7 +32,7 @@ He minimises the prompt back.
 
 ## Beat 2 — Spec Inspections
 
-> "I could hit Play right now — nothing stops me. But IDE shows some issues with spec. This spec was generated from a pretty vague prompt, so let's see what the IDE caught."
+> "I could hit Play right now — nothing stops me. But IDE shows some issues with spec. This spec came from a pretty vague prompt, so let's see what the IDE caught."
 
 ### Inspection 1: AC/Plan mismatch (AC #1)
 
@@ -55,7 +55,7 @@ IDE suggests an input field, maybe with hint like "specify time slot details".
 
 Developer types: *Fixed hourly slots from 09:00 to 16:00. Use `<select>` with predefined options. Last bookable slot is 16:00. Slot range configurable.*
 
-Comment appears inline. Readiness bar: "Pending regeneration".
+Comment appears inline. Readiness bar: "Pending Specify".
 
 > "This is not something the IDE can guess, so I'm leaving a comment here. But I fully agree that *e.g.* in acceptance criteria is unacceptable!"
 
@@ -82,15 +82,15 @@ Developer accepts the completion. New step appears in the plan.
 
 > "The spec generator didn't see `PetTypeFormatter`. The agent would probably hit this during implementation and self-correct itself, but why waste time on something the IDE catches almost instantly?"
 
-### Regeneration
+### Specify Pass
 
-Spec shows that regeneration is required.
+Spec shows that another Specify pass is required.
 
-Developer opens Play dropdown, picks **"Refresh spec"**. Spec regenerates. AC #2 is now concrete. AC #3 now reads "server-side validation + database unique constraint" — the agent chose to add both. Plan has new steps: VetFormatter, config properties, pre-filter logic. A Decisions section appears with the agent's reasoning about dual-layer double-booking prevention.
+Developer opens Play dropdown, picks **"Specify spec"**. Spec updates. AC #2 is now concrete. AC #3 now reads "server-side validation + database unique constraint" — the agent chose to add both. Plan has new steps: VetFormatter, config properties, pre-filter logic. A Decisions section appears with the agent's reasoning about dual-layer double-booking prevention.
 
 ### Manual edit
 
-The developer reads the regenerated AC #2:
+The developer reads the updated AC #2:
 
 > *Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable via application.properties.*
 
@@ -102,21 +102,21 @@ He deletes "via application.properties." — this is implementation detail, not 
 
 Developer opens diff — standard IDE local history diff.
 
-> "I haven't generated a single line of code, but we caught a runtime error, a race condition, and two ambiguities in my own intent. I delegated one decision, and the agent made the right call. Look at where we started and where we are now."
+> "I haven't written a single line of code, but we caught a runtime error, a race condition, and two ambiguities in my own intent. I delegated one decision, and the agent made the right call. Look at where we started and where we are now."
 
 ---
 
 ## Beat 3 — Execution (Loop Mode)
 
-> "By default, for this task IDE configures the execution as a simple loop — run until all acceptance criteria pass, max three cycles. It's up to the agent how to validate each AC."
+> "By default, for this task IDE configures the execution as a simple loop — build until all acceptance criteria pass, max three cycles. It's up to the agent how to validate each AC."
 
 The developer navigates to the definition of this execution mode string, and we see that this is just an md file in the IDE configuration!
 
-> "This is just text in the spec — I could run it from a terminal and get the same result. But the IDE suggests validated defaults so I wouldn't have to generate all that, enforces the hooks, and maps execution to the plan in real time. This is a small task, so I'm ok with Ralphing it. Let's go back."
+> "This is just text in the spec — I could run it from a terminal and get the same result. But the IDE suggests validated defaults so I wouldn't have to spell all that out manually, enforces the hooks, and maps execution to the plan in real time. This is a small task, so I'm ok with Ralphing it. Let's go back."
 
 Developer goes back, hits **Play**.
 
-Agent log opens at the bottom — like a terminal/build output. Raw execution streams there: step completion and test results. In the task view, `visit-booking.md` changes from gray to a spinner. The other spec is still marked as running.
+Agent log opens at the bottom — like a terminal/build output. Raw execution streams there: step completion and test results. In the task view, `visit-booking.md` changes from gray to a spinner. The other spec is still marked as building.
 
 In the spec, steps update live: checkboxes fill in, gutter icons change, inline references to diffs appear. Agent log shows smaller, on-the-fly adaptations as the agent works through the plan:
 
@@ -142,11 +142,11 @@ Suggested reword appears inline — strikethrough on old text, green on new. Acc
 
 Developer reads the suggestion, clicks **Accept**. AC 1 updates in place. A new entry appears in the Decisions section: *"Vet dropdown shows all vets on initial page load. Pre-filtering kicks in on form re-renders where date and time are known. Double-booking check on submit is the safety net. Full real-time filtering would require AJAX (out of scope)."*
 
-Loop resumes. Agent log: *"Run 2 | Fresh agent | Reading spec… AC 1 reworded. Re-verifying."*
+Loop resumes. Agent log: *"Build 2 | Fresh agent | Reading spec… AC 1 reworded. Re-verifying."*
 
-AC status: AC 1 ✅ · AC 2 ✅ · AC 3 ✅ · AC 4 ✅ · AC 5 ✅ · AC 6 ✅. All green. Two runs out of max three. In the task view, `visit-booking.md` changes to a green icon.
+AC status: AC 1 ✅ · AC 2 ✅ · AC 3 ✅ · AC 4 ✅ · AC 5 ✅ · AC 6 ✅. All green. Two builds out of max three. In the task view, `visit-booking.md` changes to a green icon.
 
-> "Two runs. The agent caught something that wasn't visible during spec analysis — the pre-filtering gap only became clear during implementation."
+> "Two builds. The agent caught something that wasn't visible during spec analysis — the pre-filtering gap only became clear during implementation."
 
 ---
 
@@ -178,7 +178,7 @@ AC status goes stale — all six turn gray. Code changed, verification outdated.
 
 Developer hits **Play**. Agent log: *"All steps complete. Verifying acceptance criteria…"*
 
-Task view: spinner returns on `visit-booking.md`. And right below it, `vet-schedules.md` shows a yellow pause icon — it's been running in parallel and is now waiting. The developer doesn't wait — he switches to the second spec.
+Task view: spinner returns on `visit-booking.md`. And right below it, `vet-schedules.md` shows a yellow pause icon — it's been building in parallel and is now waiting. The developer doesn't wait — he switches to the second spec.
 
 ---
 
@@ -188,7 +188,7 @@ Task view: spinner returns on `visit-booking.md`. And right below it, `vet-sched
 
 The toolbar run config widget updates as the developer switches to the second spec's tab: **"vet-schedules · Step-through ▶"**. Same Play button, different config.
 
-The developer scrolls to the plan section. Six steps, step-through mode. Steps 1–2 already done — green checkboxes. This was running in parallel while the developer worked on the first task, in a separate branch and worktree.
+The developer scrolls to the plan section. Six steps, step-through mode. Steps 1–2 already done — green checkboxes. This was building in parallel while the developer worked on the first task, in a separate branch and worktree.
 
 Step 3 is the big one — four sub-steps:
 - 3a. VetScheduleController ✅ (done, paused at breakpoint)
@@ -203,7 +203,7 @@ The developer opens the diff for step 3a. The controller works — endpoints for
 
 Developer leaves a comment on step 3a: *"Expose only unconfigured days for the add form — subtract the vet's existing schedule days from the full set. Don't push that filtering to the template."*
 
-Then sets a breakpoint on this step again and reruns.
+Then sets a breakpoint on this step again and rebuilds it.
 
 > "This is the first CRUD pattern in the project — whatever the agent builds here, every future CRUD page will follow. I want to tighten control. But first — let me wrap up the first task."
 
@@ -213,13 +213,13 @@ Developer switches back to `visit-booking.md`.
 
 ## Beat 6 — Wrap-Up & Knowledge Extraction
 
-The developer returns to the first spec. Task view tells the story: `visit-booking.md` — green (done), `vet-schedules.md` — spinner (still running).
+The developer returns to the first spec. Task view tells the story: `visit-booking.md` — green (done), `vet-schedules.md` — spinner (still building).
 
 IDE shows a hint: *"Ready to merge."*
 
 > "All green, we're good."
 
-The developer expands the agent log panel and scrolls. Wall of text — raw execution output, step logs, test results, AC verification traces, multiple runs of agent output.
+The developer expands the agent log panel and scrolls. Wall of text — raw execution output, step logs, test results, AC verification traces, multiple build cycles of agent output.
 
 > "This log is what the agent actually did — every command, every test run, every decision. In a terminal, this would be my whole interface. But with the spec, I didn't need it once."
 

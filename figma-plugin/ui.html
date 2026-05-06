@@ -228,7 +228,7 @@ function parseFrameDetail(text) {
   }
 
   // Terminal command
-  var cmdMatch = text.match(/`(agent run [^`]+)`/);
+  var cmdMatch = text.match(/`(agent build [^`]+)`/);
   if (cmdMatch) detail.command = cmdMatch[1];
 
   // Terminal output lines (bullet lists after command)

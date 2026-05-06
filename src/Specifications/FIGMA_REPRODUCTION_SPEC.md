@@ -102,13 +102,13 @@ Use this scenario consistently across all frames unless a section explicitly say
 | F-01 | Welcome / default | Entry state with Project tool window and gradient welcome area |
 | F-01a | Welcome / `New...` menu open | Context-menu variant for the left action list |
 | F-02 | IDE / default workspace | Main project shell with Project tool window open |
-| F-03 | Agent Tasks panel | Task list with selected, running, warning, and success variants |
-| F-04 | `visit-booking.md` / done state / Version 1 | Primary generated-spec overlay |
+| F-03 | Agent Tasks panel | Task list with selected, building, warning, and success variants |
+| F-04 | `visit-booking.md` / done state / Version 1 | Primary specified-spec overlay |
 | F-04a | `visit-booking.md` / issue intention popup | Quick-action popup for an active issue row |
-| F-05 | Terminal / generate permission | `--generate` flow paused on execution permission |
+| F-05 | Terminal / specify permission | `--generate` flow paused on execution permission |
 | F-06 | Terminal / plan success | `--section "Plan"` completed state |
 | F-07 | Terminal / acceptance criteria paused | `--section "Acceptance Criteria"` paused on AC #1 warning |
-| F-08 | `visit-booking.md` / AC #1 fixed / Version 2 | Quick-fix applied and rerun-confirmed state |
+| F-08 | `visit-booking.md` / AC #1 fixed / Version 2 | Quick-fix applied and rebuild-confirmed state |
 | F-09 | `vet-schedules.md` / static task | Secondary task frame |
 | F-10 | Problems tool window / `visit-booking.md` | Problems tree for the spec tab |
 | F-11 | Problems tool window / `VisitController.java` | Problems tree for the Java tab |
@@ -451,7 +451,7 @@ Create explicit variants for:
 
 - default row
 - selected row
-- running row with loader
+- building row with loader
 - warning row with warning icon
 - success row with done icon
 
@@ -464,14 +464,14 @@ Behavior from the current implementation:
 Use these scenario mappings in the prototype:
 
 - `visit-booking.md`: selected in the main flow
-- `vet-schedules.md`: running variant in the main flow
+- `vet-schedules.md`: building variant in the main flow
 - keep one extra example of warning and success row variants in the component set even if they are not the default visible state
 
 ### F-04 `visit-booking.md` / Done State / Version 1
 
 This is the primary reproduction target.
 
-Show the generated spec as a prose-like overlay inside the editor, not as a normal markdown editor.
+Show the specified spec as a prose-like overlay inside the editor, not as a normal markdown editor.
 
 #### Overlay Structure
 
@@ -491,8 +491,8 @@ Left side:
 
 Right side:
 
-- `Run`
-- `Enhance`
+- `Build`
+- `Specify`
 
 #### Inspection Widget
 
@@ -579,7 +579,7 @@ Primary actions:
 
 - `Fix vet availability`
 - `Open Problems`
-- `Regenerate spec`
+- `Specify spec`
 
 Secondary actions:
 
@@ -657,20 +657,20 @@ The document above should be overlaid with these statuses.
 - active problem selection adds a neutral highlighted-row background on top of the standard row
 - plan rows include a trailing button `Show diff`
 
-### F-05 Terminal / Generate Permission
+### F-05 Terminal / Specify Permission
 
-Open the bottom Terminal tool window and show the generate flow.
+Open the bottom Terminal tool window and show the specify flow.
 
 Command line:
 
-- `agent run "visit-booking.md" --generate`
+- `agent build "visit-booking.md" --generate`
 
 Output sequence:
 
 1. `Reading visit-booking.md`
 2. `Resolving referenced files...`
 3. `Loading spring-petclinic context...`
-4. `Generating visit-booking specification...`
+4. `Specifying visit-booking specification...`
 5. `Processed 9 plan steps`
 
 Then show the interactive permission prompt:
@@ -684,15 +684,15 @@ Then show the interactive permission prompt:
 Create continuation variants:
 
 - **Allow once**
-  - `Permission granted for this run`
+  - `Permission granted for this build`
   - `Starting agent execution...`
-  - `Applying generated specification...`
-  - `Run finished without issues`
+  - `Applying specification...`
+  - `Build finished without issues`
 - **Allow for session**
   - `Permission granted for this session`
   - `Starting agent execution...`
-  - `Applying generated specification...`
-  - `Run finished without issues`
+  - `Applying specification...`
+  - `Build finished without issues`
 - **Reject**
   - `Execution rejected`
 
@@ -710,7 +710,7 @@ Use the implemented terminal prompt style:
 
 Command line:
 
-- `agent run "visit-booking.md" --section "Plan"`
+- `agent build "visit-booking.md" --section "Plan"`
 
 Output sequence:
 
@@ -719,9 +719,9 @@ Output sequence:
 3. `Loading spring-petclinic context...`
 4. `Building execution plan...`
 5. `Processed 9 plan steps`
-6. `Run finished without issues`
+6. `Build finished without issues`
 
-This frame should show a completed terminal run without any prompt.
+This frame should show a completed terminal build without any prompt.
 
 ### F-07 Terminal / Acceptance Criteria Paused On AC #1
 
@@ -729,14 +729,14 @@ This is the canonical pause state for the AC warning.
 
 Command line:
 
-- `agent run "visit-booking.md" --section "Acceptance Criteria"`
+- `agent build "visit-booking.md" --section "Acceptance Criteria"`
 
 Initial output:
 
 1. `Reading visit-booking.md`
 2. `Resolving referenced files...`
 3. `Loading spring-petclinic context...`
-4. `Running acceptance checks...`
+4. `Building acceptance checks...`
 
 Pause output:
 
@@ -752,16 +752,16 @@ Create continuation variants:
 
 - **Allow once**
   - `> Allow once`
-  - `Permission granted for this run`
+  - `Permission granted for this build`
   - `Continuing acceptance checks...`
   - `Processed 9 plan steps`
-  - `Run finished without issues`
+  - `Build finished without issues`
 - **Allow for session**
   - `> Allow for session`
   - `Permission granted for this session`
   - `Continuing acceptance checks...`
   - `Processed 9 plan steps`
-  - `Run finished without issues`
+  - `Build finished without issues`
 - **Reject**
   - `> Reject`
   - `Acceptance checks stopped after warning`
@@ -774,7 +774,7 @@ Do not invent a top-of-editor warning banner as the primary representation of th
 
 ### F-08 `visit-booking.md` / AC #1 Fixed / Version 2
 
-Show the post-fix, rerun-confirmed state after applying the quick fix for AC #1.
+Show the post-fix, rebuild-confirmed state after applying the quick fix for AC #1.
 
 Replace AC #1 with:
 
@@ -994,7 +994,7 @@ Prototype at least these interactions:
 3. Left stripe `Agent Tasks` -> F-03.
 4. Agent task `visit-booking.md` -> F-04.
 5. Agent task `vet-schedules.md` -> F-09.
-6. In F-04, click `Run` or open the matching run replay -> terminal states F-05, F-06, or F-07 depending on the demonstrated run.
+6. In F-04, click `Build` or open the matching build replay -> terminal states F-05, F-06, or F-07 depending on the demonstrated build.
 7. In F-04, click an issue bulb -> F-04a.
 8. In F-04, click `Show diff` on a plan row -> F-12.
 9. In Problems panel F-10, click a problem -> corresponding spec line highlighted in F-04.

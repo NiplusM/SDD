@@ -362,11 +362,11 @@ async function runScenario(page) {
   await demoType(page, editor, 'Beat 1', 'Type the initial visit-booking prompt.', prompt);
   await capture(page, 'beat-1-prompt');
 
-  await clickByDemoId(page, 'agent-task-generate', 'Beat 1', 'Generate the first spec draft.');
-  await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 1', 'Allow the agent execution for this run.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
+  await clickByDemoId(page, 'agent-task-specify', 'Beat 1', 'Specify the first spec draft.');
+  await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 1', 'Allow the agent execution for this build.');
+  await page.locator('[data-demo-id="agent-task-build"]').waitFor({ state: 'visible', timeout: 20000 });
   await pause(1600);
-  await capture(page, 'beat-1-generated-spec');
+  await capture(page, 'beat-1-specified-spec');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 2', 'Open visit-booking.md from Agent Tasks.');
   await page.locator('[data-demo-id="spec-inspection-counts"]').waitFor({ state: 'visible', timeout: 10000 });
@@ -398,14 +398,14 @@ async function runScenario(page) {
   await pause(600);
   await capture(page, 'beat-2-fixes-applied');
 
-  const enhanceButton = page.locator('[data-demo-id="agent-task-enhance"]').first();
-  await waitForEnabled(enhanceButton);
-  await demoClick(page, enhanceButton, 'Beat 2', 'Regenerate the spec with the fixes and comment context.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
+  const specifyButton = page.locator('[data-demo-id="agent-task-specify"]').first();
+  await waitForEnabled(specifyButton);
+  await demoClick(page, specifyButton, 'Beat 2', 'Specify the spec with the fixes and comment context.');
+  await page.locator('[data-demo-id="agent-task-build"]').waitFor({ state: 'visible', timeout: 20000 });
   await pause(1800);
-  await capture(page, 'beat-2-enhanced-spec');
+  await capture(page, 'beat-2-specified-spec');
 
-  await clickByDemoId(page, 'agent-task-run', 'Beat 3', 'Run the execution loop for the refined spec.');
+  await clickByDemoId(page, 'agent-task-build', 'Beat 3', 'Build the execution loop for the refined spec.');
   await pause(9000);
   await capture(page, 'beat-3-run-results');
 
@@ -428,15 +428,15 @@ async function runScenario(page) {
   await clickTaskRow(page, 'vet-schedules.md', 'Beat 5', 'Switch to the parallel vet-schedules task.');
   await pause(800);
   await capture(page, 'beat-5-vet-schedules');
-  await clickByDemoId(page, 'agent-task-generate', 'Beat 5', 'Generate the vet-schedules spec draft.');
+  await clickByDemoId(page, 'agent-task-specify', 'Beat 5', 'Specify the vet-schedules spec draft.');
   await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 5', 'Allow the parallel task execution.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
+  await page.locator('[data-demo-id="agent-task-build"]').waitFor({ state: 'visible', timeout: 20000 });
   await pause(1500);
-  await capture(page, 'beat-5-vet-schedules-generated');
+  await capture(page, 'beat-5-vet-schedules-specified');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 6', 'Return to visit-booking for wrap-up.');
   await pause(800);
-  await clickByDemoId(page, 'agent-task-run', 'Beat 6', 'Re-run acceptance checks after the review update.');
+  await clickByDemoId(page, 'agent-task-build', 'Beat 6', 'Rebuild acceptance checks after the review update.');
   await pause(9000);
 
   const addToProjectContext = page.getByText('Add to project context').first();

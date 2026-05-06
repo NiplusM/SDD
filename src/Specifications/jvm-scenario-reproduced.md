@@ -27,9 +27,9 @@ This is the closest reproduction of the demo scenario in the current state of th
 Create a spec for visit booking in PetClinic based on prd.md
 ```
 
-5. The script clicks the generate button: `agent-task-generate`.
+5. The script clicks the specify button: `agent-task-specify`.
 6. In the terminal permission popup, it clicks `terminal-permission-allow-once`.
-7. The script waits for the `agent-task-run` button to appear, which indicates that the first spec generation is complete.
+7. The script waits for the `agent-task-build` button to appear, which indicates that the first spec draft is ready.
 
 ### Beat 2. Spec Inspections and Fixes
 
@@ -53,12 +53,12 @@ Fixed hourly slots from 09:00 to 16:00. Use <select> with predefined options. La
 13. It focuses the plan step with the missing formatter: `spec-row-plan-4`.
 14. It opens quick actions: `spec-issue-actions-plan-4`.
 15. It applies the quick fix: `issue-popup-apply-fix-plan-4`.
-16. Once the `agent-task-enhance` button becomes enabled, it clicks `Enhance`.
-17. The script waits for the `agent-task-run` button to reappear, meaning spec regeneration is complete.
+16. Once the `agent-task-specify` button becomes enabled, it clicks `Specify`.
+17. The script waits for the `agent-task-build` button to reappear, meaning the spec update is complete.
 
 ### Beat 3. Execution Start
 
-1. The script clicks `agent-task-run`.
+1. The script clicks `agent-task-build`.
 2. It waits for the current execution cycle to complete.
 3. At this stage, it captures the result state after the refined spec has been executed.
 
@@ -80,16 +80,16 @@ Time slots never change at runtime — build the list once in the constructor
 ### Beat 5. Parallel `vet-schedules.md` Task
 
 1. In the task list, the script opens `vet-schedules.md` through `agent-task-row-vet-schedules-md`.
-2. It clicks `agent-task-generate`.
+2. It clicks `agent-task-specify`.
 3. In the permission popup, it clicks `terminal-permission-allow-once`.
-4. The script waits for `agent-task-run` to appear, meaning spec generation for the second task is complete.
+4. The script waits for `agent-task-build` to appear, meaning the second task spec is ready.
 
 ### Beat 6. Return to `visit-booking.md` and Wrap-Up
 
 1. The script returns to the `visit-booking.md` tab.
-2. It clicks `agent-task-run` to re-check the task after the review comment.
+2. It clicks `agent-task-build` to re-check the task after the review comment.
 3. If the `Add to project context` button is visible on screen, the script clicks it.
-4. The script saves the final screenshot and completes the run.
+4. The script saves the final screenshot and completes the build.
 
 ## Elements Used by the Scenario
 
@@ -99,9 +99,9 @@ Time slots never change at runtime — build the list once in the constructor
 | --- | --- | --- |
 | `welcome-new-agent-task` | `data-demo-id` | Opens a new agent task from the welcome screen |
 | `.main-window-editor-content .editor .pce-textarea` | CSS locator | Main prompt input field |
-| `agent-task-generate` | `data-demo-id` | Starts the first spec generation |
-| `terminal-permission-allow-once` | `data-demo-id` | Grants permission to run the agent |
-| `agent-task-run` | `data-demo-id` | Starts execution or verification after generation |
+| `agent-task-specify` | `data-demo-id` | Starts the first spec creation pass |
+| `terminal-permission-allow-once` | `data-demo-id` | Grants permission to start the build |
+| `agent-task-build` | `data-demo-id` | Starts execution or verification after generation |
 
 ### 2. Task Navigation
 
@@ -129,7 +129,7 @@ Time slots never change at runtime — build the list once in the constructor
 | `spec-comment-ac-1` | `data-demo-id` | Opens inline comments for AC #2 |
 | `Write a comment` | placeholder | Input field for a spec comment or diff comment |
 | `Add a Comment` | button text | Saves the entered comment |
-| `agent-task-enhance` | `data-demo-id` | Regenerates the spec after fixes and comments |
+| `agent-task-specify` | `data-demo-id` | Updates the spec after fixes and comments |
 
 ### 4. Diff and Review
 
@@ -145,16 +145,16 @@ Time slots never change at runtime — build the list once in the constructor
 
 | Element | Type | Purpose |
 | --- | --- | --- |
-| `agent-task-run` | `data-demo-id` | Starts the final re-run |
+| `agent-task-build` | `data-demo-id` | Starts the final rebuild |
 | `Add to project context` | text locator | Extracts the decision into project context when the action is available |
 
 ## What the Scenario Does Not Fully Cover
 
-1. After the diff comment is added, the flow shows the comment syncing back into the spec, but it does not perform a separate `Enhance` run for just that single step, because the current UI state does not always reliably mark the step as pending rework.
+1. After the diff comment is added, the flow shows the comment syncing back into the spec, but it does not perform a separate `Specify` pass for just that single step, because the current UI state does not always reliably mark the step as pending rework.
 2. For `vet-schedules.md`, the automation covers generation and task switching, but not the full step-through mode flow from the original storyboard.
-3. The `Add to project context` button is clicked only if it is actually visible in the UI during the run.
+3. The `Add to project context` button is clicked only if it is actually visible in the UI during the build.
 
-## Run Artifacts
+## Build Artifacts
 
 After the scenario finishes, screenshots for each key stage are saved to:
 

@@ -184,7 +184,7 @@ function PlanDiffToolbarIcon({ type }) {
   if (type === 'settings') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M7.99994 6C6.89537 6 5.99994 6.89543 5.99994 8C5.99994 9.10457 6.89537 10 7.99994 10C9.10451 10 9.99994 9.10457 9.99994 8C9.99994 6.89543 9.10451 6 7.99994 6ZM6.99994 8C6.99994 7.44772 7.44765 7 7.99994 7C8.55222 7 8.99994 7.44772 8.99994 8C8.99994 8.55228 8.55222 9 7.99994 9C7.44765 9 6.99994 8.55228 6.99994 8ZM10.618 4.39833C10.233 4.46825 9.86392 4.21413 9.7937 3.83074L9.53397 2.41496C9.50816 2.27427 9.39961 2.16301 9.25912 2.13325C8.84818 2.04621 8.42685 2.00195 8 2.00195C7.57289 2.00195 7.1513 2.04627 6.74013 2.13341C6.5996 2.1632 6.49104 2.27452 6.46529 2.41527L6.20629 3.8308C6.1994 3.86844 6.18942 3.90551 6.17647 3.9416C6.04476 4.30859 5.6392 4.49978 5.27062 4.36863L3.91115 3.88463C3.77603 3.83652 3.62511 3.87431 3.52891 3.98033C2.96005 4.60729 2.52892 5.34708 2.2672 6.15302C2.22305 6.28899 2.26562 6.43805 2.37502 6.53053L3.47694 7.46206C3.50626 7.48685 3.53352 7.51399 3.55843 7.5432C3.81177 7.84027 3.77528 8.28558 3.47693 8.53783L2.37502 9.46935C2.26562 9.56183 2.22305 9.71089 2.2672 9.84685C2.52892 10.6528 2.96005 11.3926 3.52891 12.0196C3.62511 12.1256 3.77603 12.1634 3.91115 12.1153L5.27068 11.6312C5.30687 11.6184 5.3441 11.6084 5.38196 11.6015C5.76701 11.5316 6.13608 11.7857 6.2063 12.1691L6.46529 13.5846C6.49104 13.7254 6.5996 13.8367 6.74013 13.8665C7.1513 13.9536 7.57289 13.9979 8 13.9979C8.42685 13.9979 8.84818 13.9537 9.25912 13.8666C9.39961 13.8369 9.50816 13.7256 9.53397 13.5849L9.79368 12.1692C9.8006 12.1314 9.81058 12.0944 9.82353 12.0583C9.95524 11.6913 10.3608 11.5001 10.7294 11.6312L12.0888 12.1153C12.224 12.1634 12.3749 12.1256 12.4711 12.0196C13.04 11.3926 13.4711 10.6528 13.7328 9.84685C13.777 9.71089 13.7344 9.56183 13.625 9.46935L12.5231 8.53782C12.4937 8.51303 12.4665 8.48589 12.4416 8.45667C12.1882 8.1596 12.2247 7.71429 12.5231 7.46205L13.625 6.53053C13.7344 6.43805 13.777 6.28899 13.7328 6.15302C13.4711 5.34708 13.04 4.60729 12.4711 3.98033C12.3749 3.87431 12.224 3.83652 12.0888 3.88463L10.7293 4.36865C10.6931 4.38152 10.6559 4.39146 10.618 4.39833Z" fill="currentColor" />
+        <path fillRule="evenodd" clipRule="evenodd" d="M3.22655 4.36961C2.92233 4.76924 2.66735 5.20781 2.47037 5.67626L3.30992 7.0943C3.6406 7.65283 3.6406 8.34718 3.30992 8.9057L2.47037 10.3237C2.66736 10.7922 2.92233 11.2308 3.22656 11.6304L4.87261 11.6124C5.52165 11.6053 6.12297 11.9524 6.44133 12.5181L7.24899 13.953C7.49593 13.984 7.74792 14 8.00408 14C8.2602 14 8.51214 13.984 8.75904 13.9531L9.56671 12.5181C9.88507 11.9524 10.4864 11.6053 11.1354 11.6124L12.7816 11.6304C13.0858 11.2308 13.3408 10.7923 13.5377 10.3239L12.6981 8.9057C12.3674 8.34718 12.3674 7.65283 12.6981 7.0943L13.5377 5.67613C13.3408 5.20773 13.0858 4.76921 12.7816 4.36961L11.1354 4.38764C10.4864 4.39475 9.88507 4.04758 9.56671 3.48194L8.75904 2.04693C8.51214 2.01599 8.2602 2 8.00408 2C7.74792 2 7.49594 2.016 7.24899 2.04695L6.44133 3.48194C6.12297 4.04758 5.52165 4.39475 4.87261 4.38764L3.22655 4.36961ZM10.655 8.00001C10.655 9.46412 9.46811 10.651 8.004 10.651C6.5399 10.651 5.353 9.46412 5.353 8.00001C5.353 6.53591 6.5399 5.34902 8.004 5.34902C9.46811 5.34902 10.655 6.53591 10.655 8.00001ZM4.88356 3.3877C5.16752 3.39081 5.4306 3.23892 5.56988 2.99146L6.43817 1.44875C6.54914 1.25159 6.7401 1.1101 6.96387 1.07676C7.30327 1.0262 7.65062 1 8.00408 1C8.3575 1 8.7048 1.02619 9.04414 1.07674C9.26792 1.11007 9.45889 1.25157 9.56986 1.44873L10.4382 2.99146C10.5774 3.23892 10.8405 3.39081 11.1245 3.3877L12.8938 3.36832C13.1196 3.36585 13.3372 3.46012 13.4781 3.63661C13.9099 4.17766 14.2632 4.78416 14.5207 5.43884C14.6034 5.6491 14.5763 5.88489 14.4612 6.07931L13.5586 7.60376C13.4139 7.84811 13.4139 8.15189 13.5586 8.39625L14.4612 9.92069C14.5763 10.1151 14.6034 10.3509 14.5207 10.5612C14.2632 11.2158 13.9099 11.8223 13.4781 12.3634C13.3372 12.5399 13.1196 12.6342 12.8938 12.6317L11.1245 12.6123C10.8405 12.6092 10.5774 12.7611 10.4382 13.0085L9.56986 14.5513C9.45889 14.7484 9.26792 14.8899 9.04414 14.9233C8.7048 14.9738 8.3575 15 8.00408 15C7.65062 15 7.30327 14.9738 6.96387 14.9232C6.7401 14.8899 6.54914 14.7484 6.43817 14.5512L5.56988 13.0085C5.4306 12.7611 5.16752 12.6092 4.88356 12.6123L3.1144 12.6317C2.8886 12.6342 2.67096 12.5399 2.5301 12.3634C2.09822 11.8223 1.74489 11.2158 1.48738 10.561C1.40469 10.3508 1.43184 10.115 1.54695 9.92057L2.44942 8.39625C2.5941 8.15189 2.5941 7.84811 2.44942 7.60376L1.54695 6.07944C1.43184 5.88502 1.40469 5.64924 1.48738 5.43898C1.74489 4.78425 2.09822 4.1777 2.53009 3.63661C2.67096 3.46012 2.8886 3.36585 3.1144 3.36832L4.88356 3.3877ZM9.655 8.00001C9.655 8.91183 8.91582 9.65101 8.004 9.65101C7.09218 9.65101 6.353 8.91183 6.353 8.00001C6.353 7.08819 7.09218 6.34902 8.004 6.34902C8.91582 6.34902 9.655 7.08819 9.655 8.00001Z" fill="currentColor" />
       </svg>
     );
   }
@@ -196,9 +196,16 @@ function PlanDiffToolbarIcon({ type }) {
   );
 }
 
-function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
+function PlanDiffToolbarIconButton({ label, icon, onClick = null, disabled = false }) {
   return (
-    <button type="button" className="plan-diff-toolbar-icon-btn" aria-label={label} title={label} onClick={onClick}>
+    <button
+      type="button"
+      className="plan-diff-toolbar-icon-btn"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+    >
       <PlanDiffToolbarIcon type={icon} />
     </button>
   );
@@ -676,11 +683,16 @@ export function PlanDiffEditorArea({
   onUiStateChange = null,
   onOpenComments = null,
   globalDiffSections = [],
+  fileNavigation = null,
+  onOpenSource = null,
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
   const [showViewerPopup, setShowViewerPopup] = useState(false);
   const [viewerPopupAnchorRect, setViewerPopupAnchorRect] = useState(null);
+  const previousFileDisabled = !fileNavigation?.canNavigatePrevious;
+  const nextFileDisabled = !fileNavigation?.canNavigateNext;
+  const filePositionLabel = fileNavigation?.positionLabel ?? null;
 
   useEffect(() => {
     if (!toolbarRef.current) {
@@ -712,60 +724,52 @@ export function PlanDiffEditorArea({
         <div className="plan-diff-toolbar">
           <div className="plan-diff-toolbar-left">
             <div className="plan-diff-toolbar-group">
-              <PlanDiffToolbarIconButton label="Scroll down" icon="down" />
-              <PlanDiffToolbarIconButton label="Scroll up" icon="up" />
-              <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
-            </div>
-            <div className="plan-diff-toolbar-group">
-              <PlanDiffToolbarIconButton label="Previous change" icon="left" />
-              <PlanDiffToolbarIconButton label="Next change" icon="right" />
               <PlanDiffToolbarIconButton
-                label="Viewer mode"
-                icon="list"
-                onClick={(event) => {
-                  if (showViewerPopup) {
-                    setShowViewerPopup(false);
-                    setViewerPopupAnchorRect(null);
-                    return;
-                  }
-
-                  setViewerPopupAnchorRect(event.currentTarget.getBoundingClientRect());
-                  setShowViewerPopup(true);
-                }}
+                label="Previous file"
+                icon="up"
+                disabled={previousFileDisabled}
+                onClick={() => fileNavigation?.onNavigatePrevious?.()}
+              />
+              <PlanDiffToolbarIconButton
+                label="Next file"
+                icon="down"
+                disabled={nextFileDisabled}
+                onClick={() => fileNavigation?.onNavigateNext?.()}
+              />
+              <PlanDiffToolbarIconButton
+                label="Edit source"
+                icon="edit"
+                onClick={() => onOpenSource?.()}
               />
             </div>
+            <div className="plan-diff-toolbar-group">
+              <PlanDiffToolbarIconButton
+                label="Previous file"
+                icon="left"
+                disabled={previousFileDisabled}
+                onClick={() => fileNavigation?.onNavigatePrevious?.()}
+              />
+              <PlanDiffToolbarIconButton
+                label="Next file"
+                icon="right"
+                disabled={nextFileDisabled}
+                onClick={() => fileNavigation?.onNavigateNext?.()}
+              />
+            </div>
+            {filePositionLabel && (
+              <div className="plan-diff-toolbar-group plan-diff-toolbar-group-meta">
+                <span className="plan-diff-toolbar-file-meta text-ui-default">{filePositionLabel}</span>
+              </div>
+            )}
             <div className="plan-diff-toolbar-group plan-diff-toolbar-group-selects">
               <PlanDiffToolbarSelect label="Unified viewer" width={126} />
               <PlanDiffToolbarSelect label="Do not ignore" width={119} />
               <PlanDiffToolbarSelect label="Highlight words" width={131} />
             </div>
             <div className="plan-diff-toolbar-group plan-diff-toolbar-group-trailing">
-              <PlanDiffToolbarIconButton label="Collapse all" icon="collapse" />
-              <PlanDiffToolbarIconButton label="Swap sides" icon="swap" />
               <PlanDiffToolbarIconButton label="Settings" icon="settings" />
               <PlanDiffToolbarIconButton label="Help" icon="help" />
             </div>
-          </div>
-          <div className="plan-diff-toolbar-right">
-            {(() => {
-              const commentCount = flattenDiffCommentsState(initialDiffComments).length;
-              if (commentCount === 0) return null;
-              return (
-                <button
-                  type="button"
-                  className="plan-diff-toolbar-comments"
-                  onClick={() => onOpenComments?.()}
-                  title="Open Comments tool window"
-                  aria-label={`${commentCount} comment${commentCount === 1 ? '' : 's'}`}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M3.14258 1.64307L12.8564 1.64307C13.6849 1.64307 14.3564 2.31464 14.3564 3.14307L14.3564 14.9595L9.45508 11.0386C9.38853 10.9853 9.30968 10.9502 9.22656 10.936L9.14258 10.9292L3.14258 10.9292C2.31429 10.9292 1.6428 10.2574 1.64258 9.4292L1.64258 3.14307C1.64258 2.31464 2.31415 1.64307 3.14258 1.64307Z" stroke="currentColor" strokeLinejoin="round" />
-                  </svg>
-                  <span>{commentCount}</span>
-                </button>
-              );
-            })()}
-            <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
           </div>
         </div>
       </div>

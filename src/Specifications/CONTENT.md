@@ -24,13 +24,13 @@ Repository: `spring-petclinic-sdd`. Key files:
 1. The project name in the toolbar, status bar, and terminal is `spring-petclinic`, not `payment-service`.
 2. The spec document (the `visit-booking.md` tab) contains content from `visit-booking-v0.md`: Goal, 6 ACs, 7 Plan steps, Implementation Notes, Out of scope.
 3. Inspections (warnings/errors) match the 4 findings from `visit-booking-inspections.md`: Missing VetFormatter, Race condition, AC/Plan mismatch, Ambiguous AC.
-4. AC Run Statuses reflect the execution log: ACs 2–6 passed, AC 1 is warning/PAUSE with a finding about the pre-filtering gap.
-5. Plan Run Statuses: 9 steps, all passed, with deviations (Vet.toString, i18n, test fixes) logged.
+4. AC Build Statuses reflect the execution log: ACs 2–6 passed, AC 1 is warning/PAUSE with a finding about the pre-filtering gap.
+5. Plan Build Statuses: 9 steps, all passed, with deviations (Vet.toString, i18n, test fixes) logged.
 6. The quick fix for AC #1 replaces the text with the rewording from v2: `vets, excluding those already booked for the selected date and time`.
 7. The editor tabs show PetClinic files: `Visit.java`, `VisitController.java`, `createOrUpdateVisitForm.html`, `schema.sql`.
 8. The project tree reflects the PetClinic structure: `src/main/java/…/owner/`, `…/vet/`, `src/main/resources/`.
-9. The terminal output uses the commands `agent run "visit-booking.md"` and text matching the PetClinic context.
-10. The second task in Agent Tasks is `vet-schedules.md` with status `running`.
+9. The terminal output uses the commands `agent build "visit-booking.md"` and text matching the PetClinic context.
+10. The second task in Agent Tasks is `vet-schedules.md` with status `building`.
 
 ## Plan
 
@@ -193,8 +193,8 @@ Repository: `spring-petclinic-sdd`. Key files:
 ### Step 7. Terminal output — `src/App.jsx` (`buildTerminalRunSequence` and context strings)
 
 - [ ] `'payment-service'` → `'spring-petclinic'` in all terminal output strings
-- [ ] Generate command: `agent run "visit-booking.md" --generate`
-- [ ] Section run: `agent run "visit-booking.md" --section "Plan"` / `--section "Acceptance Criteria"`
+- [ ] Generate command: `agent build "visit-booking.md" --generate`
+- [ ] Section build: `agent build "visit-booking.md" --section "Plan"` / `--section "Acceptance Criteria"`
 - [ ] Context loading: `Loading spring-petclinic context...`
 - [ ] Success: `Processed 9 plan steps` (instead of 4 task nodes)
 
@@ -204,7 +204,7 @@ Repository: `spring-petclinic-sdd`. Key files:
   ```js
   const AGENT_TASKS = [
     { id: 't1', label: 'visit-booking.md',   time: '2m',  status: null },
-    { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'running' },
+    { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'building' },
   ];
   ```
 
