@@ -1,0 +1,12 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+playwright-page.png
+
+.DS_Store
+.idea/
+.claude/
+.junie/
+
+*.local
