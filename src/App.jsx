@@ -588,6 +588,10 @@ const TERMINAL_RUN_INITIAL_DELAY_MS = 160;
 const TERMINAL_RUN_STEP_DELAY_MS = 240;
 const TERMINAL_RUN_END_DELAY_MS = 260;
 const RUN_STATUS_REVEAL_STEP_DELAY_MS = 120;
+const MD_TASK_SLOW_TERMINAL_INITIAL_DELAY_MS = 700;
+const MD_TASK_SLOW_TERMINAL_STEP_DELAY_MS = 1150;
+const MD_TASK_SLOW_TERMINAL_END_DELAY_MS = 900;
+const MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS = 1450;
 const CHAINED_SECTION_START_DELAY_MS = 220;
 const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
 const TERMINAL_PERMISSION_OPTIONS = [
@@ -595,6 +599,38 @@ const TERMINAL_PERMISSION_OPTIONS = [
   { id: 'allow-session', label: 'Allow for session' },
   { id: 'reject', label: 'Reject' },
 ];
+
+function getInitialRunningCheckTargetForSection(sectionTitle = null) {
+  const normalizedSectionTitle = typeof sectionTitle === 'string'
+    ? sectionTitle.trim().toLowerCase()
+    : '';
+
+  if (normalizedSectionTitle === 'acceptance criteria') {
+    return { kind: 'ac', index: 0 };
+  }
+
+  if (normalizedSectionTitle === 'plan') {
+    return { kind: 'plan', index: 0 };
+  }
+
+  return null;
+}
+
+function isMarkdownTaskRunRequest(runRequest = null) {
+  return runRequest?.taskLabel?.endsWith?.('.md') || runRequest?.sourceTabId?.startsWith?.('agent-task-');
+}
+
+function getTerminalRunTimingOptions(runRequest = null) {
+  if (!isMarkdownTaskRunRequest(runRequest)) {
+    return {};
+  }
+
+  return {
+    initialDelay: MD_TASK_SLOW_TERMINAL_INITIAL_DELAY_MS,
+    stepDelay: MD_TASK_SLOW_TERMINAL_STEP_DELAY_MS,
+    endDelay: MD_TASK_SLOW_TERMINAL_END_DELAY_MS,
+  };
+}
 const AC_WARNING_TARGET_ORIGINAL_INDEX = 0;
 const AC_WARNING_PROMPT = 'AC #1 partially met. Pre-filtering works on POST re-renders (booked vets excluded via findByDateAndTime). But on initial page load, no date/time is selected — @RequestParam values are null — so all vets are shown. AC says "available vets for the selected date/time", implying always-filtered. Full filtering on date selection would require AJAX (out of scope). Suggest rewording AC.';
 
@@ -696,6 +732,23 @@ function buildTerminalRunSequence({
   const activityLine = resolvedSection.toLowerCase() === 'acceptance criteria'
     ? 'Running acceptance checks...'
     : 'Building execution plan...';
+
+  if (resolvedTaskLabel === 'vet-schedules.md' && resolvedSection.toLowerCase() === 'plan') {
+    return {
+      initialLines: [
+        { type: 'command', text: `agent run "vet-schedules.md" --section "Plan"` },
+        { type: 'output', text: 'Reading vet-schedules.md' },
+        { type: 'output', text: 'Resolving referenced files...' },
+        { type: 'output', text: `Loading ${PROJECT_NAME} context...` },
+        { type: 'output', text: 'Building execution plan...' },
+        { type: 'output', text: 'Step 1 — Add VetSchedule entity under the vet package   ✓' },
+        { type: 'output', text: 'Step 2 — Add repository queries by vet and date   ✓' },
+        { type: 'output', text: 'Step 3 — Validate requested visit_time against schedule windows...' },
+      ],
+      permissionPrompt: null,
+      stopAtRunningPlanIndex: 2,
+    };
+  }
 
   return {
     initialLines: [
@@ -1014,25 +1067,6 @@ const PLAN_RUN_STATUSES = [
       secondaryText: 'Line 10',
     },
   },
-  { status: 'passed' },
-  {
-    status: 'failed',
-    highlight: {
-      match: '<select> for vet',
-      className: 'spec-inline-error-highlight',
-      tooltip: {
-        title: 'Vet select is added, but binding is still missing.',
-        hint: 'Replace with vet select, VetFormatter, and time slot.',
-      },
-    },
-    issue: {
-      severity: 'error',
-      label: 'Incomplete plan — missing VetFormatter, form POST will fail',
-      secondaryText: 'Line 12',
-    },
-  },
-  { status: 'passed' },
-  { status: 'passed' },
 ];
 
 const ISSUE_QUICK_FIX_CONFIG = {
@@ -2211,7 +2245,6 @@ const AGENT_TASKS_ICON = (
 const COMPLETION_POPUP_MAX_ITEMS = 8;
 
 const AT_COMPLETIONS = [
-  { label: 'New Task.md',                  description: 'Agent Specifications' },
   { label: 'Configuration.md',             description: 'Agent Specifications' },
   { label: 'visit-booking.md',             description: 'Agent Specifications' },
   { label: 'vet-schedules.md',             description: 'Agent Specifications' },
@@ -2233,16 +2266,6 @@ const COMPLETION_PREVIEW_MAX_LINES = 5;
 const COMPLETION_PREVIEW_MAX_SECTIONS = 6;
 
 const COMPLETION_PREVIEW_LIBRARY = {
-  'New Task.md': {
-    previewLines: [
-      '## Goal',
-      'Describe the capability or workflow the agent should deliver.',
-      '## Acceptance Criteria',
-      '- Make the result testable and concrete.',
-      '## Plan',
-    ],
-    sections: ['Goal', 'Acceptance Criteria', 'Plan', 'Implementation Notes'],
-  },
   'Configuration.md': {
     previewLines: [
       '## Context',
@@ -2495,6 +2518,28 @@ function renderProblemsFileIcon(tab) {
   return (
     <span className="problems-active-file-icon">
       <ProblemsFileNodeIcon />
+    </span>
+  );
+}
+
+function EditorTabRunningIcon({ icon, tone = 'green' }) {
+  return (
+    <span className="editor-tab-running-icon" aria-hidden="true">
+      {typeof icon === 'string' ? <Icon name={icon} size={16} /> : icon}
+      <span className={`editor-tab-running-dot editor-tab-running-dot-${tone}`} />
+    </span>
+  );
+}
+
+function StatusBarActiveFileLabel({ icon, label, tone = null }) {
+  return (
+    <span className="status-bar-active-file">
+      {tone && typeof icon === 'string'
+        ? <EditorTabRunningIcon icon={icon} tone={tone} />
+        : (typeof icon === 'string'
+            ? <Icon name={icon} size={16} className="tab-icon" />
+            : <span className="tab-icon">{icon}</span>)}
+      <span className="status-bar-active-file-label">{label}</span>
     </span>
   );
 }
@@ -3414,14 +3459,6 @@ const SPEC_LINES = [
   { text: 'Add vet assignment and time slot selection to the visit creation flow.',                         type: 'text' },
   { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
-  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
-  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
-  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
-  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
-  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
-  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
-  { text: '',                                                                                                 type: 'empty'   },
   { text: 'Plan',                                                                                            type: 'heading' },
   { text: '\u2610 Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table',              type: 'check'   },
   { text: '\u2610 Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull',                  type: 'check'   },
@@ -3430,6 +3467,14 @@ const SPEC_LINES = [
   { text: '\u2610 Form template \u2014 add <select> for vet and <select> for time slot',                      type: 'check'   },
   { text: '\u2610 Owner details \u2014 add Vet and Time columns to visit history table',                      type: 'check'   },
   { text: '\u2610 Tests \u2014 vet list in model, successful booking, double-booking rejected',               type: 'check'   },
+  { text: '',                                                                                                 type: 'empty'   },
+  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
+  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
+  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
+  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
+  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
+  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Implementation Notes',                                                                            type: 'heading' },
   { text: '\u2022 Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.', type: 'note' },
@@ -3627,18 +3672,6 @@ function createSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
-        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
-        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
-      ],
-    },
-    {
       id: 'plan',
       title: 'Plan',
       meta: { kind: 'chip', text: 'Configuration.md' },
@@ -3650,6 +3683,18 @@ function createSpecDocument() {
         { id: 'plan-5', type: 'check', checked: false, text: 'Form template \u2014 add <select> for vet and <select> for time slot' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Owner details \u2014 add Vet and Time columns to visit history table' },
         { id: 'plan-7', type: 'check', checked: false, text: 'Tests \u2014 vet list in model, successful booking, double-booking rejected' },
+      ],
+    },
+    {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
+        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
+        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
       ],
     },
     {
@@ -4762,6 +4807,14 @@ function shouldShowDoneRunIcon(line) {
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
+function RunningCheckLoader() {
+  return (
+    <span className="spec-running-check-loader" aria-label="Running">
+      <IconLoaderSpinner />
+    </span>
+  );
+}
+
 function CheckStatus({ status, outdated = false }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
 
@@ -4802,7 +4855,7 @@ function AcSubcheckIcon({ status }) {
   );
 }
 
-function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment = null, onProposalAccept = null }) {
+function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment = null, onProposalAccept = null, isRunning = false }) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
   const [proposalRejected, setProposalRejected] = useState(false);
@@ -4831,7 +4884,10 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
   return (
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
-        <CheckStatus status={visualStatus} outdated={isOutdated} />
+        {isRunning
+          ? <RunningCheckLoader />
+          : <CheckStatus status={visualStatus} outdated={isOutdated} />
+        }
         <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, () => { setProposalAccepted(true); onProposalAccept?.(); }, () => setProposalRejected(true))}</span>
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
@@ -5773,7 +5829,7 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
@@ -5789,7 +5845,9 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       data-plan-nesting-level={isNested ? nestingLevel : undefined}
       style={planLineStyle}
     >
-      {statusItem
+      {isRunning
+        ? <RunningCheckLoader />
+        : statusItem
         ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} />
         : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
       }
@@ -5811,7 +5869,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false, isRunning = false, specSessionKey = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -5855,7 +5913,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   if (checkMatch) {
     const checked = checkMatch[2].toLowerCase() === 'x';
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} isRunning={isRunning} />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -5870,12 +5928,16 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           onOpenDiffTab={onOpenDiffTab}
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
+          isRunning={isRunning}
         />
       );
     }
     return (
       <div key={key} className="spec-done-line spec-done-line-check">
-        <Checkbox className="spec-done-checkbox" checked={checked} onChange={() => {}} />
+        {isRunning
+          ? <RunningCheckLoader />
+          : <Checkbox className="spec-done-checkbox" checked={checked} onChange={() => {}} />
+        }
         <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(checkMatch[3])}</span>
         {commentAdornment}
       </div>
@@ -6476,7 +6538,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, runningCheckTarget = null, specSessionKey = null }) {
   const effectiveDocumentSections = useMemo(
     () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
     [documentSections]
@@ -6530,6 +6592,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     setDraftCode(effectiveCode);
   }, [commentResetToken, effectiveCode]);
+
+  useEffect(() => {
+    setIsVisitBookingPresetRowSelectionDismissed(false);
+  }, [commentResetToken, specSessionKey]);
 
   const displayRows = useMemo(() => {
     const rawLines = draftCode ? draftCode.split(/\r?\n/) : [];
@@ -6590,6 +6656,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [navigatedIssueRowKey, setNavigatedIssueRowKey] = useState(null);
   const [focusedCommentRowKey, setFocusedCommentRowKey] = useState(null);
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
+  const [isVisitBookingPresetRowSelectionDismissed, setIsVisitBookingPresetRowSelectionDismissed] = useState(false);
   const [commentPopup, setCommentPopup] = useState(null);
   const [intentionPopup, setIntentionPopup] = useState(null);
   const normalizedCode = useMemo(
@@ -7643,6 +7710,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const effectiveIssueTarget = clearedRowKeys.has(stableKey) ? null : issueTarget;
             const effectiveCheckTarget = clearedRowKeys.has(stableKey) ? null : checkTarget;
             const isRunOutdated = Boolean(effectiveCheckStatus?.isOutdated || effectivePlanStatus?.isOutdated);
+            const isRunningCheckTarget = Boolean(
+              runningCheckTarget
+              && effectiveCheckTarget
+              && runningCheckTarget.kind === effectiveCheckTarget.kind
+              && runningCheckTarget.index === effectiveCheckTarget.index
+              && !(effectiveCheckTarget.kind === 'plan' && rowMeta.isNestedPlanChild)
+            );
 
             const rowCommentKey = getRowMetaCommentStorageKey(rowMeta);
             const isIssuePopupOpen = intentionPopup?.rowKey === stableKey;
@@ -7670,6 +7744,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               || activeIssueRowKey === stableKey
               || isNavigatedIssueRow;
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
+            const isVisitBookingPlanRowSelected = !isVisitBookingPresetRowSelectionDismissed
+              && specSessionKey === 'agent-task-t1'
+              && effectiveCheckTarget?.kind === 'plan'
+              && effectiveCheckTarget.index === 2
+              && !rowMeta.isNestedPlanChild;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
                 comments={commentsForRow}
@@ -7694,7 +7773,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isVisitBookingPlanRowSelected ? ' spec-done-row-selected-highlight' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -7730,6 +7809,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 if (effectiveIssueSeverity) {
                   setActiveIssueRowKey(stableKey);
                   setNavigatedIssueRowKey(stableKey);
+                }
+
+                if (specSessionKey === 'agent-task-t1' && !isVisitBookingPresetRowSelectionDismissed && !isVisitBookingPlanRowSelected) {
+                  setIsVisitBookingPresetRowSelectionDismissed(true);
                 }
               }}
             >
@@ -7822,6 +7905,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   rowMeta.nestingLevel ?? 0,
                   rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
                   hasPlanComment,
+                  isRunningCheckTarget,
+                  specSessionKey,
                 )}
               </div>
             </div>
@@ -8011,7 +8096,7 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
       <div className="agent-task-toolbar-content">
         <div className="agent-task-toolbar-left">
           <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
-          <span className="at-task-text">{taskText || 'New Task.md'}</span>
+          <span className="at-task-text">{taskText}</span>
         </div>
         <div className="agent-task-toolbar-right">
           {/* Restart icon button */}
@@ -8065,7 +8150,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, runningCheckTarget = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8107,8 +8192,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
+  const isTaskRunRunning = runState === 'running' || Boolean(runningCheckTarget);
   const shouldShowDoneEnhanceHint = genState === 'done'
-    && runState !== 'running'
+    && !isTaskRunRunning
     && hasPendingDoneEnhanceChanges
     && !isDoneEnhanceLocked;
   const isDoneEnhanceEnabled = genState === 'done'
@@ -8735,7 +8821,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -8750,7 +8836,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -8766,7 +8852,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
-                {runState === 'running' ? (<>
+                {isTaskRunRunning ? (<>
                   <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
                     <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
@@ -8786,7 +8872,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               {/* Default state — right */}
               <div className="agent-task-toolbar-right">
-                {runState === 'running' ? (
+                {isTaskRunRunning ? (
                   <button className="at-send-btn" onClick={() => onStop()}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
@@ -8882,7 +8968,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -8982,7 +9068,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
 const AGENT_TASKS = [
   { id: 't1', label: 'visit-booking.md',   time: '2m',  status: null },
-  { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'running' },
+  { id: 't2', label: 'vet-schedules.md',   time: '6s',  status: 'running' },
 ];
 
 const VET_SCHEDULES_AC_RUN_STATUSES = [
@@ -9034,16 +9120,6 @@ function createVetSchedulesSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
-      ],
-    },
-    {
       id: 'plan',
       title: 'Plan',
       items: [
@@ -9052,6 +9128,16 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection' },
+      ],
+    },
+    {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
       ],
     },
     {
@@ -9117,7 +9203,7 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
       planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       initialTaskState: createInteractiveTaskState({
         documentSections,
-        genState: 'idle',
+        genState: 'done',
         acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
         planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       }),
@@ -9132,13 +9218,24 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
     defaultDocument: documentSections,
     acBaseStatuses: AC_RUN_STATUSES,
     planBaseStatuses: PLAN_RUN_STATUSES,
-    initialTaskState: createInteractiveTaskState({
-      documentSections,
-      genState: isVisitBookingPreset ? 'done' : 'idle',
-      acBaseStatuses: AC_RUN_STATUSES,
-      planBaseStatuses: PLAN_RUN_STATUSES,
-      seedRunResults: isVisitBookingPreset,
-    }),
+    initialTaskState: (() => {
+      const nextTaskState = createInteractiveTaskState({
+        documentSections,
+        genState: isVisitBookingPreset ? 'done' : 'idle',
+        acBaseStatuses: AC_RUN_STATUSES,
+        planBaseStatuses: PLAN_RUN_STATUSES,
+        seedRunResults: isVisitBookingPreset,
+      });
+
+      if (!isVisitBookingPreset) {
+        return nextTaskState;
+      }
+
+      return {
+        ...nextTaskState,
+        acRunResult: null,
+      };
+    })(),
   };
 }
 
@@ -9178,6 +9275,72 @@ function getAgentTaskTabId(taskId) {
   if (typeof taskId !== 'string' || taskId.length === 0) return null;
   if (taskId.startsWith('agent-task-')) return taskId;
   return getPresetAgentTaskDefinition(taskId)?.tab?.id ?? `agent-task-${taskId}`;
+}
+
+function createInitialAgentTaskTabs() {
+  return [
+    getPresetAgentTaskDefinition('t2').tab,
+    getPresetAgentTaskDefinition('t1').tab,
+    ...MY_EDITOR_TABS,
+  ];
+}
+
+function createInitialAgentTaskTabContents() {
+  const visitBookingPreset = getPresetAgentTaskDefinition('t1');
+  const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
+
+  return {
+    ...MY_EDITOR_TAB_CONTENTS,
+    [vetSchedulesPreset.tab.id]: vetSchedulesPreset.content,
+    [visitBookingPreset.tab.id]: visitBookingPreset.content,
+  };
+}
+
+function createInitialInteractiveTaskStates() {
+  return {
+    'agent-task-t2': getPresetAgentTaskDefinition('t2').interactiveState,
+    'agent-task-t1': getPresetAgentTaskDefinition('t1').interactiveState,
+  };
+}
+
+const VISIT_BOOKING_PLAN_RUN_LOG_LINES = [
+  { type: 'command', text: 'agent run "visit-booking.md" --section "Plan"' },
+  { type: 'output',  text: 'Reading visit-booking.md' },
+  { type: 'output',  text: 'Resolving referenced files...' },
+  { type: 'output',  text: `Loading ${PROJECT_NAME} context...` },
+  { type: 'output',  text: 'Building execution plan...' },
+  { type: 'output',  text: 'Step 1 — Schema changes: vet_id and visit_time columns   ✓' },
+  { type: 'output',  text: 'Step 2 — Visit entity: @ManyToOne and LocalTime fields   ✓' },
+  { type: 'output',  text: 'Step 3 — VisitRepository: existsByVetIdAndDateAndTime check   ✗' },
+  { type: 'output',  text: 'Paused — step 3 was not applied because the repository-only check still allows concurrent double booking without a database UNIQUE(vet_id, visit_date, visit_time) constraint.' },
+];
+
+function createInitialTerminalTabsState() {
+  return [{
+    id: buildTerminalSessionTabId('agent-task-t1'),
+    label: 'visit-booking.md',
+    closable: true,
+    sourceTabId: 'agent-task-t1',
+  }];
+}
+
+function createInitialTerminalSessions() {
+  return {
+    [buildTerminalSessionTabId('agent-task-t1')]: {
+      ...createTerminalSessionState({ sourceTabId: 'agent-task-t1', sourceTabLabel: 'visit-booking.md' }),
+      blocks: buildTerminalBlocks(VISIT_BOOKING_PLAN_RUN_LOG_LINES),
+      permissionPrompt: {
+        question: 'Step 3 completed with a warning. Continue executing remaining plan steps?',
+        options: TERMINAL_PERMISSION_OPTIONS,
+        baseLines: VISIT_BOOKING_PLAN_RUN_LOG_LINES,
+        selectedIdx: 0,
+      },
+    },
+    [buildTerminalSessionTabId('agent-task-t2')]: createTerminalSessionState({
+      sourceTabId: 'agent-task-t2',
+      sourceTabLabel: 'vet-schedules.md',
+    }),
+  };
 }
 
 function createAgentTaskExecutionTiming() {
@@ -9300,6 +9463,21 @@ function IconDone() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M2.5 8.25L6 11.75L13.5 4.25" stroke="#868A91" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconLoaderSpinner() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon loader-spinner" aria-label="Loading" role="status">
+      <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91" />
+      <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91" />
+      <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91" />
+      <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91" />
+      <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91" />
+      <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91" />
+      <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91" />
+      <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91" />
     </svg>
   );
 }
@@ -9470,6 +9648,7 @@ function AgentTasksPanel({
       const taskTree = planTreesByTaskId?.[task.id] ?? null;
       const hasChanges = Array.isArray(taskTree?.treeData) && taskTree.treeData.length > 0;
       const isTaskSelected = selected === task.id;
+      const shouldExpandByDefault = false;
       const shouldShowSuccessIcon =
         task.indicator === 'success' && !dismissedSuccessTaskIdSet.has(task.id) && !isTaskSelected;
 
@@ -9495,7 +9674,7 @@ function AgentTasksPanel({
             <span className="agent-task-tree-task-name">{task.label}</span>
             {task.indicator === 'loading' && (
               <span className="agent-task-tree-task-meta">
-                <Loader size={16} />
+                <IconLoaderSpinner />
               </span>
             )}
             {task.indicator === 'warning' && !isTaskSelected && (
@@ -9503,16 +9682,11 @@ function AgentTasksPanel({
                 <IconWarning />
               </span>
             )}
-            {shouldShowSuccessIcon && (
-              <span className="agent-task-tree-task-meta">
-                <IconDone />
-              </span>
-            )}
           </span>
         ),
         icon: <IconMdTask />,
         secondaryText: task.time || undefined,
-        isExpanded: (hasSelectedChild || (isTaskSelected && hasChanges)) || undefined,
+        isExpanded: (hasSelectedChild || (shouldExpandByDefault && hasChanges)) || undefined,
         children: hasChanges ? taskTree.treeData : undefined,
       };
     });
@@ -9606,22 +9780,22 @@ function AgentTasksPanel({
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState('welcome'); // 'welcome' | 'ide' | 'settings'
-  const [ideTabs, setIdeTabs] = useState(MY_EDITOR_TABS);
-  const [ideTabContents, setIdeTabContents] = useState(MY_EDITOR_TAB_CONTENTS);
-  const [interactiveTaskStates, setInteractiveTaskStates] = useState({});
-  const [activeEditorTab, setActiveEditorTab] = useState(null);
+  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide' | 'settings'
+  const [ideTabs, setIdeTabs] = useState(() => createInitialAgentTaskTabs());
+  const [ideTabContents, setIdeTabContents] = useState(() => createInitialAgentTaskTabContents());
+  const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => createInitialInteractiveTaskStates());
+  const [activeEditorTab, setActiveEditorTab] = useState(0);
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
-  const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['project']);
+  const [selectedTask, setSelectedTask] = useState('t2');
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
-  const [terminalTabsState, setTerminalTabsState] = useState([]);
-  const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
-  const [terminalSessions, setTerminalSessions] = useState({});
+  const [terminalTabsState, setTerminalTabsState] = useState(() => createInitialTerminalTabsState());
+  const [activeTerminalTabId, setActiveTerminalTabId] = useState(() => buildTerminalSessionTabId('agent-task-t1'));
+  const [terminalSessions, setTerminalSessions] = useState(() => createInitialTerminalSessions());
   const [terminalBlocks, setTerminalBlocks] = useState([]);
   const [terminalViewKey, setTerminalViewKey] = useState(0);
   const [isTerminalStreaming, setIsTerminalStreaming] = useState(false);
@@ -9630,6 +9804,7 @@ export default function App() {
   const [terminalPermissionScope, setTerminalPermissionScope] = useState(null);
   const [acWarningPermissionScope, setAcWarningPermissionScope] = useState(null);
   const [runStatesByTab, setRunStatesByTab] = useState({});
+  const [runningCheckByTab, setRunningCheckByTab] = useState({});
   const [acRunResult, setAcRunResult] = useState(null); // null | string[] — statuses per AC checkbox
   const [planRunResult, setPlanRunResult] = useState(null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
@@ -9641,17 +9816,17 @@ export default function App() {
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
-  const [genState, setGenState] = useState('idle'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
-  const [genProgress, setGenProgress] = useState(0);
-  const [generatedDocument, setGeneratedDocument] = useState(() => createSpecDocument());
+  const [genState, setGenState] = useState('done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
+  const [genProgress, setGenProgress] = useState(1);
+  const [generatedDocument, setGeneratedDocument] = useState(() => createVetSchedulesSpecDocument());
   const [appliedIssueFixes, setAppliedIssueFixes] = useState({ ac: {}, plan: {} });
   const [removedIssueIndices, setRemovedIssueIndices] = useState({ ac: {}, plan: {} });
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState([]);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
-  const [generationTabId, setGenerationTabId] = useState(null);
+  const [generationTabId, setGenerationTabId] = useState('agent-task-t2');
   const doneEnhanceFlowRef = useRef(null);
-  const seededPresetTaskRef = useRef(false);
+  const seededPresetTaskRef = useRef(true);
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
@@ -9820,6 +9995,24 @@ export default function App() {
       return {
         ...prev,
         [resolvedTabId]: nextState,
+      };
+    });
+  }, [resolveRunStateTabId]);
+
+  const setRunningCheckForTab = useCallback((target, tabId = null) => {
+    const resolvedTabId = resolveRunStateTabId(tabId);
+    if (!resolvedTabId) return;
+
+    setRunningCheckByTab((prev) => {
+      if (!target) {
+        if (!(resolvedTabId in prev)) return prev;
+        const { [resolvedTabId]: _removedTarget, ...rest } = prev;
+        return rest;
+      }
+
+      return {
+        ...prev,
+        [resolvedTabId]: target,
       };
     });
   }, [resolveRunStateTabId]);
@@ -10063,6 +10256,7 @@ export default function App() {
     if (!sourceTabId) return;
     const terminalTabId = buildTerminalSessionTabId(sourceTabId);
     setRunStateForTab('default', sourceTabId);
+    setRunningCheckForTab(null, sourceTabId);
     setPendingTerminalRunForTab(null, terminalTabId);
     setTerminalPermissionPromptForTab(null, terminalTabId);
     setAcWarningBannerForTab(null, terminalTabId);
@@ -10072,6 +10266,7 @@ export default function App() {
   }, [
     setAcWarningBannerForTab,
     setPendingTerminalRunForTab,
+    setRunningCheckForTab,
     setRunStateForTab,
     setTerminalPermissionPromptForTab,
   ]);
@@ -10101,6 +10296,7 @@ export default function App() {
     setGenProgress(0);
     setGenState('idle');
     setRunStateForTab('default');
+    setRunningCheckForTab(null);
     currentRunSourceTabIdRef.current = null;
     setAcRunResult(null);
     setPlanRunResult(null);
@@ -10112,6 +10308,7 @@ export default function App() {
     clearTerminalRunAnimation,
     resetDoneComments,
     setPendingTerminalRunForTab,
+    setRunningCheckForTab,
     setRunStateForTab,
     setTerminalPermissionPromptForTab,
   ]);
@@ -10156,7 +10353,7 @@ export default function App() {
       tabId,
       label: matchingTab?.label ?? '',
     });
-    const isLiveTaskTab = tabId === activeSourceEditorTabId || tabId === generationTabId;
+    const isLiveTaskTab = tabId === generationTabId;
     const taskState = isLiveTaskTab
       ? {
           genState,
@@ -10182,7 +10379,6 @@ export default function App() {
       baseCode,
     };
   }, [
-    activeSourceEditorTabId,
     acRunResult,
     agentTaskCommentEntries,
     appliedIssueFixes,
@@ -10255,7 +10451,7 @@ export default function App() {
       return [];
     }
 
-    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+    if (tabId === generationTabId) {
       return Array.isArray(agentTaskCommentEntries) ? agentTaskCommentEntries : [];
     }
 
@@ -10274,7 +10470,6 @@ export default function App() {
       ? fallbackScenario.initialTaskState.commentEntries
       : [];
   }, [
-    activeSourceEditorTabId,
     agentTaskCommentEntries,
     generationTabId,
     ideTabs,
@@ -10385,7 +10580,7 @@ export default function App() {
       };
     });
 
-    if (sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
+    if (sourceTabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => replaceCommentEntriesForTarget(
         prev,
         normalizedTarget,
@@ -10393,7 +10588,7 @@ export default function App() {
         metadata,
       ));
     }
-  }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
+  }, [generationTabId, getTaskRuntimeState]);
 
   const handleAgentTaskSelect = useCallback((task) => {
     const resolvedTask = typeof task === 'string'
@@ -10404,7 +10599,7 @@ export default function App() {
 
     const preset = getPresetAgentTaskDefinition(taskId);
     const resolvedTabId = preset?.tab?.id ?? getAgentTaskTabId(taskId) ?? taskId;
-    const taskLabel = resolvedTask?.label ?? preset?.tab?.label ?? 'New Task.md';
+    const taskLabel = resolvedTask?.label ?? preset?.tab?.label ?? '';
     const scenario = getAgentTaskScenario({
       tabId: resolvedTabId,
       label: taskLabel,
@@ -10460,18 +10655,18 @@ export default function App() {
 
     applyInteractiveTaskState(resolvedTabId, nextTaskState);
     setRunStateForTab('default', resolvedTabId);
-    setPendingTerminalRunForTab(null, buildTerminalSessionTabId(resolvedTabId));
-    setTerminalPermissionPromptForTab(null, buildTerminalSessionTabId(resolvedTabId));
-    setAcWarningBannerForTab(null, buildTerminalSessionTabId(resolvedTabId));
+    ensureTerminalSession({
+      terminalTabId: buildTerminalSessionTabId(resolvedTabId),
+      sourceTabId: resolvedTabId,
+      label: nextTab.label,
+    });
   }, [
     agentTasks,
     applyInteractiveTaskState,
+    ensureTerminalSession,
     ideTabs,
     interactiveTaskStates,
-    setAcWarningBannerForTab,
-    setPendingTerminalRunForTab,
     setRunStateForTab,
-    setTerminalPermissionPromptForTab,
   ]);
 
   const handleEditorTabChange = useCallback((nextIndex) => {
@@ -10503,7 +10698,12 @@ export default function App() {
     ));
 
     applyInteractiveTaskState(nextTab.id, nextTaskState);
-  }, [agentTasks, applyInteractiveTaskState, ideTabs, interactiveTaskStates, restoreSpecDoneScrollForTab, selectedTask]);
+    ensureTerminalSession({
+      terminalTabId: buildTerminalSessionTabId(nextTab.id),
+      sourceTabId: nextTab.id,
+      label: nextTab.label,
+    });
+  }, [agentTasks, applyInteractiveTaskState, ensureTerminalSession, ideTabs, interactiveTaskStates, restoreSpecDoneScrollForTab, selectedTask]);
 
   const requestProblemHighlight = useCallback((rawIndex) => {
     if (!Number.isInteger(rawIndex) || rawIndex < 0) return;
@@ -10949,6 +11149,9 @@ export default function App() {
       pausePredicate = null,
       onPause,
       onComplete,
+      stepDelay = RUN_STATUS_REVEAL_STEP_DELAY_MS,
+      onStepStart = null,
+      onStepComplete = null,
     } = options;
     const setResult = kind === 'ac' ? setAcRunResult : setPlanRunResult;
     clearStatusReveal(kind);
@@ -10975,6 +11178,7 @@ export default function App() {
     if (revealIndices) {
       const scheduleIndexedStep = (listIndex, delay) => {
         const statusIndex = revealIndices[listIndex];
+        onStepStart?.(statusIndex);
         const timeoutId = window.setTimeout(() => {
           latestResult = ((prev) => {
             const next = Array.isArray(prev) ? [...prev] : [...latestResult];
@@ -10982,6 +11186,7 @@ export default function App() {
             return next;
           })(latestResult);
           setResult(latestResult);
+          onStepComplete?.(statusIndex, latestResult);
           statusRevealTimeoutsRef.current[kind] = statusRevealTimeoutsRef.current[kind].filter((id) => id !== timeoutId);
 
           if (pausePredicate?.(statuses[statusIndex], statusIndex, latestResult)) {
@@ -10994,7 +11199,7 @@ export default function App() {
             return;
           }
 
-          scheduleIndexedStep(listIndex + 1, RUN_STATUS_REVEAL_STEP_DELAY_MS);
+          scheduleIndexedStep(listIndex + 1, stepDelay);
         }, delay);
 
         statusRevealTimeoutsRef.current[kind].push(timeoutId);
@@ -11010,6 +11215,7 @@ export default function App() {
     }
 
     const scheduleStep = (idx, delay) => {
+      onStepStart?.(idx);
       const timeoutId = window.setTimeout(() => {
         latestResult = ((prev) => {
           const next = Array.isArray(prev) ? [...prev] : [...latestResult];
@@ -11017,6 +11223,7 @@ export default function App() {
           return next;
         })(latestResult);
         setResult(latestResult);
+        onStepComplete?.(idx, latestResult);
         statusRevealTimeoutsRef.current[kind] = statusRevealTimeoutsRef.current[kind].filter((id) => id !== timeoutId);
 
         if (pausePredicate?.(statuses[idx], idx, latestResult)) {
@@ -11029,7 +11236,7 @@ export default function App() {
           return;
         }
 
-        scheduleStep(idx + 1, RUN_STATUS_REVEAL_STEP_DELAY_MS);
+        scheduleStep(idx + 1, stepDelay);
       }, delay);
 
       statusRevealTimeoutsRef.current[kind].push(timeoutId);
@@ -11121,9 +11328,39 @@ export default function App() {
   }, [clearChainedRunTimeout, clearStatusReveal]);
 
   const finishTerminalRun = useCallback((options = {}) => {
-    const { advanceGeneration = false, cancelGeneration = false } = options;
+    const {
+      advanceGeneration = false,
+      cancelGeneration = false,
+      stopPlanRun = false,
+      stopAtRunningPlanIndex = null,
+    } = options;
     const currentScenario = getCurrentAgentTaskScenario();
     const lastRunRequest = lastTerminalRunRequestRef.current;
+    const section = (lastRunSectionRef.current || '').toLowerCase();
+    const slowMarkdownTaskRun = isMarkdownTaskRunRequest(lastRunRequest);
+    const revealStepDelay = slowMarkdownTaskRun
+      ? MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS
+      : RUN_STATUS_REVEAL_STEP_DELAY_MS;
+    const revealRunningOptions = slowMarkdownTaskRun
+      ? {
+          stepDelay: revealStepDelay,
+          onStepStart: (index) => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab({ kind: section === 'acceptance criteria' ? 'ac' : 'plan', index }, lastRunRequest.sourceTabId);
+            }
+          },
+          onStepComplete: () => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+            }
+          },
+          onComplete: () => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+            }
+          },
+        }
+      : {};
     const runCompleteOpts = { runComplete: true };
     const nextAcRunStatuses = buildResolvedRunStatuses(
       currentScenario.acBaseStatuses,
@@ -11144,10 +11381,12 @@ export default function App() {
     currentRunSourceTabIdRef.current = null;
     terminalDrivenGenerationRef.current = false;
     if (advanceGeneration && AGENT_TASK_GENERATING_STATE_ENABLED) {
+      if (lastRunRequest?.sourceTabId) {
+        setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+      }
       setGenState('generating');
       return;
     }
-    const section = (lastRunSectionRef.current || '').toLowerCase();
     if (section === 'acceptance criteria') {
       const acRevealOptions = buildSelectiveRunRevealOptions({
         kind: 'ac',
@@ -11162,6 +11401,7 @@ export default function App() {
         ...(acRevealOptions.hasSelectiveRerun
           ? { indices: acRevealOptions.indices }
           : {}),
+        ...revealRunningOptions,
       });
     } else if (section === 'plan') {
       const planRevealOptions = buildSelectiveRunRevealOptions({
@@ -11172,18 +11412,44 @@ export default function App() {
       });
       // Clear applied plan fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, plan: {} }));
+      const hasRunningPlanStop =
+        Number.isInteger(stopAtRunningPlanIndex)
+        && stopAtRunningPlanIndex >= 0
+        && stopAtRunningPlanIndex < nextPlanRunStatuses.length;
+      if (hasRunningPlanStop) {
+        const runningPlanIndex = stopAtRunningPlanIndex;
+        const pauseAfterIndex = Math.max(runningPlanIndex - 1, -1);
+        revealRunStatuses('plan', nextPlanRunStatuses, {
+          initialResult: planRevealOptions.initialResult,
+          pausePredicate: (_status, index) => index === pauseAfterIndex,
+          onPause: () => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab({ kind: 'plan', index: runningPlanIndex }, lastRunRequest.sourceTabId);
+            }
+          },
+          ...revealRunningOptions,
+        });
+        return;
+      }
       revealRunStatuses('plan', nextPlanRunStatuses, {
         initialResult: planRevealOptions.initialResult,
         ...(planRevealOptions.hasSelectiveRerun
           ? { indices: planRevealOptions.indices }
           : {}),
+        ...revealRunningOptions,
       });
+      if (stopPlanRun) {
+        if (lastRunRequest?.sourceTabId) {
+          setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+        }
+        return;
+      }
       if (!cancelGeneration && lastRunRequest?.mode === 'section') {
         clearChainedRunTimeout();
         const revealSteps = planRevealOptions.hasSelectiveRerun
           ? planRevealOptions.indices.length
           : nextPlanRunStatuses.length;
-        const revealDuration = RUN_STATUS_REVEAL_STEP_DELAY_MS * Math.max(revealSteps - 1, 0);
+        const revealDuration = revealStepDelay * Math.max(revealSteps - 1, 0);
         chainedRunTimeoutRef.current = window.setTimeout(() => {
           chainedRunTimeoutRef.current = null;
           queueTerminalRunRef.current?.({
@@ -11198,6 +11464,9 @@ export default function App() {
       }
     }
     if (cancelGeneration) {
+      if (lastRunRequest?.sourceTabId) {
+        setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+      }
       clearChainedRunTimeout();
       clearAcWarningFlow();
       setGenerationTabId(null);
@@ -11213,6 +11482,7 @@ export default function App() {
     acRunResult,
     planRunResult,
     setAppliedIssueFixes,
+    setRunningCheckForTab,
     setRunStateForTab,
     setTerminalStreamingForTab,
   ]);
@@ -11281,6 +11551,7 @@ export default function App() {
     setSpecVersionsByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
     setPlanDiffUiStates((prev) => removeTabStateEntry(prev, closingTab?.id));
     setRunStatesByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
+    setRunningCheckByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
 
     if (highlightedProblemLocation?.tabId === closingTab.id) {
       setHighlightedProblemLocation(null);
@@ -11318,7 +11589,15 @@ export default function App() {
   ]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
-    const { baseLines = [], onComplete } = options;
+    const {
+      baseLines = [],
+      onComplete,
+      onFrame = null,
+      initialDelay = TERMINAL_RUN_INITIAL_DELAY_MS,
+      stepDelay = TERMINAL_RUN_STEP_DELAY_MS,
+      endDelay = TERMINAL_RUN_END_DELAY_MS,
+      keepStreamingOnComplete = false,
+    } = options;
     const frames = buildTerminalFrames(lines, baseLines);
     if (frames.length === 0) {
       onComplete?.();
@@ -11330,14 +11609,17 @@ export default function App() {
     frames.forEach((frame, idx) => {
       const timeoutId = window.setTimeout(() => {
         setTerminalBlocksForTab(frame);
-      }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * idx);
+        onFrame?.(idx, frame);
+      }, initialDelay + stepDelay * idx);
       terminalRunTimeoutsRef.current.push(timeoutId);
     });
 
     const finalTimeoutId = window.setTimeout(() => {
-      setTerminalStreamingForTab(false);
+      if (!keepStreamingOnComplete) {
+        setTerminalStreamingForTab(false);
+      }
       onComplete?.();
-    }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * frames.length + TERMINAL_RUN_END_DELAY_MS);
+    }, initialDelay + stepDelay * frames.length + endDelay);
     terminalRunTimeoutsRef.current.push(finalTimeoutId);
   }, [setTerminalBlocksForTab, setTerminalStreamingForTab]);
 
@@ -11371,6 +11653,24 @@ export default function App() {
     }
 
     if (choiceId !== 'reject') {
+      const revealStepDelay = flow.slowMarkdownTaskRun
+        ? MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS
+        : RUN_STATUS_REVEAL_STEP_DELAY_MS;
+      const revealRunningOptions = flow.slowMarkdownTaskRun
+        ? {
+            stepDelay: revealStepDelay,
+            onStepStart: (index) => {
+              if (flow.sourceTabId) {
+                setRunningCheckForTab({ kind: 'ac', index }, flow.sourceTabId);
+              }
+            },
+            onStepComplete: () => {
+              if (flow.sourceTabId) {
+                setRunningCheckForTab(null, flow.sourceTabId);
+              }
+            },
+          }
+        : {};
       const remainingRevealIndices = Array.isArray(flow.revealIndices)
         ? flow.revealIndices.filter((visibleIndex) => visibleIndex > (flow.nextStatusIndex - 1))
         : null;
@@ -11378,12 +11678,14 @@ export default function App() {
         ? {
             initialResult: flow.revealedStatuses,
             indices: remainingRevealIndices,
-            initialDelay: RUN_STATUS_REVEAL_STEP_DELAY_MS,
+            initialDelay: revealStepDelay,
+            ...revealRunningOptions,
           }
         : {
             initialResult: flow.revealedStatuses,
             startIndex: flow.nextStatusIndex,
-            initialDelay: RUN_STATUS_REVEAL_STEP_DELAY_MS,
+            initialDelay: revealStepDelay,
+            ...revealRunningOptions,
           });
     }
 
@@ -11395,6 +11697,9 @@ export default function App() {
 
     runTerminalLineAnimation(continuationLines, {
       baseLines: committedLines,
+      ...(flow.slowMarkdownTaskRun
+        ? getTerminalRunTimingOptions({ sourceTabId: flow.sourceTabId })
+        : {}),
       onComplete: () => {
         setRunStateForTab('default', currentRunSourceTabIdRef.current);
         currentRunSourceTabIdRef.current = null;
@@ -11408,6 +11713,7 @@ export default function App() {
     removedIssueIndices,
     revealRunStatuses,
     runTerminalLineAnimation,
+    setRunningCheckForTab,
     setRunStateForTab,
     setTerminalBlocksForTab,
   ]);
@@ -11416,6 +11722,26 @@ export default function App() {
     resetTerminalOutput();
     clearAcWarningFlow();
 
+    const slowMarkdownTaskRun = isMarkdownTaskRunRequest(runRequest);
+    const terminalTimingOptions = getTerminalRunTimingOptions(runRequest);
+    const revealStepDelay = slowMarkdownTaskRun
+      ? MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS
+      : RUN_STATUS_REVEAL_STEP_DELAY_MS;
+    const revealRunningOptions = slowMarkdownTaskRun
+      ? {
+          stepDelay: revealStepDelay,
+          onStepStart: (index) => {
+            if (runRequest?.sourceTabId) {
+              setRunningCheckForTab({ kind: 'ac', index }, runRequest.sourceTabId);
+            }
+          },
+          onStepComplete: (index) => {
+            if (runRequest?.sourceTabId) {
+              setRunningCheckForTab(null, runRequest.sourceTabId);
+            }
+          },
+        }
+      : {};
     const introLines = buildAcceptanceCriteriaIntroLines(runRequest?.taskLabel ?? TERMINAL_TASK_TAB_BASE_LABEL);
     const currentScenario = getCurrentAgentTaskScenario();
     const nextAcRunStatuses = buildResolvedRunStatuses(
@@ -11457,9 +11783,11 @@ export default function App() {
             ...(acRevealOptions.hasSelectiveRerun
               ? { indices: acRevealOptions.indices }
               : {}),
+            ...revealRunningOptions,
           });
           runTerminalLineAnimation(buildAcceptanceCriteriaContinuationLines('allow-session'), {
             baseLines: introLines,
+            ...terminalTimingOptions,
             onComplete: () => {
               setRunStateForTab('default', currentRunSourceTabIdRef.current);
               currentRunSourceTabIdRef.current = null;
@@ -11479,18 +11807,25 @@ export default function App() {
             : {}),
           pausePredicate: (_, idx) => hasPausableWarning && idx === warningStatusIndex,
           onPause: (revealedStatuses, idx) => {
+            if (runRequest?.sourceTabId) {
+              setRunningCheckForTab(null, runRequest.sourceTabId);
+            }
             acWarningFlowRef.current = {
               baseLines: introLines,
               revealedStatuses,
               nextStatusIndex: idx + 1,
               revealIndices: acRevealOptions.hasSelectiveRerun ? acRevealOptions.indices : null,
+              sourceTabId: runRequest?.sourceTabId ?? null,
+              slowMarkdownTaskRun,
             };
             setAcWarningBannerForTab({
               question: AC_WARNING_PROMPT,
             });
           },
+          ...revealRunningOptions,
         });
       },
+      ...terminalTimingOptions,
     });
   }, [
     appliedIssueFixes,
@@ -11504,6 +11839,7 @@ export default function App() {
     runTerminalLineAnimation,
     setRunStateForTab,
     setAcWarningBannerForTab,
+    setRunningCheckForTab,
   ]);
 
   const startTerminalRunAnimation = useCallback((runRequest) => {
@@ -11520,7 +11856,12 @@ export default function App() {
         ? { ...runRequest, permissionChoice: 'allow-session' }
         : runRequest;
     const runSequence = buildTerminalRunSequence(effectiveRunRequest);
-    const { initialLines, permissionPrompt } = runSequence;
+    const { initialLines, permissionPrompt, stopAtRunningPlanIndex } = runSequence;
+    const terminalTimingOptions = getTerminalRunTimingOptions(effectiveRunRequest);
+    const isVetSchedulesPlanRun =
+      effectiveRunRequest?.mode === 'section'
+      && resolvedSectionTitle === 'plan'
+      && effectiveRunRequest?.taskLabel === 'vet-schedules.md';
 
     if (initialLines.length === 0) {
       finishTerminalRun();
@@ -11528,7 +11869,39 @@ export default function App() {
     }
 
     runTerminalLineAnimation(initialLines, {
+      ...terminalTimingOptions,
+      ...(isVetSchedulesPlanRun
+        ? {
+            keepStreamingOnComplete: true,
+            onFrame: (frameIndex) => {
+              const currentScenario = getCurrentAgentTaskScenario(effectiveRunRequest?.sourceTabId ?? null);
+              const nextPlanRunStatuses = buildResolvedRunStatuses(
+                currentScenario.planBaseStatuses,
+                'plan',
+                appliedIssueFixes,
+                removedIssueIndices,
+                { runComplete: true },
+              );
+              if (!effectiveRunRequest?.sourceTabId) return;
+
+              if (frameIndex === 5) {
+                setAppliedIssueFixes((prev) => ({ ...prev, plan: {} }));
+                setPlanRunResult([nextPlanRunStatuses[0]]);
+                setRunningCheckForTab({ kind: 'plan', index: 1 }, effectiveRunRequest.sourceTabId);
+              } else if (frameIndex === 6) {
+                setPlanRunResult([nextPlanRunStatuses[0], nextPlanRunStatuses[1]]);
+                setRunningCheckForTab({ kind: 'plan', index: 2 }, effectiveRunRequest.sourceTabId);
+              } else if (frameIndex >= 7) {
+                setPlanRunResult([nextPlanRunStatuses[0], nextPlanRunStatuses[1]]);
+                setRunningCheckForTab({ kind: 'plan', index: 2 }, effectiveRunRequest.sourceTabId);
+              }
+            },
+          }
+        : {}),
       onComplete: () => {
+        if (isVetSchedulesPlanRun) {
+          return;
+        }
         if (permissionPrompt) {
           setTerminalBlocksForTab(buildTerminalBlocks(initialLines));
           setTerminalPermissionPromptForTab({
@@ -11541,13 +11914,20 @@ export default function App() {
 
         finishTerminalRun({
           advanceGeneration: effectiveRunRequest?.mode === 'generate',
+          stopAtRunningPlanIndex: typeof stopAtRunningPlanIndex === 'number' ? stopAtRunningPlanIndex : null,
         });
       },
     });
   }, [
     finishTerminalRun,
+    getCurrentAgentTaskScenario,
+    appliedIssueFixes,
+    removedIssueIndices,
     resetTerminalOutput,
     runTerminalLineAnimation,
+    setAppliedIssueFixes,
+    setPlanRunResult,
+    setRunningCheckForTab,
     setTerminalBlocksForTab,
     setTerminalPermissionPromptForTab,
     startAcceptanceCriteriaRunAnimation,
@@ -11638,6 +12018,13 @@ export default function App() {
     }
     currentRunSourceTabIdRef.current = sessionMeta.sourceTabId ?? activeSourceEditorTabId ?? activeEditorTabId;
     setRunStateForTab('running', currentRunSourceTabIdRef.current);
+    const runTarget = normalizeCommentTarget(nextRunRequest?.runTarget ?? nextRunRequest?.checkTarget ?? null);
+    const initialSectionTarget = getInitialRunningCheckTargetForSection(nextRunRequest?.sectionTitle);
+    if (isMarkdownTaskRunRequest(nextRunRequest) && (runTarget || initialSectionTarget)) {
+      setRunningCheckForTab(runTarget ?? initialSectionTarget, currentRunSourceTabIdRef.current);
+    } else {
+      setRunningCheckForTab(null, currentRunSourceTabIdRef.current);
+    }
     clearTerminalRunAnimation();
     setPendingTerminalRunForTab(null, previousTerminalTabId);
     setTerminalPermissionPromptForTab(null, previousTerminalTabId);
@@ -11690,7 +12077,10 @@ export default function App() {
       { type: 'output', text: terminalPermissionPrompt.question },
       { type: 'output', text: `> ${selectedOption.label}` },
     ];
-    const continuationLines = buildTerminalPermissionContinuationLines(selectedOption.id);
+    const isPlanSectionPrompt = terminalPermissionPrompt.kind === 'plan-section';
+    const continuationLines = isPlanSectionPrompt
+      ? (selectedOption.id === 'reject' ? [{ type: 'error', text: 'Plan execution stopped' }] : [])
+      : buildTerminalPermissionContinuationLines(selectedOption.id);
 
     clearTerminalRunAnimation();
     setTerminalPermissionPromptForTab(null);
@@ -11702,20 +12092,19 @@ export default function App() {
       setTerminalPermissionScope(null);
     }
 
+    const isReject = selectedOption.id === 'reject';
+    const finishOpts = isPlanSectionPrompt
+      ? { stopPlanRun: isReject, advanceGeneration: !isReject }
+      : { advanceGeneration: !isReject, cancelGeneration: isReject };
+
     if (continuationLines.length === 0) {
-      finishTerminalRun({
-        advanceGeneration: selectedOption.id !== 'reject',
-        cancelGeneration: selectedOption.id === 'reject',
-      });
+      finishTerminalRun(finishOpts);
       return;
     }
 
     runTerminalLineAnimation(continuationLines, {
       baseLines: committedLines,
-      onComplete: () => finishTerminalRun({
-        advanceGeneration: selectedOption.id !== 'reject',
-        cancelGeneration: selectedOption.id === 'reject',
-      }),
+      onComplete: () => finishTerminalRun(finishOpts),
     });
   }, [
     clearTerminalRunAnimation,
@@ -11739,6 +12128,40 @@ export default function App() {
       }
     });
   };
+
+  const handleAgentTaskStop = useCallback(() => {
+    if (genState === 'loading' || genState === 'generating') {
+      setGenState('idle');
+      return;
+    }
+
+    const currentTabId = currentRunSourceTabIdRef.current ?? visibleEditorStateTabId ?? generationTabId;
+    clearChainedRunTimeout();
+    clearStatusReveal('plan');
+    clearStatusReveal('ac');
+    clearTerminalRunAnimation();
+    clearAcWarningFlow();
+    lastRunSectionRef.current = null;
+    lastTerminalRunRequestRef.current = null;
+    if (currentTabId) {
+      resetRunUiForTab(currentTabId);
+    } else {
+      setRunStateForTab('default');
+      setRunningCheckForTab(null);
+    }
+    currentRunSourceTabIdRef.current = null;
+  }, [
+    clearAcWarningFlow,
+    clearChainedRunTimeout,
+    clearStatusReveal,
+    clearTerminalRunAnimation,
+    genState,
+    generationTabId,
+    resetRunUiForTab,
+    setRunStateForTab,
+    setRunningCheckForTab,
+    visibleEditorStateTabId,
+  ]);
 
   const handleDoneRegenerate = (payload = {}) => {
     const commentEntries = payload?.commentEntries?.length
@@ -12371,7 +12794,7 @@ export default function App() {
     seededPresetTaskRef.current = true;
 
     const id = `agent-task-${Date.now()}`;
-    const newTask = { id, label: 'New Task.md', time: 'now', status: null };
+    const newTask = { id, label: 'Untitled.md', time: 'now', status: null };
     const scenario = getAgentTaskScenario({
       tabId: id,
       label: newTask.label,
@@ -12884,6 +13307,7 @@ export default function App() {
         || inspectionSummary.errorCount > 0;
       const isLoading =
         runStatesByTab[taskTabId] === 'running'
+        || Boolean(runningCheckByTab[taskTabId])
         || taskState?.genState === 'loading'
         || (AGENT_TASK_GENERATING_STATE_ENABLED && taskState?.genState === 'generating');
       const hasSuccessfulRun =
@@ -12907,7 +13331,7 @@ export default function App() {
               : null,
       };
     }),
-    [agentTasks, getCommentDrivenViewStateForTaskTab, getTaskRuntimeState, runStatesByTab],
+    [agentTasks, getCommentDrivenViewStateForTaskTab, getTaskRuntimeState, runningCheckByTab, runStatesByTab],
   );
   const hasActiveAgentTaskExecution = useMemo(
     () => agentTaskPanelRuntimeStates.some((task) => task?.indicator === 'loading'),
@@ -12930,7 +13354,7 @@ export default function App() {
     () => getAgentTaskIdForEditorTab(currentProblemsTab, agentTasks),
     [agentTasks, currentProblemsTab],
   );
-  const activeAgentTaskPanelSelectionId = navigatedAgentTaskId ?? selectedTask ?? agentTaskPanelTasks[0]?.id ?? null;
+  const activeAgentTaskPanelSelectionId = selectedTask ?? navigatedAgentTaskId ?? agentTaskPanelTasks[0]?.id ?? null;
   const agentTaskPlanTreesByTaskId = useMemo(() => (
     agentTaskPanelTasks.reduce((nextTrees, task) => {
       if (!task?.id) return nextTrees;
@@ -13367,6 +13791,7 @@ export default function App() {
       sourceTabId,
       sectionTitle,
       taskLabel: currentAgentTaskLabel,
+      runTarget,
       initialAcRunResult,
       initialPlanRunResult,
       rerunAcOriginalIndices: commitResult?.rerunAcOriginalIndices ?? [],
@@ -13381,7 +13806,10 @@ export default function App() {
     const patchedCtx = id === 'terminal' ? {
       ...ctx,
       setShowBottomPanel: (show) => {
-        if (!show) setRunStateForTab('default');
+        if (!show) {
+          setRunStateForTab('default');
+          setRunningCheckForTab(null);
+        }
         ctx.setShowBottomPanel(show);
       },
     } : ctx;
@@ -13391,7 +13819,16 @@ export default function App() {
       const terminalTabs = hasLocalTerminalTabs
         ? buildTerminalTaskTabs(terminalTabsState)
         : buildTerminalTaskTabs(ctx.terminalTabs);
-      const terminalInput = visibleTerminalIsStreaming || visiblePendingTerminalRun || visibleTerminalPermissionPrompt
+      const hideIdleAgentTaskTerminalInput = hasLocalTerminalTabs
+        && activeTerminalSession?.sourceTabId?.startsWith('agent-task-')
+        && visibleTerminalBlocks.length === 0
+        && !visibleTerminalIsStreaming
+        && !visiblePendingTerminalRun
+        && !visibleTerminalPermissionPrompt
+        && !visibleAcWarningBanner;
+      const terminalInput = hideIdleAgentTaskTerminalInput
+        ? null
+        : visibleTerminalIsStreaming || visiblePendingTerminalRun || visibleTerminalPermissionPrompt
         ? null
         : TERMINAL_RUN_INPUT;
       return cloneElement(panel, {
@@ -13488,6 +13925,9 @@ export default function App() {
     : null;
   const activeDoneOverlayUiState = visibleEditorStateTabId
     ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
+    : null;
+  const activeRunningCheckTarget = visibleEditorStateTabId
+    ? (runningCheckByTab[visibleEditorStateTabId] ?? null)
     : null;
   const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
   const activePlanDiffTarget = isDiffTab
@@ -13617,18 +14057,65 @@ export default function App() {
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
   }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs, restoreSpecDoneScrollForTab]);
+  const agentTaskIndicatorByTabId = useMemo(
+    () => agentTaskPanelRuntimeStates.reduce((nextMap, task) => {
+      if (task?.taskTabId) {
+        nextMap[task.taskTabId] = task.indicator ?? null;
+      }
+      return nextMap;
+    }, {}),
+    [agentTaskPanelRuntimeStates],
+  );
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
         Boolean(ideTabContents[tab.id]?.diffData) ||
         tab.id?.startsWith('plan-diff-') ||
         tab.id?.startsWith('spec-version-diff-');
+      const resolvedIcon = shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME
+        ? DIFF_TAB_ICON_NAME
+        : tab.icon;
+      const isVetSchedulesRunning =
+        (tab.id === 'agent-task-t2' || tab.label === 'vet-schedules.md')
+        && (runStatesByTab[tab.id] ?? 'default') === 'running';
+      const isVisitBookingWarning =
+        (tab.id === 'agent-task-t1' || tab.label === 'visit-booking.md')
+        && agentTaskIndicatorByTabId[tab.id] === 'warning'
+        && activeEditorTabId !== tab.id;
 
-      return shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME
-        ? { ...tab, icon: DIFF_TAB_ICON_NAME }
-        : tab;
+      return isVetSchedulesRunning
+        ? { ...tab, icon: <EditorTabRunningIcon icon={resolvedIcon} tone="green" /> }
+        : isVisitBookingWarning
+          ? { ...tab, icon: <EditorTabRunningIcon icon={resolvedIcon} tone="yellow" /> }
+        : (resolvedIcon !== tab.icon ? { ...tab, icon: resolvedIcon } : tab);
     })
-  ), [ideTabContents, ideTabs]);
+  ), [activeEditorTabId, agentTaskIndicatorByTabId, ideTabContents, ideTabs, runStatesByTab]);
+  const activeStatusBarTab = activeEditorTabMeta ?? ideTabs[activeEditorTab ?? 0] ?? null;
+  const activeRenderedStatusBarTab = activeStatusBarTab
+    ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTab.id) ?? activeStatusBarTab)
+    : null;
+  const activeStatusBarIcon = activeRenderedStatusBarTab?.icon ?? 'fileTypes/markdown';
+  const activeStatusBarTone =
+    activeStatusBarTab && ((activeStatusBarTab.id === 'agent-task-t2' || activeStatusBarTab.label === 'vet-schedules.md')
+      && (runStatesByTab[activeStatusBarTab.id] ?? 'default') === 'running')
+      ? 'green'
+      : activeStatusBarTab && ((activeStatusBarTab.id === 'agent-task-t1' || activeStatusBarTab.label === 'visit-booking.md')
+        && agentTaskIndicatorByTabId[activeStatusBarTab.id] === 'warning'
+        && activeEditorTabId !== activeStatusBarTab.id)
+        ? 'yellow'
+        : null;
+  const ideStatusBarBreadcrumbs = activeStatusBarTab
+    ? [{
+        icon: false,
+        label: (
+          <StatusBarActiveFileLabel
+            icon={activeStatusBarIcon}
+            label={activeStatusBarTab.label ?? PRIMARY_BREADCRUMBS[2]}
+            tone={activeStatusBarTone}
+          />
+        ),
+      }]
+    : [];
 
   if (screen === 'welcome') {
     return (
@@ -13814,7 +14301,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
@@ -13855,11 +14342,7 @@ export default function App() {
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
-          breadcrumbs: [
-            { label: PRIMARY_BREADCRUMBS[0], module: true },
-            { label: PRIMARY_BREADCRUMBS[1] },
-            { label: PRIMARY_BREADCRUMBS[2], icon: true, iconName: 'fileTypes/java' },
-          ],
+          breadcrumbs: ideStatusBarBreadcrumbs,
           widgets: [
             { type: 'text', text: '42:1' },
             { type: 'text', text: 'UTF-8' },
