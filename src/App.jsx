@@ -1641,11 +1641,61 @@ function applyIssueQuickFixToDocumentSections(documentSections, { kind, index, r
   });
 }
 
+function normalizeSpecSectionTitle(title = '') {
+  return String(title).trim().toLowerCase();
+}
+
+function orderPlanBeforeAcceptanceSections(documentSections = []) {
+  if (!Array.isArray(documentSections)) return [];
+
+  const planIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'plan');
+  const acceptanceIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
+
+  if (planIndex < 0 || acceptanceIndex < 0 || planIndex < acceptanceIndex) {
+    return documentSections;
+  }
+
+  const nextSections = [...documentSections];
+  const [planSection] = nextSections.splice(planIndex, 1);
+  const nextAcceptanceIndex = nextSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
+  nextSections.splice(nextAcceptanceIndex, 0, planSection);
+  return nextSections;
+}
+
+function orderPlanBeforeAcceptanceCode(code = '') {
+  const lines = typeof code === 'string' ? code.split(/\r?\n/) : [];
+  const sections = [];
+  let preamble = [];
+  let currentSection = null;
+
+  lines.forEach((line) => {
+    if (/^\s*##\s+/.test(line)) {
+      currentSection = { lines: [line], title: getDoneHeadingTitle(line) ?? '' };
+      sections.push(currentSection);
+      return;
+    }
+
+    if (currentSection) {
+      currentSection.lines.push(line);
+      return;
+    }
+
+    preamble.push(line);
+  });
+
+  if (sections.length === 0) return code;
+
+  const orderedSections = orderPlanBeforeAcceptanceSections(sections);
+  return [...preamble, ...orderedSections.flatMap((section) => section.lines)].join('\n');
+}
+
 function buildSerializedDocumentLines(documentSections) {
   const lines = [];
   const lineMap = [];
+  const orderedDocumentSections = orderPlanBeforeAcceptanceSections(documentSections);
 
-  (documentSections ?? []).forEach((section, sectionIndex) => {
+  orderedDocumentSections.forEach((section) => {
+    const sectionIndex = (documentSections ?? []).indexOf(section);
     const sectionStableId = section?.id ?? `section-${sectionIndex}`;
     const pushCheckLine = (item, itemIndex, { nestingLevel = 0, childPath = [] } = {}) => {
       const normalizedChildPath = Array.isArray(childPath) ? childPath : [];
@@ -1733,7 +1783,7 @@ function buildSerializedDocumentLines(documentSections) {
       }
     });
 
-    if (sectionIndex < (documentSections?.length ?? 0) - 1) {
+    if (orderedDocumentSections.indexOf(section) < orderedDocumentSections.length - 1) {
       lines.push('');
       lineMap.push({
         type: 'separator',
@@ -2237,11 +2287,12 @@ const COMPLETION_PREVIEW_LIBRARY = {
     previewLines: [
       '## Goal',
       'Describe the capability or workflow the agent should deliver.',
+      '## Plan',
+      '- Outline the implementation steps.',
       '## Acceptance Criteria',
       '- Make the result testable and concrete.',
-      '## Plan',
     ],
-    sections: ['Goal', 'Acceptance Criteria', 'Plan', 'Implementation Notes'],
+    sections: ['Goal', 'Plan', 'Acceptance Criteria', 'Implementation Notes'],
   },
   'Configuration.md': {
     previewLines: [
@@ -3414,14 +3465,6 @@ const SPEC_LINES = [
   { text: 'Add vet assignment and time slot selection to the visit creation flow.',                         type: 'text' },
   { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
-  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
-  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
-  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
-  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
-  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
-  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
-  { text: '',                                                                                                 type: 'empty'   },
   { text: 'Plan',                                                                                            type: 'heading' },
   { text: '\u2610 Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table',              type: 'check'   },
   { text: '\u2610 Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull',                  type: 'check'   },
@@ -3430,6 +3473,14 @@ const SPEC_LINES = [
   { text: '\u2610 Form template \u2014 add <select> for vet and <select> for time slot',                      type: 'check'   },
   { text: '\u2610 Owner details \u2014 add Vet and Time columns to visit history table',                      type: 'check'   },
   { text: '\u2610 Tests \u2014 vet list in model, successful booking, double-booking rejected',               type: 'check'   },
+  { text: '',                                                                                                 type: 'empty'   },
+  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
+  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
+  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
+  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
+  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
+  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Implementation Notes',                                                                            type: 'heading' },
   { text: '\u2022 Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.', type: 'note' },
@@ -3627,18 +3678,6 @@ function createSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
-        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
-        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
-      ],
-    },
-    {
       id: 'plan',
       title: 'Plan',
       meta: { kind: 'chip', text: 'Configuration.md' },
@@ -3650,6 +3689,18 @@ function createSpecDocument() {
         { id: 'plan-5', type: 'check', checked: false, text: 'Form template \u2014 add <select> for vet and <select> for time slot' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Owner details \u2014 add Vet and Time columns to visit history table' },
         { id: 'plan-7', type: 'check', checked: false, text: 'Tests \u2014 vet list in model, successful booking, double-booking rejected' },
+      ],
+    },
+    {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
+        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
+        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
       ],
     },
     {
@@ -6478,13 +6529,17 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
 
 function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
   const effectiveDocumentSections = useMemo(
-    () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
+    () => orderPlanBeforeAcceptanceSections(
+      normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
+    ),
     [documentSections]
   );
   const effectiveCode = useMemo(
-    () => normalizeLegacyDerivedPlanChildrenCode(
-      normalizeLegacyVisitBookingGoalCode(
-        typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
+    () => orderPlanBeforeAcceptanceCode(
+      normalizeLegacyDerivedPlanChildrenCode(
+        normalizeLegacyVisitBookingGoalCode(
+          typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
+        )
       )
     ),
     [code, effectiveDocumentSections]
@@ -9034,16 +9089,6 @@ function createVetSchedulesSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
-      ],
-    },
-    {
       id: 'plan',
       title: 'Plan',
       items: [
@@ -9052,6 +9097,16 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection' },
+      ],
+    },
+    {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
       ],
     },
     {
