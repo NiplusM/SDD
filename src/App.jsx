@@ -629,8 +629,8 @@ function buildTerminalPermissionContinuationLines(choiceId) {
     return [
       { type: 'output', text: 'Permission granted for this session' },
       { type: 'output', text: 'Starting agent execution...' },
-      { type: 'output', text: 'Applying generated specification...' },
-      { type: 'success', text: 'Run finished without issues' },
+      { type: 'output', text: 'Applying specification...' },
+      { type: 'success', text: 'Build finished without issues' },
     ];
   }
 
@@ -638,8 +638,8 @@ function buildTerminalPermissionContinuationLines(choiceId) {
     return [
       { type: 'output', text: 'Permission granted for this run' },
       { type: 'output', text: 'Starting agent execution...' },
-      { type: 'output', text: 'Applying generated specification...' },
-      { type: 'success', text: 'Run finished without issues' },
+      { type: 'output', text: 'Applying specification...' },
+      { type: 'success', text: 'Build finished without issues' },
     ];
   }
 
@@ -652,24 +652,56 @@ function buildTerminalPermissionContinuationLines(choiceId) {
   return [];
 }
 
+function buildTerminalContextLabel({
+  mode = 'section',
+  taskLabel = TERMINAL_TASK_TAB_BASE_LABEL,
+  sectionTitle = null,
+  checkTarget = null,
+} = {}) {
+  const resolvedTaskLabel = taskLabel || TERMINAL_TASK_TAB_BASE_LABEL;
+
+  if (checkTarget?.kind === 'ac' && Number.isInteger(checkTarget.index)) {
+    return `${resolvedTaskLabel} > Acceptance Criteria > AC ${checkTarget.index + 1}`;
+  }
+
+  if (checkTarget?.kind === 'plan' && Number.isInteger(checkTarget.index)) {
+    return `${resolvedTaskLabel} > Plan > Item ${checkTarget.index + 1}`;
+  }
+
+  if (mode === 'generate') {
+    return `${resolvedTaskLabel} > Full specification`;
+  }
+
+  if (typeof sectionTitle === 'string' && sectionTitle.trim().length > 0) {
+    return `${resolvedTaskLabel} > ${sectionTitle.trim()}`;
+  }
+
+  return resolvedTaskLabel;
+}
+
 function buildTerminalRunSequence({
   mode = 'section',
   sectionTitle,
   taskLabel = TERMINAL_TASK_TAB_BASE_LABEL,
-  question = '',
+  checkTarget = null,
   permissionChoice = 'prompt',
 } = {}) {
   const resolvedTaskLabel = taskLabel || TERMINAL_TASK_TAB_BASE_LABEL;
+  const contextLabel = buildTerminalContextLabel({
+    mode,
+    taskLabel: resolvedTaskLabel,
+    sectionTitle,
+    checkTarget,
+  });
 
   if (mode === 'generate') {
-    const formattedQuestion = formatTerminalQuestion(question);
     const introLines = [
-      { type: 'command', text: `agent run "${resolvedTaskLabel}" --generate` },
+      { type: 'command', text: `agent run "${resolvedTaskLabel}" --specify` },
       { type: 'output', text: `Reading ${resolvedTaskLabel}` },
-      ...(formattedQuestion ? [{ type: 'output', text: `Question: ${formattedQuestion}` }] : []),
+      { type: 'output', text: `Context: ${contextLabel}` },
       { type: 'output', text: 'Resolving referenced files...' },
       { type: 'output', text: `Loading ${PROJECT_NAME} context...` },
-      { type: 'output', text: 'Generating visit-booking specification...' },
+      { type: 'output', text: 'Specifying visit-booking specification...' },
       { type: 'output', text: 'Processed 9 plan steps' },
     ];
 
@@ -694,31 +726,39 @@ function buildTerminalRunSequence({
 
   const resolvedSection = sectionTitle || 'Plan';
   const activityLine = resolvedSection.toLowerCase() === 'acceptance criteria'
-    ? 'Running acceptance checks...'
+    ? 'Building acceptance checks...'
     : 'Building execution plan...';
 
   return {
     initialLines: [
       { type: 'command', text: `agent run "${resolvedTaskLabel}" --section "${resolvedSection}"` },
       { type: 'output', text: `Reading ${resolvedTaskLabel}` },
+      { type: 'output', text: `Context: ${contextLabel}` },
       { type: 'output', text: 'Resolving referenced files...' },
       { type: 'output', text: `Loading ${PROJECT_NAME} context...` },
       { type: 'output', text: activityLine },
       { type: 'output', text: 'Processed 9 plan steps' },
-      { type: 'success', text: 'Run finished without issues' },
+      { type: 'success', text: 'Build finished without issues' },
     ],
     permissionPrompt: null,
   };
 }
 
-function buildAcceptanceCriteriaIntroLines(taskLabel = TERMINAL_TASK_TAB_BASE_LABEL) {
-  const resolvedTaskLabel = taskLabel || TERMINAL_TASK_TAB_BASE_LABEL;
+function buildAcceptanceCriteriaIntroLines(runRequest = {}) {
+  const resolvedTaskLabel = runRequest?.taskLabel || TERMINAL_TASK_TAB_BASE_LABEL;
+  const contextLabel = buildTerminalContextLabel({
+    mode: 'section',
+    taskLabel: resolvedTaskLabel,
+    sectionTitle: 'Acceptance Criteria',
+    checkTarget: runRequest?.checkTarget ?? null,
+  });
   return [
     { type: 'command', text: `agent run "${resolvedTaskLabel}" --section "Acceptance Criteria"` },
     { type: 'output', text: `Reading ${resolvedTaskLabel}` },
+    { type: 'output', text: `Context: ${contextLabel}` },
     { type: 'output', text: 'Resolving referenced files...' },
     { type: 'output', text: `Loading ${PROJECT_NAME} context...` },
-    { type: 'output', text: 'Running acceptance checks...' },
+    { type: 'output', text: 'Building acceptance checks...' },
   ];
 }
 
@@ -728,7 +768,7 @@ function buildAcceptanceCriteriaContinuationLines(choiceId) {
       { type: 'output', text: 'Permission granted for this session' },
       { type: 'output', text: 'Continuing acceptance checks...' },
       { type: 'output', text: 'Processed 9 plan steps' },
-      { type: 'success', text: 'Run finished without issues' },
+      { type: 'success', text: 'Build finished without issues' },
     ];
   }
 
@@ -737,7 +777,7 @@ function buildAcceptanceCriteriaContinuationLines(choiceId) {
       { type: 'output', text: 'Permission granted for this run' },
       { type: 'output', text: 'Continuing acceptance checks...' },
       { type: 'output', text: 'Processed 9 plan steps' },
-      { type: 'success', text: 'Run finished without issues' },
+      { type: 'success', text: 'Build finished without issues' },
     ];
   }
 
@@ -2320,9 +2360,9 @@ const COMPLETION_PREVIEW_LIBRARY = {
       'agent run "visit-booking.md" --section "Acceptance Criteria"',
       '## Pause',
       'Paused - AC 1 requires spec update.',
-      '## Rerun',
+      '## Rebuild',
     ],
-    sections: ['Command', 'Execution Log', 'Pause', 'Rerun'],
+    sections: ['Command', 'Execution Log', 'Pause', 'Rebuild'],
   },
   'visit-booking-code-review-moment.md': {
     previewLines: [
@@ -2330,7 +2370,7 @@ const COMPLETION_PREVIEW_LIBRARY = {
       '- Time slots are rebuilt on every request.',
       '- Race condition still needs DB-backed protection.',
       '## Follow-up',
-      '- Tighten the implementation notes and rerun checks.',
+      '- Tighten the implementation notes and rebuild checks.',
     ],
     sections: ['Review Summary', 'Blocking Findings', 'Follow-up'],
   },
@@ -2548,6 +2588,42 @@ function renderProblemsFileIcon(tab) {
       <ProblemsFileNodeIcon />
     </span>
   );
+}
+
+function EditorTabRunningIcon({ icon, tone = 'green' }) {
+  return (
+    <span className="editor-tab-running-icon" aria-hidden="true">
+      {typeof icon === 'string' ? <Icon name={icon} size={16} /> : icon}
+      <span className={`editor-tab-running-dot editor-tab-running-dot-${tone}`} />
+    </span>
+  );
+}
+
+function StatusBarActiveFileLabel({ icon, label, tone = null }) {
+  return (
+    <span className="status-bar-active-file">
+      {tone && typeof icon === 'string'
+        ? <EditorTabRunningIcon icon={icon} tone={tone} />
+        : (typeof icon === 'string'
+            ? <Icon name={icon} size={16} className="tab-icon" />
+            : <span className="tab-icon">{icon}</span>)}
+      <span className="status-bar-active-file-label">{label}</span>
+    </span>
+  );
+}
+
+function findFirstProjectFileFromRunStatuses(...statusLists) {
+  for (const statuses of statusLists) {
+    if (!Array.isArray(statuses)) continue;
+
+    for (const statusItem of statuses) {
+      const checks = Array.isArray(statusItem?.checks) ? statusItem.checks : [];
+      const checkWithFile = checks.find((check) => typeof check?.chip === 'string' && check.chip.trim().length > 0);
+      if (checkWithFile) return checkWithFile.chip.trim();
+    }
+  }
+
+  return null;
 }
 
 function getProblemsMetaForTab(tab, agentTaskIssuesOverride = null) {
@@ -4640,7 +4716,7 @@ function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = 
   );
 }
 
-function DoneInlineRunButton({ onRun, demoId = null, title = 'Run item' }) {
+function DoneInlineRunButton({ onRun, demoId = null, title = 'Build item' }) {
   return (
     <button
       type="button"
@@ -4853,13 +4929,31 @@ function AcSubcheckIcon({ status }) {
   );
 }
 
-function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment = null, onProposalAccept = null }) {
+function AcCheckRow({
+  checkItem,
+  text,
+  isIssueActive = false,
+  commentAdornment = null,
+  onProposalAccept = null,
+  onProposalDecision = null,
+}) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
   const [proposalRejected, setProposalRejected] = useState(false);
   const checks = checkItem.checks || [];
   const hasChecks = checks.length > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
+
+  const handleProposalAccept = () => {
+    setProposalAccepted(true);
+    onProposalDecision?.('accept');
+    onProposalAccept?.();
+  };
+
+  const handleProposalReject = () => {
+    setProposalRejected(true);
+    onProposalDecision?.('reject');
+  };
 
   const showProposal = Boolean(checkItem.proposal) && !proposalAccepted && !proposalRejected;
 
@@ -4883,7 +4977,7 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
         <CheckStatus status={visualStatus} outdated={isOutdated} />
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, () => { setProposalAccepted(true); onProposalAccept?.(); }, () => setProposalRejected(true))}</span>
+        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
@@ -4913,8 +5007,8 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
                 </svg>
               </span>
               <span className="ac-proposal-text">{checkItem.proposal}</span>
-              <button type="button" className="ac-proposal-btn" onClick={() => setProposalRejected(true)}>Reject</button>
-              <button type="button" className="ac-proposal-btn" onClick={() => { setProposalAccepted(true); onProposalAccept?.(); }}>Accept</button>
+              <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
+              <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
             </div>
           )}
         </div>
@@ -5862,7 +5956,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -5906,7 +6000,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   if (checkMatch) {
     const checked = checkMatch[2].toLowerCase() === 'x';
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -6321,7 +6415,7 @@ const SPEC_SELECTION_TOOLBAR_ITEMS = [
 
 function getDoneIssueFixActionLabel(issueTarget) {
   if (!issueTarget) {
-    return 'Apply fix and rerun';
+    return 'Apply fix and rebuild';
   }
 
   const fixConfig = getIssueQuickFixConfig(issueTarget.kind, issueTarget.index);
@@ -6335,7 +6429,7 @@ function getDoneIssueFixActionLabel(issueTarget) {
 
   const issueKindLabel = issueTarget.kind === 'ac' ? 'AC' : issueTarget.kind === 'plan' ? 'Plan' : 'Issue';
   const itemNumber = Number.isInteger(issueTarget.index) ? issueTarget.index + 1 : null;
-  return itemNumber ? `Fix ${issueKindLabel} item ${itemNumber} and rerun` : 'Apply fix and rerun';
+  return itemNumber ? `Fix ${issueKindLabel} item ${itemNumber} and rebuild` : 'Apply fix and rebuild';
 }
 
 function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTarget = null }) {
@@ -6346,7 +6440,7 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
       primary: [
         canFixIssue ? { id: 'apply-fix', label: fixActionLabel, icon: 'codeInsight/intentionBulb', action: 'fix' } : null,
         { id: 'open-problems', label: 'Open Problems', icon: 'codeInsight/intentionBulb', action: 'problems' },
-        { id: 'regenerate-spec', label: 'Regenerate spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
+        { id: 'regenerate-spec', label: 'Specify spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
       ].filter(Boolean),
       secondary: [
         { id: 'rewrite-item', label: 'Rewrite this item' },
@@ -6360,7 +6454,7 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
     primary: [
       canFixIssue ? { id: 'apply-fix', label: fixActionLabel, icon: 'codeInsight/intentionBulb', action: 'fix' } : null,
       { id: 'open-problems', label: 'Open Problems', icon: 'codeInsight/intentionBulb', action: 'problems' },
-      { id: 'regenerate-spec', label: 'Regenerate spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
+      { id: 'regenerate-spec', label: 'Specify spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
     ].filter(Boolean),
     secondary: [
       { id: 'clarify-item', label: 'Clarify this requirement' },
@@ -6432,7 +6526,7 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
         <div className={`enhance-hint-corner enhance-hint-corner-${arrowPosition}`}>{arrow}</div>
       )}
       <div className="enhance-hint-body">
-        Changes made — click <strong>Enhance</strong> to update the spec.
+        Changes made — click <strong>Specify</strong> to update the spec.
       </div>
       {(arrowPosition === 'bottom' || arrowPosition === 'right') && (
         <div className={`enhance-hint-corner enhance-hint-corner-${arrowPosition}`}>{arrow}</div>
@@ -7838,7 +7932,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 ) : showItemRunButton ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
-                    title={effectiveCheckTarget?.kind === 'ac' ? 'Run acceptance criterion' : 'Run plan item'}
+                    title={effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item'}
                     onRun={() => onOpenTerminal?.({
                       sectionTitle: currentSectionTitle,
                       checkTarget: effectiveCheckTarget,
@@ -7876,6 +7970,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   effectiveCheckTarget,
                   rowMeta.nestingLevel ?? 0,
                   rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
+                  () => onUserInput?.(),
                   hasPlanComment,
                 )}
               </div>
@@ -8076,8 +8171,8 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
               <path d="M7 2L4.5 4.5 7 7" stroke="#CED0D6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-          {/* Regenerate button */}
-          <button className="fu-regenerate-btn" onClick={onRegenerate}>Regenerate</button>
+          {/* Specify button */}
+          <button className="fu-regenerate-btn" onClick={onRegenerate}>Specify</button>
         </div>
       </div>
     </div>
@@ -8162,12 +8257,16 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
+  const hasPendingQuickFixRerun =
+    (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
+    || (Array.isArray(planRunResult) && planRunResult.some((status) => status === null));
+  const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || hasPendingQuickFixRerun;
   const shouldShowDoneEnhanceHint = genState === 'done'
     && runState !== 'running'
-    && hasPendingDoneEnhanceChanges
+    && hasPendingSpecifyChanges
     && !isDoneEnhanceLocked;
   const isDoneEnhanceEnabled = genState === 'done'
-    && hasPendingDoneEnhanceChanges
+    && hasPendingSpecifyChanges
     && !isDoneEnhanceLocked;
   const setDoneEnhanceLockedForSession = useCallback((locked) => {
     setDoneEnhanceLocksBySession((prev) => {
@@ -8421,13 +8520,18 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     const nullCount =
       (Array.isArray(acRunResult) ? acRunResult.filter((s) => s === null).length : 0) +
       (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
-    if (nullCount > prevNullSlotCountRef.current && !isDoneEnhanceLocked) {
-      liftDoneEnhanceSuppression();
-      allowDoneEnhanceAttentionRef.current = true;
-      setHasPendingDoneEnhanceChanges(true);
+    if (nullCount > prevNullSlotCountRef.current) {
+      setTimeout(() => {
+        if (isDoneEnhanceLocked) {
+          setDoneEnhanceLockedForSession(false);
+        }
+        liftDoneEnhanceSuppression();
+        allowDoneEnhanceAttentionRef.current = true;
+        setHasPendingDoneEnhanceChanges(true);
+      }, 0);
     }
     prevNullSlotCountRef.current = nullCount;
-  }, [acRunResult, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult]);
+  }, [acRunResult, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
 
   // When a comment arrives from outside (e.g. from the diff view) the baseline
   // inside DoneMarkdownOverlay already matches, so hasPendingCommentChanges
@@ -8469,16 +8573,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }, [attachedFiles, genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
 
   const handlePendingEnhanceStateChange = useCallback((pending) => {
-    const hasPendingQuickFixRerun =
-      (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
-      || (Array.isArray(planRunResult) && planRunResult.some((status) => status === null));
-
     if (!pending && hasPendingQuickFixRerun && !isDoneEnhanceLocked) {
       return;
     }
     if (pending && (isDoneEnhanceLocked || suppressEnhanceBadgeRef.current || !allowDoneEnhanceAttentionRef.current)) return;
     setHasPendingDoneEnhanceChanges(pending);
-  }, [acRunResult, isDoneEnhanceLocked, planRunResult]);
+  }, [hasPendingQuickFixRerun, isDoneEnhanceLocked]);
 
   // Called when the user actually types in the overlay — lifts suppress immediately
   // so that edits made right after Enhance still trigger the badge.
@@ -8486,6 +8586,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     setDoneEnhanceLockedForSession(false);
     allowDoneEnhanceAttentionRef.current = true;
     liftDoneEnhanceSuppression();
+    setHasPendingDoneEnhanceChanges(true);
   }, [liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
   const handleDoneOverlayFixIssue = useCallback((payload) => {
     // Quick fix updates `currentCode` and may also bump comment reset state in
@@ -8801,7 +8902,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="generating">
-          {renderBusyToolbar('Generating...')}
+          {renderBusyToolbar('Specifying...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
@@ -8832,7 +8933,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                     <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
                   </svg>
-                  <span className="at-generating-label">Running...</span>
+                  <span className="at-generating-label">Building...</span>
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
                   {renderToolbarInput({ collapsibleInDone: true })}
@@ -8876,7 +8977,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     onOpenTerminal?.(null);
                   }}>
                     <Icon name="run/run" size={16} />
-                    <span className="at-send-label">Run</span>
+                    <span className="at-send-label">Build</span>
                   </button>
 
                   <div className="at-vsep" />
@@ -8892,7 +8993,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
                     </svg>
-                    <span className="at-send-label">Enhance</span>
+                    <span className="at-send-label">Specify</span>
                     {shouldShowDoneEnhanceHint && (
                       <span className="at-enhance-attention-badge" ref={doneEnhanceBadgeRef} aria-hidden="true">
                         <IconWarning />
@@ -8963,7 +9064,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                 <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                 <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
               </svg>
-              <span className="at-generating-label">Generating...</span>
+              <span className="at-generating-label">Specifying...</span>
             </div>
 
             {/* Generating state — right */}
@@ -8997,14 +9098,14 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               )}
 		              <button className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleGenerate}>
 		                <Icon name="run/run" size={16} />
-		                <span className="at-send-label">Run</span>
+		                <span className="at-send-label">Build</span>
 		              </button>
 	              <div className="at-vsep" />
 	              <button className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleGenerate}>
 	                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
 	                  <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#C4C4C4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 	                </svg>
-	                <span className="at-send-label">Generate</span>
+	                <span className="at-send-label">Specify</span>
 	              </button>
 	            </div>
           </>}
@@ -9235,6 +9336,41 @@ function getAgentTaskTabId(taskId) {
   return getPresetAgentTaskDefinition(taskId)?.tab?.id ?? `agent-task-${taskId}`;
 }
 
+function buildInitialEditorTabs() {
+  const presetTabs = ['t1', 't2']
+    .map((taskId) => getPresetAgentTaskDefinition(taskId)?.tab)
+    .filter(Boolean);
+
+  return [
+    ...presetTabs,
+    ...MY_EDITOR_TABS,
+  ];
+}
+
+function buildInitialEditorTabContents() {
+  return ['t1', 't2'].reduce((contents, taskId) => {
+    const preset = getPresetAgentTaskDefinition(taskId);
+    if (!preset?.tab?.id || !preset?.content) return contents;
+
+    return {
+      ...contents,
+      [preset.tab.id]: preset.content,
+    };
+  }, { ...MY_EDITOR_TAB_CONTENTS });
+}
+
+function buildInitialInteractiveTaskStates() {
+  return ['t1', 't2'].reduce((states, taskId) => {
+    const preset = getPresetAgentTaskDefinition(taskId);
+    if (!preset?.tab?.id || !preset?.interactiveState) return states;
+
+    return {
+      ...states,
+      [preset.tab.id]: preset.interactiveState,
+    };
+  }, {});
+}
+
 function createAgentTaskExecutionTiming() {
   return {
     activeStartedAt: null,
@@ -9355,6 +9491,21 @@ function IconDone() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M2.5 8.25L6 11.75L13.5 4.25" stroke="#868A91" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconLoaderSpinner() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon loader-spinner" aria-label="Loading" role="status">
+      <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91" />
+      <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91" />
+      <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91" />
+      <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91" />
+      <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91" />
+      <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91" />
+      <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91" />
+      <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91" />
     </svg>
   );
 }
@@ -9525,8 +9676,7 @@ function AgentTasksPanel({
       const taskTree = planTreesByTaskId?.[task.id] ?? null;
       const hasChanges = Array.isArray(taskTree?.treeData) && taskTree.treeData.length > 0;
       const isTaskSelected = selected === task.id;
-      const shouldShowSuccessIcon =
-        task.indicator === 'success' && !dismissedSuccessTaskIdSet.has(task.id) && !isTaskSelected;
+      const shouldExpandByDefault = false;
 
       nextNavigationByNodeId[taskNodeId] = {
         type: 'task',
@@ -9550,7 +9700,7 @@ function AgentTasksPanel({
             <span className="agent-task-tree-task-name">{task.label}</span>
             {task.indicator === 'loading' && (
               <span className="agent-task-tree-task-meta">
-                <Loader size={16} />
+                <IconLoaderSpinner />
               </span>
             )}
             {task.indicator === 'warning' && !isTaskSelected && (
@@ -9558,16 +9708,11 @@ function AgentTasksPanel({
                 <IconWarning />
               </span>
             )}
-            {shouldShowSuccessIcon && (
-              <span className="agent-task-tree-task-meta">
-                <IconDone />
-              </span>
-            )}
           </span>
         ),
         icon: <IconMdTask />,
         secondaryText: task.time || undefined,
-        isExpanded: (hasSelectedChild || (isTaskSelected && hasChanges)) || undefined,
+        isExpanded: (hasSelectedChild || (shouldExpandByDefault && hasChanges)) || undefined,
         children: hasChanges ? taskTree.treeData : undefined,
       };
     });
@@ -9662,9 +9807,9 @@ function AgentTasksPanel({
 
 export default function App() {
   const [screen, setScreen] = useState('welcome'); // 'welcome' | 'ide' | 'settings'
-  const [ideTabs, setIdeTabs] = useState(MY_EDITOR_TABS);
-  const [ideTabContents, setIdeTabContents] = useState(MY_EDITOR_TAB_CONTENTS);
-  const [interactiveTaskStates, setInteractiveTaskStates] = useState({});
+  const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
+  const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
+  const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(null);
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
@@ -9672,7 +9817,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['project']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -9684,9 +9829,16 @@ export default function App() {
   const [terminalPermissionPrompt, setTerminalPermissionPrompt] = useState(null);
   const [terminalPermissionScope, setTerminalPermissionScope] = useState(null);
   const [acWarningPermissionScope, setAcWarningPermissionScope] = useState(null);
+  const initialVisitBookingTaskState = useMemo(
+    () => getPresetAgentTaskDefinition('t1')?.interactiveState ?? createInteractiveTaskState({
+      documentSections: createSpecDocument(),
+      genState: 'done',
+    }),
+    [],
+  );
   const [runStatesByTab, setRunStatesByTab] = useState({});
-  const [acRunResult, setAcRunResult] = useState(null); // null | string[] — statuses per AC checkbox
-  const [planRunResult, setPlanRunResult] = useState(null);
+  const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
+  const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
   const lastRunSectionRef = useRef(null);
   const lastTerminalRunRequestRef = useRef(null);
@@ -9696,15 +9848,15 @@ export default function App() {
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
-  const [genState, setGenState] = useState('idle'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
-  const [genProgress, setGenProgress] = useState(0);
-  const [generatedDocument, setGeneratedDocument] = useState(() => createSpecDocument());
-  const [appliedIssueFixes, setAppliedIssueFixes] = useState({ ac: {}, plan: {} });
-  const [removedIssueIndices, setRemovedIssueIndices] = useState({ ac: {}, plan: {} });
-  const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState([]);
+  const [genState, setGenState] = useState(() => initialVisitBookingTaskState.genState ?? 'done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
+  const [genProgress, setGenProgress] = useState(() => initialVisitBookingTaskState.genProgress ?? 1);
+  const [generatedDocument, setGeneratedDocument] = useState(() => initialVisitBookingTaskState.documentSections ?? createSpecDocument());
+  const [appliedIssueFixes, setAppliedIssueFixes] = useState(() => initialVisitBookingTaskState.appliedIssueFixes ?? { ac: {}, plan: {} });
+  const [removedIssueIndices, setRemovedIssueIndices] = useState(() => initialVisitBookingTaskState.removedIssueIndices ?? { ac: {}, plan: {} });
+  const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
-  const [generationTabId, setGenerationTabId] = useState(null);
+  const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
   const doneEnhanceFlowRef = useRef(null);
   const seededPresetTaskRef = useRef(false);
   const genTimerRef = useRef(null);
@@ -11471,7 +11623,7 @@ export default function App() {
     resetTerminalOutput();
     clearAcWarningFlow();
 
-    const introLines = buildAcceptanceCriteriaIntroLines(runRequest?.taskLabel ?? TERMINAL_TASK_TAB_BASE_LABEL);
+    const introLines = buildAcceptanceCriteriaIntroLines(runRequest);
     const currentScenario = getCurrentAgentTaskScenario();
     const nextAcRunStatuses = buildResolvedRunStatuses(
       currentScenario.acBaseStatuses,
@@ -11872,10 +12024,20 @@ export default function App() {
 
     setGenerationTabId(currentTabId);
     setGenProgress(0);
-    terminalDrivenGenerationRef.current = false;
+    terminalDrivenGenerationRef.current = true;
     if (hasPendingComments) {
       clearTaskCommentsForTab(currentTabId);
     }
+    queueTerminalRun({
+      mode: 'generate',
+      sourceTabId: currentTabId,
+      taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
+      question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
+    }, {
+      preserveAcRunResult: true,
+      preservePlanRunResult: true,
+      preserveWarningBanner: true,
+    });
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
   };
 
@@ -13421,6 +13583,7 @@ export default function App() {
       mode: 'section',
       sourceTabId,
       sectionTitle,
+      checkTarget: runTarget,
       taskLabel: currentAgentTaskLabel,
       initialAcRunResult,
       initialPlanRunResult,
@@ -13672,18 +13835,108 @@ export default function App() {
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
   }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs, restoreSpecDoneScrollForTab]);
+  const getEditorTabRunningTone = useCallback((tab) => {
+    if (!tab?.id?.startsWith('agent-task-')) return null;
+
+    const taskState = getTaskRuntimeState(tab.id)?.taskState ?? null;
+    const taskRunState = runStatesByTab[tab.id] ?? 'default';
+
+    if (taskRunState === 'running' || taskState?.genState === 'loading' || taskState?.genState === 'generating') {
+      return 'green';
+    }
+
+    return null;
+  }, [getTaskRuntimeState, runStatesByTab]);
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
         Boolean(ideTabContents[tab.id]?.diffData) ||
         tab.id?.startsWith('plan-diff-') ||
         tab.id?.startsWith('spec-version-diff-');
+      const runningTone = getEditorTabRunningTone(tab);
 
-      return shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME
-        ? { ...tab, icon: DIFF_TAB_ICON_NAME }
-        : tab;
+      if (runningTone) {
+        const baseIcon = shouldUseDiffIcon ? DIFF_TAB_ICON_NAME : tab.icon;
+        return {
+          ...tab,
+          icon: <EditorTabRunningIcon icon={baseIcon} tone={runningTone} />,
+        };
+      }
+
+      if (shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME) {
+        return { ...tab, icon: DIFF_TAB_ICON_NAME };
+      }
+
+      return tab;
     })
-  ), [ideTabContents, ideTabs]);
+  ), [getEditorTabRunningTone, ideTabContents, ideTabs]);
+  const activeStatusBarTab = activeEditorTabMeta ?? ideTabs[activeEditorTab ?? 0] ?? null;
+  const activeRenderedStatusBarTab = activeStatusBarTab
+    ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTab.id) ?? activeStatusBarTab)
+    : null;
+  const activeStatusBarSourceTab = activeSourceEditorTabId
+    ? (ideTabs.find((tab) => tab.id === activeSourceEditorTabId) ?? null)
+    : null;
+  const activeStatusBarTaskTab = (() => {
+    if (activeStatusBarSourceTab?.id?.startsWith('agent-task-') || activeStatusBarSourceTab?.label?.endsWith('.md')) {
+      return activeStatusBarSourceTab;
+    }
+    if (activeStatusBarTab?.id?.startsWith('agent-task-') || activeStatusBarTab?.label?.endsWith('.md')) {
+      return activeStatusBarTab;
+    }
+    const taskId = getAgentTaskIdForEditorTab(activeStatusBarTab, agentTasks) ?? selectedTask;
+    const taskTabId = taskId ? getAgentTaskTabId(taskId) : null;
+    return taskTabId ? (ideTabs.find((tab) => tab.id === taskTabId) ?? null) : null;
+  })();
+  const activeRenderedStatusBarTaskTab = activeStatusBarTaskTab
+    ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTaskTab.id) ?? activeStatusBarTaskTab)
+    : null;
+  const activeStatusBarProjectFileName = (() => {
+    if (isDiffTab && typeof activePlanDiffData?.sourceTabLabel === 'string' && activePlanDiffData.sourceTabLabel.trim().length > 0) {
+      return activePlanDiffData.sourceTabLabel.trim();
+    }
+    if (activeStatusBarTab?.id?.startsWith('agent-task-') || activeStatusBarTab?.label?.endsWith('.md')) {
+      return null;
+    }
+    if (activeStatusBarTab && !activeStatusBarTab.id?.startsWith('agent-task-') && !activeStatusBarTab.label?.endsWith('.md')) {
+      return activeStatusBarTab.label ?? null;
+    }
+    return findFirstProjectFileFromRunStatuses(activeAgentTaskAcRunResult, activeAgentTaskPlanRunResult);
+  })();
+  const ideStatusBarBreadcrumbs = [
+    ...(activeStatusBarTaskTab
+      ? [{
+          icon: false,
+          label: (
+            <StatusBarActiveFileLabel
+              icon={activeRenderedStatusBarTaskTab?.icon ?? 'fileTypes/markdown'}
+              label={activeStatusBarTaskTab.label ?? TERMINAL_TASK_TAB_BASE_LABEL}
+            />
+          ),
+        }]
+      : []),
+    ...(activeStatusBarProjectFileName
+      ? [{
+          icon: false,
+          label: (
+            <StatusBarActiveFileLabel
+              icon={resolveAgentTaskPlanFileIcon(activeStatusBarProjectFileName)}
+              label={activeStatusBarProjectFileName}
+            />
+          ),
+        }]
+      : (!activeStatusBarTaskTab && activeStatusBarTab
+          ? [{
+              icon: false,
+              label: (
+                <StatusBarActiveFileLabel
+                  icon={activeRenderedStatusBarTab?.icon ?? 'fileTypes/text'}
+                  label={activeStatusBarTab.label ?? PRIMARY_BREADCRUMBS[2]}
+                />
+              ),
+            }]
+          : [])),
+  ];
 
   if (screen === 'welcome') {
     return (
@@ -13910,11 +14163,7 @@ export default function App() {
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
-          breadcrumbs: [
-            { label: PRIMARY_BREADCRUMBS[0], module: true },
-            { label: PRIMARY_BREADCRUMBS[1] },
-            { label: PRIMARY_BREADCRUMBS[2], icon: true, iconName: 'fileTypes/java' },
-          ],
+          breadcrumbs: ideStatusBarBreadcrumbs,
           widgets: [
             { type: 'text', text: '42:1' },
             { type: 'text', text: 'UTF-8' },
