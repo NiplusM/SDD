@@ -4889,7 +4889,7 @@ function shouldShowDoneRunIcon(line) {
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
-function CheckStatus({ status, outdated = false }) {
+function CheckStatus({ status, outdated = false, isLoading = false }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
 
   return (
@@ -4898,18 +4898,22 @@ function CheckStatus({ status, outdated = false }) {
       aria-label={normalizedStatus}
       title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        {normalizedStatus === 'pending'
-          ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
-          : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
-        }
-        {normalizedStatus === 'passed'
-          ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          : normalizedStatus === 'pending'
-            ? null
-            : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
-        }
-      </svg>
+      {isLoading ? (
+        <IconLoaderSpinner />
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          {normalizedStatus === 'pending'
+            ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
+            : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
+          }
+          {normalizedStatus === 'passed'
+            ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            : normalizedStatus === 'pending'
+              ? null
+              : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
+          }
+        </svg>
+      )}
     </span>
   );
 }
@@ -4936,6 +4940,7 @@ function AcCheckRow({
   commentAdornment = null,
   onProposalAccept = null,
   onProposalDecision = null,
+  isRunning = false,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
@@ -4976,7 +4981,7 @@ function AcCheckRow({
   return (
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
-        <CheckStatus status={visualStatus} outdated={isOutdated} />
+        <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />
         <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
@@ -5918,7 +5923,7 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
@@ -5935,8 +5940,10 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       style={planLineStyle}
     >
       {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} />
-        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} />
+        : (isRunning
+            ? <CheckStatus status="pending" isLoading />
+            : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />)
       }
       <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
@@ -5956,7 +5963,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -5999,8 +6006,22 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   const checkMatch = line.match(/^(\s*)- \[([ x])\]\s+(.*)$/i);
   if (checkMatch) {
     const checked = checkMatch[2].toLowerCase() === 'x';
+    const normalizedRunTarget = normalizeCommentTarget(activeRunRequest?.checkTarget ?? null);
+    const normalizedSectionTitle = typeof currentSectionTitle === 'string' ? currentSectionTitle.trim().toLowerCase() : '';
+    const isRunning = Boolean(activeRunRequest) && (
+      (normalizedRunTarget
+        && checkTarget
+        && normalizedRunTarget.kind === checkTarget.kind
+        && normalizedRunTarget.index === checkTarget.index)
+      || (!normalizedRunTarget
+        && ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
+          || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan')))
+    );
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} />;
+    }
+    if (checkTarget?.kind === 'ac' && isRunning) {
+      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -6015,6 +6036,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           onOpenDiffTab={onOpenDiffTab}
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
+          isRunning={isRunning}
         />
       );
     }
@@ -6621,7 +6643,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -7968,6 +7990,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   effectiveIssueTarget,
                   onOpenDiffTab,
                   effectiveCheckTarget,
+                  currentSectionTitle,
+                  activeRunRequest,
                   rowMeta.nestingLevel ?? 0,
                   rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
                   () => onUserInput?.(),
@@ -8215,7 +8239,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8891,7 +8915,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -8906,7 +8930,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -9038,7 +9062,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -9497,7 +9521,7 @@ function IconDone() {
 
 function IconLoaderSpinner() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon loader-spinner" aria-label="Loading" role="status">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon loader-spinner at-loader" aria-label="Loading" role="status">
       <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91" />
       <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91" />
       <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91" />
@@ -14122,7 +14146,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
