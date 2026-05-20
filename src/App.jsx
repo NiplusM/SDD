@@ -4644,7 +4644,7 @@ function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = 
   );
 }
 
-function DoneInlineRunButton({ onRun, demoId = null, title = 'Run item', className = '' }) {
+function DoneInlineRunButton({ onRun, demoId = null, title = 'Build item', className = '' }) {
   return (
     <button
       type="button"
@@ -4819,7 +4819,7 @@ function shouldShowDoneRunIcon(line) {
 
 function RunningCheckLoader() {
   return (
-    <span className="spec-running-check-loader" aria-label="Running">
+    <span className="spec-running-check-loader" aria-label="Building">
       <IconLoaderSpinner />
     </span>
   );
@@ -6367,7 +6367,7 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
       primary: [
         canFixIssue ? { id: 'apply-fix', label: fixActionLabel, icon: 'codeInsight/intentionBulb', action: 'fix' } : null,
         { id: 'open-problems', label: 'Open Problems', icon: 'codeInsight/intentionBulb', action: 'problems' },
-        { id: 'regenerate-spec', label: 'Regenerate spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
+        { id: 'regenerate-spec', label: 'Specify spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
       ].filter(Boolean),
       secondary: [
         { id: 'rewrite-item', label: 'Rewrite this item' },
@@ -6381,7 +6381,7 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
     primary: [
       canFixIssue ? { id: 'apply-fix', label: fixActionLabel, icon: 'codeInsight/intentionBulb', action: 'fix' } : null,
       { id: 'open-problems', label: 'Open Problems', icon: 'codeInsight/intentionBulb', action: 'problems' },
-      { id: 'regenerate-spec', label: 'Regenerate spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
+      { id: 'regenerate-spec', label: 'Specify spec', icon: 'codeInsight/intentionBulb', action: 'regenerate' },
     ].filter(Boolean),
     secondary: [
       { id: 'clarify-item', label: 'Clarify this requirement' },
@@ -6453,7 +6453,7 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
         <div className={`enhance-hint-corner enhance-hint-corner-${arrowPosition}`}>{arrow}</div>
       )}
       <div className="enhance-hint-body">
-        Changes made — click <strong>Enhance</strong> to update the spec.
+        Changes made — click <strong>Specify</strong> to update the spec.
       </div>
       {(arrowPosition === 'bottom' || arrowPosition === 'right') && (
         <div className={`enhance-hint-corner enhance-hint-corner-${arrowPosition}`}>{arrow}</div>
@@ -7888,7 +7888,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 ) : showItemRunButton ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
-                    title={effectiveCheckTarget?.kind === 'ac' ? 'Run acceptance criterion' : 'Run plan item'}
+                    title={effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item'}
                     onRun={() => onOpenTerminal?.({
                       sectionTitle: currentSectionTitle,
                       checkTarget: effectiveCheckTarget,
@@ -8129,7 +8129,7 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
             </svg>
           </button>
           {/* Regenerate button */}
-          <button className="fu-regenerate-btn" onClick={onRegenerate}>Regenerate</button>
+          <button className="fu-regenerate-btn" onClick={onRegenerate}>Specify</button>
         </div>
       </div>
     </div>
@@ -8854,7 +8854,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="generating">
-          {renderBusyToolbar('Generating...')}
+          {renderBusyToolbar('Specifying...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
@@ -8885,7 +8885,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                     <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
                   </svg>
-                  <span className="at-generating-label">Running...</span>
+                  <span className="at-generating-label">Building...</span>
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
                   {renderToolbarInput({ collapsibleInDone: true })}
@@ -8929,7 +8929,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     onOpenTerminal?.(null);
                   }}>
                     <Icon name="run/run" size={16} />
-                    <span className="at-send-label">Run</span>
+                    <span className="at-send-label">Build</span>
                   </button>
 
                   <div className="at-vsep" />
@@ -8945,7 +8945,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
                     </svg>
-                    <span className="at-send-label">Enhance</span>
+                    <span className="at-send-label">Specify</span>
                     {shouldShowDoneEnhanceHint && (
                       <span className="at-enhance-attention-badge" ref={doneEnhanceBadgeRef} aria-hidden="true">
                         <IconWarning />
@@ -9016,7 +9016,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                 <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                 <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
               </svg>
-              <span className="at-generating-label">Generating...</span>
+              <span className="at-generating-label">Specifying...</span>
             </div>
 
             {/* Generating state — right */}
@@ -9050,14 +9050,14 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               )}
 		              <button className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleGenerate}>
 		                <Icon name="run/run" size={16} />
-		                <span className="at-send-label">Run</span>
+		                <span className="at-send-label">Build</span>
 		              </button>
 	              <div className="at-vsep" />
 	              <button className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleGenerate}>
 	                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
 	                  <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#C4C4C4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 	                </svg>
-	                <span className="at-send-label">Generate</span>
+	                <span className="at-send-label">Specify</span>
 	              </button>
 	            </div>
           </>}
