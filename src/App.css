@@ -682,6 +682,25 @@ body {
   align-self: flex-start;
 }
 
+.spec-done-gutter-cell .editor-gutter-line-number.breakpoint {
+  width: 20px;
+  min-width: 20px;
+  height: 22px;
+  min-height: 22px;
+  align-self: flex-start;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+.spec-done-gutter-cell .editor-gutter-line-number.breakpoint .editor-breakpoint-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--red-90, #e4656e);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
 .spec-done-gutter-cell-run {
   align-items: center;
 }
@@ -751,6 +770,54 @@ body {
 
 .spec-done-gutter-line-number-run svg {
   display: block;
+}
+
+.spec-done-gutter-actions {
+  position: relative;
+  width: 20px;
+  min-height: 22px;
+  align-self: center;
+}
+
+.spec-done-gutter-item-run-btn-inline {
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.spec-done-gutter-breakpoint-toggle {
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px !important;
+  min-width: 12px;
+  height: 20px;
+  min-height: 20px;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+.spec-done-gutter-breakpoint-toggle.breakpoint {
+  position: relative;
+  right: auto;
+  top: auto;
+  transform: none;
+  width: 20px !important;
+  min-width: 20px;
+  height: 22px;
+  min-height: 22px;
+  align-self: center;
+}
+
+.spec-done-gutter-breakpoint-toggle .editor-breakpoint-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--red-90, #e4656e);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
 }
 
 .spec-done-gutter-line-number-intention {
@@ -993,61 +1060,57 @@ body {
 .terminal-permission-options {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .terminal-permission-option {
   all: unset;
   box-sizing: border-box;
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  gap: 8px;
   position: relative;
-  width: fit-content;
-  min-height: 16px;
-  padding: 0 4px 0 calc(var(--terminal-permission-text-offset) + 4px);
-  border-radius: 3px;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
   cursor: pointer;
   font: inherit;
   text-align: left;
-  line-height: 16px;
+  line-height: 18px;
   color: var(--terminal-output);
 }
 
-.terminal-permission-caret {
-  position: absolute;
-  left: 0;
-  top: 50%;
+.terminal-permission-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(-50%);
-  width: 10px;
-  min-width: 10px;
-  opacity: 0;
-  color: var(--text-secondary);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.terminal-permission-icon svg {
+  display: block;
 }
 
 .terminal-permission-label {
-  line-height: 16px;
+  line-height: 18px;
 }
 
 .terminal-permission-option:hover,
 .terminal-permission-option.is-selected {
   color: var(--text-white, #fff);
+  border-color: #3D7DE0;
+  background-color: rgba(61, 125, 224, 0.08);
 }
 
 .terminal-permission-option:active {
   color: var(--text-white, #fff);
-}
-
-.terminal-permission-option.is-selected .terminal-permission-caret {
-  opacity: 1;
-}
-
-.terminal-permission-option:hover .terminal-permission-caret,
-.terminal-permission-option.is-selected .terminal-permission-caret,
-.terminal-permission-option:active .terminal-permission-caret {
-  color: inherit;
+  border-color: #3D7DE0;
+  background-color: rgba(61, 125, 224, 0.12);
 }
 
 .spec-done-row-content {
@@ -1576,7 +1639,7 @@ body {
 }
 
 .spec-check-status-failed {
-  color: var(--error-icon, var(--icon-red-solid, #e55765));
+  color: var(--icon-secondary, var(--gray-90, #8b8e94));
 }
 
 .spec-check-status-error {
@@ -1601,6 +1664,13 @@ body {
   gap: 0;
   padding: 3px 0;
   pointer-events: none;
+}
+
+/* Optical compensation: filled checked box appears smaller than bordered unchecked box
+   due to rounded-corner visual weight difference. Reducing border-radius by 1px
+   makes the filled shape's corners extend closer to the 16px boundary. */
+.spec-done-checkbox .checkbox-checked {
+  border-radius: 2px;
 }
 
 /* ── AC expandable sub-checks ──────────────────────────────────────────────── */
@@ -1801,6 +1871,7 @@ body {
   width: 100%;
 }
 
+
 .spec-done-plan-main.is-outdated {
   color: var(--gray-90, #8b8e94);
 }
@@ -1828,8 +1899,7 @@ body {
   left: 0;
   right: 0;
   height: 22px;
-  background: #2f3136;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+  background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
   pointer-events: none;
 }
 

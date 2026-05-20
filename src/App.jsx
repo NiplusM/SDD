@@ -595,9 +595,9 @@ const MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS = 1450;
 const CHAINED_SECTION_START_DELAY_MS = 220;
 const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
 const TERMINAL_PERMISSION_OPTIONS = [
-  { id: 'allow-once', label: 'Allow once' },
-  { id: 'allow-session', label: 'Allow for session' },
-  { id: 'reject', label: 'Reject' },
+  { id: 'allow-once', label: 'Allow Once', icon: 'check' },
+  { id: 'allow-session', label: 'Allow for Session', icon: 'check' },
+  { id: 'reject', label: 'Reject', icon: 'block' },
 ];
 
 function getInitialRunningCheckTargetForSection(sectionTitle = null) {
@@ -859,6 +859,7 @@ function TerminalPermissionPrompt({
       <div className="terminal-permission-options">
         {options.map((option, idx) => {
           const isSelected = idx === selectedIdx;
+          const iconKind = option.icon || (option.id === 'reject' ? 'block' : 'check');
           return (
             <button
               key={option.id}
@@ -868,8 +869,17 @@ function TerminalPermissionPrompt({
               onMouseEnter={() => onHover(idx)}
               onClick={() => onSelect(option.id)}
             >
-              <span className="terminal-permission-caret" aria-hidden="true">
-                {isSelected ? '>' : ''}
+              <span className={`terminal-permission-icon terminal-permission-icon-${iconKind}`} aria-hidden="true">
+                {iconKind === 'block' ? (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                    <line x1="3.8" y1="12.2" x2="12.2" y2="3.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3.5 8.5L6.5 11.5L12.5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                )}
               </span>
               <span className="terminal-permission-label">{option.label}</span>
             </button>
@@ -4634,11 +4644,11 @@ function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = 
   );
 }
 
-function DoneInlineRunButton({ onRun, demoId = null, title = 'Run item' }) {
+function DoneInlineRunButton({ onRun, demoId = null, title = 'Run item', className = '' }) {
   return (
     <button
       type="button"
-      className="spec-done-gutter-line-number-run spec-done-gutter-item-run-btn"
+      className={`spec-done-gutter-line-number-run spec-done-gutter-item-run-btn${className ? ` ${className}` : ''}`}
       aria-label={title}
       title={title}
       data-demo-id={demoId ?? undefined}
@@ -7559,10 +7569,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [onPendingEnhanceStateChange]);
 
   useEffect(() => {
+    if (!areSortedStringArraysEqual(breakpointKeys, storedBreakpointKeys)) {
+      return;
+    }
     onUiStateChange?.({
       breakpointKeys,
     });
-  }, [breakpointKeys, onUiStateChange]);
+  }, [breakpointKeys, onUiStateChange, storedBreakpointKeys]);
 
   useEffect(() => {
     setBreakpoints((prev) => {
@@ -7723,14 +7736,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
             const isRowHovered = hoveredRowKey === stableKey;
+            const hasBreakpoint = breakpoints.has(stableKey);
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
             const showIssueBulb = hasIssueBulb
               && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const showItemRunButton = Boolean(effectiveCheckTarget)
-              && isRowHovered
-              && !isCommentPopupOpen
-              && !isIssuePopupOpen
-              && !showIssueBulb;
+              && isRowHovered;
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
@@ -7743,16 +7754,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               || (isEmptyLine && hoveredRowKey === stableKey)
               || activeIssueRowKey === stableKey
               || isNavigatedIssueRow;
-            const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
-            const isVisitBookingPlanRowSelected = !isVisitBookingPresetRowSelectionDismissed
-              && specSessionKey === 'agent-task-t1'
-              && effectiveCheckTarget?.kind === 'plan'
-              && effectiveCheckTarget.index === 2
-              && !rowMeta.isNestedPlanChild;
-            const commentAdornment = showCommentAdornment ? (
-              <DoneCommentAdornment
-                comments={commentsForRow}
-                isOpen={isCommentPopupOpen}
+             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
+             const isVisitBookingPlanRowSelected = !isVisitBookingPresetRowSelectionDismissed
+               && specSessionKey === 'agent-task-t1'
+               && effectiveCheckTarget?.kind === 'plan'
+               && effectiveCheckTarget.index === 2
+               && !rowMeta.isNestedPlanChild;
+             const commentAdornment = showCommentAdornment ? (
+               <DoneCommentAdornment
+                 comments={commentsForRow}
+                 isOpen={isCommentPopupOpen}
                 demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
                 onOpen={(rect) => {
                   setCommentPopup((prev) => (
@@ -7829,6 +7840,17 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="run/run" size={16} />
                   </button>
+                ) : hasBreakpoint ? (
+                  <div
+                    className="editor-gutter-line-number breakpoint"
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Remove breakpoint"
+                    onClick={() => toggleBreakpoint(stableKey)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
+                  >
+                    <span className="editor-breakpoint-dot" />
+                  </div>
                 ) : showIssueBulb ? (
                   <button
                     type="button"
@@ -7877,11 +7899,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                     className="editor-gutter-line-number"
                     role="button"
                     tabIndex={0}
-                    aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
+                    aria-label={hasBreakpoint ? 'Remove breakpoint' : 'Add breakpoint'}
                     onClick={() => toggleBreakpoint(stableKey)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
                   >
-                    {breakpoints.has(stableKey) && <span className="editor-breakpoint-dot" />}
+                    {hasBreakpoint && <span className="editor-breakpoint-dot" />}
                   </div>
                 )}
               </div>
@@ -9303,6 +9325,14 @@ function createInitialInteractiveTaskStates() {
   };
 }
 
+function createInitialDoneOverlayUiStates() {
+  return {
+    'agent-task-t1': {
+      breakpointKeys: ['section-item:plan-3'],
+    },
+  };
+}
+
 const VISIT_BOOKING_PLAN_RUN_LOG_LINES = [
   { type: 'command', text: 'agent run "visit-booking.md" --section "Plan"' },
   { type: 'output',  text: 'Reading visit-booking.md' },
@@ -9839,10 +9869,59 @@ export default function App() {
 
   // Attached files for editor toolbar
   const [attachedFilesByTab, setAttachedFilesByTab] = useState({});
-  const [doneOverlayUiStates, setDoneOverlayUiStates] = useState({});
+  const [doneOverlayUiStates, setDoneOverlayUiStates] = useState(() => createInitialDoneOverlayUiStates());
   const [specVersionsByTab, setSpecVersionsByTab] = useState({});
   const [planDiffUiStates, setPlanDiffUiStates] = useState({});
   const addPopupFiles = buildAddPopupFiles(agentTasks);
+
+  useEffect(() => {
+    const defaultTaskDefinitions = [
+      getPresetAgentTaskDefinition('t2'),
+      getPresetAgentTaskDefinition('t1'),
+    ].filter(Boolean);
+
+    setIdeTabs((prev) => {
+      const existingTabIds = new Set(prev.map((tab) => tab.id));
+      const missingTabs = defaultTaskDefinitions
+        .map((definition) => definition.tab)
+        .filter((tab) => tab?.id && !existingTabIds.has(tab.id));
+
+      return missingTabs.length > 0 ? [...missingTabs, ...prev] : prev;
+    });
+
+    setIdeTabContents((prev) => {
+      let next = prev;
+
+      defaultTaskDefinitions.forEach((definition) => {
+        const tabId = definition.tab?.id;
+        if (!tabId || next[tabId]) return;
+
+        next = {
+          ...next,
+          [tabId]: definition.content,
+        };
+      });
+
+      return next;
+    });
+
+    setInteractiveTaskStates((prev) => {
+      let next = prev;
+
+      defaultTaskDefinitions.forEach((definition) => {
+        const tabId = definition.tab?.id;
+        if (!tabId || next[tabId]) return;
+
+        next = {
+          ...next,
+          [tabId]: definition.interactiveState,
+        };
+      });
+
+      return next;
+    });
+  }, []);
+
   const ideWindowKey = ideOpenWindows.join('|');
   const activeEditorTabMeta = ideTabs[activeEditorTab ?? 0] ?? null;
   const activeEditorTabId = activeEditorTabMeta?.id ?? null;
@@ -11414,11 +11493,11 @@ export default function App() {
       setAppliedIssueFixes((prev) => ({ ...prev, plan: {} }));
       const hasRunningPlanStop =
         Number.isInteger(stopAtRunningPlanIndex)
-        && stopAtRunningPlanIndex >= 0
-        && stopAtRunningPlanIndex < nextPlanRunStatuses.length;
+        && stopAtRunningPlanIndex >= 0;
       if (hasRunningPlanStop) {
         const runningPlanIndex = stopAtRunningPlanIndex;
-        const pauseAfterIndex = Math.max(runningPlanIndex - 1, -1);
+        const lastRevealIndex = nextPlanRunStatuses.length - 1;
+        const pauseAfterIndex = Math.min(runningPlanIndex - 1, lastRevealIndex);
         revealRunStatuses('plan', nextPlanRunStatuses, {
           initialResult: planRevealOptions.initialResult,
           pausePredicate: (_status, index) => index === pauseAfterIndex,
@@ -11427,7 +11506,22 @@ export default function App() {
               setRunningCheckForTab({ kind: 'plan', index: runningPlanIndex }, lastRunRequest.sourceTabId);
             }
           },
-          ...revealRunningOptions,
+          onComplete: () => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab({ kind: 'plan', index: runningPlanIndex }, lastRunRequest.sourceTabId);
+            }
+          },
+          stepDelay: revealStepDelay,
+          onStepStart: (index) => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab({ kind: 'plan', index }, lastRunRequest.sourceTabId);
+            }
+          },
+          onStepComplete: () => {
+            if (lastRunRequest?.sourceTabId) {
+              setRunningCheckForTab(null, lastRunRequest.sourceTabId);
+            }
+          },
         });
         return;
       }
@@ -14150,7 +14244,7 @@ export default function App() {
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
           rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
-          defaultOpenToolWindows={['project']}
+          defaultOpenToolWindows={[]}
 
           leftPanelContent={(id, ctx) => {
             if (id === 'project') return (
