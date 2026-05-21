@@ -196,9 +196,9 @@ body {
 }
 
 .spec-done-overlay {
-  --spec-done-gutter-width: 28px;
-  --spec-done-gutter-inline-offset: 4px;
-  --spec-done-row-content-inline-padding: 12px;
+  --spec-done-gutter-width: 70px;
+  --spec-done-gutter-inline-offset: 8px;
+  --spec-done-row-content-inline-padding: 4px;
   --spec-plan-subitem-indent: 22px;
   --spec-plan-nesting-step: 18px;
   --spec-plan-nested-text: rgba(214, 218, 224, 0.92);
@@ -674,25 +674,17 @@ body {
   display: flex;
   justify-content: flex-start;
   align-items: flex-start;
+  gap: 2px;
   padding-left: var(--spec-done-gutter-inline-offset);
 }
 
-.spec-done-gutter-cell .editor-gutter-line-number {
+.spec-done-gutter-cell .editor-gutter-line-number,
+.spec-done-gutter-cell .spec-done-gutter-breakpoint-btn,
+.spec-done-gutter-cell .spec-done-gutter-line-number-run,
+.spec-done-gutter-cell .spec-done-gutter-intention-btn,
+.spec-done-gutter-cell .spec-done-gutter-slot {
   min-height: 22px;
   align-self: flex-start;
-}
-
-.spec-done-gutter-cell-run {
-  align-items: center;
-}
-
-.spec-done-gutter-cell-run .editor-gutter-line-number {
-  min-height: 22px;
-  align-self: center;
-}
-
-.spec-done-gutter-cell-run .spec-done-gutter-line-number-run {
-  align-self: center;
 }
 
 .spec-done-row[data-issue-severity="warning"] .spec-done-gutter-cell,
@@ -701,6 +693,64 @@ body {
   align-self: flex-start;
   height: 22px !important;
   min-height: 22px;
+}
+
+.spec-done-gutter-slot {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.spec-done-gutter-breakpoint-btn {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-soft),
+    background var(--motion-duration-fast) var(--motion-ease-soft);
+}
+
+.spec-done-gutter-breakpoint-btn:focus-visible,
+.spec-done-gutter-breakpoint-btn:hover,
+.spec-done-gutter-breakpoint-btn.is-active {
+  opacity: 1;
+}
+
+.spec-done-gutter-breakpoint-btn:hover,
+.spec-done-gutter-breakpoint-btn:focus-visible {
+  background: var(--icon-button-hover-bg, var(--toolbar-bg-hovered, rgba(255, 255, 255, 0.08)));
+}
+
+.spec-done-gutter-breakpoint-btn:active {
+  background: var(--icon-button-pressed-bg, var(--toolbar-bg-pressed, rgba(255, 255, 255, 0.12)));
+}
+
+.spec-done-gutter-breakpoint-btn:focus-visible {
+  outline: 2px solid var(--control-focus-border-brand);
+}
+
+.spec-done-gutter-breakpoint-btn .editor-breakpoint-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #E55757;
+  box-shadow: 0 0 0 1px rgba(229, 87, 87, 0.24);
+  opacity: 0.72;
+}
+
+.spec-done-gutter-breakpoint-btn.is-active .editor-breakpoint-dot {
+  opacity: 1;
 }
 
 .spec-done-gutter-line-number-run {
@@ -713,9 +763,37 @@ body {
   align-self: flex-start;
   width: 20px;
   height: 20px;
+  flex: 0 0 20px;
   min-height: 22px;
   border-radius: 4px;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-soft);
+}
+
+.spec-done-row:hover .spec-done-gutter-line-number-run,
+.spec-done-gutter-line-number-run:focus-visible {
+  opacity: 1;
+}
+
+.spec-done-gutter-cell-section-run .spec-done-gutter-line-number-run {
+  align-self: center;
+  opacity: 1;
+}
+
+.spec-done-gutter-cell-section-run {
+  align-items: center;
+  min-height: 32px;
+}
+
+.spec-done-gutter-cell:has(.spec-done-gutter-breakpoint-btn:hover) .spec-done-gutter-line-number-run,
+.spec-done-gutter-cell:has(.spec-done-gutter-breakpoint-btn:focus-visible) .spec-done-gutter-line-number-run {
+  opacity: 0;
+}
+
+.spec-done-gutter-cell-section-run:has(.spec-done-gutter-breakpoint-btn:hover) .spec-done-gutter-line-number-run,
+.spec-done-gutter-cell-section-run:has(.spec-done-gutter-breakpoint-btn:focus-visible) .spec-done-gutter-line-number-run {
+  opacity: 1;
 }
 
 .spec-done-gutter-line-number-run::before {
@@ -774,9 +852,11 @@ body {
   justify-content: center;
   width: 20px;
   height: 20px;
+  flex: 0 0 20px;
   border-radius: 4px;
   color: var(--icon-yellow-solid, #ffaf0f);
   cursor: pointer;
+  opacity: 1;
   transition:
     opacity var(--motion-duration-fast) var(--motion-ease-soft),
     color var(--motion-duration-fast) var(--motion-ease-soft);
