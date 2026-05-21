@@ -622,6 +622,22 @@ body {
   margin-top: 2px;
 }
 
+.spec-done-row-plan-restoring .spec-done-row-content {
+  animation: spec-plan-row-restore-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform;
+}
+
+@keyframes spec-plan-row-restore-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .spec-done-row[data-row-key="section-heading:acceptance"] + .spec-done-row {
   margin-top: 3px;
 }
@@ -821,6 +837,18 @@ body {
   max-width: calc(100vw - 16px);
 }
 
+.spec-done-intention-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1998;
+  background: transparent;
+}
+
+.spec-done-intention-popup-singleton {
+  position: fixed;
+  z-index: 1999;
+}
+
 .spec-done-intention-popup-item {
   all: unset;
   box-sizing: border-box;
@@ -881,6 +909,67 @@ body {
 
 .spec-done-intention-popup-footer {
   justify-content: flex-start;
+}
+
+.problems-quick-fix-menu-item {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  padding: 0 10px 0 10px;
+  cursor: pointer;
+}
+
+.problems-quick-fix-menu-item:focus {
+  outline: none;
+}
+
+.problems-quick-fix-menu-item:hover,
+.problems-quick-fix-menu-item:focus {
+  background: rgba(99, 102, 109, 0.3);
+}
+
+.problems-quick-fix-menu-item-active,
+.problems-quick-fix-menu-item[data-active="true"] {
+  background: var(--menu-item-selected-bg, #2E436E);
+}
+
+.problems-quick-fix-menu-item:active {
+  background: rgba(99, 102, 109, 0.5);
+}
+
+.problems-quick-fix-menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problems-quick-fix-menu-actions {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.problems-quick-fix-menu-separator {
+  width: 1px;
+  height: 16px;
+  background: #6B6D73;
+  flex-shrink: 0;
+}
+
+.problems-quick-fix-menu-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9EA1A8;
+  flex-shrink: 0;
 }
 
 .terminal-window .tab-wrapper {
@@ -1765,6 +1854,80 @@ body {
   color: #92b7ff;
 }
 
+.ac-proposal-row.ac-proposal-row-options {
+  align-items: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.ac-proposal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ac-proposal-option-btn {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  padding: 2px 6px 2px 2px;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #d6d8de;
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ac-proposal-option-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.ac-proposal-option-num {
+  flex-shrink: 0;
+  min-width: 16px;
+  color: #73767c;
+  font-size: 13px;
+  text-align: right;
+  line-height: 18px;
+}
+
+.ac-proposal-option-text-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px 2px 2px;
+}
+
+.ac-proposal-text-field {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  background: #1e1f22;
+  border: 1px solid #4d5057;
+  border-radius: 3px;
+  color: #d6d8de;
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  outline: none;
+}
+
+.ac-proposal-text-field:focus {
+  border-color: #538af9;
+}
+
+.ac-proposal-text-field::placeholder {
+  color: #73767c;
+}
+
 .ac-subcheck-list {
   display: flex;
   flex-direction: column;
@@ -1927,6 +2090,18 @@ body {
 .tree-node[style*="padding-left: 50px"] .tree-node-icon path[fill="#548AF7"],
 .tab-icon path[fill="#548AF7"] {
   fill: var(--icon-purple-solid) !important;
+}
+
+/* Shift entire Problems tree left — depth1=16px, depth2=32px */
+.main-window-tool-window-bottom .tree-node[style*="padding-left: 16px"] {
+  padding-left: 4px !important;
+}
+.main-window-tool-window-bottom .tree-node[style*="padding-left: 32px"] {
+  padding-left: 20px !important;
+}
+
+.problems-window .tree-node:focus {
+  outline: none;
 }
 
 /* Give leaf-node spacer the same width as an icon (16px) so it indents correctly */
@@ -3423,11 +3598,50 @@ body {
   overflow-y: auto;
 }
 
+.popup-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: #26282C;
+  border: 0.5px solid #393B40;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.40);
+  max-width: calc(100vw - 20px);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
 .popup-cell {
   display: flex;
   align-items: center;
   padding: 0 10px;
   height: 24px;
+  cursor: pointer;
+  color: #CED0D6;
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 20px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.popup-cell:hover {
+  background: rgba(99, 102, 109, 0.3);
+}
+
+.popup-cell:active {
+  background: rgba(99, 102, 109, 0.5);
+}
+
+.popup-cell-line {
+  border-bottom: 1px solid #3B3D43;
+}
+
+.popup-cell-line:last-child {
+  border-bottom: none;
 }
 
 .popup-cell-header {
@@ -4441,4 +4655,11 @@ body {
 }
 .enhance-hint-body strong {
   font-weight: 600;
+}
+
+.problems-window-empty-state .problems-toolbar button[title="Show Quick-Fixes"],
+.problems-window-empty-state .problems-toolbar button[title="View Options"] {
+  cursor: default;
+  opacity: 0.38;
+  pointer-events: none;
 }

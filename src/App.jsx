@@ -1,4 +1,4 @@
-import { Fragment, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
+import { Fragment, createElement, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
@@ -25,6 +25,7 @@ import {
   Checkbox,
   Tree,
   getIcon,
+  iconRegistry,
   DEFAULT_EDITOR_TABS,
   DEFAULT_EDITOR_TAB_CONTENTS,
   DEFAULT_LEFT_STRIPE_ITEMS,
@@ -36,6 +37,22 @@ import {
   defaultBottomPanelContent,
 } from '@jetbrains/int-ui-kit';
 import './App.css';
+
+const PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON = 'problems/referenceViewOptions';
+
+function ProblemsReferenceViewOptionsIcon(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke="#CED0D6" />
+      <path d="M6.5 3V13" stroke="#CED0D6" strokeLinecap="round" />
+      <path d="M8.5 5.5H11.5" stroke="#CED0D6" strokeLinecap="round" />
+      <path d="M8.5 8H11.5" stroke="#CED0D6" strokeLinecap="round" />
+      <path d="M8.5 10.5H11.5" stroke="#CED0D6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+iconRegistry[PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON] = ProblemsReferenceViewOptionsIcon;
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +71,10 @@ const AGENT_TASK_CONTENT_MORPH_MAX_FRAMES = 24;
 const AGENT_TASK_CONTENT_MORPH_INLINE_MAX_FRAMES = 18;
 const AGENT_TASK_CONTENT_MORPH_STEP_DELAY_MS = 36;
 const SPEC_DONE_SCROLL_SELECTOR = '.spec-done-scroll[data-overlay-scroll-body="true"]';
+const ISSUE_INTENTION_POPUP_OPEN_DELAY_MS = 140;
+const ISSUE_INTENTION_POPUP_GAP = 4;
+const ISSUE_INTENTION_POPUP_WIDTH = 414;
+const ISSUE_INTENTION_POPUP_OPEN_EVENT = 'spec-done-intention-popup-opened';
 
 function getSpecDoneScrollElement() {
   if (typeof document === 'undefined') return null;
@@ -585,8 +606,12 @@ const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
 const TERMINAL_RUN_VISIBLE_DELAY_MS = 110;
 const TERMINAL_RUN_INITIAL_DELAY_MS = 160;
-const TERMINAL_RUN_STEP_DELAY_MS = 240;
-const TERMINAL_RUN_END_DELAY_MS = 260;
+const TERMINAL_RUN_STEP_DELAY_MS = 420;
+const TERMINAL_RUN_END_DELAY_MS = 480;
+const TERMINAL_UPDATE_SPEC_STEP_DELAY_MS = 620;
+const TERMINAL_UPDATE_SPEC_INTRO_LINE_COUNT = 2;
+const RESTORE_PLAN_FRAME_INITIAL_DELAY_MS = TERMINAL_RUN_VISIBLE_DELAY_MS + TERMINAL_RUN_INITIAL_DELAY_MS + (TERMINAL_UPDATE_SPEC_STEP_DELAY_MS * TERMINAL_UPDATE_SPEC_INTRO_LINE_COUNT);
+const RESTORE_PLAN_FRAME_STEP_DELAY_MS = TERMINAL_UPDATE_SPEC_STEP_DELAY_MS;
 const RUN_STATUS_REVEAL_STEP_DELAY_MS = 120;
 const CHAINED_SECTION_START_DELAY_MS = 220;
 const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
@@ -668,7 +693,7 @@ function buildTerminalContextLabel({
     return `${resolvedTaskLabel} > Plan > Item ${checkTarget.index + 1}`;
   }
 
-  if (mode === 'generate') {
+  if (mode === 'generate' || mode === 'update-spec') {
     return `${resolvedTaskLabel} > Full specification`;
   }
 
@@ -714,6 +739,30 @@ function buildTerminalRunSequence({
         },
       };
     }
+
+    return {
+      initialLines: [
+        ...introLines,
+        ...buildTerminalPermissionContinuationLines(permissionChoice),
+      ],
+      permissionPrompt: null,
+    };
+  }
+
+  if (mode === 'update-spec') {
+    const planUpdateLines = createVisitBookingPlanItems()
+      .flatMap((item) => [
+        item?.text,
+        ...(item?.children ?? []).map((child) => child?.text),
+      ])
+      .filter((text) => typeof text === 'string' && text.trim().length > 0)
+      .map((text) => ({ type: 'output', text: `Generating Plan item: ${text}` }));
+    const introLines = [
+      { type: 'command', text: `agent run "${resolvedTaskLabel}" --update-spec` },
+      { type: 'output', text: 'Updating specification plan items...' },
+      ...planUpdateLines,
+      { type: 'output', text: 'Prepared plan steps' },
+    ];
 
     return {
       initialLines: [
@@ -990,9 +1039,9 @@ const AC_RUN_STATUSES = [
     issue: {
       severity: 'warning',
       label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets',
-      secondaryText: 'Line 4',
+      secondaryText: 'Line 6',
     },
-    proposal: 'Proposal: dropdown filters to available vets after date/time is submitted',
+    proposal: 'Exclude already-booked vets from dropdown',
     checks: [
       { status: 'passed', text: 'Pre-filter works on POST re-render', chip: 'VisitController.java' },
       { status: 'failed', text: 'On initial load no date is selected, all vets shown — live filtering on date pick needs AJAX (out of scope)', chip: null },
@@ -1078,7 +1127,7 @@ const PLAN_RUN_STATUSES = [
 const ISSUE_QUICK_FIX_CONFIG = {
   ac: {
     0: {
-      actionLabel: 'Fix vet availability',
+      actionLabel: 'Exclude already-booked vets from dropdown',
       replacementText: 'Visit form shows a dropdown of vets, excluding those already booked for the selected date and time.',
       resolvedStatus: {
         status: 'passed',
@@ -1089,8 +1138,16 @@ const ISSUE_QUICK_FIX_CONFIG = {
       },
     },
     1: {
-      actionLabel: 'Add time slots',
-      replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.',
+      actionLabel: 'Specify 09:00–16:00, configurable via application.properties',
+      replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable via application.properties.',
+      resolvedStatus: {
+        status: 'passed',
+        checks: [],
+      },
+    },
+    2: {
+      actionLabel: 'Show inline field error on booking conflict',
+      replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field (server-side validation).',
       resolvedStatus: {
         status: 'passed',
         checks: [],
@@ -1257,6 +1314,50 @@ function getDocumentCheckRawIndex(documentSections, kind, visibleIndex) {
     }
 
     currentVisibleIndex += 1;
+  }
+
+  return null;
+}
+
+function getDocumentCheckTargetAtRawIndex(documentSections, rawIndex, removedIssueIndices = null) {
+  if (!Array.isArray(documentSections) || !Number.isInteger(rawIndex) || rawIndex < 0) {
+    return null;
+  }
+
+  const { lineMap } = buildSerializedDocumentLines(documentSections);
+  const targetEntry = lineMap[rawIndex];
+  if (targetEntry?.type !== 'item' || targetEntry.itemType !== 'check' || (targetEntry.nestingLevel ?? 0) > 0) {
+    return null;
+  }
+
+  const targetSection = documentSections[targetEntry.sectionIndex];
+  const normalizedSectionTitle = targetSection?.title?.toLowerCase();
+  const kind = normalizedSectionTitle === 'acceptance criteria'
+    ? 'ac'
+    : normalizedSectionTitle === 'plan'
+      ? 'plan'
+      : null;
+
+  if (!kind) {
+    return null;
+  }
+
+  let visibleIndex = 0;
+  for (let index = 0; index <= rawIndex; index += 1) {
+    const entry = lineMap[index];
+    if (entry?.type !== 'item' || entry.itemType !== 'check' || (entry.nestingLevel ?? 0) > 0) continue;
+
+    const section = documentSections[entry.sectionIndex];
+    if (section?.title?.toLowerCase() !== normalizedSectionTitle) continue;
+
+    if (index === rawIndex) {
+      return {
+        kind,
+        index: mapVisibleIssueIndexToOriginal(kind, visibleIndex, removedIssueIndices),
+      };
+    }
+
+    visibleIndex += 1;
   }
 
   return null;
@@ -1523,6 +1624,166 @@ function getVisibleIssueOriginalIndices(kind, removedIssueIndices = null) {
   return visibleOriginalIndices;
 }
 
+function getVisibleDocumentCheckOriginalIndices(kind, documentSections = [], removedIssueIndices = null) {
+  const targetSectionTitle = kind === 'ac' ? 'acceptance criteria' : 'plan';
+  const section = (documentSections ?? []).find((candidate) => (
+    typeof candidate?.title === 'string'
+    && candidate.title.toLowerCase() === targetSectionTitle
+  ));
+  const removedMap = removedIssueIndices?.[kind] ?? {};
+  const visibleOriginalIndices = [];
+
+  (section?.items ?? []).forEach((item, originalIndex) => {
+    if (item?.type === 'check' && !removedMap[originalIndex]) {
+      visibleOriginalIndices.push(originalIndex);
+    }
+  });
+
+  return visibleOriginalIndices;
+}
+
+function getSectionCheckItemCount(documentSections = [], sectionTitle = '') {
+  const normalizedTitle = typeof sectionTitle === 'string' ? sectionTitle.toLowerCase() : '';
+  const section = (documentSections ?? []).find((candidate) => (
+    typeof candidate?.title === 'string'
+    && candidate.title.toLowerCase() === normalizedTitle
+  ));
+
+  return (section?.items ?? []).filter((item) => item?.type === 'check').length;
+}
+
+function restorePlanItemsIfEmpty(documentSections = [], fallbackItems = []) {
+  const fallbackPlanItems = Array.isArray(fallbackItems)
+    ? fallbackItems.filter((item) => item?.type === 'check')
+    : [];
+  if (fallbackPlanItems.length === 0 || getSectionCheckItemCount(documentSections, 'Plan') > 0) {
+    return documentSections;
+  }
+
+  let changed = false;
+  const nextSections = (documentSections ?? []).map((section) => {
+    if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'plan') {
+      return section;
+    }
+
+    changed = true;
+    return withDerivedPlanChildren({
+      ...section,
+      items: fallbackPlanItems.map((item) => cloneDocumentItem(item)),
+    });
+  });
+
+  return changed ? nextSections : documentSections;
+}
+
+function hasAnyAppliedIssueFix(appliedIssueFixes = null) {
+  return ['ac', 'plan'].some((kind) => (
+    Object.values(appliedIssueFixes?.[kind] ?? {}).some(Boolean)
+  ));
+}
+
+function addVisitBookingDecisionsAfterQuickFixes(documentSections = [], appliedIssueFixes = null) {
+  if (!hasAnyAppliedIssueFix(appliedIssueFixes)) {
+    return documentSections;
+  }
+
+  let changed = false;
+  const nextSections = (documentSections ?? []).map((section) => {
+    if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'decisions') {
+      return section;
+    }
+
+    const existingItems = Array.isArray(section.items) ? section.items : [];
+    const existingTexts = new Set(
+      existingItems
+        .map((item) => (typeof item?.text === 'string' ? item.text.trim() : ''))
+        .filter(Boolean),
+    );
+    const missingItems = VISIT_BOOKING_DECISION_ITEMS
+      .filter((item) => !existingTexts.has(item.text))
+      .map((item) => cloneDocumentItem(item));
+
+    if (missingItems.length === 0) {
+      return section;
+    }
+
+    changed = true;
+    return {
+      ...section,
+      items: [
+        ...existingItems.map((item) => cloneDocumentItem(item)),
+        ...missingItems,
+      ],
+    };
+  });
+
+  return changed ? nextSections : documentSections;
+}
+
+function buildPlanRestoreFrames(documentSections = [], fallbackItems = []) {
+  const fallbackPlanItems = Array.isArray(fallbackItems)
+    ? fallbackItems.filter((item) => item?.type === 'check')
+    : [];
+  if (fallbackPlanItems.length === 0) {
+    return [];
+  }
+
+  const hasPlanItems = getSectionCheckItemCount(documentSections, 'Plan') > 0;
+  if (hasPlanItems) {
+    return [];
+  }
+
+  const fullPlanItems = withDerivedPlanChildren({
+    id: 'plan',
+    title: 'Plan',
+    items: fallbackPlanItems.map((item) => cloneDocumentItem(item)),
+  }).items ?? [];
+  const restoreSteps = fullPlanItems.flatMap((item, parentIndex) => {
+    const childSteps = (item.children ?? [])
+      .filter((child) => child?.type === 'check')
+      .map((_, childIndex) => ({ parentIndex, childIndex }));
+
+    return [
+      { parentIndex, childIndex: null },
+      ...childSteps,
+    ];
+  });
+
+  return restoreSteps.map((step, stepIndex) => {
+    const frameItems = fullPlanItems
+      .slice(0, step.parentIndex + 1)
+      .map((item, itemIndex) => {
+        const nextItem = cloneDocumentItem(item);
+        if (itemIndex < step.parentIndex) {
+          return nextItem;
+        }
+
+        nextItem.children = Number.isInteger(step.childIndex)
+          ? (nextItem.children ?? []).slice(0, step.childIndex + 1)
+          : [];
+        return nextItem;
+      });
+    const frameDocument = (documentSections ?? []).map((section) => {
+      if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'plan') {
+        return cloneDocumentSection(section);
+      }
+
+      return {
+        ...cloneDocumentSection(section),
+        items: frameItems,
+      };
+    });
+    const framePlanRunResult = new Array(stepIndex + 1).fill(null);
+    framePlanRunResult[stepIndex] = { status: 'pending' };
+
+    return {
+      code: serializeSpecDocument(frameDocument),
+      documentSections: frameDocument,
+      planRunResult: framePlanRunResult,
+    };
+  });
+}
+
 function buildProblemTreeNodeId(issue, fallbackIndex) {
   const rawIndex = Number.isInteger(issue?.rawIndex)
     ? issue.rawIndex
@@ -1685,24 +1946,24 @@ function normalizeSpecSectionTitle(title = '') {
   return String(title).trim().toLowerCase();
 }
 
-function orderPlanBeforeAcceptanceSections(documentSections = []) {
+function orderAcceptanceBeforePlanSections(documentSections = []) {
   if (!Array.isArray(documentSections)) return [];
 
   const planIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'plan');
   const acceptanceIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
 
-  if (planIndex < 0 || acceptanceIndex < 0 || planIndex < acceptanceIndex) {
+  if (planIndex < 0 || acceptanceIndex < 0 || acceptanceIndex < planIndex) {
     return documentSections;
   }
 
   const nextSections = [...documentSections];
-  const [planSection] = nextSections.splice(planIndex, 1);
-  const nextAcceptanceIndex = nextSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
-  nextSections.splice(nextAcceptanceIndex, 0, planSection);
+  const [acceptanceSection] = nextSections.splice(acceptanceIndex, 1);
+  const nextPlanIndex = nextSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'plan');
+  nextSections.splice(nextPlanIndex, 0, acceptanceSection);
   return nextSections;
 }
 
-function orderPlanBeforeAcceptanceCode(code = '') {
+function orderAcceptanceBeforePlanCode(code = '') {
   const lines = typeof code === 'string' ? code.split(/\r?\n/) : [];
   const sections = [];
   let preamble = [];
@@ -1725,14 +1986,14 @@ function orderPlanBeforeAcceptanceCode(code = '') {
 
   if (sections.length === 0) return code;
 
-  const orderedSections = orderPlanBeforeAcceptanceSections(sections);
+  const orderedSections = orderAcceptanceBeforePlanSections(sections);
   return [...preamble, ...orderedSections.flatMap((section) => section.lines)].join('\n');
 }
 
 function buildSerializedDocumentLines(documentSections) {
   const lines = [];
   const lineMap = [];
-  const orderedDocumentSections = orderPlanBeforeAcceptanceSections(documentSections);
+  const orderedDocumentSections = orderAcceptanceBeforePlanSections(documentSections);
 
   orderedDocumentSections.forEach((section) => {
     const sectionIndex = (documentSections ?? []).indexOf(section);
@@ -2266,10 +2527,9 @@ const DEFAULT_PROBLEMS_ISSUES = [
 ];
 
 const AGENT_TASK_PROBLEMS_ISSUES = [
-  { severity: 'warning', label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets', secondaryText: 'Line 4' },
-  { severity: 'warning', label: 'Ambiguous AC — "e.g." makes time slot granularity untestable', secondaryText: 'Line 5' },
-  { severity: 'warning', label: 'Possible race condition — check-then-act without DB constraint', secondaryText: 'Line 10' },
-  { severity: 'error', label: 'Incomplete plan — missing VetFormatter, form POST will fail', secondaryText: 'Line 12' },
+  { severity: 'warning', label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets', secondaryText: 'Line 6' },
+  { severity: 'warning', label: 'Ambiguous AC. "e.g." in acceptance criteria.', secondaryText: 'Line 7' },
+  { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
 ];
 
 const EDITOR_PROBLEMS_BY_LABEL = {
@@ -2327,12 +2587,12 @@ const COMPLETION_PREVIEW_LIBRARY = {
     previewLines: [
       '## Goal',
       'Describe the capability or workflow the agent should deliver.',
-      '## Plan',
-      '- Outline the implementation steps.',
       '## Acceptance Criteria',
       '- Make the result testable and concrete.',
+      '## Plan',
+      '- Outline the implementation steps.',
     ],
-    sections: ['Goal', 'Plan', 'Acceptance Criteria', 'Implementation Notes'],
+    sections: ['Goal', 'Acceptance Criteria', 'Plan', 'Implementation Notes'],
   },
   'Configuration.md': {
     previewLines: [
@@ -3199,10 +3459,14 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
 function extractRuntimeInspectionIssues(results = [], kind, documentSections = null) {
   return results.reduce((issues, item, visibleIndex) => {
     if (item?.issue) {
+      const rawIndex = getDocumentCheckRawIndex(documentSections, kind, visibleIndex);
       issues.push({
         ...item.issue,
         id: `${kind}-issue-${visibleIndex}`,
-        rawIndex: getDocumentCheckRawIndex(documentSections, kind, visibleIndex),
+        rawIndex,
+        secondaryText: Number.isInteger(rawIndex) && rawIndex >= 0
+          ? `Line ${rawIndex + 1}`
+          : item.issue.secondaryText,
       });
     }
     return issues;
@@ -3541,6 +3805,14 @@ const SPEC_LINES = [
   { text: 'Add vet assignment and time slot selection to the visit creation flow.',                         type: 'text' },
   { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
+  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
+  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
+  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
+  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
+  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
+  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
+  { text: '',                                                                                                 type: 'empty'   },
   { text: 'Plan',                                                                                            type: 'heading' },
   { text: '\u2610 Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table',              type: 'check'   },
   { text: '\u2610 Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull',                  type: 'check'   },
@@ -3549,14 +3821,6 @@ const SPEC_LINES = [
   { text: '\u2610 Form template \u2014 add <select> for vet and <select> for time slot',                      type: 'check'   },
   { text: '\u2610 Owner details \u2014 add Vet and Time columns to visit history table',                      type: 'check'   },
   { text: '\u2610 Tests \u2014 vet list in model, successful booking, double-booking rejected',               type: 'check'   },
-  { text: '',                                                                                                 type: 'empty'   },
-  { text: 'Acceptance Criteria',                                                                             type: 'heading' },
-  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
-  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
-  { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
-  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
-  { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Implementation Notes',                                                                            type: 'heading' },
   { text: '\u2022 Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.', type: 'note' },
@@ -3570,6 +3834,51 @@ const SPEC_LINES = [
   { text: '// Dynamic availability (AJAX) \u2014 not in prompt, out of scope',                               type: 'comment' },
   { text: '// Vet specialties matching \u2014 not in prompt, out of scope',                                   type: 'comment' },
 ];
+
+const VISIT_BOOKING_PLAN_ITEMS = [
+  { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes — add vet_id (FK) and visit_time (TIME) to visits table' },
+  { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity — add @ManyToOne vet and LocalTime time with @NotNull' },
+  { id: 'plan-3', type: 'check', checked: false, text: 'VisitRepository — add existsByVetIdAndDateAndTime for double-booking check' },
+  { id: 'plan-4', type: 'check', checked: false, text: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()' },
+  { id: 'plan-5', type: 'check', checked: false, text: 'Form template — add <select> for vet and <select> for time slot' },
+  { id: 'plan-6', type: 'check', checked: false, text: 'Owner details — add Vet and Time columns to visit history table' },
+  { id: 'plan-7', type: 'check', checked: false, text: 'Tests — vet list in model, successful booking, double-booking rejected' },
+];
+
+const VISIT_BOOKING_DECISION_ITEMS = [
+  { id: 'dec-1', type: 'bullet', text: 'AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred' },
+  { id: 'dec-2', type: 'bullet', text: 'Conflict UX — inline field error on re-render for duplicate vet/date/time bookings' },
+];
+
+function cloneDocumentItem(item) {
+  if (!item || typeof item !== 'object') return item;
+
+  return {
+    ...item,
+    children: Array.isArray(item.children)
+      ? item.children.map((child) => cloneDocumentItem(child))
+      : item.children,
+  };
+}
+
+function cloneDocumentSection(section) {
+  if (!section || typeof section !== 'object') return section;
+
+  return {
+    ...section,
+    items: Array.isArray(section.items)
+      ? section.items.map((item) => cloneDocumentItem(item))
+      : section.items,
+  };
+}
+
+function createVisitBookingPlanItems() {
+  return withDerivedPlanChildren({
+    id: 'plan',
+    title: 'Plan',
+    items: VISIT_BOOKING_PLAN_ITEMS.map((item) => cloneDocumentItem(item)),
+  }).items;
+}
 
 const VISIT_BOOKING_GOAL_LINE_ONE = 'Add vet assignment and time slot selection to the visit creation flow.';
 const VISIT_BOOKING_GOAL_LINE_TWO = 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).';
@@ -3754,20 +4063,6 @@ function createSpecDocument() {
       ],
     },
     {
-      id: 'plan',
-      title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
-      items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table' },
-        { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'VisitRepository \u2014 add existsByVetIdAndDateAndTime for double-booking check' },
-        { id: 'plan-4', type: 'check', checked: false, text: 'VisitController \u2014 inject VetRepository, add @ModelAttribute("vets") with findAll()' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Form template \u2014 add <select> for vet and <select> for time slot' },
-        { id: 'plan-6', type: 'check', checked: false, text: 'Owner details \u2014 add Vet and Time columns to visit history table' },
-        { id: 'plan-7', type: 'check', checked: false, text: 'Tests \u2014 vet list in model, successful booking, double-booking rejected' },
-      ],
-    },
-    {
       id: 'acceptance',
       title: 'Acceptance Criteria',
       items: [
@@ -3780,11 +4075,15 @@ function createSpecDocument() {
       ],
     },
     {
+      id: 'plan',
+      title: 'Plan',
+      meta: { kind: 'chip', text: 'Configuration.md' },
+      items: [],
+    },
+    {
       id: 'implementation',
       title: 'Implementation Notes',
       items: [
-        { id: 'impl-1', type: 'bullet', text: 'Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.' },
-        { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
         { id: 'impl-3', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.' },
         { id: 'impl-4', type: 'bullet', text: 'Project uses Formatter<T> for form selects (see PetTypeFormatter).' },
       ],
@@ -4506,6 +4805,14 @@ function InlineInspectionHighlight({ className, tooltip = null, onAccept = null,
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
   }, []);
 
+  const closeTooltip = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setIsOpen(false);
+  }, []);
+
   useEffect(() => {
     if (!isOpen || !hasTooltip) return undefined;
 
@@ -4523,12 +4830,20 @@ function InlineInspectionHighlight({ className, tooltip = null, onAccept = null,
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
   }, []);
 
+  useEffect(() => {
+    window.addEventListener(ISSUE_INTENTION_POPUP_OPEN_EVENT, closeTooltip);
+    return () => window.removeEventListener(ISSUE_INTENTION_POPUP_OPEN_EVENT, closeTooltip);
+  }, [closeTooltip]);
+
   return (
     <>
       <span
         ref={anchorRef}
         className={`${className}${hasTooltip ? ' spec-inline-hover-trigger' : ''}`}
         onMouseEnter={hasTooltip ? () => {
+          if (document.querySelector('.spec-done-intention-popup-singleton')) {
+            return;
+          }
           cancelClose();
           updateRect();
           setIsOpen(true);
@@ -4884,8 +5199,14 @@ function getDoneHeadingTitle(line) {
   return headingMatch ? headingMatch[1].trim() : null;
 }
 
-function shouldShowDoneRunIcon(line) {
+function shouldShowDoneRunIcon(line, { hidePlanRun = false, hideAcRun = false } = {}) {
   const headingTitle = getDoneHeadingTitle(line)?.toLowerCase();
+  if (hidePlanRun && headingTitle === 'plan') {
+    return false;
+  }
+  if (hideAcRun && headingTitle === 'acceptance criteria') {
+    return false;
+  }
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
@@ -4941,12 +5262,15 @@ function AcCheckRow({
   onProposalAccept = null,
   onProposalDecision = null,
   isRunning = false,
+  useCheckbox = false,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
   const [proposalRejected, setProposalRejected] = useState(false);
   const checks = checkItem.checks || [];
+  const problemCount = checks.filter(c => c.status === 'failed').length || checkItem.problemCount || 0;
   const hasChecks = checks.length > 0;
+  const hasToggle = hasChecks || problemCount > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
 
   const handleProposalAccept = () => {
@@ -4960,7 +5284,8 @@ function AcCheckRow({
     onProposalDecision?.('reject');
   };
 
-  const showProposal = Boolean(checkItem.proposal) && !proposalAccepted && !proposalRejected;
+  const proposalOptions = Array.isArray(checkItem.proposalOptions) ? checkItem.proposalOptions : null;
+  const showProposal = (Boolean(checkItem.proposal) || Boolean(proposalOptions)) && !proposalAccepted && !proposalRejected;
 
   const displayText = proposalAccepted && checkItem.highlight?.match && checkItem.proposal
     ? text.replace(checkItem.highlight.match, checkItem.proposal.replace(/^Proposal:\s*/i, ''))
@@ -4970,22 +5295,26 @@ function AcCheckRow({
 
   const visualStatus = proposalAccepted
     ? 'pending'
-    : (checkItem.status === 'passed'
-        ? 'passed'
-        : (checkItem.issue?.severity === 'warning'
-            ? 'warning'
-            : (checkItem.issue?.severity === 'error'
-                ? 'error'
-                : checkItem.status)));
+    : ('checkboxStatus' in checkItem
+        ? checkItem.checkboxStatus
+        : (checkItem.status === 'passed'
+            ? 'passed'
+            : (checkItem.issue?.severity === 'warning'
+                ? 'warning'
+                : (checkItem.issue?.severity === 'error'
+                    ? 'error'
+                    : checkItem.status))));
 
   return (
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
-        <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />
+        {useCheckbox
+          ? <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+          : <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />}
         <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
-        {hasChecks && (
+        {hasToggle && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
-            {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
+            {hasChecks ? `${checks.length} checks` : ''}{!proposalAccepted && problemCount > 0 ? `${hasChecks ? '/' : ''}${problemCount} problem` : ''}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
               <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -5004,16 +5333,36 @@ function AcCheckRow({
             </div>
           ))}
           {showProposal && (
-            <div className="ac-proposal-row">
+            <div className={`ac-proposal-row${proposalOptions ? ' ac-proposal-row-options' : ''}`}>
               <span className="ac-proposal-icon">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <path d="M6 13.5H10M7 15H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                   <path d="M5.5 10.5C4.5 9.5 4 8.5 4 7.5C4 5.29086 5.79086 3.5 8 3.5C10.2091 3.5 12 5.29086 12 7.5C12 8.5 11.5 9.5 10.5 10.5V11.5C10.5 11.7761 10.2761 12 10 12H6C5.72386 12 5.5 11.7761 5.5 11.5V10.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
                 </svg>
               </span>
-              <span className="ac-proposal-text">{checkItem.proposal}</span>
-              <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
-              <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
+              {proposalOptions ? (
+                <div className="ac-proposal-options">
+                  {proposalOptions.map((opt, i) =>
+                    opt.type === 'text' ? (
+                      <div key={i} className="ac-proposal-option-text-row">
+                        <span className="ac-proposal-option-num">{i + 1}.</span>
+                        <input type="text" className="ac-proposal-text-field" placeholder={opt.placeholder || 'Custom...'} />
+                      </div>
+                    ) : (
+                      <button key={i} type="button" className="ac-proposal-option-btn" onClick={handleProposalAccept}>
+                        <span className="ac-proposal-option-num">{i + 1}.</span>
+                        {opt.label}
+                      </button>
+                    )
+                  )}
+                </div>
+              ) : (
+                <>
+                  <span className="ac-proposal-text">{checkItem.proposal}</span>
+                  <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
+                  <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -5904,7 +6253,8 @@ function withDerivedPlanChildren(section) {
 
       const scopedDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item');
       const legacyDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item', { includeScope: false });
-      const hasExistingChildren = Array.isArray(item.children) && item.children.length > 0;
+      const hasExplicitChildren = Array.isArray(item.children);
+      const hasExistingChildren = hasExplicitChildren && item.children.length > 0;
       const shouldUpgradeLegacyChildren = hasExistingChildren && arePlanCheckChildTextsEqual(item.children, legacyDerivedChildren);
 
       return {
@@ -5915,7 +6265,7 @@ function withDerivedPlanChildren(section) {
               id: child?.id ?? scopedDerivedChildren[childIndex]?.id ?? `${item.id ?? 'plan-item'}:child-${childIndex + 1}`,
               text: scopedDerivedChildren[childIndex]?.text ?? child?.text ?? '',
             }))
-          : (hasExistingChildren
+          : (hasExplicitChildren
               ? item.children
               : scopedDerivedChildren),
       };
@@ -5940,10 +6290,8 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       style={planLineStyle}
     >
       {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} />
-        : (isRunning
-            ? <CheckStatus status="pending" isLoading />
-            : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />)
+        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={!hasPlanComment && statusItem.status === 'pending'} />
+        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
       }
       <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
@@ -6008,16 +6356,24 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     const checked = checkMatch[2].toLowerCase() === 'x';
     const normalizedRunTarget = normalizeCommentTarget(activeRunRequest?.checkTarget ?? null);
     const normalizedSectionTitle = typeof currentSectionTitle === 'string' ? currentSectionTitle.trim().toLowerCase() : '';
+    const normalizedActiveRunSectionTitle = typeof activeRunRequest?.sectionTitle === 'string'
+      ? activeRunRequest.sectionTitle.trim().toLowerCase()
+      : '';
     const isRunning = Boolean(activeRunRequest) && (
       (normalizedRunTarget
         && checkTarget
         && normalizedRunTarget.kind === checkTarget.kind
         && normalizedRunTarget.index === checkTarget.index)
       || (!normalizedRunTarget
-        && ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
-          || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan')))
+        && (normalizedActiveRunSectionTitle.length > 0
+          ? normalizedActiveRunSectionTitle === normalizedSectionTitle
+          : ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
+            || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan'))))
     );
     if (checkStatus != null) {
+      if ('checkboxStatus' in checkStatus && checkStatus.checkboxStatus === null) {
+        return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} useCheckbox />;
+      }
       return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} />;
     }
     if (checkTarget?.kind === 'ac' && isRunning) {
@@ -6486,9 +6842,145 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
   };
 }
 
-function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = null, onOpenProblems, onRegenerateSpec, onFixIssue, onClose }) {
+function ProblemsQuickFixesMenu({ proposals = [], onSelect, onClose }) {
+  const menuOptions = useMemo(
+    () => (Array.isArray(proposals) ? proposals : []),
+    [proposals],
+  );
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  const itemRefs = useRef([]);
+  const lastHandledKeyRef = useRef({ key: null, time: 0 });
+
+  const setActiveMenuIndex = (nextIndex, { focus = true } = {}) => {
+    activeIndexRef.current = nextIndex;
+    setActiveIndex(nextIndex);
+    if (focus) {
+      requestAnimationFrame(() => {
+        itemRefs.current[nextIndex]?.focus({ preventScroll: true });
+      });
+    }
+  };
+
+  useEffect(() => {
+    itemRefs.current = itemRefs.current.slice(0, menuOptions.length);
+    activeIndexRef.current = 0;
+    setActiveIndex(0);
+    const focusFirstItem = () => {
+      itemRefs.current[0]?.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(focusFirstItem);
+    const focusTimeoutId = window.setTimeout(focusFirstItem, 0);
+    return () => window.clearTimeout(focusTimeoutId);
+  }, [menuOptions]);
+
+  const selectOption = (opt) => {
+    if (!opt) return;
+    onSelect?.(opt);
+    onClose?.();
+  };
+
+  const moveSelection = (direction) => {
+    const current = activeIndexRef.current;
+    const next = (current + direction + menuOptions.length) % menuOptions.length;
+    setActiveMenuIndex(next);
+  };
+
+  const handleKeyDown = (event) => {
+    const isArrowDown = event.key === 'ArrowDown' || event.key === 'Down' || event.code === 'ArrowDown' || event.keyCode === 40;
+    const isArrowUp = event.key === 'ArrowUp' || event.key === 'Up' || event.code === 'ArrowUp' || event.keyCode === 38;
+    const isEnter = event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13;
+    const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27;
+
+    if (isArrowDown) {
+      lastHandledKeyRef.current = { key: 'ArrowDown', time: Date.now() };
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      moveSelection(1);
+      return;
+    }
+    if (isArrowUp) {
+      lastHandledKeyRef.current = { key: 'ArrowUp', time: Date.now() };
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      moveSelection(-1);
+      return;
+    }
+    if (isEnter) {
+      if (event.altKey || event.metaKey || event.ctrlKey) return;
+      lastHandledKeyRef.current = { key: 'Enter', time: Date.now() };
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      selectOption(menuOptions[activeIndexRef.current]);
+      return;
+    }
+    if (isEscape) {
+      lastHandledKeyRef.current = { key: 'Escape', time: Date.now() };
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      onClose?.();
+    }
+  };
+
+  useEffect(() => {
+    if (menuOptions.length === 0) return undefined;
+
+    const handleDocumentKeyDown = (event) => {
+      if (event.defaultPrevented) return;
+      handleKeyDown(event);
+    };
+
+    document.addEventListener('keydown', handleDocumentKeyDown, true);
+    return () => document.removeEventListener('keydown', handleDocumentKeyDown, true);
+  }, [activeIndex, menuOptions]);
+
+  if (menuOptions.length === 0) return null;
+
+  return (
+    <div className="popup-options" role="menu" onKeyDownCapture={handleKeyDown}>
+      {menuOptions.map((opt, i) => (
+        <button
+          key={i}
+          ref={(el) => {
+            itemRefs.current[i] = el;
+          }}
+          type="button"
+          className={`popup-cell problems-quick-fix-menu-item${i === activeIndex ? ' problems-quick-fix-menu-item-active' : ''}`}
+          role="menuitem"
+          aria-selected={i === activeIndex}
+          data-active={i === activeIndex ? 'true' : undefined}
+          tabIndex={i === activeIndex ? 0 : -1}
+          onFocus={() => setActiveMenuIndex(i, { focus: false })}
+          onMouseEnter={() => setActiveMenuIndex(i, { focus: false })}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            selectOption(opt);
+          }}
+        >
+          <span className="problems-quick-fix-menu-label text-ui-default">{opt.label}</span>
+          <span className="problems-quick-fix-menu-actions" aria-hidden="true">
+            <span className="problems-quick-fix-menu-separator" />
+            <span className="problems-quick-fix-menu-more">
+              <Icon name="general/moreVertical" size={16} />
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = null, proposalOptions = null, onOpenProblems, onRegenerateSpec, onFixIssue, onClose }) {
   const actions = buildDoneIntentionPopupActions({ severity, canFixIssue, issueTarget });
   const demoTargetId = formatDemoTargetId(issueTarget);
+  const filteredProposalOptions = Array.isArray(proposalOptions)
+    ? proposalOptions.filter((opt) => opt?.type !== 'text' && typeof opt?.label === 'string')
+    : [];
+  const hasProposalOptions = filteredProposalOptions.length > 0;
 
   const handleAction = (item) => {
     if (item.action === 'fix') {
@@ -6522,9 +7014,40 @@ function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = n
     </button>
   );
 
+  const primaryItems = hasProposalOptions
+    ? [
+        ...filteredProposalOptions.map((opt, i) => ({
+          id: `proposal-${i}`,
+          label: opt.label,
+          icon: 'codeInsight/intentionBulb',
+          action: 'fix',
+          demoId: demoTargetId ? `issue-popup-proposal-${i}-${demoTargetId}` : undefined,
+        })),
+        ...actions.primary.filter((item) => item.action !== 'fix'),
+      ]
+    : actions.primary;
+
   return (
     <div className="cmp-popup spec-done-intention-popup" onMouseDown={(event) => event.preventDefault()}>
-      {actions.primary.map((item) => renderActionRow(item, { key: item.id, primary: true }))}
+      {primaryItems.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className="cmp-cell spec-done-intention-popup-item spec-done-intention-popup-item-primary"
+          data-demo-id={item.demoId ?? (demoTargetId ? `issue-popup-${item.id}-${demoTargetId}` : undefined)}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            handleAction(item);
+          }}
+        >
+          <span className="spec-done-intention-popup-leading" aria-hidden="true">
+            {item.icon ? <Icon name={item.icon} size={16} /> : null}
+          </span>
+          <div className="cmp-content">
+            <span className="cmp-label">{item.label}</span>
+          </div>
+        </button>
+      ))}
       <div className="spec-done-intention-popup-divider" />
       {actions.secondary.map((item) => renderActionRow(item, { key: item.id }))}
       <div className="cmp-footer spec-done-intention-popup-footer">
@@ -6643,15 +7166,16 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '' }) {
+  const isVisitBookingSpec = specSessionKey === 'agent-task-t1' || specTabLabel === 'visit-booking.md';
   const effectiveDocumentSections = useMemo(
-    () => orderPlanBeforeAcceptanceSections(
+    () => orderAcceptanceBeforePlanSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
     ),
     [documentSections]
   );
   const effectiveCode = useMemo(
-    () => orderPlanBeforeAcceptanceCode(
+    () => orderAcceptanceBeforePlanCode(
       normalizeLegacyDerivedPlanChildrenCode(
         normalizeLegacyVisitBookingGoalCode(
           typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
@@ -6660,10 +7184,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     ),
     [code, effectiveDocumentSections]
   );
-  const [extraDecisionItems, setExtraDecisionItems] = useState([]);
-  const addExtraDecisionItem = useCallback((text) => {
-    setExtraDecisionItems((prev) => prev.includes(text) ? prev : [...prev, text]);
-  }, []);
   const tradeoffCount = useMemo(
     () => countRecordedTradeoffs(effectiveDocumentSections),
     [effectiveDocumentSections]
@@ -6763,6 +7283,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
   const [commentPopup, setCommentPopup] = useState(null);
   const [intentionPopup, setIntentionPopup] = useState(null);
+  const intentionPopupRef = useRef(null);
+  const intentionPopupTimerRef = useRef(0);
+  const [problemsFixMenu, setProblemsFixMenu] = useState(null);
   const normalizedCode = useMemo(
     () => normalizeSpecCodeForComparison(effectiveCode),
     [effectiveCode]
@@ -6770,9 +7293,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const runStatusMetaByStableKey = useMemo(() => {
     const nextMeta = new Map();
     let acVisibleIndex = 0;
-    let planVisibleIndex = 0;
+    let planParentVisibleIndex = 0;
+    let planLineVisibleIndex = 0;
     let currentAcVisibleIndex = null;
-    let currentPlanVisibleIndex = null;
+    let currentPlanParentVisibleIndex = null;
+    const planTopLevelCheckCount = serializedDocumentLineMap.filter((lineMeta) => {
+      if (lineMeta?.type !== 'item' || lineMeta.itemType !== 'check' || (lineMeta.nestingLevel ?? 0) !== 0) {
+        return false;
+      }
+
+      const sectionTitle = effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '';
+      return sectionTitle.toLowerCase() === 'plan';
+    }).length;
+    const useLineBasedPlanStatuses = Array.isArray(planRunResult)
+      && planRunResult.length > planTopLevelCheckCount;
 
     serializedDocumentLineMap.forEach((lineMeta) => {
       if (lineMeta?.type !== 'item' || lineMeta.itemType !== 'check') {
@@ -6804,26 +7338,96 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
       if (normalizedSectionTitle === 'plan') {
         if ((lineMeta.nestingLevel ?? 0) === 0) {
-          currentPlanVisibleIndex = planVisibleIndex;
-          planVisibleIndex += 1;
+          currentPlanParentVisibleIndex = planParentVisibleIndex;
+          planParentVisibleIndex += 1;
         }
 
-        if (!Number.isInteger(currentPlanVisibleIndex) || currentPlanVisibleIndex < 0) {
+        if (!Number.isInteger(currentPlanParentVisibleIndex) || currentPlanParentVisibleIndex < 0) {
           return;
         }
 
-        const originalIndex = mapVisibleIssueIndexToOriginal('plan', currentPlanVisibleIndex, removedIssueIndices);
+        const statusVisibleIndex = useLineBasedPlanStatuses
+          ? planLineVisibleIndex
+          : currentPlanParentVisibleIndex;
+        planLineVisibleIndex += 1;
+        const originalIndex = mapVisibleIssueIndexToOriginal('plan', currentPlanParentVisibleIndex, removedIssueIndices);
         nextMeta.set(lineMeta.stableKey, {
           kind: 'plan',
-          visibleIndex: currentPlanVisibleIndex,
+          visibleIndex: statusVisibleIndex,
           originalIndex,
-          statusItem: planRunResult?.[currentPlanVisibleIndex] ?? null,
+          statusItem: planRunResult?.[statusVisibleIndex] ?? null,
         });
       }
     });
 
     return nextMeta;
   }, [acRunResult, effectiveDocumentSections, planRunResult, removedIssueIndices, serializedDocumentLineMap]);
+  useEffect(() => {
+    intentionPopupRef.current = intentionPopup;
+    if (intentionPopup && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(ISSUE_INTENTION_POPUP_OPEN_EVENT));
+    }
+  }, [intentionPopup]);
+
+  const closeIntentionPopup = useCallback(() => {
+    if (intentionPopupTimerRef.current) {
+      window.clearTimeout(intentionPopupTimerRef.current);
+      intentionPopupTimerRef.current = 0;
+    }
+    intentionPopupRef.current = null;
+    setIntentionPopup(null);
+  }, []);
+
+  const scheduleIntentionPopupOpen = useCallback((nextPopup) => {
+    if (intentionPopupTimerRef.current) {
+      window.clearTimeout(intentionPopupTimerRef.current);
+      intentionPopupTimerRef.current = 0;
+    }
+
+    const currentPopup = intentionPopupRef.current;
+
+    if (currentPopup?.rowKey === nextPopup.rowKey) {
+      intentionPopupRef.current = null;
+      setIntentionPopup(null);
+      return;
+    }
+
+    if (currentPopup) {
+      return;
+    }
+
+    intentionPopupTimerRef.current = window.setTimeout(() => {
+      intentionPopupTimerRef.current = 0;
+      if (intentionPopupRef.current) {
+        return;
+      }
+      intentionPopupRef.current = nextPopup;
+      setIntentionPopup(nextPopup);
+    }, ISSUE_INTENTION_POPUP_OPEN_DELAY_MS);
+  }, []);
+
+  const intentionPopupPosition = useMemo(() => {
+    if (!intentionPopup?.rect) return null;
+
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || ISSUE_INTENTION_POPUP_WIDTH;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const maxLeft = Math.max(8, viewportWidth - ISSUE_INTENTION_POPUP_WIDTH - 8);
+    const left = Math.min(Math.max(8, intentionPopup.rect.left), maxLeft);
+    const belowTop = intentionPopup.rect.bottom + ISSUE_INTENTION_POPUP_GAP;
+    const top = viewportHeight > 0 && belowTop > viewportHeight - 16
+      ? Math.max(8, intentionPopup.rect.top - ISSUE_INTENTION_POPUP_GAP)
+      : belowTop;
+
+    return { top, left };
+  }, [intentionPopup?.rect]);
+
+  useEffect(() => () => {
+    if (intentionPopupTimerRef.current) {
+      window.clearTimeout(intentionPopupTimerRef.current);
+      intentionPopupTimerRef.current = 0;
+    }
+  }, []);
+
   const rowMetaList = useMemo(() => {
     const sectionMetaByTitle = new Map(
       (effectiveDocumentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
@@ -6843,7 +7447,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const line = row.line;
       const headingTitle = getDoneHeadingTitle(line);
       const sectionMeta = headingTitle ? sectionMetaByTitle.get(headingTitle.toLowerCase()) ?? null : null;
-      const showRunIcon = shouldShowDoneRunIcon(line);
+      const showRunIcon = shouldShowDoneRunIcon(line, { hidePlanRun: false });
       const serializedLineMeta = matchedSerializedLineMetaByRow[rowIndex] ?? null;
 
       if (headingTitle !== null) {
@@ -6962,9 +7566,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         checkTarget,
         issueSeverity,
         issueTarget,
+        proposalOptions: Array.isArray(displayStatusItem?.proposalOptions) ? displayStatusItem.proposalOptions : null,
       };
     });
-  }, [displayRows, effectiveDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
+  }, [displayRows, effectiveDocumentSections, isVisitBookingSpec, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
   const rowMetaByKey = useMemo(
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
@@ -7101,7 +7706,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!rowMeta) return;
 
     if (actionId === 'comment') {
-      setIntentionPopup(null);
+      closeIntentionPopup();
       setSelectionToolbarPos(null);
       setCommentPopup((prev) => (
         prev?.rowKey === rowMeta.stableKey
@@ -7123,20 +7728,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setSelectionToolbarPos(null);
       setActiveIssueRowKey(rowMeta.stableKey);
       setNavigatedIssueRowKey(rowMeta.stableKey);
-      setIntentionPopup((prev) => (
-        prev?.rowKey === rowMeta.stableKey
-          ? null
-          : {
-              rowKey: rowMeta.stableKey,
-              rowIndex: rowMeta.rowIndex,
-              rect: triggerRect,
-              severity: rowMeta.issueSeverity ?? 'warning',
-              sectionTitle: rowMeta.currentSectionTitle,
-              issueTarget: rowMeta.issueTarget,
-            }
-      ));
+      scheduleIntentionPopupOpen({
+        rowKey: rowMeta.stableKey,
+        rowIndex: rowMeta.rowIndex,
+        rect: triggerRect,
+        severity: rowMeta.issueSeverity ?? 'warning',
+        sectionTitle: rowMeta.currentSectionTitle,
+        issueTarget: rowMeta.issueTarget,
+      });
     }
-  }, [getSelectionToolbarRowMeta]);
+  }, [closeIntentionPopup, getSelectionToolbarRowMeta, scheduleIntentionPopupOpen]);
 
   const closeCommentPopup = useCallback((rowIndex = null) => {
     setCommentPopup(null);
@@ -7791,6 +8392,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               checkTarget,
               issueSeverity,
               issueTarget,
+              proposalOptions,
             } = rowMeta;
             // Row deleted by user — render invisible ghost so snapshot can record empty line
             if (deletedRowKeys.has(stableKey)) {
@@ -7824,6 +8426,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const showIssueBulb = hasIssueBulb
               && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const showItemRunButton = Boolean(effectiveCheckTarget)
+              && !(isVisitBookingSpec && effectiveCheckTarget?.kind === 'plan')
               && isRowHovered
               && !isCommentPopupOpen
               && !isIssuePopupOpen
@@ -7834,6 +8437,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
+            const isRestoringPlanRow = effectiveCheckTarget?.kind === 'plan'
+              && effectivePlanStatus?.status === 'pending'
+              && !hasPlanComment;
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
             const showCommentAdornment = commentCount > 0 || focusedCommentRowKey === stableKey || isCommentPopupOpen
@@ -7865,7 +8471,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -7935,18 +8541,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       const rect = event.currentTarget.getBoundingClientRect();
                       setActiveIssueRowKey(stableKey);
                       setNavigatedIssueRowKey(stableKey);
-                      setIntentionPopup((prev) => (
-                        prev?.rowKey === stableKey
-                          ? null
-                          : {
-                              rowKey: stableKey,
-                              rowIndex,
-                              rect,
-                              severity: issueSeverity,
-                              sectionTitle: currentSectionTitle,
-                              issueTarget,
-                            }
-                      ));
+                      scheduleIntentionPopupOpen({
+                        rowKey: stableKey,
+                        rowIndex,
+                        rect,
+                        severity: issueSeverity,
+                        sectionTitle: currentSectionTitle,
+                        issueTarget,
+                        proposalOptions: proposalOptions,
+                      });
                     }}
                   >
                     <Icon name="codeInsight/intentionBulb" size={16} />
@@ -7993,23 +8596,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   currentSectionTitle,
                   activeRunRequest,
                   rowMeta.nestingLevel ?? 0,
-                  rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
-                  () => onUserInput?.(),
+                  null,
+                  () => {
+                    if (effectiveCheckTarget?.kind === 'plan') {
+                      onUserInput?.();
+                    }
+                  },
                   hasPlanComment,
                 )}
               </div>
             </div>
-            {headingTitle?.toLowerCase() === 'decisions' && extraDecisionItems.map((item, i) => (
-              <div key={`extra-decision-${i}`} className="spec-done-row">
-                <div className="editor-gutter-row spec-done-gutter-cell" />
-                <div className="spec-done-row-content">
-                  <div className="spec-done-line spec-done-line-bullet">
-                    <span className="spec-done-bullet">•</span>
-                    <span contentEditable suppressContentEditableWarning>{item}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
           </Fragment>
         );
         })}
@@ -8063,22 +8659,31 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       </PositionedPopup>
     )}
     <SpecSelectionToolbar position={selectionToolbarPos} onAction={handleSelectionToolbarAction} />
-    {intentionPopup && (
-      <PositionedPopup triggerRect={intentionPopup.rect} onDismiss={() => setIntentionPopup(null)} gap={4}>
-        <DoneIssueIntentionPopup
-          severity={intentionPopup.severity}
-          canFixIssue={Boolean(intentionPopup.issueTarget)}
-          issueTarget={intentionPopup.issueTarget}
-          onOpenProblems={onOpenProblems}
-          onRegenerateSpec={onRegenerateSpec}
-          onFixIssue={() => {
-            if (intentionPopup.issueTarget) {
-              onFixIssue?.(intentionPopup.issueTarget);
-            }
-          }}
-          onClose={() => setIntentionPopup(null)}
-        />
-      </PositionedPopup>
+    {intentionPopup && intentionPopupPosition && createPortal(
+      <>
+        <div className="spec-done-intention-popup-overlay" onMouseDown={closeIntentionPopup} />
+        <div
+          className="spec-done-intention-popup-singleton"
+          style={{ top: intentionPopupPosition.top, left: intentionPopupPosition.left }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <DoneIssueIntentionPopup
+            severity={intentionPopup.severity}
+            canFixIssue={Boolean(intentionPopup.issueTarget)}
+            issueTarget={intentionPopup.issueTarget}
+            proposalOptions={intentionPopup.proposalOptions}
+            onOpenProblems={onOpenProblems}
+            onRegenerateSpec={onRegenerateSpec}
+            onFixIssue={() => {
+              if (intentionPopup.issueTarget) {
+                onFixIssue?.(intentionPopup.issueTarget);
+              }
+            }}
+            onClose={closeIntentionPopup}
+          />
+        </div>
+      </>,
+      document.body
     )}
     </>
   );
@@ -8239,7 +8844,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0 }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8282,8 +8887,8 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
   const hasPendingQuickFixRerun =
-    (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
-    || (Array.isArray(planRunResult) && planRunResult.some((status) => status === null));
+    (Array.isArray(planRunResult) && planRunResult.some((status) => status === null)) ||
+    (pendingAcQuickFixCount > 0);
   const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || hasPendingQuickFixRerun;
   const shouldShowDoneEnhanceHint = genState === 'done'
     && runState !== 'running'
@@ -8531,19 +9136,17 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     // Re-snapshot the current null-slot count so that returning to this tab
     // (same nulls, new reference) doesn't re-trigger the badge.
     const currentNullCount =
-      (Array.isArray(acRunResult) ? acRunResult.filter((s) => s === null).length : 0) +
-      (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
+      Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0;
     prevNullSlotCountRef.current = currentNullCount;
-  }, [acRunResult, commentResetToken, currentCode, planRunResult, resetDoneEnhanceAttention, specSessionKey]);
+  }, [commentResetToken, currentCode, planRunResult, resetDoneEnhanceAttention, specSessionKey]);
 
-  // When a quick fix is applied the affected run-result slot is set to null.
+  // When a plan quick fix is applied the affected run-result slot is set to null.
   // Treat that as a pending change so the Enhance badge + popup appear.
   // Track the null-slot count so that tab switches (same nulls, new reference)
   // don't re-trigger the badge — only genuinely new null slots do.
   useEffect(() => {
     const nullCount =
-      (Array.isArray(acRunResult) ? acRunResult.filter((s) => s === null).length : 0) +
-      (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
+      Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0;
     if (nullCount > prevNullSlotCountRef.current) {
       setTimeout(() => {
         if (isDoneEnhanceLocked) {
@@ -8555,7 +9158,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       }, 0);
     }
     prevNullSlotCountRef.current = nullCount;
-  }, [acRunResult, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
+  }, [isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
 
   // When a comment arrives from outside (e.g. from the diff view) the baseline
   // inside DoneMarkdownOverlay already matches, so hasPendingCommentChanges
@@ -8596,6 +9199,16 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     prevAttachedFileCountRef.current = attachedFileCount;
   }, [attachedFiles, genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
 
+  useEffect(() => {
+    if (genState !== 'done' || pendingAcQuickFixCount <= 0) return;
+
+    if (isDoneEnhanceLocked) {
+      setDoneEnhanceLockedForSession(false);
+    }
+    liftDoneEnhanceSuppression();
+    allowDoneEnhanceAttentionRef.current = true;
+  }, [genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, pendingAcQuickFixCount, setDoneEnhanceLockedForSession]);
+
   const handlePendingEnhanceStateChange = useCallback((pending) => {
     if (!pending && hasPendingQuickFixRerun && !isDoneEnhanceLocked) {
       return;
@@ -8613,6 +9226,15 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     setHasPendingDoneEnhanceChanges(true);
   }, [liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
   const handleDoneOverlayFixIssue = useCallback((payload) => {
+    if (payload?.kind !== 'plan') {
+      resetDoneEnhanceAttention(2000);
+      setDoneEnhanceLockedForSession(false);
+      allowDoneEnhanceAttentionRef.current = true;
+      liftDoneEnhanceSuppression();
+      onFixIssue?.(payload);
+      return;
+    }
+
     // Quick fix updates `currentCode` and may also bump comment reset state in
     // separate renders. Skip both baseline-reset passes so Enhance stays active.
     skipNextDoneEnhanceBaselineResetCountRef.current = 2;
@@ -8621,7 +9243,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     liftDoneEnhanceSuppression();
     setHasPendingDoneEnhanceChanges(true);
     onFixIssue?.(payload);
-  }, [liftDoneEnhanceSuppression, onFixIssue, setDoneEnhanceLockedForSession]);
+  }, [liftDoneEnhanceSuppression, onFixIssue, resetDoneEnhanceAttention, setDoneEnhanceLockedForSession]);
 
   function handleChange(e) {
     const v = e.target.value;
@@ -8694,7 +9316,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }
 
   function handleDoneEnhance() {
-    if (!hasPendingDoneEnhanceChanges) {
+    if (!isDoneEnhanceEnabled) {
       return;
     }
     // Reset the done-state attention immediately so a completed Enhance cycle
@@ -8851,16 +9473,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
         <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
           <div className="agent-task-toolbar-left">
-            <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
-              <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-              <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
-              <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
-              <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
-              <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-              <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
-              <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
-            </svg>
+            <IconLoaderSpinner />
             <span className="at-generating-label">{title}</span>
           </div>
 
@@ -8915,7 +9528,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -8926,11 +9539,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="generating">
-          {renderBusyToolbar('Specifying...')}
+          {renderBusyToolbar('Updating spec...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -8947,16 +9560,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
                 {runState === 'running' ? (<>
-                  <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
-                    <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                    <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
-                    <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
-                    <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
-                    <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                    <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
-                    <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
-                  </svg>
+                  <IconLoaderSpinner />
                   <span className="at-generating-label">Building...</span>
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
@@ -9062,7 +9666,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9078,17 +9682,8 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {showGeneratingState ? <>
             {/* Generating state — left */}
             <div className="agent-task-toolbar-left">
-              <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
-                <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
-                <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
-                <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
-                <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
-                <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
-              </svg>
-              <span className="at-generating-label">Specifying...</span>
+              <IconLoaderSpinner />
+              <span className="at-generating-label">Updating spec...</span>
             </div>
 
             {/* Generating state — right */}
@@ -9161,8 +9756,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 // ─── Agent Tasks Panel ────────────────────────────────────────────────────────
 
 const AGENT_TASKS = [
-  { id: 't1', label: 'visit-booking.md',   time: '2m',  status: null },
-  { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'running' },
+  { id: 'agent-task-new-0', label: 'New Task.md',      time: 'now', status: null },
+  { id: 't1',               label: 'visit-booking.md', time: '2m',  status: null },
+  { id: 't2',               label: 'vet-schedules.md', time: '15m', status: 'running' },
 ];
 
 const VET_SCHEDULES_AC_RUN_STATUSES = [
@@ -9214,6 +9810,16 @@ function createVetSchedulesSpecDocument() {
       ],
     },
     {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
+      ],
+    },
+    {
       id: 'plan',
       title: 'Plan',
       items: [
@@ -9222,16 +9828,6 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection' },
-      ],
-    },
-    {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
       ],
     },
     {
@@ -9315,8 +9911,40 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
     initialTaskState: createInteractiveTaskState({
       documentSections,
       genState: isVisitBookingPreset ? 'done' : 'idle',
-      acBaseStatuses: AC_RUN_STATUSES,
-      planBaseStatuses: PLAN_RUN_STATUSES,
+      planBaseStatuses: null,
+      acBaseStatuses: isVisitBookingPreset ? [
+        { ...AC_RUN_STATUSES[0], checkboxStatus: null, checks: [], problemCount: 1 },
+        {
+          checkboxStatus: null,
+          checks: [],
+          problemCount: 1,
+          highlight: { match: 'e.g. hourly slots 09:00–16:00', className: 'spec-inline-warning-highlight' },
+          issue: { severity: 'warning', label: 'Ambiguous AC. "e.g." in acceptance criteria.', secondaryText: 'Line 7' },
+          proposal: 'Specify 09:00–16:00, configurable via application.properties',
+        },
+        {
+          checkboxStatus: null,
+          checks: [],
+          problemCount: 1,
+          highlight: { match: '(server-side validation)', className: 'spec-inline-warning-highlight' },
+          issue: { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
+          proposalOptions: [
+            {
+              label: 'Inline field error on re-render',
+              replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field (server-side validation).',
+            },
+            {
+              label: 'Modal with conflict details',
+              replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
+            },
+            {
+              label: 'Agent decides',
+              replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX and implements server-side validation.',
+            },
+            { type: 'text' },
+          ],
+        },
+      ] : null,
       seedRunResults: isVisitBookingPreset,
     }),
   };
@@ -9366,12 +9994,14 @@ function buildInitialEditorTabs() {
     .filter(Boolean);
 
   return [
+    { id: 'agent-task-new-0', label: 'New Task.md', icon: 'fileTypes/markdown', closable: true },
     ...presetTabs,
     ...MY_EDITOR_TABS,
   ];
 }
 
 function buildInitialEditorTabContents() {
+  const newTaskScenario = getAgentTaskScenario({ tabId: 'agent-task-new-0', label: 'New Task.md' });
   return ['t1', 't2'].reduce((contents, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.content) return contents;
@@ -9380,10 +10010,14 @@ function buildInitialEditorTabContents() {
       ...contents,
       [preset.tab.id]: preset.content,
     };
-  }, { ...MY_EDITOR_TAB_CONTENTS });
+  }, {
+    'agent-task-new-0': { language: 'markdown', code: newTaskScenario.initialCode },
+    ...MY_EDITOR_TAB_CONTENTS,
+  });
 }
 
 function buildInitialInteractiveTaskStates() {
+  const newTaskScenario = getAgentTaskScenario({ tabId: 'agent-task-new-0', label: 'New Task.md' });
   return ['t1', 't2'].reduce((states, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.interactiveState) return states;
@@ -9392,7 +10026,7 @@ function buildInitialInteractiveTaskStates() {
       ...states,
       [preset.tab.id]: preset.interactiveState,
     };
-  }, {});
+  }, { 'agent-task-new-0': newTaskScenario.initialTaskState });
 }
 
 function createAgentTaskExecutionTiming() {
@@ -9830,18 +10464,18 @@ function AgentTasksPanel({
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState('welcome'); // 'welcome' | 'ide' | 'settings'
+  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide' | 'settings'
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
-  const [activeEditorTab, setActiveEditorTab] = useState(null);
+  const [activeEditorTab, setActiveEditorTab] = useState(1); // index 1 = visit-booking.md (after New Task.md at 0)
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -9862,6 +10496,7 @@ export default function App() {
   );
   const [runStatesByTab, setRunStatesByTab] = useState({});
   const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
+  const [pendingAcQuickFixCount, setPendingAcQuickFixCount] = useState(0);
   const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
   const lastRunSectionRef = useRef(null);
@@ -9880,6 +10515,7 @@ export default function App() {
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
+  const [problemsFixMenu, setProblemsFixMenu] = useState(null);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
   const doneEnhanceFlowRef = useRef(null);
   const seededPresetTaskRef = useRef(false);
@@ -10739,12 +11375,16 @@ export default function App() {
   const requestProblemHighlight = useCallback((rawIndex) => {
     if (!Number.isInteger(rawIndex) || rawIndex < 0) return;
 
+    const issueTarget = getDocumentCheckTargetAtRawIndex(generatedDocument, rawIndex, removedIssueIndices);
+
     setHighlightedProblemLocation((prev) => ({
       rawIndex,
+      kind: issueTarget?.kind ?? null,
+      index: issueTarget?.index ?? null,
       tabId: activeEditorTabId,
       requestKey: (prev?.requestKey ?? 0) + 1,
     }));
-  }, [activeEditorTabId]);
+  }, [activeEditorTabId, generatedDocument, removedIssueIndices]);
 
   useEffect(() => {
     if (!activeEditorTabId?.startsWith('agent-task-')) return;
@@ -10886,6 +11526,12 @@ export default function App() {
     const normalizedCommentEntries = Array.isArray(commentEntriesOverride)
       ? commentEntriesOverride
       : (Array.isArray(agentTaskCommentEntries) ? agentTaskCommentEntries : []);
+    const hasPlanSectionComment = applyPendingComments && normalizedCommentEntries.some((entry) => {
+      const target = entry.issueTarget ?? entry.checkTarget;
+      const hasNoPlanItemTarget = !target || target.kind !== 'plan';
+      const isPlanSection = (entry.sectionTitle ?? '').toLowerCase() === 'plan';
+      return hasNoPlanItemTarget && isPlanSection;
+    });
     const currentAppliedIssueFixes = cloneIssueStateMap(
       currentViewState?.appliedIssueFixes
       ?? runtimeState?.taskState?.appliedIssueFixes
@@ -10901,6 +11547,8 @@ export default function App() {
     let nextPendingAppliedIssueFixes = cloneIssueStateMap(currentAppliedIssueFixes);
     let nextRemovedIssueIndices = cloneIssueStateMap(currentRemovedIssueIndices);
     let commentResolution = null;
+    let restoredPlanItemsFromEmptyPlan = false;
+    let restoredPlanFrames = [];
 
     if (applyPendingComments && normalizedCommentEntries.length > 0) {
       commentResolution = applyCommentCommandsToSpec({
@@ -10914,6 +11562,31 @@ export default function App() {
       nextDocument = commentResolution.nextDocument;
       nextPendingAppliedIssueFixes = commentResolution.nextAppliedIssueFixes;
       nextRemovedIssueIndices = commentResolution.nextRemovedIssueIndices;
+    }
+
+    if (hasPlanSectionComment && getSectionCheckItemCount(nextDocument, 'Plan') === 0) {
+      const scenarioPlanSection = (runtimeState?.scenario?.defaultDocument ?? []).find((section) => (
+        typeof section?.title === 'string' && section.title.toLowerCase() === 'plan'
+      ));
+      const fallbackPlanItems = (scenarioPlanSection?.items ?? []).some((item) => item?.type === 'check')
+        ? scenarioPlanSection.items
+        : createVisitBookingPlanItems();
+      restoredPlanFrames = buildPlanRestoreFrames(nextDocument, fallbackPlanItems);
+      const restoredDocument = restorePlanItemsIfEmpty(nextDocument, fallbackPlanItems);
+      if (restoredDocument !== nextDocument) {
+        nextDocument = restoredDocument;
+        targetCode = serializeSpecDocument(nextDocument);
+        restoredPlanItemsFromEmptyPlan = true;
+      }
+    }
+
+    const documentWithQuickFixDecisions = addVisitBookingDecisionsAfterQuickFixes(
+      nextDocument,
+      nextPendingAppliedIssueFixes,
+    );
+    if (documentWithQuickFixDecisions !== nextDocument) {
+      nextDocument = documentWithQuickFixDecisions;
+      targetCode = serializeSpecDocument(nextDocument);
     }
 
     const currentAcRunResult =
@@ -10945,21 +11618,44 @@ export default function App() {
     const rerunAcOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'ac',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: snapshotDocument,
+      nextDocumentSections: nextDocument,
       currentStatuses: currentAcRunResult,
       nextStatuses: nextAcRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
     });
-    const rerunPlanOriginalIndices = collectRunRerunOriginalIndices({
+    let rerunPlanOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'plan',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: snapshotDocument,
+      nextDocumentSections: nextDocument,
       currentStatuses: currentPlanRunResult,
       nextStatuses: nextPlanRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
     });
+    // If there are comments on plan items (or on the Plan section heading/separator),
+    // include those items in rerun so plan is regenerated.
+    // A comment on the Plan heading (no specific item target, sectionTitle === 'Plan')
+    // triggers a full-plan rerun — all items are regenerated.
+    if (applyPendingComments && Array.isArray(normalizedCommentEntries) && normalizedCommentEntries.length > 0) {
+      let planCommentIndices = normalizedCommentEntries
+        .map((entry) => {
+          const target = entry.issueTarget ?? entry.checkTarget;
+          return (target?.kind === 'plan') ? target.index : null;
+        })
+        .filter((idx) => Number.isInteger(idx) && idx >= 0);
+
+      if (hasPlanSectionComment) {
+        // Schedule all currently visible plan items for rerun, including specs whose
+        // plan count differs from the default scenario status list.
+        const allPlanIndices = getVisibleDocumentCheckOriginalIndices('plan', nextDocument, nextRemovedIssueIndices);
+        planCommentIndices = mergeOriginalIssueIndices(planCommentIndices, allPlanIndices);
+      }
+
+      if (planCommentIndices.length > 0) {
+        rerunPlanOriginalIndices = mergeOriginalIssueIndices(rerunPlanOriginalIndices, planCommentIndices);
+      }
+    }
     const hasPendingReruns = rerunAcOriginalIndices.length > 0 || rerunPlanOriginalIndices.length > 0;
 
     return {
@@ -10978,6 +11674,8 @@ export default function App() {
       currentRemovedIssueIndices,
       rerunAcOriginalIndices,
       rerunPlanOriginalIndices,
+      restoredPlanItemsFromEmptyPlan,
+      restoredPlanFrames,
       hasPendingReruns,
       commentResolution,
       hasPendingComments: applyPendingComments && normalizedCommentEntries.length > 0,
@@ -11307,6 +12005,23 @@ export default function App() {
         allowPendingOutdated,
       });
 
+      // If there are rerun items, animate them from the outdated seed to their final status.
+      if (Array.isArray(rerunOriginalIndices) && rerunOriginalIndices.length > 0) {
+        const visibleRerunIndices = rerunOriginalIndices
+          .map((origIdx) => mapOriginalIssueIndexToVisible(kind, origIdx, nextRemovedIssueIndices))
+          .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < nextStatuses.length);
+
+        if (visibleRerunIndices.length > 0) {
+          revealRunStatuses(kind, nextStatuses, {
+            initialResult: Array.isArray(initialResult) ? initialResult : [],
+            indices: visibleRerunIndices,
+            initialDelay: RUN_STATUS_REVEAL_STEP_DELAY_MS,
+            onComplete,
+          });
+          return;
+        }
+      }
+
       setResult(initialResult);
       onComplete?.(initialResult);
     };
@@ -11349,7 +12064,7 @@ export default function App() {
       rerunOriginalIndices: rerunPlanOriginalIndices,
     });
     revealAcceptanceCriteria();
-  }, [clearChainedRunTimeout, clearStatusReveal]);
+  }, [clearChainedRunTimeout, clearStatusReveal, revealRunStatuses]);
 
   const finishTerminalRun = useCallback((options = {}) => {
     const { advanceGeneration = false, cancelGeneration = false } = options;
@@ -11388,6 +12103,7 @@ export default function App() {
       });
       // Clear applied AC fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, ac: {} }));
+      setPendingAcQuickFixCount(0);
       revealRunStatuses('ac', nextAcRunStatuses, {
         initialResult: acRevealOptions.initialResult,
         ...(acRevealOptions.hasSelectiveRerun
@@ -11549,7 +12265,7 @@ export default function App() {
   ]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
-    const { baseLines = [], onComplete } = options;
+    const { baseLines = [], onComplete, stepDelay = TERMINAL_RUN_STEP_DELAY_MS } = options;
     const frames = buildTerminalFrames(lines, baseLines);
     if (frames.length === 0) {
       onComplete?.();
@@ -11561,14 +12277,14 @@ export default function App() {
     frames.forEach((frame, idx) => {
       const timeoutId = window.setTimeout(() => {
         setTerminalBlocksForTab(frame);
-      }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * idx);
+      }, TERMINAL_RUN_INITIAL_DELAY_MS + stepDelay * idx);
       terminalRunTimeoutsRef.current.push(timeoutId);
     });
 
     const finalTimeoutId = window.setTimeout(() => {
       setTerminalStreamingForTab(false);
       onComplete?.();
-    }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * frames.length + TERMINAL_RUN_END_DELAY_MS);
+    }, TERMINAL_RUN_INITIAL_DELAY_MS + stepDelay * frames.length + TERMINAL_RUN_END_DELAY_MS);
     terminalRunTimeoutsRef.current.push(finalTimeoutId);
   }, [setTerminalBlocksForTab, setTerminalStreamingForTab]);
 
@@ -11759,6 +12475,9 @@ export default function App() {
     }
 
     runTerminalLineAnimation(initialLines, {
+      stepDelay: effectiveRunRequest?.mode === 'update-spec'
+        ? TERMINAL_UPDATE_SPEC_STEP_DELAY_MS
+        : TERMINAL_RUN_STEP_DELAY_MS,
       onComplete: () => {
         if (permissionPrompt) {
           setTerminalBlocksForTab(buildTerminalBlocks(initialLines));
@@ -11785,6 +12504,9 @@ export default function App() {
     terminalPermissionScope,
   ]);
 
+  const problemsPanelActiveRef = useRef(false);
+  const problemsSelectedLeafIdxRef = useRef(-1);
+
   const setActiveIdeBottomToolWindow = (id) => {
     setIdeOpenWindows((prev) => {
       const nonBottomWindows = prev.filter((windowId) => !BOTTOM_TOOL_WINDOW_IDS.has(windowId));
@@ -11810,6 +12532,36 @@ export default function App() {
     return false;
   };
 
+  const focusIdeProblemsPanel = () => {
+    if (typeof document === 'undefined') return;
+
+    const focusPanel = () => {
+      const panelEl = document.querySelector('.main-window .problems-window');
+      if (!(panelEl instanceof HTMLElement)) return false;
+
+      const target =
+        panelEl.querySelector('.tree-node-selected') ??
+        panelEl.querySelector('.tree-node-children .tree-node') ??
+        panelEl;
+      if (!(target instanceof HTMLElement)) return false;
+
+      panelEl.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }));
+      if (target.tabIndex < 0) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      problemsPanelActiveRef.current = true;
+      return true;
+    };
+
+    requestAnimationFrame(() => {
+      if (focusPanel()) return;
+      requestAnimationFrame(focusPanel);
+    });
+  };
+
   const openIdeBottomToolWindow = (id) => {
     const stripe = findIdeBottomToolWindowButton(id);
     const alreadyOpen =
@@ -11819,13 +12571,33 @@ export default function App() {
 
     if (alreadyOpen) {
       setActiveIdeBottomToolWindow(id);
+      if (id !== 'problems') {
+        problemsPanelActiveRef.current = false;
+      }
+      if (stripe?.getAttribute('aria-pressed') !== 'true') {
+        requestAnimationFrame(() => stripe.click());
+      }
+      if (id === 'problems') focusIdeProblemsPanel();
       return;
     }
 
     setActiveIdeBottomToolWindow(id);
     if (stripe) {
-      stripe.click();
+      requestAnimationFrame(() => {
+        if (stripe.getAttribute('aria-pressed') !== 'true') {
+          stripe.click();
+        }
+      });
     }
+    if (id === 'problems') focusIdeProblemsPanel();
+    if (id !== 'problems') {
+      problemsPanelActiveRef.current = false;
+    }
+  };
+
+  const openAndFocusIdeProblemsToolWindow = () => {
+    openIdeBottomToolWindow('problems');
+    focusIdeProblemsPanel();
   };
 
   const toggleIdeBottomToolWindow = (id) => {
@@ -11886,8 +12658,15 @@ export default function App() {
     if (!isTerminalAlreadyOpen) {
       bumpTerminalViewKeyForTab(nextTerminalTabId);
     }
-    setPendingTerminalRunForTab(nextRunRequest, nextTerminalTabId);
     openIdeBottomToolWindow('terminal');
+    if (nextRunRequest?.mode === 'update-spec') {
+      requestAnimationFrame(() => {
+        startTerminalRunAnimation(nextRunRequest);
+      });
+      return;
+    }
+
+    setPendingTerminalRunForTab(nextRunRequest, nextTerminalTabId);
   };
   queueTerminalRunRef.current = queueTerminalRun;
 
@@ -11998,14 +12777,96 @@ export default function App() {
       currentRemovedIssueIndices,
       rerunAcOriginalIndices,
       rerunPlanOriginalIndices,
+      restoredPlanItemsFromEmptyPlan,
+      restoredPlanFrames,
       pendingCommentEntriesSnapshot,
-      hasPendingReruns,
       hasPendingComments,
       hasSpecChanges,
     } = pendingDoneSpecState;
-    if (!hasSpecChanges && !hasPendingComments && !hasPendingReruns) {
+    const effectiveRerunAcOriginalIndices = [];
+    const effectiveHasPendingReruns = rerunPlanOriginalIndices.length > 0;
+    if (!hasSpecChanges && !hasPendingComments && !effectiveHasPendingReruns) {
       return;
     }
+
+    // Confirm any pending AC quick fixes — counter reset deactivates the Specify
+    // button after the animation without touching acRunResult (avoids checkmarks).
+    setPendingAcQuickFixCount(0);
+
+    if (restoredPlanItemsFromEmptyPlan) {
+      clearChainedRunTimeout();
+      clearStatusReveal('plan');
+      clearStatusReveal('ac');
+      resetRunUiForTab(currentTabId);
+      if (hasPendingComments) {
+        clearTaskCommentsForTab(currentTabId);
+      }
+      terminalDrivenGenerationRef.current = false;
+      doneEnhanceFlowRef.current = {
+        mode: 'restore-plan-progressive',
+        sourceTabId: currentTabId,
+        initialCode: currentCode,
+        targetCode,
+        nextDocument,
+        nextAppliedIssueFixes,
+        nextRemovedIssueIndices,
+        nextAcRunResult,
+        nextPlanRunResult: null,
+        currentAcRunResult,
+        currentPlanRunResult,
+        currentRemovedIssueIndices,
+        rerunAcOriginalIndices: [],
+        rerunPlanOriginalIndices: [],
+        restorePlanFrames: restoredPlanFrames?.length ? restoredPlanFrames : [{
+          code: targetCode,
+          documentSections: nextDocument,
+          planRunResult: [{ status: 'pending' }],
+        }],
+        commentsAlreadyCleared: hasPendingComments,
+        versionCommit: hasSpecChanges
+          ? {
+              sourceTabId: currentTabId,
+              currentCode: (() => {
+                const history = specVersionsByTab[currentTabId];
+                const lastVersion = Array.isArray(history?.versions) && history.versions.length > 0
+                  ? history.versions[history.versions.length - 1]
+                  : null;
+                return lastVersion?.code ?? currentCode;
+              })(),
+              currentCommentEntries: pendingCommentEntriesSnapshot,
+              nextCode: targetCode,
+            }
+          : null,
+      };
+      setGenerationTabId(currentTabId);
+      setGenProgress(0);
+      queueTerminalRun({
+        mode: 'update-spec',
+        sourceTabId: currentTabId,
+        taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
+        question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
+        permissionChoice: 'allow-once',
+      }, {
+        preserveAcRunResult: true,
+        preservePlanRunResult: true,
+        preserveWarningBanner: true,
+      });
+      setGenState('generating');
+      return;
+    }
+
+    // Compute authoritative next plan statuses from scenario base (same source as a
+    // normal Run), so that plan items always generate from fresh state after Specify —
+    // even if planRunResult was null (no prior run) or had nulls from quick fixes.
+    // This mirrors what finishTerminalRun does when advanceGeneration is false.
+    const currentScenario = getCurrentAgentTaskScenario(currentTabId);
+    const resolvedNextPlanRunResult = buildResolvedRunStatuses(
+      currentScenario.planBaseStatuses,
+      'plan',
+      nextAppliedIssueFixes,
+      nextRemovedIssueIndices,
+      { runComplete: true },
+    );
 
     clearChainedRunTimeout();
     clearStatusReveal('plan');
@@ -12020,14 +12881,14 @@ export default function App() {
       nextAppliedIssueFixes,
       nextRemovedIssueIndices,
       nextAcRunResult,
-      nextPlanRunResult,
+      nextPlanRunResult: resolvedNextPlanRunResult,
       currentAcRunResult,
       currentPlanRunResult,
       currentRemovedIssueIndices,
-      rerunAcOriginalIndices,
+      rerunAcOriginalIndices: effectiveRerunAcOriginalIndices,
       rerunPlanOriginalIndices,
       commentsAlreadyCleared: hasPendingComments,
-      versionCommit: (hasSpecChanges || hasPendingReruns)
+      versionCommit: (hasSpecChanges || effectiveHasPendingReruns)
         ? {
             sourceTabId: currentTabId,
             // Use the version history's latest code as the "before" snapshot so
@@ -12054,9 +12915,11 @@ export default function App() {
     }
     queueTerminalRun({
       mode: 'generate',
+      sectionTitle: 'Plan',
       sourceTabId: currentTabId,
       taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
       question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
+      permissionChoice: 'allow-once',
     }, {
       preserveAcRunResult: true,
       preservePlanRunResult: true,
@@ -12065,10 +12928,13 @@ export default function App() {
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
   };
 
-  const handleDoneIssueFix = useCallback(({ kind, index }) => {
+  const handleDoneIssueFix = useCallback(({ kind, index, replacementText: replacementTextOverride = null }) => {
     if (!Number.isInteger(index) || index < 0) return;
     const fixConfig = getIssueQuickFixConfig(kind, index);
     if (!fixConfig) return;
+    const replacementText = typeof replacementTextOverride === 'string' && replacementTextOverride.trim().length > 0
+      ? replacementTextOverride.trim()
+      : fixConfig.replacementText;
 
     const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
     const terminalTabId = currentTabId ? buildTerminalSessionTabId(currentTabId) : null;
@@ -12106,7 +12972,7 @@ export default function App() {
             code: applyIssueQuickFixToCode(currentEntry.code ?? '', {
               kind,
               index: visibleIndex,
-              replacementText: fixConfig.replacementText,
+              replacementText,
             }),
           },
         };
@@ -12116,7 +12982,7 @@ export default function App() {
     setGeneratedDocument((prev) => applyIssueQuickFixToDocumentSections(prev, {
       kind,
       index: visibleIndex,
-      replacementText: fixConfig.replacementText,
+      replacementText,
     }));
 
     setAppliedIssueFixes((prev) => ({
@@ -12127,18 +12993,82 @@ export default function App() {
       },
     }));
 
-    // Immediately show empty checkbox — run will confirm the fix with green status
-    const setResult = kind === 'ac' ? setAcRunResult : setPlanRunResult;
-    setResult((prev) => {
-      if (!Array.isArray(prev)) return prev;
-      const next = [...prev];
-      next[visibleIndex] = null;
-      return next;
-    });
+    // Quick fixes are applied immediately — null out the result so the issue
+    // disappears from the Problems panel right away.
+    // Plan fixes are later confirmed by a run; AC fixes take effect directly.
+    if (kind === 'plan') {
+      setPlanRunResult((prev) => {
+        if (!Array.isArray(prev)) return prev;
+        const next = [...prev];
+        next[visibleIndex] = null;
+        return next;
+      });
+    }
+
+    if (kind === 'ac') {
+      setAcRunResult((prev) => {
+        if (!Array.isArray(prev)) return prev;
+        const next = [...prev];
+        next[visibleIndex] = null;
+        return next;
+      });
+      setPendingAcQuickFixCount((c) => c + 1);
+    }
 
     if (currentTabId) {
+      setInteractiveTaskStates((prev) => {
+        const previousTaskState = prev[currentTabId] ?? {};
+        const baseAcRunResult = previousTaskState.acRunResult ?? acRunResult;
+        const basePlanRunResult = previousTaskState.planRunResult ?? planRunResult;
+        const nextAcRunResult = kind === 'ac' && Array.isArray(baseAcRunResult)
+          ? [...baseAcRunResult]
+          : baseAcRunResult;
+        const nextPlanRunResult = kind === 'plan' && Array.isArray(basePlanRunResult)
+          ? [...basePlanRunResult]
+          : basePlanRunResult;
+
+        if (kind === 'ac' && Array.isArray(nextAcRunResult)) {
+          nextAcRunResult[visibleIndex] = null;
+        }
+
+        if (kind === 'plan' && Array.isArray(nextPlanRunResult)) {
+          nextPlanRunResult[visibleIndex] = null;
+        }
+
+        return {
+          ...prev,
+          [currentTabId]: {
+            ...previousTaskState,
+            genState,
+            genProgress,
+            documentSections: applyIssueQuickFixToDocumentSections(
+              previousTaskState.documentSections ?? generatedDocument,
+              {
+                kind,
+                index: visibleIndex,
+                replacementText,
+              },
+            ),
+            appliedIssueFixes: {
+              ...cloneIssueStateMap(previousTaskState.appliedIssueFixes ?? appliedIssueFixes),
+              [kind]: {
+                ...(previousTaskState.appliedIssueFixes?.[kind] ?? appliedIssueFixes?.[kind] ?? {}),
+                [index]: true,
+              },
+            },
+            removedIssueIndices: previousTaskState.removedIssueIndices ?? removedIssueIndices,
+            acRunResult: nextAcRunResult,
+            planRunResult: nextPlanRunResult,
+            commentEntries: previousTaskState.commentEntries ?? agentTaskCommentEntries,
+          },
+        };
+      });
       clearTaskCommentTargetForTab(currentTabId, { kind, index });
     }
+
+    // The fixed item disappears from the Problems panel — reset the tracked
+    // leaf index so the next arrow key starts from the first row.
+    problemsSelectedLeafIdxRef.current = -1;
 
   }, [
     activeEditorTab,
@@ -12147,10 +13077,18 @@ export default function App() {
     clearChainedRunTimeout,
     clearStatusReveal,
     clearTerminalRunAnimation,
+    acRunResult,
+    agentTaskCommentEntries,
+    appliedIssueFixes,
     generationTabId,
+    generatedDocument,
+    genProgress,
+    genState,
     ideTabs,
+    planRunResult,
     removedIssueIndices,
     setAcRunResult,
+    setPendingAcQuickFixCount,
     setPendingTerminalRunForTab,
     setPlanRunResult,
     setRunStateForTab,
@@ -12221,11 +13159,201 @@ export default function App() {
     setActiveEditorTab(0);
   }, [screen, activeEditorTab, ideTabs.length]);
 
+  const handleProblemsQuickFixesClick = useCallback((buttonElement) => {
+    let resolvedIssueTarget = null;
+    let resolvedProposals = null;
+    let resolvedStatusItem = null;
+
+    if (highlightedProblemLocation?.kind) {
+      // A specific problem is selected — resolve proposals only for that problem.
+      const rawIndex = highlightedProblemLocation.rawIndex;
+      const issueTarget = normalizeCommentTarget({
+        kind: highlightedProblemLocation.kind,
+        index: highlightedProblemLocation.index,
+      }) ?? getDocumentCheckTargetAtRawIndex(generatedDocument, rawIndex, removedIssueIndices);
+
+      if (issueTarget) {
+        const visibleIndex = mapOriginalIssueIndexToVisible(issueTarget.kind, issueTarget.index, removedIssueIndices);
+        if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
+          const statusItem = issueTarget.kind === 'ac'
+            ? acRunResult?.[visibleIndex]
+            : planRunResult?.[visibleIndex];
+          resolvedStatusItem = statusItem ?? null;
+          resolvedIssueTarget = issueTarget;
+          if (Array.isArray(statusItem?.proposalOptions)) {
+            // Multi-option proposals (e.g. "Inline field error", "Modal with conflict details")
+            resolvedProposals = statusItem.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
+          } else if (typeof statusItem?.proposal === 'string' && statusItem.proposal) {
+            // Single string proposal — treat as a one-item list
+            resolvedProposals = [{ label: statusItem.proposal }];
+          }
+        }
+      }
+    } else {
+      // Nothing highlighted — fall back to first issue with any proposals
+      const sources = [
+        ...(Array.isArray(acRunResult) ? acRunResult.map((item, i) => ({ item, kind: 'ac', index: i })) : []),
+        ...(Array.isArray(planRunResult) ? planRunResult.map((item, i) => ({ item, kind: 'plan', index: i })) : []),
+      ];
+      for (const { item, kind, index } of sources) {
+        let proposals = null;
+        if (Array.isArray(item?.proposalOptions)) {
+          proposals = item.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
+        } else if (typeof item?.proposal === 'string' && item.proposal) {
+          proposals = [{ label: item.proposal }];
+        }
+        if (proposals && proposals.length > 0) {
+          resolvedProposals = proposals;
+          resolvedStatusItem = item;
+          resolvedIssueTarget = { kind, index };
+          break;
+        }
+      }
+    }
+
+    const rect = buttonElement?.getBoundingClientRect?.();
+    setProblemsFixMenu({
+      proposals: resolvedProposals ?? [],
+      rect: rect,
+      issueTarget: resolvedIssueTarget,
+      severity: resolvedStatusItem?.issue?.severity ?? 'warning',
+      canFixIssue: resolvedIssueTarget ? Boolean(getIssueQuickFixConfig(resolvedIssueTarget.kind, resolvedIssueTarget.index)) : false,
+    });
+  }, [acRunResult, generatedDocument, highlightedProblemLocation, planRunResult, removedIssueIndices]);
+
   useEffect(() => {
     if (screen !== 'ide' || seededPresetTaskRef.current) return;
     seededPresetTaskRef.current = true;
     handleAgentTaskSelect('t1');
   }, [screen, handleAgentTaskSelect]);
+
+  useEffect(() => {
+    const handleProblemsToolbarMouseDown = (e) => {
+      const btn = e.target.closest?.('button[title="Show Quick-Fixes"]');
+      if (!btn) return;
+      // Defer to next tick so PositionedPopup's dismiss listener (added after render)
+      // does not fire on the same mousedown event that opens the menu.
+      const btnSnapshot = btn;
+      setTimeout(() => handleProblemsQuickFixesClick(btnSnapshot), 0);
+    };
+    document.addEventListener('mousedown', handleProblemsToolbarMouseDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handleProblemsToolbarMouseDown, true);
+    };
+  }, [handleProblemsQuickFixesClick]);
+
+  // Focus the Problems panel whenever it transitions from closed → open,
+  // regardless of how it was opened (widget button, stripe button, keyboard shortcut, etc.)
+  const prevIdeOpenWindowsRef = useRef(ideOpenWindows);
+  useEffect(() => {
+    const prev = prevIdeOpenWindowsRef.current;
+    prevIdeOpenWindowsRef.current = ideOpenWindows;
+    const justOpened = ideOpenWindows.includes('problems') && !prev.includes('problems');
+    if (!justOpened) return;
+    const panelEl = document.querySelector('.problems-window');
+    if (!panelEl) return;
+    const target =
+      panelEl.querySelector('.tree-node-selected') ??
+      panelEl.querySelector('.tree-node-children .tree-node') ??
+      panelEl;
+    if (target.tabIndex < 0) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    problemsPanelActiveRef.current = true;
+  }, [ideOpenWindows]);
+
+  // Track whether the Problems panel is the "active" panel for keyboard navigation,
+  // and which leaf index is currently selected (avoids relying on tree-node-selected CSS class
+  // which the UI kit resets on re-renders).
+  useEffect(() => {
+    const onMouseDown = (e) => {
+      const panelEl = e.target.closest?.('.problems-window');
+      if (panelEl) {
+        problemsPanelActiveRef.current = true;
+        // Track which leaf node was clicked so arrow nav starts from the right position
+        const clickedLeaf = e.target.closest?.('.tree-node');
+        if (clickedLeaf) {
+          const leaves = Array.from(panelEl.querySelectorAll('.tree-node-children .tree-node'));
+          const idx = leaves.indexOf(clickedLeaf);
+          if (idx >= 0) problemsSelectedLeafIdxRef.current = idx;
+        }
+      } else {
+        problemsPanelActiveRef.current = false;
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown, true);
+    return () => document.removeEventListener('mousedown', onMouseDown, true);
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'ide') return undefined;
+
+    const handleProblemsArrowNav = (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (document.querySelector('.problems-quick-fix-menu-item')) return;
+      // Don't intercept when an input/textarea has focus
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) return;
+
+      // Use DOM check instead of stale-closure ideOpenWindows check
+      const panelEl = document.querySelector('.problems-window');
+      if (!panelEl) return;
+      // Handle if focus is inside the panel OR user previously clicked it
+      if (!panelEl.contains(document.activeElement) && !problemsPanelActiveRef.current) return;
+      // Leaf nodes are rendered in the same order as treeData children
+      const leafNodes = Array.from(panelEl.querySelectorAll('.tree-node-children .tree-node'));
+      if (leafNodes.length === 0) return;
+
+      // Use the ref-tracked index (reliable across re-renders) with CSS class as fallback
+      let currentIdx = problemsSelectedLeafIdxRef.current;
+      if (currentIdx < 0 || currentIdx >= leafNodes.length) {
+        currentIdx = leafNodes.findIndex((n) => n.classList.contains('tree-node-selected'));
+      }
+
+      // Nothing selected yet — first arrow key always lands on the first item.
+      if (currentIdx < 0) {
+        currentIdx = -1;
+      }
+
+      const nextIdx = currentIdx < 0
+        ? 0
+        : e.key === 'ArrowDown'
+          ? (currentIdx < leafNodes.length - 1 ? currentIdx + 1 : 0)
+          : (currentIdx > 0 ? currentIdx - 1 : leafNodes.length - 1);
+
+      const targetNode = leafNodes[nextIdx];
+      if (!targetNode) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      problemsSelectedLeafIdxRef.current = nextIdx;
+      // Click triggers both UI kit visual selection and our onNodeSelect callback
+      targetNode.click();
+      targetNode.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    };
+
+    document.addEventListener('keydown', handleProblemsArrowNav, true);
+    return () => document.removeEventListener('keydown', handleProblemsArrowNav, true);
+  }, [screen]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || screen !== 'ide') return undefined;
+
+    const handleProblemsQuickFixesShortcut = (event) => {
+      if (!event.altKey || event.key !== 'Enter' || event.isComposing) return;
+
+      const button = document.querySelector('button[title="Show Quick-Fixes"]');
+      if (!(button instanceof HTMLElement)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      handleProblemsQuickFixesClick(button);
+    };
+
+    document.addEventListener('keydown', handleProblemsQuickFixesShortcut, true);
+    return () => {
+      document.removeEventListener('keydown', handleProblemsQuickFixesShortcut, true);
+    };
+  }, [screen, handleProblemsQuickFixesClick]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -12404,7 +13532,11 @@ export default function App() {
           }
         }
       } else if (e.key === 'Escape') {
-        setEditorCompletion(null);
+        if (problemsFixMenu) {
+          setProblemsFixMenu(null);
+        } else {
+          setEditorCompletion(null);
+        }
       }
     };
 
@@ -12415,7 +13547,7 @@ export default function App() {
       document.removeEventListener('input', handleEditorInput, true);
       document.removeEventListener('keydown', handleEditorKeyDown, true);
     };
-  }, [screen, updateAttachedFilesForTab]);
+  }, [screen, updateAttachedFilesForTab, problemsFixMenu]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -12772,6 +13904,7 @@ export default function App() {
           rerunPlanOriginalIndices,
           commentsAlreadyCleared = false,
           usesDirectSwap = false,
+          restorePlanFrames = null,
           versionCommit = null,
         } = doneEnhanceFlow;
         setGenProgress(0);
@@ -12803,6 +13936,95 @@ export default function App() {
           commentsCleared = true;
           resetDoneComments();
         };
+        const persistDoneEnhanceTaskState = () => {
+          if (!sourceTabId) return;
+
+          setInteractiveTaskStates((prev) => ({
+            ...prev,
+            [sourceTabId]: {
+              ...(prev[sourceTabId] ?? {}),
+              genState: 'done',
+              genProgress: 1,
+              documentSections: nextDocument,
+              appliedIssueFixes: nextAppliedIssueFixes,
+              removedIssueIndices: nextRemovedIssueIndices,
+              acRunResult: nextAcRunResult,
+              planRunResult: nextPlanRunResult,
+              commentEntries: [],
+              pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
+              pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
+            },
+          }));
+        };
+
+        if (mode === 'restore-plan-progressive') {
+          const frames = Array.isArray(restorePlanFrames) ? restorePlanFrames : [];
+          let frameIndex = 0;
+          let cancelled = false;
+
+          const finishRestore = () => {
+            if (cancelled) return;
+            doneEnhanceFlowRef.current = null;
+            clearDoneCommentsOnce();
+            if (versionCommit?.sourceTabId) {
+              updateSpecVersionsForTab((prevHistory) => appendSpecVersionHistoryEntry(prevHistory, {
+                currentCode: versionCommit.currentCode,
+                currentCommentEntries: versionCommit.currentCommentEntries,
+                nextCode: versionCommit.nextCode,
+              }), versionCommit.sourceTabId);
+            }
+            setIdeTabContents((prev) => ({
+              ...prev,
+              [activeTabIdForGen]: {
+                ...(prev[activeTabIdForGen] ?? {}),
+                language: 'markdown',
+                code: targetCode,
+              },
+            }));
+            setGeneratedDocument(nextDocument);
+            setAppliedIssueFixes(nextAppliedIssueFixes);
+            setRemovedIssueIndices(nextRemovedIssueIndices);
+            setAcRunResult(nextAcRunResult);
+            setPlanRunResult(null);
+            persistDoneEnhanceTaskState();
+            setGenProgress(1);
+            setGenState('done');
+          };
+
+          const showNextRestoreFrame = () => {
+            if (cancelled) return;
+            if (frameIndex >= frames.length) {
+              finishRestore();
+              return;
+            }
+
+            clearDoneCommentsOnce();
+            const frame = frames[frameIndex];
+            frameIndex += 1;
+            setIdeTabContents((prev) => ({
+              ...prev,
+              [activeTabIdForGen]: {
+                ...(prev[activeTabIdForGen] ?? {}),
+                language: 'markdown',
+                code: frame.code,
+              },
+            }));
+            setGeneratedDocument(frame.documentSections);
+            setPlanRunResult(frame.planRunResult);
+            setGenProgress(frameIndex / Math.max(frames.length, 1));
+            genTimerRef.current = setTimeout(showNextRestoreFrame, RESTORE_PLAN_FRAME_STEP_DELAY_MS);
+          };
+
+          genTimerRef.current = setTimeout(showNextRestoreFrame, RESTORE_PLAN_FRAME_INITIAL_DELAY_MS);
+
+          return () => {
+            cancelled = true;
+            if (genTimerRef.current) {
+              clearTimeout(genTimerRef.current);
+              genTimerRef.current = null;
+            }
+          };
+        }
 
         if (usesDirectSwap) {
           clearDoneCommentsOnce();
@@ -12834,17 +14056,7 @@ export default function App() {
             rerunAcOriginalIndices,
             allowPendingOutdated: false,
           });
-          // Store rerun indices so Run knows what to check after Enhance
-          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
-            setInteractiveTaskStates((prev) => ({
-              ...prev,
-              [sourceTabId]: {
-                ...(prev[sourceTabId] ?? {}),
-                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
-                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
-              },
-            }));
-          }
+          persistDoneEnhanceTaskState();
           setGenProgress(1);
           setGenState('done');
           return undefined;
@@ -12861,17 +14073,7 @@ export default function App() {
             }), versionCommit.sourceTabId);
           }
           doneEnhanceFlowRef.current = null;
-          // Store rerun indices so Run knows what to check after Enhance
-          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
-            setInteractiveTaskStates((prev) => ({
-              ...prev,
-              [sourceTabId]: {
-                ...(prev[sourceTabId] ?? {}),
-                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
-                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
-              },
-            }));
-          }
+          persistDoneEnhanceTaskState();
           clearDoneCommentsOnce();
           setGeneratedDocument(nextDocument);
           setAppliedIssueFixes(nextAppliedIssueFixes);
@@ -12939,17 +14141,7 @@ export default function App() {
             rerunAcOriginalIndices,
             allowPendingOutdated: false,
           });
-          // Store rerun indices so Run knows what to check after Enhance
-          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
-            setInteractiveTaskStates((prev) => ({
-              ...prev,
-              [sourceTabId]: {
-                ...(prev[sourceTabId] ?? {}),
-                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
-                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
-              },
-            }));
-          }
+          persistDoneEnhanceTaskState();
           setGenProgress(1);
           setGenState('done');
         }
@@ -13019,7 +14211,6 @@ export default function App() {
   }, [
     activeTabIdForGen,
     genState,
-    generatedDocument,
     generationTabId,
     isTerminalStreaming,
     pendingTerminalRun,
@@ -13654,18 +14845,89 @@ export default function App() {
       });
     }
     if (id === 'problems') {
-      return cloneElement(panel, {
-        treeData: buildProblemsTreeForTab(
-          currentProblemsTab,
-          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
-            ? agentTaskInspectionSummary.issues
-            : null,
-          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
-            ? agentTaskCommentEntries
-            : []
-        ),
+      const isAgentTaskProblemsTab =
+        currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md');
+      const problemsTreeData = buildProblemsTreeForTab(
+        currentProblemsTab,
+        isAgentTaskProblemsTab
+          ? agentTaskInspectionSummary.issues
+          : null,
+        isAgentTaskProblemsTab
+          ? agentTaskCommentEntries
+          : []
+      );
+      const visibleProblemsCount = problemsTreeData.reduce(
+        (count, node) => count + (Array.isArray(node?.children) ? node.children.length : 0),
+        0
+      );
+      const hasVisibleProblems = visibleProblemsCount > 0;
+      const shouldShowEmptyProblemsState = !hasVisibleProblems;
+      const emptyProblemsFileLabel = problemsTreeData[0]?.label ?? currentProblemsTab?.label ?? 'current file';
+      const problemsTabs = [
+        {
+          label: 'File',
+          ...(visibleProblemsCount > 0 ? { count: visibleProblemsCount } : {}),
+        },
+        { label: 'Project Errors' },
+        { label: 'Vulnerable Dependencies' },
+        { label: 'Qodana' },
+        { label: 'AI Self-Review' },
+      ];
+      const patchedPanel = cloneElement(panel, {
+        tabs: problemsTabs,
+        treeData: shouldShowEmptyProblemsState ? [] : problemsTreeData,
+        empty: shouldShowEmptyProblemsState,
+        emptyText: `No problems in ${emptyProblemsFileLabel}`,
+        className: [
+          panel.props.className,
+          shouldShowEmptyProblemsState ? 'problems-window-empty-state' : '',
+        ].filter(Boolean).join(' ') || undefined,
         onNodeSelect: handleProblemsNodeSelect,
+        toolbarButtons: [
+          { icon: 'general/show', tooltip: 'Preview' },
+          {
+            icon: 'codeInsight/intentionBulb',
+            tooltip: 'Show Quick-Fixes',
+            onClick: shouldShowEmptyProblemsState
+              ? undefined
+              : (e) => {
+                const btn = e?.currentTarget ?? e?.target ?? document.querySelector('button[title="Show Quick-Fixes"]');
+                handleProblemsQuickFixesClick(btn);
+              },
+          },
+          { icon: PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON, tooltip: 'View Options' },
+        ],
       });
+      // Wrap in a capture-phase click interceptor to catch Quick-Fixes button click
+      // and to transfer keyboard focus into the panel on any click.
+      return createElement('div', {
+        style: { display: 'contents' },
+        onClickCapture: (e) => {
+          const btn = e.target.closest('button[title="Show Quick-Fixes"]');
+          if (btn) {
+            e.stopPropagation();
+            handleProblemsQuickFixesClick(btn);
+          }
+          // Move focus into the problems panel so ArrowUp/ArrowDown work immediately.
+          // Use requestAnimationFrame so the UI kit can finish its own click handling first.
+          requestAnimationFrame(() => {
+            const panelEl = document.querySelector('.problems-window');
+            if (!panelEl) return;
+            if (panelEl.contains(document.activeElement)) return;
+            // Try the selected node first, then any tree node, then the panel itself.
+            const target =
+              panelEl.querySelector('.tree-node-selected') ??
+              panelEl.querySelector('.tree-node-children .tree-node') ??
+              panelEl;
+            if (target.tabIndex === -1 || target.tabIndex >= 0) {
+              target.focus({ preventScroll: true });
+            } else {
+              target.tabIndex = -1;
+              target.focus({ preventScroll: true });
+            }
+          });
+        },
+      }, patchedPanel);
     }
     return panel;
   }
@@ -14146,7 +15408,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={openAndFocusIdeProblemsToolWindow} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} specTabLabel={activeEditorTabMeta?.label ?? ''} pendingAcQuickFixCount={pendingAcQuickFixCount} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
@@ -14216,6 +15478,23 @@ export default function App() {
       {editorTabsMorePortal}
       {terminalPermissionPortal}
       <SpecSelectionToolbar position={idleSelectionToolbarPos} />
+      {problemsFixMenu && problemsFixMenu.rect && (
+        <PositionedPopup triggerRect={problemsFixMenu.rect} onDismiss={() => setProblemsFixMenu(null)} gap={4}>
+          <ProblemsQuickFixesMenu
+            proposals={problemsFixMenu.proposals}
+            onSelect={(selectedOption) => {
+              if (problemsFixMenu.issueTarget) {
+                handleDoneIssueFix({
+                  ...problemsFixMenu.issueTarget,
+                  replacementText: selectedOption?.replacementText,
+                });
+              }
+              setProblemsFixMenu(null);
+            }}
+            onClose={() => setProblemsFixMenu(null)}
+          />
+        </PositionedPopup>
+      )}
       {editorCompletion && editorCompletion.pos && createPortal(
         <CompletionPopup
           trigger={editorCompletion.trigger}
