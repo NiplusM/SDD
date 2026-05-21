@@ -7167,7 +7167,6 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
 }
 
 function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '' }) {
-  const isVisitBookingSpec = specSessionKey === 'agent-task-t1' || specTabLabel === 'visit-booking.md';
   const effectiveDocumentSections = useMemo(
     () => orderAcceptanceBeforePlanSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -7569,7 +7568,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         proposalOptions: Array.isArray(displayStatusItem?.proposalOptions) ? displayStatusItem.proposalOptions : null,
       };
     });
-  }, [displayRows, effectiveDocumentSections, isVisitBookingSpec, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
+  }, [displayRows, effectiveDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
   const rowMetaByKey = useMemo(
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
@@ -8421,16 +8420,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isIssuePopupOpen = intentionPopup?.rowKey === stableKey;
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
-            const isRowHovered = hoveredRowKey === stableKey;
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
             const showIssueBulb = hasIssueBulb
               && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
-            const showItemRunButton = Boolean(effectiveCheckTarget)
-              && !(isVisitBookingSpec && effectiveCheckTarget?.kind === 'plan')
-              && isRowHovered
-              && !isCommentPopupOpen
-              && !isIssuePopupOpen
-              && !showIssueBulb;
+            const hasRunnableGutterAction = showRunIcon || Boolean(effectiveCheckTarget);
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
@@ -8484,7 +8477,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 setHoveredRowKey(null);
               }}
               onClick={(e) => {
-                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn')) {
+                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn') || e.target.closest('.spec-done-gutter-breakpoint-btn')) {
                   return;
                 }
 
@@ -8510,20 +8503,42 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 }
               }}
             >
-              <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-run' : ''}`}>
-                {showRunIcon ? (
-                  <button
-                    type="button"
-                    className="editor-gutter-line-number spec-done-gutter-line-number-run"
-                    aria-label="Open Terminal"
-                    onClick={() => onOpenTerminal?.({
-                      sectionTitle: headingTitle,
-                      commentEntries,
-                    })}
-                  >
-                    <Icon name="run/run" size={16} />
-                  </button>
-                ) : showIssueBulb ? (
+              <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-section-run' : ''}`}>
+                <button
+                  type="button"
+                  className={`spec-done-gutter-breakpoint-btn${breakpoints.has(stableKey) ? ' is-active' : ''}`}
+                  aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleBreakpoint(stableKey);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
+                >
+                  <span className="editor-breakpoint-dot" />
+                </button>
+                {hasRunnableGutterAction ? (
+                  <DoneInlineRunButton
+                    demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
+                    title={showRunIcon ? 'Open Terminal' : (effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item')}
+                    onRun={() => onOpenTerminal?.(showRunIcon
+                      ? {
+                          sectionTitle: headingTitle,
+                          commentEntries,
+                        }
+                      : {
+                          sectionTitle: currentSectionTitle,
+                          checkTarget: effectiveCheckTarget,
+                        })}
+                  />
+                ) : (
+                  <span className="spec-done-gutter-slot" aria-hidden="true" />
+                )}
+                {showIssueBulb ? (
                   <button
                     type="button"
                     className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
@@ -8554,26 +8569,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="codeInsight/intentionBulb" size={16} />
                   </button>
-                ) : showItemRunButton ? (
-                  <DoneInlineRunButton
-                    demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
-                    title={effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item'}
-                    onRun={() => onOpenTerminal?.({
-                      sectionTitle: currentSectionTitle,
-                      checkTarget: effectiveCheckTarget,
-                    })}
-                  />
                 ) : (
-                  <div
-                    className="editor-gutter-line-number"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
-                    onClick={() => toggleBreakpoint(stableKey)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
-                  >
-                    {breakpoints.has(stableKey) && <span className="editor-breakpoint-dot" />}
-                  </div>
+                  <span className="spec-done-gutter-slot" aria-hidden="true" />
                 )}
               </div>
               <div
