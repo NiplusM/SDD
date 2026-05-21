@@ -781,6 +781,10 @@ body {
   opacity: 1;
 }
 
+.spec-done-gutter-cell-section-run .spec-done-gutter-breakpoint-btn {
+  align-self: center;
+}
+
 .spec-done-gutter-cell-section-run {
   align-items: center;
   min-height: 32px;
