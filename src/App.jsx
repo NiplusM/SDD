@@ -2382,7 +2382,66 @@ const CONFIGURATION_DOCUMENT_SECTIONS = createConfigurationDocument();
 const CONFIGURATION_TAB_CONTENT = {
   language: 'markdown',
   code: serializeSpecDocument(CONFIGURATION_DOCUMENT_SECTIONS),
+  referenceDocumentSections: CONFIGURATION_DOCUMENT_SECTIONS,
 };
+
+function createPreviewReferenceDocument(label) {
+  const preview = COMPLETION_PREVIEW_LIBRARY[label] ?? null;
+  const previewLines = Array.isArray(preview?.previewLines) ? preview.previewLines : [];
+  const previewSections = Array.isArray(preview?.sections) ? preview.sections : [];
+  const sections = [];
+  let activeSection = null;
+
+  previewLines.forEach((line, index) => {
+    if (line.startsWith('## ')) {
+      activeSection = {
+        id: `preview-section-${sections.length}`,
+        title: line.slice(3).trim(),
+        items: [],
+      };
+      sections.push(activeSection);
+      return;
+    }
+
+    if (!activeSection) {
+      activeSection = {
+        id: 'preview-summary',
+        title: 'Summary',
+        items: [],
+      };
+      sections.push(activeSection);
+    }
+
+    activeSection.items.push({
+      id: `preview-line-${index}`,
+      type: line.startsWith('- ') ? 'bullet' : 'paragraph',
+      text: line.replace(/^- /, ''),
+    });
+  });
+
+  previewSections.forEach((title, index) => {
+    if (sections.some((section) => section.title === title)) return;
+    sections.push({
+      id: `preview-outline-${index}`,
+      title,
+      items: [],
+    });
+  });
+
+  return (sections.length > 0
+    ? sections
+    : [{
+        id: 'reference',
+        title: label,
+        items: [{ id: 'reference-summary', type: 'paragraph', text: 'Agent specification reference.' }],
+      }]
+  ).map((section) => withDerivedPlanChildren(section));
+}
+
+function buildReferenceDocumentTabId(label) {
+  if (label === 'Configuration.md') return CONFIGURATION_TAB_ID;
+  return `spec-reference-${toDemoSlug(label)}`;
+}
 
 function buildCompletionPreviewLinesFromText(text = '', maxLines = COMPLETION_PREVIEW_MAX_LINES) {
   const lines = String(text)
@@ -4597,7 +4656,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
             key={file.label}
             label={file.label}
             className="spec-done-ref-chip"
-            onOpen={file.label === 'Configuration.md'
+            onOpen={file.label.toLowerCase().endsWith('.md')
               ? (event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -4628,6 +4687,9 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
             onClose={() => setShowAddPopup(false)}
             onSelectFile={(item) => {
               setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, { label: item.label }]);
+              if (item.label.toLowerCase().endsWith('.md')) {
+                onOpenFile?.(item);
+              }
             }}
             files={addPopupFiles}
             style={{ position: 'fixed', ...popupPos }}
@@ -8242,7 +8304,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function ReferenceDocumentEditorArea({ code, documentSections, addPopupFiles }) {
+function ReferenceDocumentEditorArea({ code, documentSections, addPopupFiles, onOpenReferenceFile }) {
   const areaRef = useRef(null);
   const [documentHost, setDocumentHost] = useState(null);
 
@@ -8272,6 +8334,7 @@ function ReferenceDocumentEditorArea({ code, documentSections, addPopupFiles }) 
           code={code}
           addPopupFiles={addPopupFiles}
           documentSections={documentSections}
+          onOpenReferenceFile={onOpenReferenceFile}
           commentResetToken={0}
         />,
         documentHost
@@ -10874,15 +10937,16 @@ export default function App() {
 
   const openReferenceFileTab = useCallback((file) => {
     const label = typeof file === 'string' ? file : file?.label;
-    if (label !== 'Configuration.md') return;
+    if (typeof label !== 'string' || !label.toLowerCase().endsWith('.md')) return;
 
     focusEditorPanelRef.current?.();
 
-    const existingTabIndex = ideTabs.findIndex((tab) => tab.id === CONFIGURATION_TAB_ID || tab.label === label);
+    const referenceTabId = buildReferenceDocumentTabId(label);
+    const existingTabIndex = ideTabs.findIndex((tab) => tab.id === referenceTabId);
     if (existingTabIndex >= 0) {
       if (existingTabIndex > 0) {
         setIdeTabs((prev) => {
-          const nextTabIndex = prev.findIndex((tab) => tab.id === CONFIGURATION_TAB_ID || tab.label === label);
+          const nextTabIndex = prev.findIndex((tab) => tab.id === referenceTabId);
           if (nextTabIndex <= 0) return prev;
 
           const nextTabs = [...prev];
@@ -10894,9 +10958,29 @@ export default function App() {
       return;
     }
 
+    const task = agentTasks.find((item) => item.label === label) ?? null;
+    const taskTabId = task ? getAgentTaskTabId(task.id) : null;
+    const taskRuntimeState = taskTabId ? getTaskRuntimeState(taskTabId) : null;
+    const taskViewState = taskTabId ? getCommentDrivenViewStateForTaskTab(taskTabId) : null;
+    const documentSections = label === 'Configuration.md'
+      ? CONFIGURATION_DOCUMENT_SECTIONS
+      : (
+          taskViewState?.documentSections
+          ?? taskRuntimeState?.taskState?.documentSections
+          ?? taskRuntimeState?.scenario?.defaultDocument
+          ?? createPreviewReferenceDocument(label)
+        );
+    const code = label === 'Configuration.md'
+      ? CONFIGURATION_TAB_CONTENT.code
+      : (
+          taskViewState?.code
+          ?? taskRuntimeState?.baseCode
+          ?? serializeSpecDocument(documentSections)
+        );
+
     setIdeTabs((prev) => [
       {
-        id: CONFIGURATION_TAB_ID,
+        id: referenceTabId,
         label,
         icon: 'fileTypes/markdown',
         closable: true,
@@ -10905,10 +10989,14 @@ export default function App() {
     ]);
     setIdeTabContents((prev) => ({
       ...prev,
-      [CONFIGURATION_TAB_ID]: CONFIGURATION_TAB_CONTENT,
+      [referenceTabId]: {
+        language: 'markdown',
+        code,
+        referenceDocumentSections: documentSections,
+      },
     }));
     setActiveEditorTab(0);
-  }, [ideTabs]);
+  }, [agentTasks, getCommentDrivenViewStateForTaskTab, getTaskRuntimeState, ideTabs]);
 
   const handleEditorTabChange = useCallback((nextIndex) => {
     setActiveEditorTab(nextIndex);
@@ -14417,7 +14505,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={activeEditorTabId === CONFIGURATION_TAB_ID} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={Boolean(activeEditorTabContentEntry?.referenceDocumentSections)} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
           rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -14558,12 +14646,13 @@ export default function App() {
         editorTopBar={
           isAgentTaskTab
             ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenReferenceFile={openReferenceFileTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
-            : activeTabId === CONFIGURATION_TAB_ID
+            : activeTabContent?.referenceDocumentSections
                 ? (
                   <ReferenceDocumentEditorArea
-                    code={activeTabContent?.code ?? CONFIGURATION_TAB_CONTENT.code}
-                    documentSections={CONFIGURATION_DOCUMENT_SECTIONS}
+                    code={activeTabContent.code}
+                    documentSections={activeTabContent.referenceDocumentSections}
                     addPopupFiles={addPopupFiles}
+                    onOpenReferenceFile={openReferenceFileTab}
                   />
                 )
             : (isDiffTab && activePlanDiffData
@@ -14601,7 +14690,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'agent-tasks') {
             focusEditorPanelRef.current = () => ctx.setFocusedPanel('editor');
-            return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={activeEditorTabId === CONFIGURATION_TAB_ID} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={Boolean(activeEditorTabContentEntry?.referenceDocumentSections)} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           }
           return defaultLeftPanelContent(id, ctx);
         }}
