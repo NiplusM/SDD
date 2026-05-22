@@ -10880,24 +10880,34 @@ export default function App() {
 
     const existingTabIndex = ideTabs.findIndex((tab) => tab.id === CONFIGURATION_TAB_ID || tab.label === label);
     if (existingTabIndex >= 0) {
-      setActiveEditorTab(existingTabIndex);
+      if (existingTabIndex > 0) {
+        setIdeTabs((prev) => {
+          const nextTabIndex = prev.findIndex((tab) => tab.id === CONFIGURATION_TAB_ID || tab.label === label);
+          if (nextTabIndex <= 0) return prev;
+
+          const nextTabs = [...prev];
+          const [configurationTab] = nextTabs.splice(nextTabIndex, 1);
+          return [configurationTab, ...nextTabs];
+        });
+      }
+      setActiveEditorTab(0);
       return;
     }
 
     setIdeTabs((prev) => [
-      ...prev,
       {
         id: CONFIGURATION_TAB_ID,
         label,
         icon: 'fileTypes/markdown',
         closable: true,
       },
+      ...prev,
     ]);
     setIdeTabContents((prev) => ({
       ...prev,
       [CONFIGURATION_TAB_ID]: CONFIGURATION_TAB_CONTENT,
     }));
-    setActiveEditorTab(ideTabs.length);
+    setActiveEditorTab(0);
   }, [ideTabs]);
 
   const handleEditorTabChange = useCallback((nextIndex) => {
