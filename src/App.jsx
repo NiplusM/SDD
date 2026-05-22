@@ -2340,6 +2340,50 @@ const COMPLETION_PREVIEW_LIBRARY = {
   },
 };
 
+const CONFIGURATION_TAB_ID = 'spec-configuration';
+function createConfigurationDocument() {
+  return [
+    {
+      id: 'context',
+      title: 'Context',
+      items: [
+        { id: 'context-vets', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets").' },
+        { id: 'context-formatters', type: 'bullet', text: 'Formatter<T> is required for entity-backed form selects.' },
+      ],
+    },
+    {
+      id: 'constraints',
+      title: 'Constraints',
+      items: [
+        { id: 'constraints-schema', type: 'bullet', text: 'Keep H2, MySQL, and PostgreSQL schema updates aligned.' },
+        { id: 'constraints-booking', type: 'bullet', text: 'Preserve the current visit-booking flow while availability work lands.' },
+      ],
+    },
+    {
+      id: 'dependencies',
+      title: 'Dependencies',
+      items: [
+        { id: 'dependencies-vets', type: 'bullet', text: 'Vet data and form binding stay shared with the visit workflow.' },
+      ],
+    },
+    {
+      id: 'related-files',
+      title: 'Related Files',
+      items: [
+        { id: 'related-controller', type: 'bullet', text: 'VisitController.java' },
+        { id: 'related-template', type: 'bullet', text: 'createOrUpdateVisitForm.html' },
+        { id: 'related-schema', type: 'bullet', text: 'schema.sql' },
+      ],
+    },
+  ].map((section) => withDerivedPlanChildren(section));
+}
+
+const CONFIGURATION_DOCUMENT_SECTIONS = createConfigurationDocument();
+const CONFIGURATION_TAB_CONTENT = {
+  language: 'markdown',
+  code: serializeSpecDocument(CONFIGURATION_DOCUMENT_SECTIONS),
+};
+
 function buildCompletionPreviewLinesFromText(text = '', maxLines = COMPLETION_PREVIEW_MAX_LINES) {
   const lines = String(text)
     .split(/\r?\n/)
@@ -4518,7 +4562,7 @@ function renderDoneMarkdownInline(text, highlight = null, issue = null, onAccept
   });
 }
 
-function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '' }) {
+function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', onOpenFile = null }) {
   const normalizedInitialFiles = useMemo(
     () => normalizeDoneFileEntries(initialFiles),
     [initialFiles]
@@ -4553,6 +4597,13 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
             key={file.label}
             label={file.label}
             className="spec-done-ref-chip"
+            onOpen={file.label === 'Configuration.md'
+              ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onOpenFile?.(file);
+                }
+              : null}
             onRemove={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -4790,7 +4841,7 @@ function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }
   );
 }
 
-function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null }) {
+function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, onOpenFile = null }) {
   return (
     <div className="spec-done-heading-row">
       <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
@@ -4801,6 +4852,7 @@ function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, comment
         addPopupFiles={addPopupFiles}
         addButtonLabel={`Add file to ${title}`}
         className="spec-done-heading-files"
+        onOpenFile={onOpenFile}
       />
       {commentAdornment}
     </div>
@@ -5879,7 +5931,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false, isRunning = false, specSessionKey = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false, isRunning = false, specSessionKey = null, onOpenReferenceFile = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -5891,6 +5943,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           initialFiles={initialFiles}
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
+          onOpenFile={onOpenReferenceFile}
         />
       );
     }
@@ -5903,6 +5956,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           initialFiles={initialFiles}
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
+          onOpenFile={onOpenReferenceFile}
         />
       );
     }
@@ -6548,7 +6602,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, runningCheckTarget = null, specSessionKey = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenReferenceFile, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, runningCheckTarget = null, specSessionKey = null }) {
   const effectiveDocumentSections = useMemo(
     () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
     [documentSections]
@@ -7921,6 +7975,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   hasPlanComment,
                   isRunningCheckTarget,
                   specSessionKey,
+                  onOpenReferenceFile,
                 )}
               </div>
             </div>
@@ -8130,9 +8185,32 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
 
 // ─── Agent Task Editor Area ───────────────────────────────────────────────────
 
-function AttachedFileChip({ label, onRemove, className = '' }) {
+function AttachedFileChip({ label, onRemove, onOpen = null, className = '' }) {
+  const isNavigable = typeof onOpen === 'function';
+
+  const openFile = (event) => {
+    if (!isNavigable) return;
+    onOpen(event);
+  };
+
   return (
-    <div className={`attached-file-chip${className ? ` ${className}` : ''}`} contentEditable={false}>
+    <div
+      className={`attached-file-chip${isNavigable ? ' is-navigable' : ''}${className ? ` ${className}` : ''}`}
+      contentEditable={false}
+      role={isNavigable ? 'button' : undefined}
+      tabIndex={isNavigable ? 0 : undefined}
+      aria-label={isNavigable ? `Open ${label}` : undefined}
+      onMouseDown={isNavigable ? (event) => event.stopPropagation() : undefined}
+      onClick={isNavigable ? openFile : undefined}
+      onKeyDown={isNavigable
+        ? (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openFile(event);
+            }
+          }
+        : undefined}
+    >
       <IconMdTask />
       <span className="attached-file-label">{label}</span>
       {onRemove && (
@@ -8164,7 +8242,45 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, runningCheckTarget = null }) {
+function ReferenceDocumentEditorArea({ code, documentSections, addPopupFiles }) {
+  const areaRef = useRef(null);
+  const [documentHost, setDocumentHost] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!areaRef.current) {
+      setDocumentHost(null);
+      return undefined;
+    }
+
+    let frameId = 0;
+    frameId = requestAnimationFrame(() => {
+      const editorEl = areaRef.current?.closest('.editor');
+      const nextHost = editorEl?.querySelector('.editor-body');
+      setDocumentHost(nextHost instanceof HTMLElement ? nextHost : null);
+    });
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [code]);
+
+  return (
+    <>
+      <div ref={areaRef} className="reference-document-editor-area" aria-hidden="true" />
+      {documentHost && createPortal(
+        <DoneMarkdownOverlay
+          code={code}
+          addPopupFiles={addPopupFiles}
+          documentSections={documentSections}
+          commentResetToken={0}
+        />,
+        documentHost
+      )}
+    </>
+  );
+}
+
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenReferenceFile, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, runningCheckTarget = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8835,7 +8951,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -8850,7 +8966,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -8982,7 +9098,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -9136,6 +9252,7 @@ function createVetSchedulesSpecDocument() {
     {
       id: 'plan',
       title: 'Plan',
+      meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
         { id: 'plan-1', type: 'check', checked: false, text: 'Add VetSchedule entity under the vet package' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet and date' },
@@ -9815,6 +9932,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState('t2');
   const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
+  const focusEditorPanelRef = useRef(null);
   const [terminalTabsState, setTerminalTabsState] = useState(() => createInitialTerminalTabsState());
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(() => buildTerminalSessionTabId('agent-task-t1'));
   const [terminalSessions, setTerminalSessions] = useState(() => createInitialTerminalSessions());
@@ -10739,6 +10857,34 @@ export default function App() {
     interactiveTaskStates,
     setRunStateForTab,
   ]);
+
+  const openReferenceFileTab = useCallback((file) => {
+    const label = typeof file === 'string' ? file : file?.label;
+    if (label !== 'Configuration.md') return;
+
+    focusEditorPanelRef.current?.();
+
+    const existingTabIndex = ideTabs.findIndex((tab) => tab.id === CONFIGURATION_TAB_ID || tab.label === label);
+    if (existingTabIndex >= 0) {
+      setActiveEditorTab(existingTabIndex);
+      return;
+    }
+
+    setIdeTabs((prev) => [
+      ...prev,
+      {
+        id: CONFIGURATION_TAB_ID,
+        label,
+        icon: 'fileTypes/markdown',
+        closable: true,
+      },
+    ]);
+    setIdeTabContents((prev) => ({
+      ...prev,
+      [CONFIGURATION_TAB_ID]: CONFIGURATION_TAB_CONTENT,
+    }));
+    setActiveEditorTab(ideTabs.length);
+  }, [ideTabs]);
 
   const handleEditorTabChange = useCallback((nextIndex) => {
     setActiveEditorTab(nextIndex);
@@ -14387,7 +14533,15 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenReferenceFile={openReferenceFileTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
+            : activeTabId === CONFIGURATION_TAB_ID
+                ? (
+                  <ReferenceDocumentEditorArea
+                    code={activeTabContent?.code ?? CONFIGURATION_TAB_CONTENT.code}
+                    documentSections={CONFIGURATION_DOCUMENT_SECTIONS}
+                    addPopupFiles={addPopupFiles}
+                  />
+                )
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
@@ -14421,7 +14575,10 @@ export default function App() {
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+          if (id === 'agent-tasks') {
+            focusEditorPanelRef.current = () => ctx.setFocusedPanel('editor');
+            return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+          }
           return defaultLeftPanelContent(id, ctx);
         }}
         rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
