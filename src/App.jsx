@@ -6805,6 +6805,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [selectionToolbarPos, setSelectionToolbarPos] = useState(null);
   const [activeIssueRowKey, setActiveIssueRowKey] = useState(null);
   const [navigatedIssueRowKey, setNavigatedIssueRowKey] = useState(null);
+  const [resolvedProposalRowKeys, setResolvedProposalRowKeys] = useState(() => new Set());
   const [focusedCommentRowKey, setFocusedCommentRowKey] = useState(null);
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
   const [commentPopup, setCommentPopup] = useState(null);
@@ -7038,12 +7039,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const issueRowKeys = useMemo(() => (
     rowMetaList
       .filter((rowMeta) => (
-        rowMeta.issueSeverity === 'warning'
-        || rowMeta.issueSeverity === 'failed'
-        || rowMeta.issueSeverity === 'error'
+        !resolvedProposalRowKeys.has(rowMeta.stableKey)
+        && (
+          rowMeta.issueSeverity === 'warning'
+          || rowMeta.issueSeverity === 'failed'
+          || rowMeta.issueSeverity === 'error'
+        )
       ))
       .map((rowMeta) => rowMeta.stableKey)
-  ), [rowMetaList]);
+  ), [resolvedProposalRowKeys, rowMetaList]);
 
   useEffect(() => {
     if (lastStoredBreakpointKeysSignatureRef.current === storedBreakpointKeysSignature) {
@@ -7450,6 +7454,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const next = new Set([...prev].filter((k) => validKeys.has(k)));
       return next.size === prev.size ? prev : next;
     });
+    setResolvedProposalRowKeys((prev) => {
+      const next = new Set([...prev].filter((k) => validKeys.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [rowMetaList]);
 
 
@@ -7732,11 +7740,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setIntentionPopup(null);
     }
 
-    if (activeIssueRowKey && !rowMetaByKey.has(activeIssueRowKey)) {
+    if (activeIssueRowKey && (!rowMetaByKey.has(activeIssueRowKey) || resolvedProposalRowKeys.has(activeIssueRowKey))) {
       setActiveIssueRowKey(null);
     }
 
-    if (navigatedIssueRowKey && !rowMetaByKey.has(navigatedIssueRowKey)) {
+    if (navigatedIssueRowKey && (!rowMetaByKey.has(navigatedIssueRowKey) || resolvedProposalRowKeys.has(navigatedIssueRowKey))) {
       setNavigatedIssueRowKey(null);
     }
 
@@ -7749,6 +7757,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     focusedCommentRowKey,
     intentionPopup?.rowKey,
     navigatedIssueRowKey,
+    resolvedProposalRowKeys,
     rowMetaByKey,
     rowMetaList,
   ]);
@@ -7756,6 +7765,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
+    setResolvedProposalRowKeys(new Set());
     setFocusedCommentRowKey(null);
     setCommentPopup(null);
     setIntentionPopup(null);
@@ -7774,6 +7784,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setRowComments({});
     setDeletedRowKeys(new Set());
     setClearedRowKeys(new Set());
+    setResolvedProposalRowKeys(new Set());
     setHasEditedLines(false);
     setCommentPopup(null);
     setSelectionToolbarPos(null);
@@ -7853,11 +7864,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
 
             // Row cleared (prefix/checkbox stripped) — treat as empty line
+            const isProposalResolved = resolvedProposalRowKeys.has(stableKey);
             const effectiveLine = clearedRowKeys.has(stableKey) ? '' : rowMeta.line;
             const effectiveCheckStatus = clearedRowKeys.has(stableKey) ? null : checkStatus;
             const effectivePlanStatus = clearedRowKeys.has(stableKey) ? null : planStatus;
-            const effectiveIssueSeverity = clearedRowKeys.has(stableKey) ? null : issueSeverity;
-            const effectiveIssueTarget = clearedRowKeys.has(stableKey) ? null : issueTarget;
+            const effectiveIssueSeverity = clearedRowKeys.has(stableKey) || isProposalResolved ? null : issueSeverity;
+            const effectiveIssueTarget = clearedRowKeys.has(stableKey) || isProposalResolved ? null : issueTarget;
             const effectiveCheckTarget = clearedRowKeys.has(stableKey) ? null : checkTarget;
             const isRunOutdated = Boolean(effectiveCheckStatus?.isOutdated || effectivePlanStatus?.isOutdated);
 
@@ -8039,7 +8051,26 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   activeRunRequest,
                   rowMeta.nestingLevel ?? 0,
                   rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
-                  () => onUserInput?.(),
+                  (decision) => {
+                    if (decision === 'accept') {
+                      setResolvedProposalRowKeys((prev) => {
+                        if (prev.has(stableKey)) return prev;
+                        const next = new Set(prev);
+                        next.add(stableKey);
+                        return next;
+                      });
+                      if (activeIssueRowKey === stableKey) {
+                        setActiveIssueRowKey(null);
+                      }
+                      if (navigatedIssueRowKey === stableKey) {
+                        setNavigatedIssueRowKey(null);
+                      }
+                      if (intentionPopup?.rowKey === stableKey) {
+                        setIntentionPopup(null);
+                      }
+                    }
+                    onUserInput?.();
+                  },
                   hasPlanComment,
                   onOpenCheckChip,
                 )}

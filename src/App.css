@@ -1821,7 +1821,7 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
+  left: -8px;
   right: 0;
   border: 1px solid #34373d;
   border-radius: 5px;
