@@ -9763,6 +9763,7 @@ function AgentTasksPanel({
   ctx,
   tasks,
   selected,
+  clearSelection = false,
   onAdd,
   onTaskSelect,
   dismissedSuccessTaskIds = [],
@@ -9839,14 +9840,16 @@ function AgentTasksPanel({
         children: taskNodes,
       }],
       navigationByNodeId: nextNavigationByNodeId,
-      defaultSelectedNodeId:
+      defaultSelectedNodeId: clearSelection
+        ? null
+        :
         selectedTreeNodeId === AGENT_TASK_TREE_ROOT_NODE_ID || nextNavigationByNodeId[selectedTreeNodeId]
           ? selectedTreeNodeId
           : (selected ? buildAgentTaskTreeTaskNodeId(selected) : AGENT_TASK_TREE_ROOT_NODE_ID),
     };
-  }, [dismissedSuccessTaskIdSet, planTreesByTaskId, selected, selectedTreeNodeId, tasks]);
+  }, [clearSelection, dismissedSuccessTaskIdSet, planTreesByTaskId, selected, selectedTreeNodeId, tasks]);
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || clearSelection) return;
 
     const nextTaskNodeId = buildAgentTaskTreeTaskNodeId(selected);
 
@@ -9858,12 +9861,23 @@ function AgentTasksPanel({
 
     setSelectedTreeNodeId(nextTaskNodeId);
     setTreeSelectionResetKey((prev) => prev + 1);
-  }, [selected]);
+  }, [clearSelection, selected]);
   useEffect(() => {
-    if (!focusedNodeId) return;
+    if (!focusedNodeId || clearSelection) return;
     setSelectedTreeNodeId(focusedNodeId);
     setTreeSelectionResetKey((prev) => prev + 1);
-  }, [focusedNodeId]);
+  }, [clearSelection, focusedNodeId]);
+  useEffect(() => {
+    if (clearSelection) {
+      setSelectedTreeNodeId(null);
+      setTreeSelectionResetKey((prev) => prev + 1);
+      return;
+    }
+
+    if (!selected) return;
+    setSelectedTreeNodeId(buildAgentTaskTreeTaskNodeId(selected));
+    setTreeSelectionResetKey((prev) => prev + 1);
+  }, [clearSelection, selected]);
   const handleTreeNodeSelect = useCallback((nodeId, isSelected) => {
     const navigationEntry = navigationByNodeId[nodeId] ?? null;
     if (!navigationEntry) return;
@@ -14393,7 +14407,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={activeEditorTabId === CONFIGURATION_TAB_ID} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
           rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -14577,7 +14591,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'agent-tasks') {
             focusEditorPanelRef.current = () => ctx.setFocusedPanel('editor');
-            return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} clearSelection={activeEditorTabId === CONFIGURATION_TAB_ID} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           }
           return defaultLeftPanelContent(id, ctx);
         }}
