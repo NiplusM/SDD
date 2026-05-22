@@ -2286,6 +2286,14 @@ const COMPLETION_PREVIEW_LIBRARY = {
     ],
     sections: ['Context', 'Constraints', 'Dependencies', 'Related Files'],
   },
+  'Autonomous.md': {
+    previewLines: [
+      '## Text',
+      '- Autocomplete 100%.',
+      '- Autocomplete for a skill would be even better.',
+    ],
+    sections: ['Text'],
+  },
   'visit-booking-inspections.md': {
     previewLines: [
       '## Acceptance Criteria Findings',
