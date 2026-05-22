@@ -3473,33 +3473,14 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 // ─── Add Popup ────────────────────────────────────────────────────────────────
 
 const ADD_RECENT_FILES = [
-  { label: 'Configuration.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'visit-booking.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'vet-schedules.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'visit-booking-inspections.md',        type: 'md', description: 'Agent Specifications' },
-  { label: 'visit-booking-beat-3-execution.md',   type: 'md', description: 'Agent Specifications' },
-  { label: 'visit-booking-code-review-moment.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Configuration.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Exploratory.md',   type: 'md', description: 'Agent Specifications' },
+  { label: 'Step-by-Step.md',  type: 'md', description: 'Agent Specifications' },
+  { label: 'Autonomous.md',    type: 'md', description: 'Agent Specifications' },
 ];
 
-function getAddPopupFileType(label) {
-  const lowerLabel = label.toLowerCase();
-  if (lowerLabel.endsWith('.md')) return 'md';
-  if (lowerLabel.endsWith('.py')) return 'py';
-  if (lowerLabel.endsWith('.ipynb')) return 'ipynb';
-  if (lowerLabel.endsWith('.txt')) return 'txt';
-  return 'file';
-}
-
-function buildAddPopupFiles(agentTasks = []) {
-  const taskFiles = agentTasks.map((task) => ({
-    label: task.label,
-    type: getAddPopupFileType(task.label),
-    description: 'Agent Tasks',
-  }));
-
-  return [...taskFiles, ...ADD_RECENT_FILES].filter((item, index, items) =>
-    items.findIndex((candidate) => candidate.label === item.label) === index
-  );
+function buildAddPopupFiles() {
+  return ADD_RECENT_FILES;
 }
 
 function AddFileIcon({ type }) {
