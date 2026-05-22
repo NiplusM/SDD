@@ -3475,7 +3475,7 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 const ADD_RECENT_FILES = [
   { label: 'Configuration.md', type: 'md', description: 'Agent Specifications' },
   { label: 'Exploratory.md',   type: 'md', description: 'Agent Specifications' },
-  { label: 'Step-by-Step.md',  type: 'md', description: 'Agent Specifications' },
+  { label: 'Step-by-step.md',  type: 'md', description: 'Agent Specifications' },
   { label: 'Autonomous.md',    type: 'md', description: 'Agent Specifications' },
 ];
 
@@ -3768,7 +3768,7 @@ function createSpecDocument() {
     {
       id: 'plan',
       title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
+      meta: { kind: 'chip', text: 'Step-by-step.md' },
       items: [
         { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull' },
@@ -9293,7 +9293,7 @@ function createVetSchedulesSpecDocument() {
     {
       id: 'plan',
       title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
+      meta: { kind: 'chip', text: 'Step-by-step.md' },
       items: [
         { id: 'plan-1', type: 'check', checked: false, text: 'Add VetSchedule entity under the vet package' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet and date' },
