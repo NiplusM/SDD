@@ -4687,9 +4687,6 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
             onClose={() => setShowAddPopup(false)}
             onSelectFile={(item) => {
               setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, { label: item.label }]);
-              if (item.label.toLowerCase().endsWith('.md')) {
-                onOpenFile?.(item);
-              }
             }}
             files={addPopupFiles}
             style={{ position: 'fixed', ...popupPos }}
