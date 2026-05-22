@@ -2090,6 +2090,10 @@ body {
   overflow: hidden;
 }
 
+.editor:has(.reference-document-editor-area) .spec-done-scroll {
+  padding-top: 28px;
+}
+
 .plan-diff-editor-area {
   display: flex;
   width: 100%;
