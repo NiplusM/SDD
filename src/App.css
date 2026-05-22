@@ -638,7 +638,7 @@ body {
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
+  left: -4px;
   right: 0;
   height: 22px;
   background: rgba(194, 128, 19, 0.22);
@@ -657,6 +657,27 @@ body {
 
 .spec-done-row.spec-done-active-line:not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
   background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
+}
+
+.spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
+  position: relative;
+  background: transparent;
+}
+
+.spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"])::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 23px;
+  background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
+  pointer-events: none;
+}
+
+.spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) > * {
+  position: relative;
+  z-index: 1;
 }
 
 .spec-done-primary-line {
@@ -710,9 +731,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: calc(22px + var(--spec-done-gutter-inline-offset));
   height: 20px;
-  flex: 0 0 20px;
+  flex: 0 0 calc(22px + var(--spec-done-gutter-inline-offset));
+  margin-left: calc(-1 * var(--spec-done-gutter-inline-offset));
+  margin-right: -2px;
+  padding-left: var(--spec-done-gutter-inline-offset);
+  padding-right: 2px;
   border-radius: 4px;
   cursor: pointer;
   opacity: 0;
@@ -1784,9 +1809,9 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 24px;
+  min-height: 28px;
   box-sizing: border-box;
-  padding: 4px 52px 4px 0;
+  padding: 5px 52px 5px 0;
   border-radius: 5px;
   font-size: 13px;
 }
@@ -1796,7 +1821,7 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(-1 * (var(--spec-done-gutter-width) + var(--spec-done-gutter-inline-offset) + 4px));
+  left: 0;
   right: 0;
   border: 1px solid #34373d;
   border-radius: 5px;
@@ -1817,9 +1842,16 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 20px;
+  height: 16px;
+  color: #F2C55C;
+  line-height: 0;
+}
+
+.ac-proposal-icon .icon {
+  display: block;
   width: 16px;
   height: 16px;
-  color: #d6d8de;
 }
 
 .ac-proposal-text {
@@ -1837,7 +1869,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  color: #71a1fe;
+  color: var(--gray-90, #8b8e94);
   font-family: Inter, -apple-system, sans-serif;
   font-size: 13px;
   font-weight: 500;
@@ -1846,6 +1878,14 @@ body {
 }
 
 .ac-proposal-btn:hover {
+  color: var(--text-primary, #dfe1e5);
+}
+
+.ac-proposal-btn:last-of-type {
+  color: #71a1fe;
+}
+
+.ac-proposal-btn:last-of-type:hover {
   color: #92b7ff;
 }
 
@@ -1861,9 +1901,10 @@ body {
 .ac-subcheck-item {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
-  min-height: 22px;
+  min-height: 28px;
+  padding: 0;
   font-size: 13px;
   color: var(--text-secondary, #9fa2a8);
 }
@@ -1874,8 +1915,10 @@ body {
 
 .ac-subcheck-icon {
   flex-shrink: 0;
-  width: 16px;
+  width: 20px;
   height: 16px;
+  box-sizing: border-box;
+  padding: 0 2px;
 }
 .ac-subcheck-icon-passed {
   color: #b0b3b8;
@@ -1885,6 +1928,8 @@ body {
 }
 
 .ac-subcheck-text {
+  flex: 0 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1899,13 +1944,25 @@ body {
 }
 
 .ac-subcheck-chip {
+  appearance: none;
+  border: 0;
+  font-family: inherit;
   color: var(--text-link);
   background: rgba(255, 255, 255, 0.08);
   border-radius: 3px;
   padding: 0 3px;
   font-size: 13px;
+  line-height: 18px;
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.ac-subcheck-chip:hover,
+.ac-subcheck-chip:focus-visible {
+  color: #92b7ff;
+  background: rgba(113, 161, 254, 0.16);
+  outline: none;
 }
 
 .spec-done-plan-main {

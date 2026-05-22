@@ -517,7 +517,7 @@ Add vet assignment and time slot selection to the visit creation flow. When book
 ## Acceptance Criteria
 - [ ] Visit form shows a dropdown of available vets for the selected date/time.
 - [ ] Visit form includes a time slot picker (e.g. hourly slots 09:00-16:00).
-- [ ] A vet cannot be booked for the same date+time twice (server-side validation).
+- [ ] A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).
 - [ ] Vet and time are persisted with the visit.
 - [ ] Existing visit display (owner details page) shows the assigned vet and time.
 - [ ] All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.
@@ -619,8 +619,10 @@ The document above should be overlaid with these statuses.
    - checks: none
 
 3. **Passed**
-   - `UNIQUE constraint in all 3 schema files` / chip `schema.sql`
-   - `existsByVetIdAndDateAndTime check before save` / chip `VisitController.java`
+   - `Read VisitController.processNewVisitForm(): calls existsByVetIdAndDateAndTime before save, rejects with field error on vet. Catch block for DataIntegrityViolationException as safety net.` / chip `VisitController.java`
+   - `Verified UNIQUE(vet_id, visit_date, visit_time) constraint present in all 3 schema files.` / chip `schema.sql`
+   - `Read VisitControllerTests.processNewVisitFormDoubleBookingRejected: mocks existsByVetIdAndDateAndTime returning true, asserts form re-renders with error.` / chip `VisitControllerTests.java`
+   - `Ran tests: processNewVisitFormDoubleBookingRejected passes.` / chip `VisitControllerTests.java`
 
 4. **Passed**
    - `@ManyToOne vet persisted` / chip `Visit.java`

@@ -100,6 +100,7 @@ const MY_EDITOR_TABS = [
   { id: '2', label: 'Visit.java',                    icon: 'fileTypes/java', closable: true },
   { id: '3', label: 'createOrUpdateVisitForm.html',  icon: 'fileTypes/html', closable: true },
   { id: '4', label: 'schema.sql',                    icon: 'fileTypes/text', closable: true },
+  { id: '5', label: 'VisitControllerTests.java',     icon: 'fileTypes/java', closable: true },
 ];
 
 const MY_EDITOR_TAB_CONTENTS = {
@@ -298,6 +299,31 @@ CREATE TABLE visits (
     CONSTRAINT fk_visits_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
     CONSTRAINT uk_vet_date_time UNIQUE (vet_id, visit_date, visit_time)
 );`,
+  },
+  '5': {
+    language: 'java',
+    code: `@WebMvcTest(VisitController.class)
+class VisitControllerTests {
+
+    @MockBean
+    private VisitRepository visitRepository;
+
+    @Test
+    void processNewVisitFormDoubleBookingRejected() throws Exception {
+        when(visitRepository.existsByVetIdAndDateAndTime(
+                3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
+            .thenReturn(true);
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-15")
+                .param("time", "10:00")
+                .param("vet", "3")
+                .param("description", "Regular check"))
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrors("visit", "vet"))
+            .andExpect(view().name("pets/createOrUpdateVisitForm"));
+    }
+}`,
   },
 };
 
@@ -1008,8 +1034,10 @@ const AC_RUN_STATUSES = [
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'UNIQUE constraint in all 3 schema files', chip: 'schema.sql' },
-      { status: 'passed', text: 'existsByVetIdAndDateAndTime check before save', chip: 'VisitController.java' },
+      { status: 'passed', text: 'Read VisitController.processNewVisitForm(): calls existsByVetIdAndDateAndTime before save, rejects with field error on vet. Catch block for DataIntegrityViolationException as safety net.', chip: 'VisitController.java' },
+      { status: 'passed', text: 'Verified UNIQUE(vet_id, visit_date, visit_time) constraint present in all 3 schema files.', chip: 'schema.sql' },
+      { status: 'passed', text: 'Read VisitControllerTests.processNewVisitFormDoubleBookingRejected: mocks existsByVetIdAndDateAndTime returning true, asserts form re-renders with error.', chip: 'VisitControllerTests.java' },
+      { status: 'passed', text: 'Ran tests: processNewVisitFormDoubleBookingRejected passes.', chip: 'VisitControllerTests.java' },
     ],
   },
   {
@@ -2457,6 +2485,7 @@ function getEditorTabContentByLabel(label = '') {
   if (label === 'Visit.java') return MY_EDITOR_TAB_CONTENTS['2'] ?? null;
   if (label === 'createOrUpdateVisitForm.html') return MY_EDITOR_TAB_CONTENTS['3'] ?? null;
   if (label === 'schema.sql') return MY_EDITOR_TAB_CONTENTS['4'] ?? null;
+  if (label === 'VisitControllerTests.java') return MY_EDITOR_TAB_CONTENTS['5'] ?? null;
   return null;
 }
 
@@ -3553,7 +3582,7 @@ const SPEC_LINES = [
   { text: 'Acceptance Criteria',                                                                             type: 'heading' },
   { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
   { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).', type: 'check' },
   { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
   { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
   { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
@@ -3773,7 +3802,7 @@ function createSpecDocument() {
       items: [
         { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
         { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).' },
         { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
         { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
         { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
@@ -4933,6 +4962,25 @@ function AcSubcheckIcon({ status }) {
   );
 }
 
+function AcSubcheckChip({ label, onOpen }) {
+  const handleOpen = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpen?.(label);
+  };
+
+  return (
+    <button
+      type="button"
+      className="ac-subcheck-chip"
+      onClick={handleOpen}
+      title={`Open ${label}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function AcCheckRow({
   checkItem,
   text,
@@ -4940,6 +4988,7 @@ function AcCheckRow({
   commentAdornment = null,
   onProposalAccept = null,
   onProposalDecision = null,
+  onOpenCheckChip = null,
   isRunning = false,
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -4999,17 +5048,14 @@ function AcCheckRow({
             <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
               <span className="ac-subcheck-text">{check.text}</span>
-              {check.chip && <span className="ac-subcheck-chip">{check.chip}</span>}
+              {check.chip && <AcSubcheckChip label={check.chip} onOpen={onOpenCheckChip} />}
               {check.note && <span className="ac-subcheck-note">{check.note}</span>}
             </div>
           ))}
           {showProposal && (
             <div className="ac-proposal-row">
               <span className="ac-proposal-icon">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M6 13.5H10M7 15H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.5 10.5C4.5 9.5 4 8.5 4 7.5C4 5.29086 5.79086 3.5 8 3.5C10.2091 3.5 12 5.29086 12 7.5C12 8.5 11.5 9.5 10.5 10.5V11.5C10.5 11.7761 10.2761 12 10 12H6C5.72386 12 5.5 11.7761 5.5 11.5V10.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                </svg>
+                <Icon name="codeInsight/intentionBulb" size={16} />
               </span>
               <span className="ac-proposal-text">{checkItem.proposal}</span>
               <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
@@ -5963,7 +6009,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -6018,10 +6064,10 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan')))
     );
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning={isRunning} />;
     }
     if (checkTarget?.kind === 'ac' && isRunning) {
-      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning />;
+      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -6643,7 +6689,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -7995,6 +8041,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
                   () => onUserInput?.(),
                   hasPlanComment,
+                  onOpenCheckChip,
                 )}
               </div>
             </div>
@@ -8238,7 +8285,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8914,7 +8961,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -8929,7 +8976,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -9061,7 +9108,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -11112,6 +11159,30 @@ export default function App() {
     ideTabs,
     updatePlanDiffUiStateForTab,
   ]);
+
+  const openEditorTabByLabel = useCallback((label) => {
+    if (typeof label !== 'string' || label.trim().length === 0) return;
+
+    const normalizedLabel = label.trim();
+    const existingTabIndex = ideTabs.findIndex((tab) => tab.label === normalizedLabel);
+    if (existingTabIndex >= 0) {
+      setScreen('ide');
+      setActiveEditorTab(existingTabIndex);
+      return;
+    }
+
+    const presetTab = MY_EDITOR_TABS.find((tab) => tab.label === normalizedLabel);
+    const tabContent = getEditorTabContentByLabel(normalizedLabel);
+    if (!presetTab || !tabContent) return;
+
+    setIdeTabs((prev) => [...prev, presetTab]);
+    setIdeTabContents((prev) => ({
+      ...prev,
+      [presetTab.id]: tabContent,
+    }));
+    setScreen('ide');
+    setActiveEditorTab(ideTabs.length);
+  }, [ideTabs]);
 
   const openSpecVersionDiffTab = useCallback(({
     sourceTabId,
@@ -14145,7 +14216,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea

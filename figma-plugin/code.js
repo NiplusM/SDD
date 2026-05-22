@@ -387,7 +387,7 @@ async function drawSpecOverlay(parent, X, Y, W, H, opts, detail) {
       { heading: 'Acceptance Criteria', items: [
         { type: 'item', status: opts.inspection ? 'warning' : 'pass', text: 'Visit form shows a dropdown of available vets for the selected date/time.' },
         { type: 'item', status: opts.inspection ? 'warning' : 'pass', text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00-16:00).' },
-        { type: 'item', status: 'pass', text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
+        { type: 'item', status: 'pass', text: 'A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).' },
         { type: 'item', status: 'pass', text: 'Vet and time are persisted with the visit.' },
         { type: 'item', status: 'pass', text: 'Existing visit display shows the assigned vet and time.' },
         { type: 'item', status: 'pass', text: 'All three DB schemas and seed data are updated.' },

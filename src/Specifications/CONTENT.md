@@ -99,7 +99,7 @@ Repository: `spring-petclinic-sdd`. Key files:
   **Acceptance Criteria** (6 items, `type: 'check', kind: 'ac'`):
   1. `Visit form shows a dropdown filtered to available vets for selected date/time.`
   2. `Visit form includes a time slot picker (e.g. hourly slots 09:00–16:00).`
-  3. `A vet cannot be booked for the same date+time twice (server-side validation).`
+  3. `A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).`
   4. `Vet and time are persisted with the visit.`
   5. `Existing visit display (owner details page) shows the assigned vet and time.`
   6. `All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.`
@@ -145,7 +145,7 @@ Repository: `spring-petclinic-sdd`. Key files:
   - `highlight: { match: 'e.g. hourly slots', className: 'spec-inline-warning-highlight' }`
   - Quick fix: `replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.'`
 
-- [ ] AC #2 (index 2): **passed** — `checks: [{ status: 'passed', text: 'UNIQUE constraint in all 3 schema files', chip: 'schema.sql' }, { status: 'passed', text: 'existsByVetIdAndDateAndTime check before save', chip: 'VisitController.java' }]`
+- [ ] AC #2 (index 2): **passed** — `checks: [{ status: 'passed', text: 'Read VisitController.processNewVisitForm(): calls existsByVetIdAndDateAndTime before save, rejects with field error on vet. Catch block for DataIntegrityViolationException as safety net.', chip: 'VisitController.java' }, { status: 'passed', text: 'Verified UNIQUE(vet_id, visit_date, visit_time) constraint present in all 3 schema files.', chip: 'schema.sql' }, { status: 'passed', text: 'Read VisitControllerTests.processNewVisitFormDoubleBookingRejected: mocks existsByVetIdAndDateAndTime returning true, asserts form re-renders with error.', chip: 'VisitControllerTests.java' }, { status: 'passed', text: 'Ran tests: processNewVisitFormDoubleBookingRejected passes.', chip: 'VisitControllerTests.java' }]`
 
 - [ ] AC #3 (index 3): **passed** — `checks: [{ status: 'passed', text: '@ManyToOne vet persisted', chip: 'Visit.java' }, { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' }]`
 
