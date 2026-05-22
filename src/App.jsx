@@ -9907,7 +9907,7 @@ function AgentTasksPanel({
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState('welcome'); // 'welcome' | 'ide' | 'settings'
+  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide' | 'settings'
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
