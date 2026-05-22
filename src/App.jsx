@@ -593,11 +593,11 @@ const MD_TASK_SLOW_TERMINAL_STEP_DELAY_MS = 1150;
 const MD_TASK_SLOW_TERMINAL_END_DELAY_MS = 900;
 const MD_TASK_SLOW_STATUS_REVEAL_STEP_DELAY_MS = 1450;
 const CHAINED_SECTION_START_DELAY_MS = 220;
-const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
+const TERMINAL_PERMISSION_PROMPT = 'Execution stopped at the user\'s request. Continue running the remaining steps?';
 const TERMINAL_PERMISSION_OPTIONS = [
-  { id: 'allow-once', label: 'Allow Once', icon: 'check' },
-  { id: 'allow-session', label: 'Allow for Session', icon: 'check' },
-  { id: 'reject', label: 'Reject', icon: 'block' },
+  { id: 'allow-once', label: 'Continue Once', icon: 'check' },
+  { id: 'allow-session', label: 'Continue for Session', icon: 'check' },
+  { id: 'reject', label: 'Keep Stopped', icon: 'block' },
 ];
 
 function getInitialRunningCheckTargetForSection(sectionTitle = null) {
@@ -663,8 +663,8 @@ function formatTerminalQuestion(question) {
 function buildTerminalPermissionContinuationLines(choiceId) {
   if (choiceId === 'allow-session') {
     return [
-      { type: 'output', text: 'Permission granted for this session' },
-      { type: 'output', text: 'Starting agent execution...' },
+      { type: 'output', text: 'Continuing execution for this session' },
+      { type: 'output', text: 'Resuming remaining steps...' },
       { type: 'output', text: 'Applying generated specification...' },
       { type: 'success', text: 'Run finished without issues' },
     ];
@@ -672,8 +672,8 @@ function buildTerminalPermissionContinuationLines(choiceId) {
 
   if (choiceId === 'allow-once') {
     return [
-      { type: 'output', text: 'Permission granted for this run' },
-      { type: 'output', text: 'Starting agent execution...' },
+      { type: 'output', text: 'Continuing this run' },
+      { type: 'output', text: 'Resuming remaining steps...' },
       { type: 'output', text: 'Applying generated specification...' },
       { type: 'success', text: 'Run finished without issues' },
     ];
@@ -681,7 +681,7 @@ function buildTerminalPermissionContinuationLines(choiceId) {
 
   if (choiceId === 'reject') {
     return [
-      { type: 'error', text: 'Execution rejected' },
+      { type: 'error', text: 'Execution remains stopped' },
     ];
   }
 
@@ -809,7 +809,6 @@ function TerminalPermissionPrompt({
   selectedIdx,
   onMoveSelection,
   onSelect,
-  onHover,
 }) {
   const promptRef = useRef(null);
 
@@ -825,13 +824,13 @@ function TerminalPermissionPrompt({
       className="terminal-permission-prompt text-editor-default"
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.key === 'ArrowDown') {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
           event.preventDefault();
           onMoveSelection(1);
           return;
         }
 
-        if (event.key === 'ArrowUp') {
+        if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
           event.preventDefault();
           onMoveSelection(-1);
           return;
@@ -866,7 +865,6 @@ function TerminalPermissionPrompt({
               type="button"
               className={`terminal-permission-option${isSelected ? ' is-selected' : ''}`}
               data-demo-id={`terminal-permission-${option.id}`}
-              onMouseEnter={() => onHover(idx)}
               onClick={() => onSelect(option.id)}
             >
               <span className={`terminal-permission-icon terminal-permission-icon-${iconKind}`} aria-hidden="true">
@@ -2288,11 +2286,28 @@ const COMPLETION_PREVIEW_LIBRARY = {
   },
   'Autonomous.md': {
     previewLines: [
-      '## Text',
-      '- Autocomplete 100%.',
-      '- Autocomplete for a skill would be even better.',
+      '## Skill Autocomplete',
+      'Skill autocomplete helps the user reference agent capabilities directly from a Markdown task document without memorizing exact skill names.',
+      '## Behavior',
+      '- Typing `$` opens a completion popup with available skills.',
+      '- Suggestions are filtered by skill name, aliases, and description.',
+      '- Each suggestion shows the skill name, source, and a short description.',
+      '- Selecting a suggestion inserts a stable mention such as `$browser` or `$openai-docs`.',
+      '- Keyboard navigation follows the same rules as file autocomplete: Arrow keys move selection, Enter or Tab accepts, Escape closes.',
+      '## Relationship to References',
+      '- `$` is reserved for skills.',
+      '- `@` remains reserved for files, specs, and other reference documents.',
+      '- Skills should not appear in the project tree because they are capabilities, not project files.',
+      '## Validation',
+      '- Known skill mentions are rendered as normal inline references.',
+      '- Unknown skill mentions should be highlighted as unresolved.',
+      '- A quick fix can remove an unknown mention or replace it with a known skill.',
+      '## Notes',
+      '- A skill mention adds context for the agent.',
+      '- Mentioning a skill does not execute it immediately.',
+      '- The completion popup should reuse the existing reference autocomplete interaction model.',
     ],
-    sections: ['Text'],
+    sections: ['Skill Autocomplete', 'Behavior', 'Relationship to References', 'Validation', 'Notes'],
   },
   'visit-booking-inspections.md': {
     previewLines: [
@@ -4407,6 +4422,51 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
   );
 }
 
+function DoneEmptyLine({ commentAdornment = null }) {
+  const [hasText, setHasText] = useState(false);
+
+  const handleInput = useCallback((event) => {
+    setHasText((event.currentTarget.textContent ?? '').length > 0);
+  }, []);
+
+  return (
+    <div className={`spec-done-line spec-done-line-empty${hasText ? ' has-text' : ''}`}>
+      <div
+        className="spec-done-line-empty-editable"
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+      />
+      {commentAdornment && !hasText && (
+        <span className="spec-done-empty-line-comment-icon">{commentAdornment}</span>
+      )}
+    </div>
+  );
+}
+
+function DoneEditableText({ text = '', className = '' }) {
+  const ref = useRef(null);
+  const normalizedText = String(text ?? '');
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!(el instanceof HTMLElement)) return;
+    if (document.activeElement === el) return;
+    if (el.textContent !== normalizedText) {
+      el.textContent = normalizedText;
+    }
+  }, [normalizedText]);
+
+  return (
+    <span
+      ref={ref}
+      className={className || undefined}
+      contentEditable
+      suppressContentEditableWarning
+    />
+  );
+}
+
 const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
 
 function getInlineInspectionTooltipData(highlight = null, issue = null) {
@@ -4610,7 +4670,7 @@ function renderDoneMarkdownInline(text, highlight = null, issue = null, onAccept
   });
 }
 
-function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', onOpenFile = null }) {
+function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', onOpenFile = null, onAddFile = null, onRemoveFile = null }) {
   const normalizedInitialFiles = useMemo(
     () => normalizeDoneFileEntries(initialFiles),
     [initialFiles]
@@ -4626,7 +4686,9 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
   }, [normalizedInitialFilesSignature]);
 
   const removeFile = (labelToRemove) => {
+    const removedFile = files.find((file) => file.label === labelToRemove) ?? { label: labelToRemove };
     setFiles((prev) => prev.filter((file) => file.label !== labelToRemove));
+    onRemoveFile?.(removedFile);
   };
 
   const openAddPopup = () => {
@@ -4675,7 +4737,9 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
           <AddPopup
             onClose={() => setShowAddPopup(false)}
             onSelectFile={(item) => {
-              setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, { label: item.label }]);
+              const nextFile = { label: item.label, description: item.description };
+              setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, nextFile]);
+              onAddFile?.(nextFile);
             }}
             files={addPopupFiles}
             style={{ position: 'fixed', ...popupPos }}
@@ -4889,7 +4953,7 @@ function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }
   );
 }
 
-function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, onOpenFile = null }) {
+function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, onOpenFile = null, onAddFile = null, onRemoveFile = null }) {
   return (
     <div className="spec-done-heading-row">
       <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
@@ -4901,6 +4965,8 @@ function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, comment
         addButtonLabel={`Add file to ${title}`}
         className="spec-done-heading-files"
         onOpenFile={onOpenFile}
+        onAddFile={onAddFile}
+        onRemoveFile={onRemoveFile}
       />
       {commentAdornment}
     </div>
@@ -4937,7 +5003,7 @@ function CheckStatus({ status, outdated = false }) {
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
         {normalizedStatus === 'pending'
           ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
-          : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
+          : <rect x="0" y="0" width="16" height="16" rx="4" fill="currentColor" />
         }
         {normalizedStatus === 'passed'
           ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -4998,7 +5064,7 @@ function AcCheckRow({ checkItem, text, isIssueActive = false, commentAdornment =
           ? <RunningCheckLoader />
           : <CheckStatus status={visualStatus} outdated={isOutdated} />
         }
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, () => { setProposalAccepted(true); onProposalAccept?.(); }, () => setProposalRejected(true))}</span>
+        <DoneEditableText text={displayText} />
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
@@ -5135,7 +5201,7 @@ function normalizeDoneFileEntries(files = []) {
   const normalizedFiles = Array.isArray(files)
     ? files
       .map((file) => (typeof file === 'string' ? { label: file } : file))
-      .filter((file) => typeof file?.label === 'string' && file.label.trim().length > 0)
+      .filter((file) => typeof file?.label === 'string' && file.label.trim().length > 0 && !file.removed)
     : [];
 
   return normalizedFiles.filter((file, index, items) => (
@@ -5145,15 +5211,25 @@ function normalizeDoneFileEntries(files = []) {
 
 function getDonePlanHeadingFiles(sectionMeta = null, attachedFiles = []) {
   const initialFiles = [];
+  const removedLabels = new Set(
+    (attachedFiles ?? [])
+      .filter((file) => file?.removed && typeof file?.label === 'string')
+      .map((file) => file.label)
+  );
 
-  if (sectionMeta?.kind === 'chip' && typeof sectionMeta.text === 'string' && sectionMeta.text.trim().length > 0) {
-    initialFiles.push(sectionMeta.text);
+  if (
+    sectionMeta?.kind === 'chip'
+    && typeof sectionMeta.text === 'string'
+    && sectionMeta.text.trim().length > 0
+    && !removedLabels.has(sectionMeta.text)
+  ) {
+    initialFiles.push({ label: sectionMeta.text, source: 'meta' });
   }
 
   (attachedFiles ?? []).forEach((file) => {
     const label = typeof file === 'string' ? file : file?.label;
-    if (label === 'Configuration.md') {
-      initialFiles.push(label);
+    if (typeof label === 'string' && label.toLowerCase().endsWith('.md') && !file?.removed) {
+      initialFiles.push({ ...(typeof file === 'object' ? file : {}), label, source: 'attached' });
     }
   });
 
@@ -5169,7 +5245,9 @@ function getDoneAcceptanceHeadingFiles(sectionMeta = null, attachedFiles = []) {
 
   (attachedFiles ?? []).forEach((file) => {
     const label = typeof file === 'string' ? file : file?.label;
-    initialFiles.push(label);
+    if (typeof label === 'string' && !file?.removed) {
+      initialFiles.push(label);
+    }
   });
 
   return normalizeDoneFileEntries(initialFiles);
@@ -5961,7 +6039,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
         ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} />
         : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
       }
-      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
+      <DoneEditableText className="spec-done-plan-text" text={text} />
       {commentAdornment}
       {canShowDiff && !isNested && (
         <button
@@ -5979,7 +6057,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false, isRunning = false, specSessionKey = null, onOpenReferenceFile = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, nestingLevel = 0, onProposalAccept = null, hasPlanComment = false, isRunning = false, specSessionKey = null, onOpenReferenceFile = null, onAddReferenceFile = null, onRemoveReferenceFile = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -5992,11 +6070,13 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
           onOpenFile={onOpenReferenceFile}
+          onAddFile={onAddReferenceFile}
+          onRemoveFile={onRemoveReferenceFile}
         />
       );
     }
     if (headingTitle.toLowerCase() === 'acceptance criteria') {
-      const initialFiles = getDoneAcceptanceHeadingFiles(sectionMeta, attachedFiles);
+      const initialFiles = getDoneAcceptanceHeadingFiles(sectionMeta, []);
       return (
         <DoneHeadingWithFiles
           key={key}
@@ -6023,7 +6103,6 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   }
   const checkMatch = line.match(/^(\s*)- \[([ x])\]\s+(.*)$/i);
   if (checkMatch) {
-    const checked = checkMatch[2].toLowerCase() === 'x';
     if (checkStatus != null) {
       return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} isRunning={isRunning} />;
     }
@@ -6048,19 +6127,19 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
       <div key={key} className="spec-done-line spec-done-line-check">
         {isRunning
           ? <RunningCheckLoader />
-          : <Checkbox className="spec-done-checkbox" checked={checked} onChange={() => {}} />
+          : <Checkbox className="spec-done-checkbox" checked={checkMatch[2].toLowerCase() === 'x'} onChange={() => {}} />
         }
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(checkMatch[3])}</span>
+        <DoneEditableText text={checkMatch[3]} />
         {commentAdornment}
       </div>
     );
   }
-  const bulletMatch = line.match(/^-\s+(.*)$/);
+  const bulletMatch = line.match(/^(\s*)-\s+(.*)$/);
   if (bulletMatch) {
     return (
       <div key={key} className="spec-done-line spec-done-line-bullet">
         <span className="spec-done-bullet">•</span>
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(bulletMatch[1])}</span>
+        <DoneEditableText text={bulletMatch[2]} />
         {commentAdornment}
       </div>
     );
@@ -6070,24 +6149,17 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     return (
       <div key={key} className="spec-done-line spec-done-line-comment">
         <span className="spec-comment-prefix">//</span>
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(commentMatch[1])}</span>
+        <DoneEditableText text={commentMatch[1]} />
         {commentAdornment}
       </div>
     );
   }
   if (!line.trim()) {
-    return (
-      <div key={key} className="spec-done-line spec-done-line-empty">
-        <div className="spec-done-line-empty-editable" contentEditable suppressContentEditableWarning />
-        {commentAdornment && (
-          <span className="spec-done-empty-line-comment-icon">{commentAdornment}</span>
-        )}
-      </div>
-    );
+    return <DoneEmptyLine key={key} commentAdornment={commentAdornment} />;
   }
   return (
     <div key={key} className="spec-done-line spec-done-line-text">
-      <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(line)}</span>
+      <DoneEditableText text={line} />
       {commentAdornment}
     </div>
   );
@@ -6650,7 +6722,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenReferenceFile, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, runningCheckTarget = null, specSessionKey = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenReferenceFile, onAddReferenceFile, onRemoveReferenceFile, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, runningCheckTarget = null, specSessionKey = null }) {
   const effectiveDocumentSections = useMemo(
     () => normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section)),
     [documentSections]
@@ -6762,11 +6834,23 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [clearedRowKeys, setClearedRowKeys] = useState(() => new Set());
   const pendingFocusRowKeyRef = useRef(null);
   const pendingFocusNextRowKeyRef = useRef(null);
+  const pendingFocusRawIndexRef = useRef(null);
+  const pendingCaretRestoreRef = useRef(null);
+  const desiredNavigationColumnRef = useRef(null);
   const scrollRef = useRef(null);
   const [selectionToolbarPos, setSelectionToolbarPos] = useState(null);
   const [activeIssueRowKey, setActiveIssueRowKey] = useState(null);
   const [navigatedIssueRowKey, setNavigatedIssueRowKey] = useState(null);
   const [focusedCommentRowKey, setFocusedCommentRowKey] = useState(null);
+  const [activeLineRowKey, setActiveLineRowKey] = useState(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState(() => new Set());
+  const selectedRowKeysRef = useRef(selectedRowKeys);
+  const rowSelectionDragRef = useRef({ isDragging: false, hasCustomSelection: false, startRowIndex: null });
+  const applySelectedRowKeys = useCallback((nextKeys) => {
+    const normalizedKeys = nextKeys instanceof Set ? nextKeys : new Set(nextKeys);
+    selectedRowKeysRef.current = normalizedKeys;
+    setSelectedRowKeys(normalizedKeys);
+  }, []);
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
   const [isVisitBookingPresetRowSelectionDismissed, setIsVisitBookingPresetRowSelectionDismissed] = useState(false);
   const [commentPopup, setCommentPopup] = useState(null);
@@ -7036,7 +7120,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
   }, []);
 
-  const focusDoneRowEditable = useCallback((rowIndex) => {
+  const focusDoneRowEditable = useCallback((rowIndex, position = 'end') => {
     if (!Number.isInteger(rowIndex)) return;
 
     const editable = scrollRef.current?.querySelector(`.spec-done-row[data-row-index="${rowIndex}"] [contenteditable]`);
@@ -7049,10 +7133,42 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
     const range = document.createRange();
     range.selectNodeContents(editable);
-    range.collapse(false);
+    if (typeof position === 'number') {
+      const targetOffset = Math.max(0, position);
+      const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+      let remaining = targetOffset;
+      let node = walker.nextNode();
+
+      while (node) {
+        const textLength = node.textContent?.length ?? 0;
+        if (remaining <= textLength) {
+          range.setStart(node, remaining);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return;
+        }
+
+        remaining -= textLength;
+        node = walker.nextNode();
+      }
+
+      range.selectNodeContents(editable);
+      range.collapse(false);
+    } else {
+      range.collapse(position === 'start');
+    }
     selection.removeAllRanges();
     selection.addRange(range);
   }, []);
+
+  const focusDoneRawLineEditable = useCallback((rawIndex, position = 'start') => {
+    if (!Number.isInteger(rawIndex)) return;
+    const rowIndex = rowMetaList.find((rowMeta) => rowMeta.rawIndex === rawIndex)?.rowIndex;
+    if (Number.isInteger(rowIndex)) {
+      focusDoneRowEditable(rowIndex, position);
+    }
+  }, [focusDoneRowEditable, rowMetaList]);
 
   const navigateInspectionIssue = useCallback((direction) => {
     if (issueRowKeys.length === 0) return;
@@ -7304,6 +7420,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const range = sel.getRangeAt(0).cloneRange();
       range.setStart(editable, 0);
       const textBefore = range.toString();
+      const row = editable.closest('.spec-done-row');
+      const rawIndex = Number(row?.dataset.rawIndex);
       const match = textBefore.match(/@(\w*)$/);
       if (match) {
         const query = match[1];
@@ -7326,6 +7444,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       }
 
       const nextDraftCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const hasDraftChange = normalizeSpecCodeForComparison(draftCodeRef.current) !== normalizeSpecCodeForComparison(nextDraftCode);
+      draftCodeRef.current = nextDraftCode;
+      if (hasDraftChange && Number.isInteger(rawIndex)) {
+        pendingCaretRestoreRef.current = { rawIndex, offset: textBefore.length };
+      }
       setDraftCode((prev) => (
         normalizeSpecCodeForComparison(prev) === normalizeSpecCodeForComparison(nextDraftCode)
           ? prev
@@ -7415,7 +7538,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [rowMetaList]);
 
 
-  // After deletedRowKeys changes, move focus to the next row
+  // After deletedRowKeys changes, move focus to the adjacent row.
   useEffect(() => {
     const key = pendingFocusNextRowKeyRef.current;
     if (!key) return;
@@ -7425,7 +7548,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       if (!el) return;
       const row = el.querySelector(`.spec-done-row[data-row-key="${CSS.escape(key)}"]`);
       const editable = row?.querySelector('[contenteditable]');
-      if (editable instanceof HTMLElement) editable.focus();
+      if (editable instanceof HTMLElement) {
+        editable.focus();
+        const selection = window.getSelection();
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(editable);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [deletedRowKeys]);
@@ -7446,12 +7578,577 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return () => cancelAnimationFrame(frame);
   }, [clearedRowKeys]);
 
+  useEffect(() => {
+    const rawIndex = pendingFocusRawIndexRef.current;
+    if (!Number.isInteger(rawIndex)) return;
+    pendingFocusRawIndexRef.current = null;
+
+    const frame = requestAnimationFrame(() => {
+      focusDoneRawLineEditable(rawIndex, 'start');
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [draftCode, focusDoneRawLineEditable]);
+
+  useLayoutEffect(() => {
+    const pending = pendingCaretRestoreRef.current;
+    if (!pending || !Number.isInteger(pending.rawIndex) || !Number.isInteger(pending.offset)) return;
+    pendingCaretRestoreRef.current = null;
+    focusDoneRawLineEditable(pending.rawIndex, pending.offset);
+  }, [draftCode, focusDoneRawLineEditable]);
+
   // Backspace on empty row → delete row; clear content → strip prefix/checkbox
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
+    const getEditableCaretOffset = (editable) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !editable.contains(selection.anchorNode)) {
+        return (editable.textContent ?? '').length;
+      }
+
+      const range = selection.getRangeAt(0).cloneRange();
+      range.selectNodeContents(editable);
+      range.setEnd(selection.anchorNode, selection.anchorOffset);
+      return range.toString().length;
+    };
+
+    const focusEditableAtOffset = (editable, offset) => {
+      if (!(editable instanceof HTMLElement)) return false;
+
+      editable.focus({ preventScroll: true });
+
+      const selection = window.getSelection();
+      if (!selection) return false;
+
+      const targetOffset = Math.max(0, Math.min(offset, editable.textContent?.length ?? 0));
+      const range = document.createRange();
+      const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+      let remaining = targetOffset;
+      let node = walker.nextNode();
+
+      while (node) {
+        const textLength = node.textContent?.length ?? 0;
+        if (remaining <= textLength) {
+          range.setStart(node, remaining);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          editable.closest('.spec-done-row')?.scrollIntoView({ block: 'nearest' });
+          return true;
+        }
+
+        remaining -= textLength;
+        node = walker.nextNode();
+      }
+
+      range.selectNodeContents(editable);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editable.closest('.spec-done-row')?.scrollIntoView({ block: 'nearest' });
+      return true;
+    };
+
+    const getNavigableRows = () => Array.from(el.querySelectorAll('.spec-done-row[data-row-index]'))
+      .filter((row) => (
+        row instanceof HTMLElement
+        && row.dataset.deleted !== 'true'
+        && getComputedStyle(row).display !== 'none'
+        && row.querySelector('[contenteditable]') instanceof HTMLElement
+      ));
+
+    const focusAdjacentEditableRow = (currentRow, direction, offset) => {
+      if (!(currentRow instanceof HTMLElement)) return false;
+
+      const rows = getNavigableRows();
+      const currentIndex = rows.indexOf(currentRow);
+      if (currentIndex < 0) return false;
+
+      const targetRow = rows[currentIndex + direction];
+      const targetEditable = targetRow?.querySelector('[contenteditable]');
+      if (!(targetEditable instanceof HTMLElement)) return false;
+
+      return focusEditableAtOffset(targetEditable, offset);
+    };
+
+    const handleArrowNavigation = (e) => {
+      if (doneCmpPos || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return false;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
+        desiredNavigationColumnRef.current = null;
+        return false;
+      }
+
+      const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
+      if (!editable || !el.contains(editable)) return false;
+
+      const selection = window.getSelection();
+      if (!selection || !selection.isCollapsed) return false;
+
+      const row = editable.closest('.spec-done-row');
+      const textLength = editable.textContent?.length ?? 0;
+      const caretOffset = getEditableCaretOffset(editable);
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const desiredColumn = Number.isInteger(desiredNavigationColumnRef.current)
+          ? desiredNavigationColumnRef.current
+          : caretOffset;
+        desiredNavigationColumnRef.current = desiredColumn;
+        if (!focusAdjacentEditableRow(row, e.key === 'ArrowUp' ? -1 : 1, desiredColumn)) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+      }
+
+      desiredNavigationColumnRef.current = null;
+      if (e.key === 'ArrowLeft' && caretOffset === 0) {
+        if (!focusAdjacentEditableRow(row, -1, Number.MAX_SAFE_INTEGER)) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+      }
+
+      if (e.key === 'ArrowRight' && caretOffset >= textLength) {
+        if (!focusAdjacentEditableRow(row, 1, 0)) return false;
+        e.preventDefault();
+        e.stopPropagation();
+        return true;
+      }
+
+      return false;
+    };
+
+    const splitLineAtCaret = (sourceLine, editableText, caretOffset) => {
+      const normalizedEditableText = String(editableText ?? '').replace(/\u200B/g, '').replace(/\u00A0/g, ' ');
+      const splitOffset = Math.max(0, Math.min(caretOffset, normalizedEditableText.length));
+      const beforeText = normalizedEditableText.slice(0, splitOffset);
+      const afterText = normalizedEditableText.slice(splitOffset);
+      const line = typeof sourceLine === 'string' ? sourceLine : '';
+
+      const headingMatch = line.match(/^(\s*##\s+)(.*)$/);
+      if (headingMatch) {
+        return [`${headingMatch[1]}${beforeText}`.trimEnd(), afterText.trimStart()];
+      }
+
+      const checkMatch = line.match(/^(\s*-\s+\[[ x]\]\s+)(.*)$/i);
+      if (checkMatch) {
+        return [`${checkMatch[1]}${beforeText}`.trimEnd(), afterText.trimStart()];
+      }
+
+      const bulletMatch = line.match(/^(\s*-\s+)(.*)$/);
+      if (bulletMatch) {
+        const nextBulletText = afterText.trimStart();
+        return [
+          `${bulletMatch[1]}${beforeText}`.trimEnd(),
+          nextBulletText ? `${bulletMatch[1]}${nextBulletText}` : bulletMatch[1],
+        ];
+      }
+
+      const commentMatch = line.match(/^(\s*\/\/\s?)(.*)$/);
+      if (commentMatch) {
+        return [`${commentMatch[1]}${beforeText}`.trimEnd(), afterText ? `// ${afterText.trimStart()}` : ''];
+      }
+
+      return [beforeText.trimEnd(), afterText.trimStart()];
+    };
+
+    const applyEditableTextToSourceLine = (sourceLine, editableText) => {
+      const normalizedEditableText = String(editableText ?? '').replace(/\u200B/g, '').replace(/\u00A0/g, ' ');
+      const line = typeof sourceLine === 'string' ? sourceLine : '';
+
+      const headingMatch = line.match(/^(\s*##\s+)(.*)$/);
+      if (headingMatch) {
+        return `${headingMatch[1]}${normalizedEditableText}`.trimEnd();
+      }
+
+      const checkMatch = line.match(/^(\s*-\s+\[[ x]\]\s+)(.*)$/i);
+      if (checkMatch) {
+        return `${checkMatch[1]}${normalizedEditableText}`.trimEnd();
+      }
+
+      const bulletMatch = line.match(/^(\s*-\s+)(.*)$/);
+      if (bulletMatch) {
+        return `${bulletMatch[1]}${normalizedEditableText}`.trimEnd();
+      }
+
+      const commentMatch = line.match(/^(\s*\/\/\s?)(.*)$/);
+      if (commentMatch) {
+        return `${commentMatch[1]}${normalizedEditableText}`.trimEnd();
+      }
+
+      return normalizedEditableText.trimEnd();
+    };
+
+    const getEditableSelectionOffsets = (editable) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !editable.contains(selection.anchorNode) || !editable.contains(selection.focusNode)) {
+        const endOffset = (editable.textContent ?? '').length;
+        return { start: endOffset, end: endOffset };
+      }
+
+      const range = selection.getRangeAt(0);
+      const contentsRange = document.createRange();
+      contentsRange.selectNodeContents(editable);
+
+      const startRange = contentsRange.cloneRange();
+      startRange.setEnd(range.startContainer, range.startOffset);
+      const start = startRange.toString().length;
+
+      const endRange = contentsRange.cloneRange();
+      endRange.setEnd(range.endContainer, range.endOffset);
+      const end = endRange.toString().length;
+
+      return { start: Math.min(start, end), end: Math.max(start, end) };
+    };
+
+    const normalizePastedLines = (text) => {
+      const lines = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
+      if (lines.length > 1 && lines[lines.length - 1] === '') {
+        lines.pop();
+      }
+      return lines;
+    };
+
+    const getVirtualInsertionRawIndex = (row) => {
+      if (!(row instanceof HTMLElement)) return null;
+      const rowIndex = Number(row.dataset.rowIndex);
+      if (!Number.isInteger(rowIndex)) return null;
+
+      const allRows = Array.from(el.querySelectorAll('.spec-done-row[data-row-index]'));
+      const visibleIndex = allRows.indexOf(row);
+      if (visibleIndex < 0) return null;
+
+      return allRows
+        .slice(0, visibleIndex)
+        .reduce((count, currentRow) => (
+          Number.isInteger(Number(currentRow.dataset.rawIndex)) ? count + 1 : count
+        ), 0);
+    };
+
+    const materializeVirtualRow = (row, linesToInsert, focusOffset = null) => {
+      const insertionRawIndex = getVirtualInsertionRawIndex(row);
+      if (!Number.isInteger(insertionRawIndex)) return null;
+
+      const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const lines = snapshotCode.split(/\r?\n/);
+      const normalizedLines = Array.isArray(linesToInsert)
+        ? linesToInsert
+        : [String(linesToInsert ?? '')];
+
+      lines.splice(insertionRawIndex, 0, ...normalizedLines);
+      draftCodeRef.current = lines.join('\n');
+      pendingCaretRestoreRef.current = {
+        rawIndex: insertionRawIndex,
+        offset: Number.isInteger(focusOffset)
+          ? focusOffset
+          : (normalizedLines[0]?.length ?? 0),
+      };
+      setActiveLineRowKey(null);
+      setDraftCode(draftCodeRef.current);
+      onUserInput?.();
+      updateEditedLinesState();
+      return insertionRawIndex;
+    };
+
+    const getSelectedRawIndices = () => {
+      const customSelectedRawIndices = Array.from(selectedRowKeysRef.current)
+        .map((rowKey) => el.querySelector(`.spec-done-row[data-row-key="${CSS.escape(rowKey)}"]`))
+        .map((row) => Number(row?.dataset.rawIndex))
+        .filter((rawIndex) => Number.isInteger(rawIndex) && rawIndex >= 0);
+      if (customSelectedRawIndices.length > 1) {
+        return customSelectedRawIndices;
+      }
+
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return [];
+      }
+
+      const anchorNode = selection.anchorNode;
+      const focusNode = selection.focusNode;
+      const anchorElement = anchorNode?.nodeType === Node.TEXT_NODE ? anchorNode.parentElement : anchorNode;
+      const focusElement = focusNode?.nodeType === Node.TEXT_NODE ? focusNode.parentElement : focusNode;
+      const anchorRow = anchorElement?.closest?.('.spec-done-row');
+      const focusRow = focusElement?.closest?.('.spec-done-row');
+
+      if (!anchorRow || !focusRow || !el.contains(anchorRow) || !el.contains(focusRow)) {
+        return [];
+      }
+
+      const rows = Array.from(el.querySelectorAll('.spec-done-row[data-row-index]'));
+      const anchorIndex = rows.indexOf(anchorRow);
+      const focusIndex = rows.indexOf(focusRow);
+
+      if (anchorIndex < 0 || focusIndex < 0 || anchorIndex === focusIndex) {
+        return [];
+      }
+
+      const start = Math.min(anchorIndex, focusIndex);
+      const end = Math.max(anchorIndex, focusIndex);
+
+      return rows
+        .slice(start, end + 1)
+        .map((row) => Number(row.dataset.rawIndex))
+        .filter((rawIndex) => Number.isInteger(rawIndex) && rawIndex >= 0);
+    };
+
+    const deleteSelectedRows = () => {
+      const rawIndices = Array.from(new Set(getSelectedRawIndices())).sort((a, b) => a - b);
+      if (rawIndices.length <= 1) return false;
+
+      const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const lines = snapshotCode.split(/\r?\n/);
+      const selected = new Set(rawIndices);
+      const nextLines = lines.filter((_, index) => !selected.has(index));
+      const focusRawIndex = Math.min(rawIndices[0], Math.max(0, nextLines.length - 1));
+
+      pendingFocusRawIndexRef.current = focusRawIndex;
+      setDraftCode(nextLines.join('\n'));
+      onUserInput?.();
+      updateEditedLinesState();
+      rowSelectionDragRef.current = { isDragging: false, hasCustomSelection: false, startRowIndex: null };
+      applySelectedRowKeys(new Set());
+      window.getSelection()?.removeAllRanges();
+      return true;
+    };
+
+    const getSelectedRowsClipboardText = () => {
+      const rawIndices = Array.from(new Set(getSelectedRawIndices())).sort((a, b) => a - b);
+      if (rawIndices.length <= 1) return null;
+
+      const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const lines = snapshotCode.split(/\r?\n/);
+      return rawIndices
+        .map((rawIndex) => lines[rawIndex] ?? '')
+        .join('\n');
+    };
+
+    const replaceSelectedRowsWithLines = (insertedLines) => {
+      const rawIndices = Array.from(new Set(getSelectedRawIndices())).sort((a, b) => a - b);
+      if (rawIndices.length <= 1) return false;
+
+      const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const lines = snapshotCode.split(/\r?\n/);
+      const selected = new Set(rawIndices);
+      const insertAt = rawIndices[0];
+      const nextLines = [];
+      lines.forEach((line, index) => {
+        if (index === insertAt) {
+          nextLines.push(...insertedLines);
+        }
+        if (!selected.has(index)) {
+          nextLines.push(line);
+        }
+      });
+
+      const focusRawIndex = insertAt + Math.max(0, insertedLines.length - 1);
+      draftCodeRef.current = nextLines.join('\n');
+      pendingCaretRestoreRef.current = {
+        rawIndex: focusRawIndex,
+        offset: insertedLines[insertedLines.length - 1]?.length ?? 0,
+      };
+      rowSelectionDragRef.current = { isDragging: false, hasCustomSelection: false, startRowIndex: null };
+      applySelectedRowKeys(new Set());
+      setActiveLineRowKey(null);
+      setDraftCode(draftCodeRef.current);
+      onUserInput?.();
+      updateEditedLinesState();
+      window.getSelection()?.removeAllRanges();
+      return true;
+    };
+
+    const insertTextIntoEditable = (editable, pastedText) => {
+      const row = editable.closest('.spec-done-row');
+      const rawIndex = Number(row?.dataset.rawIndex);
+      const pastedLines = normalizePastedLines(pastedText);
+      const editableText = String(editable.textContent ?? '').replace(/\u200B/g, '').replace(/\u00A0/g, ' ');
+      const { start, end } = getEditableSelectionOffsets(editable);
+      const beforeText = editableText.slice(0, start);
+      const afterText = editableText.slice(end);
+
+      if (!Number.isInteger(rawIndex) || rawIndex < 0) {
+        if (pastedLines.length === 1) {
+          const nextText = `${beforeText}${pastedLines[0]}${afterText}`;
+          editable.textContent = nextText;
+          focusEditableAtOffset(editable, beforeText.length + pastedLines[0].length);
+          materializeVirtualRow(row, nextText, beforeText.length + pastedLines[0].length);
+          return true;
+        }
+
+        const virtualLines = [
+          `${beforeText}${pastedLines[0]}`,
+          ...pastedLines.slice(1, -1),
+          `${pastedLines[pastedLines.length - 1]}${afterText}`,
+        ];
+        const insertedRawIndex = materializeVirtualRow(row, virtualLines, pastedLines[pastedLines.length - 1]?.length ?? 0);
+        if (Number.isInteger(insertedRawIndex)) {
+          pendingCaretRestoreRef.current = {
+            rawIndex: insertedRawIndex + virtualLines.length - 1,
+            offset: pastedLines[pastedLines.length - 1]?.length ?? 0,
+          };
+        }
+        return true;
+      }
+
+      const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+      const lines = snapshotCode.split(/\r?\n/);
+      const sourceLine = lines[rawIndex] ?? '';
+      const isReplacingEmptyListItem =
+        pastedLines.length > 1
+        && !beforeText
+        && !afterText
+        && /^\s*-\s*(?:\[[ x]\]\s*)?$/i.test(sourceLine);
+      const nextEditableText = `${beforeText}${pastedLines[0]}${afterText}`;
+      const nextLines = isReplacingEmptyListItem
+        ? pastedLines.map((line) => String(line ?? '').trimEnd())
+        : pastedLines.length === 1
+        ? [applyEditableTextToSourceLine(sourceLine, nextEditableText)]
+        : [
+            applyEditableTextToSourceLine(sourceLine, `${beforeText}${pastedLines[0]}`),
+            ...pastedLines.slice(1, -1),
+            `${pastedLines[pastedLines.length - 1]}${afterText}`.trimEnd(),
+          ];
+
+      if (nextLines.length > 1) {
+        editable.blur();
+      } else {
+        editable.textContent = nextEditableText;
+        focusEditableAtOffset(editable, beforeText.length + pastedLines[0].length);
+      }
+      lines.splice(rawIndex, 1, ...nextLines);
+      draftCodeRef.current = lines.join('\n');
+      pendingCaretRestoreRef.current = {
+        rawIndex: rawIndex + nextLines.length - 1,
+        offset: pastedLines[pastedLines.length - 1]?.length ?? 0,
+      };
+      setDraftCode(draftCodeRef.current);
+      onUserInput?.();
+      updateEditedLinesState();
+      return true;
+    };
+
+    const writeClipboardText = (event, text) => {
+      if (!text) return false;
+      event.clipboardData?.setData('text/plain', text);
+      return true;
+    };
+
+    const handleCopy = (e) => {
+      const text = getSelectedRowsClipboardText();
+      if (!writeClipboardText(e, text)) return;
+      e.preventDefault();
+    };
+
+    const handleCut = (e) => {
+      const text = getSelectedRowsClipboardText();
+      if (!writeClipboardText(e, text)) return;
+      e.preventDefault();
+      deleteSelectedRows();
+    };
+
+    const handlePaste = (e) => {
+      const text = e.clipboardData?.getData('text/plain') ?? '';
+      if (!text) return;
+      const pastedLines = normalizePastedLines(text);
+
+      if (replaceSelectedRowsWithLines(pastedLines)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
+      if (!editable || !el.contains(editable)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      insertTextIntoEditable(editable, text);
+    };
+
     const handleKeydown = (e) => {
+      if (handleArrowNavigation(e)) {
+        return;
+      }
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && deleteSelectedRows()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
+        if (editable && el.contains(editable)) {
+          const selection = window.getSelection();
+          const row = editable.closest('.spec-done-row');
+          const rawIndex = Number(row?.dataset.rawIndex);
+          const caretOffset = getEditableCaretOffset(editable);
+          if (selection?.isCollapsed && caretOffset === 0 && Number.isInteger(rawIndex) && rawIndex >= 0) {
+            const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+            const lines = snapshotCode.split(/\r?\n/);
+            const sourceLine = lines[rawIndex] ?? '';
+            if ((editable.textContent ?? '').length > 0 && (/^\s*-\s+\[[ x]\]\s+/i.test(sourceLine) || /^\s*-\s+/.test(sourceLine))) {
+              e.preventDefault();
+              e.stopPropagation();
+
+              lines[rawIndex] = normalizeDoneEditableText(editable.textContent ?? '');
+              pendingCaretRestoreRef.current = { rawIndex, offset: 0 };
+              setDraftCode(lines.join('\n'));
+              onUserInput?.();
+              updateEditedLinesState();
+              return;
+            }
+          }
+        }
+      }
+
+      if (e.key === 'Enter' && !e.shiftKey && !doneCmpPos) {
+        const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
+        if (!editable || !el.contains(editable)) return;
+
+        const row = editable.closest('.spec-done-row');
+        const rawIndex = Number(row?.dataset.rawIndex);
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!Number.isInteger(rawIndex) || rawIndex < 0) {
+          const caretOffset = getEditableCaretOffset(editable);
+          const [currentLine, insertedLine] = splitLineAtCaret('', editable.textContent ?? '', caretOffset);
+          const insertedRawIndex = materializeVirtualRow(row, [currentLine, insertedLine], currentLine.length);
+          if (Number.isInteger(insertedRawIndex)) {
+            pendingFocusRawIndexRef.current = insertedRawIndex + 1;
+          }
+          return;
+        }
+
+        const snapshotCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+        const lines = snapshotCode.split(/\r?\n/);
+        const sourceLine = lines[rawIndex] ?? '';
+        const isEmptyListItem =
+          !normalizeDoneEditableText(editable.textContent ?? '')
+          && (/^\s*-\s+\[[ x]\]\s*$/i.test(sourceLine) || /^\s*-\s*$/.test(sourceLine));
+        if (isEmptyListItem) {
+          lines[rawIndex] = '';
+          draftCodeRef.current = lines.join('\n');
+          pendingCaretRestoreRef.current = { rawIndex, offset: 0 };
+          setActiveLineRowKey(null);
+          setDraftCode(draftCodeRef.current);
+          onUserInput?.();
+          updateEditedLinesState();
+          return;
+        }
+
+        const caretOffset = getEditableCaretOffset(editable);
+        const [currentLine, insertedLine] = splitLineAtCaret(sourceLine, editable.textContent ?? '', caretOffset);
+        lines.splice(rawIndex, 1, currentLine, insertedLine);
+        pendingFocusRawIndexRef.current = rawIndex + 1;
+        setDraftCode(lines.join('\n'));
+        onUserInput?.();
+        updateEditedLinesState();
+        return;
+      }
+
       if (e.key !== 'Backspace') return;
       const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
       if (!editable || !el.contains(editable)) return;
@@ -7460,21 +8157,44 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const row = editable.closest('.spec-done-row');
       const stableKey = typeof row?.dataset.rowKey === 'string' ? row.dataset.rowKey : null;
       if (stableKey) {
-        // Find the next visible row to move focus to after deletion
-        let next = row.nextElementSibling;
-        while (next && (next.dataset.deleted === 'true' || getComputedStyle(next).display === 'none')) {
-          next = next.nextElementSibling;
+        // Prefer the previous visible row so Backspace behaves like caret movement upward.
+        let focusTarget = row.previousElementSibling;
+        while (focusTarget && (focusTarget.dataset.deleted === 'true' || getComputedStyle(focusTarget).display === 'none')) {
+          focusTarget = focusTarget.previousElementSibling;
         }
-        pendingFocusNextRowKeyRef.current = typeof next?.dataset.rowKey === 'string' ? next.dataset.rowKey : null;
+        if (!focusTarget) {
+          focusTarget = row.nextElementSibling;
+          while (focusTarget && (focusTarget.dataset.deleted === 'true' || getComputedStyle(focusTarget).display === 'none')) {
+            focusTarget = focusTarget.nextElementSibling;
+          }
+        }
+        pendingFocusNextRowKeyRef.current = typeof focusTarget?.dataset.rowKey === 'string' ? focusTarget.dataset.rowKey : null;
         setDeletedRowKeys((prev) => { const s = new Set(prev); s.add(stableKey); return s; });
       }
+    };
+
+    const handleDocumentKeydown = (e) => {
+      if (selectedRowKeysRef.current.size <= 1) return;
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      if (!deleteSelectedRows()) return;
+
+      e.preventDefault();
+      e.stopPropagation();
     };
 
     const handleInput = (e) => {
       const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
       if (!editable || !el.contains(editable)) return;
-      if ((editable.textContent ?? '').length > 0) return; // not yet empty
       const row = editable.closest('.spec-done-row');
+      const rawIndex = Number(row?.dataset.rawIndex);
+      if (!Number.isInteger(rawIndex) || rawIndex < 0) {
+        const text = normalizeDoneEditableText(editable.textContent ?? '');
+        if (text) {
+          materializeVirtualRow(row, text, getEditableCaretOffset(editable));
+        }
+        return;
+      }
+      if ((editable.textContent ?? '').length > 0) return; // not yet empty
       const stableKey = typeof row?.dataset.rowKey === 'string' ? row.dataset.rowKey : null;
       if (!stableKey) return;
       // Only strip prefix from check/bullet rows (those with a status or checkbox element)
@@ -7487,12 +8207,26 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     };
 
     el.addEventListener('keydown', handleKeydown);
+    el.addEventListener('copy', handleCopy);
+    el.addEventListener('cut', handleCut);
+    el.addEventListener('paste', handlePaste);
+    document.addEventListener('copy', handleCopy, true);
+    document.addEventListener('cut', handleCut, true);
+    document.addEventListener('paste', handlePaste, true);
+    document.addEventListener('keydown', handleDocumentKeydown, true);
     el.addEventListener('input', handleInput);
     return () => {
       el.removeEventListener('keydown', handleKeydown);
+      el.removeEventListener('copy', handleCopy);
+      el.removeEventListener('cut', handleCut);
+      el.removeEventListener('paste', handlePaste);
+      document.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('cut', handleCut, true);
+      document.removeEventListener('paste', handlePaste, true);
+      document.removeEventListener('keydown', handleDocumentKeydown, true);
       el.removeEventListener('input', handleInput);
     };
-  }, [normalizedCode]);
+  }, [applySelectedRowKeys, doneCmpPos, normalizedCode, onUserInput, updateEditedLinesState]);
 
   useEffect(() => {
     if (!intentionPopup) return;
@@ -7504,15 +8238,113 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    let frameId = 0;
-    const clearHighlights = () => {
-      el.querySelectorAll('.spec-done-active-line').forEach((node) => node.classList.remove('spec-done-active-line'));
-    };
-    const updateSelectionUi = () => {
-      clearHighlights();
 
+    const getEventRow = (event) => {
+      const targetRow = event.target instanceof Element
+        ? event.target.closest('.spec-done-row[data-row-index]')
+        : null;
+      if (targetRow && el.contains(targetRow)) return targetRow;
+
+      const hitElement = document.elementFromPoint(event.clientX, event.clientY);
+      const hitRow = hitElement?.closest?.('.spec-done-row[data-row-index]');
+      return hitRow && el.contains(hitRow) ? hitRow : null;
+    };
+
+    const applyRowSelectionRange = (startRowIndex, endRowIndex) => {
+      const rows = Array.from(el.querySelectorAll('.spec-done-row[data-row-index]'));
+      const start = Math.min(startRowIndex, endRowIndex);
+      const end = Math.max(startRowIndex, endRowIndex);
+      const selectedKeys = rows
+        .filter((row) => {
+          const rowIndex = Number(row.dataset.rowIndex);
+          return Number.isInteger(rowIndex) && rowIndex >= start && rowIndex <= end;
+        })
+        .map((row) => row.dataset.rowKey)
+        .filter(Boolean);
+
+      applySelectedRowKeys(new Set(selectedKeys));
+    };
+
+    const clearCustomRowSelection = () => {
+      rowSelectionDragRef.current = { isDragging: false, hasCustomSelection: false, startRowIndex: null };
+      applySelectedRowKeys(new Set());
+    };
+
+    const handlePointerDown = (event) => {
+      if (event.button !== 0) return;
+      const targetElement = event.target instanceof Element ? event.target : null;
+      if (targetElement?.closest('button, a, input, textarea, select, [role="button"], .spec-done-comment-adornment, .spec-done-gutter-intention-btn, .spec-done-gutter-item-run-btn, .spec-done-gutter-breakpoint-btn')) {
+        return;
+      }
+
+      const row = getEventRow(event);
+      const rowIndex = Number(row?.dataset.rowIndex);
+      if (!Number.isInteger(rowIndex)) {
+        clearCustomRowSelection();
+        return;
+      }
+
+      rowSelectionDragRef.current = { isDragging: true, hasCustomSelection: false, startRowIndex: rowIndex };
+      applySelectedRowKeys(new Set());
+    };
+
+    const handlePointerMove = (event) => {
+      const dragState = rowSelectionDragRef.current;
+      if (!dragState.isDragging || !Number.isInteger(dragState.startRowIndex)) return;
+
+      const row = getEventRow(event);
+      const rowIndex = Number(row?.dataset.rowIndex);
+      if (!Number.isInteger(rowIndex) || rowIndex === dragState.startRowIndex) return;
+
+      event.preventDefault();
+      window.getSelection()?.removeAllRanges();
+      rowSelectionDragRef.current = { ...dragState, hasCustomSelection: true };
+      applyRowSelectionRange(dragState.startRowIndex, rowIndex);
+      setActiveLineRowKey(null);
+      setSelectionToolbarPos(null);
+    };
+
+    const handlePointerUp = () => {
+      const dragState = rowSelectionDragRef.current;
+      if (!dragState.isDragging) return;
+
+      rowSelectionDragRef.current = {
+        isDragging: false,
+        hasCustomSelection: dragState.hasCustomSelection,
+        startRowIndex: dragState.startRowIndex,
+      };
+
+      if (dragState.hasCustomSelection) {
+        window.getSelection()?.removeAllRanges();
+        setSelectionToolbarPos(null);
+      }
+    };
+
+    el.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      el.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [applySelectedRowKeys]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frameId = 0;
+    const updateSelectionUi = () => {
       const selection = window.getSelection();
+      if (rowSelectionDragRef.current.hasCustomSelection) {
+        setSelectionToolbarPos(null);
+        return;
+      }
+
       if (!selection || selection.rangeCount === 0) {
+        setActiveLineRowKey(null);
+        applySelectedRowKeys(new Set());
         setActiveIssueRowKey(null);
         setNavigatedIssueRowKey(null);
         setFocusedCommentRowKey(null);
@@ -7526,6 +8358,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const focusElement = focusNode?.nodeType === Node.TEXT_NODE ? focusNode.parentElement : focusNode;
 
       if (!anchorElement || !focusElement || !el.contains(anchorElement) || !el.contains(focusElement)) {
+        setActiveLineRowKey(null);
+        applySelectedRowKeys(new Set());
         setActiveIssueRowKey(null);
         setNavigatedIssueRowKey(null);
         setFocusedCommentRowKey(null);
@@ -7535,6 +8369,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
       const anchorEditable = anchorElement.closest('[contenteditable]');
       if (!anchorEditable) {
+        setActiveLineRowKey(null);
+        applySelectedRowKeys(new Set());
         setActiveIssueRowKey(null);
         setNavigatedIssueRowKey(null);
         setFocusedCommentRowKey(null);
@@ -7543,9 +8379,31 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       }
 
       const activeRow = anchorEditable.closest('.spec-done-row');
-      activeRow?.classList.add('spec-done-active-line');
       const activeRowSeverity = activeRow?.dataset.issueSeverity;
       const activeRowKey = typeof activeRow?.dataset.rowKey === 'string' ? activeRow.dataset.rowKey : null;
+      setActiveLineRowKey(activeRowKey);
+
+      const focusRow = focusElement.closest('.spec-done-row');
+      if (!selection.isCollapsed && activeRow && focusRow && activeRow !== focusRow) {
+        const rows = Array.from(el.querySelectorAll('.spec-done-row[data-row-index]'));
+        const anchorRowIndex = rows.indexOf(activeRow);
+        const focusRowIndex = rows.indexOf(focusRow);
+        if (anchorRowIndex >= 0 && focusRowIndex >= 0) {
+          const start = Math.min(anchorRowIndex, focusRowIndex);
+          const end = Math.max(anchorRowIndex, focusRowIndex);
+          applySelectedRowKeys(new Set(
+            rows
+              .slice(start, end + 1)
+              .map((row) => row.dataset.rowKey)
+              .filter(Boolean)
+          ));
+        } else {
+          applySelectedRowKeys(new Set());
+        }
+      } else {
+        applySelectedRowKeys(new Set());
+      }
+
       const nextActiveIssueRowKey =
         activeRowSeverity === 'warning'
         || activeRowSeverity === 'failed'
@@ -7582,15 +8440,24 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     };
 
     document.addEventListener('selectionchange', scheduleSelectionUiUpdate);
+    el.addEventListener('input', scheduleSelectionUiUpdate);
+    el.addEventListener('keyup', scheduleSelectionUiUpdate);
+    el.addEventListener('focusin', scheduleSelectionUiUpdate);
+    el.addEventListener('focusout', scheduleSelectionUiUpdate);
     el.addEventListener('scroll', scheduleSelectionUiUpdate, { passive: true });
     window.addEventListener('resize', scheduleSelectionUiUpdate);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       document.removeEventListener('selectionchange', scheduleSelectionUiUpdate);
+      el.removeEventListener('input', scheduleSelectionUiUpdate);
+      el.removeEventListener('keyup', scheduleSelectionUiUpdate);
+      el.removeEventListener('focusin', scheduleSelectionUiUpdate);
+      el.removeEventListener('focusout', scheduleSelectionUiUpdate);
       el.removeEventListener('scroll', scheduleSelectionUiUpdate);
       window.removeEventListener('resize', scheduleSelectionUiUpdate);
-      clearHighlights();
+      setActiveLineRowKey(null);
+      applySelectedRowKeys(new Set());
       setActiveIssueRowKey(null);
       setNavigatedIssueRowKey(null);
       setFocusedCommentRowKey(null);
@@ -7722,9 +8589,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
     setFocusedCommentRowKey(null);
+    rowSelectionDragRef.current = { isDragging: false, hasCustomSelection: false, startRowIndex: null };
+    applySelectedRowKeys(new Set());
     setCommentPopup(null);
     setIntentionPopup(null);
-  }, [displayRows.length]);
+  }, [applySelectedRowKeys, displayRows.length]);
 
   const previousCommentResetTokenRef = useRef(commentResetToken);
   useEffect(() => {
@@ -7745,9 +8614,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
     setFocusedCommentRowKey(null);
+    rowSelectionDragRef.current = { isDragging: false, hasCustomSelection: false, startRowIndex: null };
+    applySelectedRowKeys(new Set());
     pendingFocusRowKeyRef.current = null;
     pendingFocusNextRowKeyRef.current = null;
-  }, [commentResetToken, normalizedCode]);
+  }, [applySelectedRowKeys, commentResetToken, normalizedCode]);
 
   useEffect(() => {
     if (!Number.isInteger(highlightedProblemRowIndex)) return undefined;
@@ -7885,7 +8756,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${showVisitBookingPlanRowSelection ? ' spec-done-row-selected-highlight' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${activeLineRowKey === stableKey ? ' spec-done-active-line' : ''}${selectedRowKeys.has(stableKey) ? ' spec-done-row-selection-range' : ''}${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${showVisitBookingPlanRowSelection ? ' spec-done-row-selected-highlight' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -8024,6 +8895,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   isRunningCheckTarget,
                   specSessionKey,
                   onOpenReferenceFile,
+                  onAddReferenceFile,
+                  onRemoveReferenceFile,
                 )}
               </div>
             </div>
@@ -8033,7 +8906,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 <div className="spec-done-row-content">
                   <div className="spec-done-line spec-done-line-bullet">
                     <span className="spec-done-bullet">•</span>
-                    <span contentEditable suppressContentEditableWarning>{item}</span>
+                    <DoneEditableText text={item} />
                   </div>
                 </div>
               </div>
@@ -8241,6 +9114,15 @@ function AttachedFileChip({ label, onRemove, onOpen = null, className = '' }) {
     onOpen(event);
   };
 
+  const handleMouseDown = (event) => {
+    if (!isNavigable) return;
+    if (event.target instanceof Element && event.target.closest('.attached-file-remove')) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <div
       className={`attached-file-chip${isNavigable ? ' is-navigable' : ''}${className ? ` ${className}` : ''}`}
@@ -8248,7 +9130,7 @@ function AttachedFileChip({ label, onRemove, onOpen = null, className = '' }) {
       role={isNavigable ? 'button' : undefined}
       tabIndex={isNavigable ? 0 : undefined}
       aria-label={isNavigable ? `Open ${label}` : undefined}
-      onMouseDown={isNavigable ? (event) => event.stopPropagation() : undefined}
+      onMouseDown={isNavigable ? handleMouseDown : undefined}
       onClick={isNavigable ? openFile : undefined}
       onKeyDown={isNavigable
         ? (event) => {
@@ -8329,7 +9211,7 @@ function ReferenceDocumentEditorArea({ code, documentSections, addPopupFiles, on
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenReferenceFile, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, runningCheckTarget = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenReferenceFile, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, planHeadingFiles = [], onAddPlanHeadingFile, onRemovePlanHeadingFile, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, runningCheckTarget = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8349,6 +9231,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const doneEnhanceBtnRef = useRef(null);
   const prevDoneCommentCountRef = useRef(0);
   const prevAttachedFileCountRef = useRef(Array.isArray(attachedFiles) ? attachedFiles.length : 0);
+  const prevPlanHeadingFilesSignatureRef = useRef(
+    Array.isArray(planHeadingFiles)
+      ? planHeadingFiles.map((file) => `${file?.label ?? ''}:${file?.removed ? 'removed' : 'active'}`).join('|')
+      : ''
+  );
   const prevNullSlotCountRef = useRef(0);
   const doneEnhanceBadgeRef = useRef(null);
   const suppressEnhanceBadgeRef = useRef(false);
@@ -8678,6 +9565,26 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     prevAttachedFileCountRef.current = attachedFileCount;
   }, [attachedFiles, genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
 
+  useEffect(() => {
+    if (genState !== 'done') return;
+
+    const planHeadingFilesSignature = Array.isArray(planHeadingFiles)
+      ? planHeadingFiles.map((file) => `${file?.label ?? ''}:${file?.removed ? 'removed' : 'active'}`).join('|')
+      : '';
+
+    if (planHeadingFilesSignature !== prevPlanHeadingFilesSignatureRef.current) {
+      setTimeout(() => {
+        if (isDoneEnhanceLocked) {
+          setDoneEnhanceLockedForSession(false);
+        }
+        liftDoneEnhanceSuppression();
+        allowDoneEnhanceAttentionRef.current = true;
+        setHasPendingDoneEnhanceChanges(true);
+      }, 0);
+    }
+    prevPlanHeadingFilesSignatureRef.current = planHeadingFilesSignature;
+  }, [genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planHeadingFiles, setDoneEnhanceLockedForSession]);
+
   const handlePendingEnhanceStateChange = useCallback((pending) => {
     const hasPendingQuickFixRerun =
       (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
@@ -9000,7 +9907,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={planHeadingFiles} onAddReferenceFile={onAddPlanHeadingFile} onRemoveReferenceFile={onRemovePlanHeadingFile} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -9015,7 +9922,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={planHeadingFiles} onAddReferenceFile={onAddPlanHeadingFile} onRemoveReferenceFile={onRemovePlanHeadingFile} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -9147,7 +10054,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenReferenceFile={onOpenReferenceFile} addPopupFiles={addPopupFiles} attachedFiles={planHeadingFiles} onAddReferenceFile={onAddPlanHeadingFile} onRemoveReferenceFile={onRemovePlanHeadingFile} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} runningCheckTarget={runningCheckTarget} specSessionKey={specSessionKey} />,
           doneOverlayHost
         )}
       </>
@@ -9518,7 +10425,7 @@ function createInitialTerminalSessions() {
       ...createTerminalSessionState({ sourceTabId: 'agent-task-t1', sourceTabLabel: 'visit-booking.md' }),
       blocks: buildTerminalBlocks(VISIT_BOOKING_PLAN_RUN_LOG_LINES),
       permissionPrompt: {
-        question: 'Step 3 completed with a warning. Continue executing remaining plan steps?',
+        question: 'Execution stopped at the user\'s request. Continue running the remaining plan steps?',
         options: TERMINAL_PERMISSION_OPTIONS,
         baseLines: VISIT_BOOKING_PLAN_RUN_LOG_LINES,
         selectedIdx: 0,
@@ -10001,6 +10908,7 @@ export default function App() {
   const [terminalSessions, setTerminalSessions] = useState(() => createInitialTerminalSessions());
   const [terminalBlocks, setTerminalBlocks] = useState([]);
   const [terminalViewKey, setTerminalViewKey] = useState(0);
+  const [terminalPermissionPortalRefreshKey, setTerminalPermissionPortalRefreshKey] = useState(0);
   const [isTerminalStreaming, setIsTerminalStreaming] = useState(false);
   const [pendingTerminalRun, setPendingTerminalRun] = useState(null);
   const [terminalPermissionPrompt, setTerminalPermissionPrompt] = useState(null);
@@ -10042,6 +10950,7 @@ export default function App() {
 
   // Attached files for editor toolbar
   const [attachedFilesByTab, setAttachedFilesByTab] = useState({});
+  const [planHeadingFilesByTab, setPlanHeadingFilesByTab] = useState({});
   const [doneOverlayUiStates, setDoneOverlayUiStates] = useState(() => createInitialDoneOverlayUiStates());
   const [specVersionsByTab, setSpecVersionsByTab] = useState({});
   const [planDiffUiStates, setPlanDiffUiStates] = useState({});
@@ -10109,6 +11018,9 @@ export default function App() {
   const attachedFiles = visibleEditorStateTabId && Array.isArray(attachedFilesByTab[visibleEditorStateTabId])
     ? attachedFilesByTab[visibleEditorStateTabId]
     : [];
+  const planHeadingFiles = visibleEditorStateTabId && Array.isArray(planHeadingFilesByTab[visibleEditorStateTabId])
+    ? planHeadingFilesByTab[visibleEditorStateTabId]
+    : [];
 
   const resolveEditorStateTabId = useCallback((tabId = null) => (
     tabId ?? activeSourceEditorTabId ?? activeEditorTabId ?? generationTabId
@@ -10133,6 +11045,82 @@ export default function App() {
       };
     });
   }, [resolveEditorStateTabId]);
+
+  const updatePlanHeadingFilesForTab = useCallback((updater, tabId = null) => {
+    const resolvedTabId = resolveEditorStateTabId(tabId);
+    if (!resolvedTabId) return;
+
+    setPlanHeadingFilesByTab((prev) => {
+      const previousFiles = Array.isArray(prev[resolvedTabId]) ? prev[resolvedTabId] : [];
+      const nextFiles = typeof updater === 'function' ? updater(previousFiles) : updater;
+      const normalizedNextFiles = Array.isArray(nextFiles) ? nextFiles : [];
+
+      if (normalizedNextFiles === previousFiles) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [resolvedTabId]: normalizedNextFiles,
+      };
+    });
+  }, [resolveEditorStateTabId]);
+
+  const handleAddAttachedFile = useCallback((item) => {
+    if (!item?.label) return;
+
+    updateAttachedFilesForTab((files) => {
+      const activeFiles = files.filter((file) => !(file?.removed && file.label === item.label));
+
+      return activeFiles.some((file) => !file?.removed && file.label === item.label)
+        ? activeFiles
+        : [...activeFiles, { label: item.label, description: item.description }];
+    });
+  }, [updateAttachedFilesForTab]);
+
+  const handleRemoveAttachedFile = useCallback((target) => {
+    updateAttachedFilesForTab((files) => {
+      if (Number.isInteger(target)) {
+        return files.filter((_, index) => index !== target);
+      }
+
+      const label = typeof target === 'string' ? target : target?.label;
+      if (typeof label !== 'string' || label.length === 0) {
+        return files;
+      }
+
+      const withoutLabel = files.filter((file) => file?.label !== label);
+      return target?.source === 'meta'
+        ? [...withoutLabel, { label, removed: true }]
+        : withoutLabel;
+    });
+  }, [updateAttachedFilesForTab]);
+
+  const handleAddPlanHeadingFile = useCallback((item) => {
+    if (!item?.label) return;
+
+    updatePlanHeadingFilesForTab((files) => {
+      const activeFiles = files.filter((file) => !(file?.removed && file.label === item.label));
+
+      return activeFiles.some((file) => !file?.removed && file.label === item.label)
+        ? activeFiles
+        : [...activeFiles, { label: item.label, description: item.description }];
+    });
+  }, [updatePlanHeadingFilesForTab]);
+
+  const handleRemovePlanHeadingFile = useCallback((target) => {
+    updatePlanHeadingFilesForTab((files) => {
+      const label = typeof target === 'string' ? target : target?.label;
+      if (typeof label !== 'string' || label.length === 0) {
+        return files;
+      }
+
+      const withoutLabel = files.filter((file) => file?.label !== label);
+      return target?.source === 'meta'
+        ? [...withoutLabel, { label, removed: true }]
+        : withoutLabel;
+    });
+  }, [updatePlanHeadingFilesForTab]);
 
   const updateDoneOverlayUiStateForTab = useCallback((uiState, tabId = null) => {
     const resolvedTabId = resolveEditorStateTabId(tabId);
@@ -12307,7 +13295,23 @@ export default function App() {
     }
   };
 
+  const activateTerminalSessionForCurrentEditor = useCallback(() => {
+    const sourceTabId = activeSourceEditorTabId ?? activeEditorTabId;
+    if (!sourceTabId?.startsWith('agent-task-')) return;
+
+    const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+    ensureTerminalSession({
+      terminalTabId: buildTerminalSessionTabId(sourceTabId),
+      sourceTabId,
+      label: sourceTab?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
+    });
+  }, [activeEditorTabId, activeSourceEditorTabId, ensureTerminalSession, ideTabs]);
+
   const toggleIdeBottomToolWindow = (id) => {
+    if (id === 'terminal') {
+      activateTerminalSessionForCurrentEditor();
+    }
+
     const stripe = findIdeBottomToolWindowButton(id);
     if (stripe) {
       const isSelected = stripe.getAttribute('aria-pressed') === 'true';
@@ -12320,6 +13324,23 @@ export default function App() {
       return prev.includes(id) ? nonBottomWindows : [...nonBottomWindows, id];
     });
   };
+
+  useEffect(() => {
+    const stripe = findIdeBottomToolWindowButton('terminal');
+    if (!stripe) return undefined;
+
+    const handleTerminalStripeClick = () => {
+      requestAnimationFrame(() => {
+        activateTerminalSessionForCurrentEditor();
+        setTerminalPermissionPortalRefreshKey((prev) => prev + 1);
+      });
+    };
+
+    stripe.addEventListener('click', handleTerminalStripeClick);
+    return () => {
+      stripe.removeEventListener('click', handleTerminalStripeClick);
+    };
+  }, [activateTerminalSessionForCurrentEditor, ideWindowKey]);
 
   const queueTerminalRun = (runRequest, options = {}) => {
     const {
@@ -12382,13 +13403,6 @@ export default function App() {
       if (!prev || prev.options.length === 0) return prev;
       const nextIdx = (prev.selectedIdx + delta + prev.options.length) % prev.options.length;
       return { ...prev, selectedIdx: nextIdx };
-    });
-  }, [setTerminalPermissionPromptForTab]);
-
-  const hoverTerminalPermissionSelection = useCallback((idx) => {
-    setTerminalPermissionPromptForTab((prev) => {
-      if (!prev || idx < 0 || idx >= prev.options.length) return prev;
-      return { ...prev, selectedIdx: idx };
     });
   }, [setTerminalPermissionPromptForTab]);
 
@@ -13897,6 +14911,18 @@ export default function App() {
   const terminalOutputHost = typeof document !== 'undefined'
     ? document.querySelector('.main-window .terminal-window .terminal-output-area')
     : null;
+  useEffect(() => {
+    if (!visibleTerminalPermissionPrompt || !ideOpenWindows.includes('terminal')) return undefined;
+
+    const rafId = requestAnimationFrame(() => {
+      setTerminalPermissionPortalRefreshKey((prev) => prev + 1);
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [ideOpenWindows, resolvedLocalTerminalTabId, visibleTerminalPermissionPrompt]);
+  void terminalPermissionPortalRefreshKey;
   const terminalPermissionPortal =
     visibleTerminalPermissionPrompt && terminalOutputHost instanceof HTMLElement
       ? createPortal(
@@ -13906,7 +14932,6 @@ export default function App() {
             selectedIdx={visibleTerminalPermissionPrompt.selectedIdx}
             onMoveSelection={moveTerminalPermissionSelection}
             onSelect={handleTerminalPermissionSelect}
-            onHover={hoverTerminalPermissionSelection}
           />,
           terminalOutputHost
         )
@@ -14136,6 +15161,9 @@ export default function App() {
     const patchedCtx = id === 'terminal' ? {
       ...ctx,
       setShowBottomPanel: (show) => {
+        if (show) {
+          activateTerminalSessionForCurrentEditor();
+        }
         if (!show) {
           setRunStateForTab('default');
           setRunningCheckForTab(null);
@@ -14631,7 +15659,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenReferenceFile={openReferenceFileTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={handleAgentTaskStop} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenReferenceFile={openReferenceFileTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={handleRemoveAttachedFile} onAddAttached={handleAddAttachedFile} planHeadingFiles={planHeadingFiles} onAddPlanHeadingFile={handleAddPlanHeadingFile} onRemovePlanHeadingFile={handleRemovePlanHeadingFile} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && genState === 'loading'} runState={runState} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} runningCheckTarget={activeRunningCheckTarget} />
             : activeTabContent?.referenceDocumentSections
                 ? (
                   <ReferenceDocumentEditorArea

@@ -665,6 +665,14 @@ body {
   background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
 }
 
+.spec-done-row.spec-done-row-selection-range {
+  background: rgba(190, 174, 122, 0.48);
+}
+
+.spec-done-row.spec-done-row-selection-range.spec-done-active-line:not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
+  background: rgba(190, 174, 122, 0.56);
+}
+
 .spec-done-primary-line {
   width: 100%;
   min-width: 0;
@@ -1079,7 +1087,7 @@ body {
   padding-left: var(--terminal-permission-text-offset);
   margin-bottom: 6px;
   line-height: 16px;
-  color: var(--terminal-output);
+  color: #CED0D6;
 }
 
 .terminal-permission-options {
@@ -1125,11 +1133,21 @@ body {
   line-height: 18px;
 }
 
-.terminal-permission-option:hover,
 .terminal-permission-option.is-selected {
   color: var(--text-white, #fff);
   border-color: #3D7DE0;
   background-color: rgba(61, 125, 224, 0.08);
+}
+
+.terminal-permission-option:hover {
+  color: var(--text-white, #fff);
+  border-color: transparent;
+  background-color: rgba(180, 184, 191, 0.14);
+}
+
+.terminal-permission-option.is-selected:hover {
+  border-color: transparent;
+  background-color: rgba(180, 184, 191, 0.16);
 }
 
 .terminal-permission-option:active {
@@ -3769,13 +3787,14 @@ body {
   width: 12px;
   height: 12px;
 }
-.at-enhance-attention-badge .agent-task-status-warning-outer,
+.at-enhance-attention-badge .agent-task-status-warning-outer { fill: #143F7A; }
+.at-enhance-attention-badge .agent-task-status-warning-middle { fill: #2F6FD6; }
+.at-enhance-attention-badge .agent-task-status-warning-core { fill: #7DB7FF; }
+
 .agent-task-tree-task-meta .agent-task-status-warning-outer,
 .agent-task-row .agent-task-status-warning-outer  { fill: #3D2500; }
-.at-enhance-attention-badge .agent-task-status-warning-middle,
 .agent-task-tree-task-meta .agent-task-status-warning-middle,
 .agent-task-row .agent-task-status-warning-middle { fill: #7D4E00; }
-.at-enhance-attention-badge .agent-task-status-warning-core,
 .agent-task-tree-task-meta .agent-task-status-warning-core,
 .agent-task-row .agent-task-status-warning-core   { fill: #E8A400; }
 
