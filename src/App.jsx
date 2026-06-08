@@ -1,21 +1,25 @@
-import { Fragment, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
+import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
   PlanDiffEditorArea,
+  tokenizeCodeFragment,
   arePlanDiffUiStatesEqual,
   normalizePlanDiffUiState,
+  DiffInlineCommentPopup,
 } from './PlanDiffView.jsx';
+import { AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import {
   ThemeProvider,
   MainWindow,
   MainToolbar,
+  MainToolbarIconButton,
   Banner,
+  CommitWindow,
+  DEFAULT_COMMIT_TOOLBAR_BUTTONS,
   SettingsDialog,
   ToolWindow,
   PositionedPopup,
-  Popup,
-  PopupCell,
   Tooltip,
   Loader,
   Icon,
@@ -45,6 +49,8 @@ const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.jav
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
+const INITIAL_PLAN_DIFF_SOURCE_TAB_ID = '1';
+const INITIAL_PLAN_DIFF_TAB_ID = buildPlanDiffTabId(INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
 const AGENT_TASK_GENERATING_STATE_ENABLED = true;
 const AGENT_TASK_USES_INTERMEDIATE_STATES =
@@ -88,6 +94,179 @@ function scheduleSpecDoneScrollRestore(snapshot) {
 
   setTimeout(restore, 0);
 }
+
+function MainToolbarNewChatPicker({ onNewChat = null }) {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState(null);
+  const rootRef = useRef(null);
+  const dropdownButtonRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return undefined;
+
+    const updateDropdownPosition = () => {
+      const rect = dropdownButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = 309;
+      const viewportPadding = 8;
+      setDropdownStyle({
+        top: rect.bottom + 6,
+        left: Math.max(
+          viewportPadding,
+          Math.min(rect.right - width, window.innerWidth - width - viewportPadding),
+        ),
+      });
+    };
+
+    updateDropdownPosition();
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
+      setIsDropdownOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', updateDropdownPosition);
+    window.addEventListener('scroll', updateDropdownPosition, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', updateDropdownPosition);
+      window.removeEventListener('scroll', updateDropdownPosition, true);
+    };
+  }, [isDropdownOpen]);
+
+  return (
+    <span className="main-toolbar-new-chat-picker" ref={rootRef}>
+      <button
+        className="main-toolbar-new-chat-picker-button main-toolbar-new-chat-picker-button-primary"
+        type="button"
+        title="New Chat"
+        aria-label="New Chat"
+        onClick={onNewChat ?? undefined}
+      >
+        <span className="main-toolbar-new-chat-picker-label-wrap">
+          <svg
+            className="main-toolbar-new-chat-picker-icon"
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path d="M4.68354 12.8842L8.12595 10.954L8.18354 10.7858L8.12595 10.6928H7.95759L7.38165 10.6574L5.41456 10.6043L3.70886 10.5335L2.05633 10.4449L1.63987 10.3564L1.25 9.84284L1.28987 9.58607L1.63987 9.35144L2.14051 9.39571L3.2481 9.47097L4.90949 9.58607L6.11456 9.65691L7.9 9.84284H8.18354L8.22342 9.72774L8.12595 9.65691L8.05063 9.58607L6.33165 8.42177L4.47089 7.19106L3.4962 6.48273L2.96899 6.12415L2.70316 5.78769L2.58797 5.05281L3.06646 4.52599L3.70886 4.57026L3.87278 4.61453L4.52405 5.11479L5.91519 6.19055L7.73165 7.52751L7.99747 7.74886L8.1038 7.6736L8.11709 7.62048L7.99747 7.42126L7.00949 5.63717L5.95506 3.8221L5.48544 3.0695L5.36139 2.61795C5.31709 2.43201 5.28608 2.27707 5.28608 2.08671L5.83101 1.34739L6.13228 1.25L6.85886 1.34739L7.16456 1.61302L7.61646 2.64451L8.34747 4.26923L9.48165 6.47831L9.81392 7.13351L9.99114 7.74001L10.0576 7.92594H10.1728V7.81969L10.2658 6.5757L10.4386 5.04838L10.607 3.08279L10.6646 2.52941L10.9392 1.86536L11.4842 1.50677L11.9095 1.71041L12.2595 2.21066L12.2108 2.53384L12.0025 3.88408L11.5949 6.00019L11.3291 7.41684H11.4842L11.6614 7.23975L12.3791 6.28795L13.5842 4.78276L14.1158 4.18511L14.7361 3.52549L15.1348 3.21117H15.888L16.4418 4.03459L16.1937 4.88458L15.4184 5.86738L14.7759 6.69966L13.8544 7.93922L13.2785 8.93088L13.3316 9.01056L13.469 8.99728L15.5513 8.55458L16.6766 8.35094L18.019 8.12073L18.6259 8.40406L18.6924 8.69182L18.4532 9.28061L17.0177 9.63477L15.3342 9.97122L12.8266 10.5644L12.7956 10.5866L12.831 10.6308L13.9608 10.7371L14.4437 10.7637H15.6266L17.8285 10.9275L18.4044 11.3082L18.75 11.773L18.6924 12.1272L17.8063 12.5787L16.6101 12.2954L13.819 11.6314L12.862 11.3923H12.7291V11.472L13.5266 12.2511L14.9886 13.5704L16.8184 15.2704L16.9114 15.6909L16.6766 16.023L16.4285 15.9875L14.8203 14.779L14.2 14.2344L12.7956 13.0524H12.7025V13.1764L13.0259 13.6501L14.7361 16.2177L14.8247 17.0058L14.7006 17.2625L14.2576 17.4175L13.7703 17.3289L12.769 15.9256L11.7367 14.3451L10.9038 12.9285L10.8019 12.986L10.3101 18.2763L10.0797 18.5464L9.5481 18.75L9.10506 18.4135L8.87025 17.869L9.10506 16.7933L9.38861 15.3899L9.61899 14.2743L9.82722 12.8886L9.95127 12.4282L9.94241 12.3972L9.84051 12.4105L8.79494 13.8449L7.20443 15.992L5.9462 17.3378L5.64494 17.4573L5.12215 17.1873L5.17089 16.7047L5.46329 16.2753L7.20443 14.0618L8.25443 12.6894L8.93228 11.897L8.92785 11.7819H8.88797L4.26266 14.7834L3.43861 14.8896L3.08418 14.5576L3.12848 14.0131L3.29684 13.836L4.68797 12.8798L4.68354 12.8842Z" fill="#D97757" />
+          </svg>
+          <span className="main-toolbar-new-chat-picker-label">New Chat</span>
+        </span>
+      </button>
+      <span className="main-toolbar-new-chat-picker-separator" aria-hidden="true" />
+      <button
+        ref={dropdownButtonRef}
+        className={`main-toolbar-new-chat-picker-button main-toolbar-new-chat-picker-button-dropdown${isDropdownOpen ? ' is-open' : ''}`}
+        type="button"
+        title="AI Mode"
+        aria-label="Open AI mode menu"
+        aria-expanded={isDropdownOpen}
+        onClick={() => setIsDropdownOpen((prev) => !prev)}
+      >
+        <Icon name="general/chevronDown" size={16} className="main-toolbar-new-chat-picker-chevron" />
+      </button>
+      {isDropdownOpen && dropdownStyle && typeof document !== 'undefined' && createPortal(
+        <MainToolbarAiDropdown ref={dropdownRef} style={dropdownStyle} onClose={() => setIsDropdownOpen(false)} />,
+        document.body,
+      )}
+    </span>
+  );
+}
+
+const MainToolbarAiDropdown = forwardRef(function MainToolbarAiDropdown({ style = null, onClose = null }, ref) {
+  const helpIcon = (
+    <svg className="main-toolbar-ai-dropdown-help" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" stroke="#868A91" />
+      <path d="M7.59245 8.521C7.67312 8.33767 7.77212 8.18 7.88945 8.048C8.00679 7.916 8.16445 7.75833 8.36245 7.575C8.55312 7.40267 8.70345 7.25417 8.81345 7.1295C8.92712 7.00483 9.02245 6.86 9.09945 6.695C9.17645 6.52633 9.21495 6.33933 9.21495 6.134C9.21495 5.903 9.16545 5.69767 9.06645 5.518C8.97112 5.33833 8.83545 5.199 8.65945 5.1C8.48345 5.001 8.28179 4.9515 8.05445 4.9515C7.80145 4.9515 7.57779 5.0065 7.38345 5.1165C7.18912 5.2265 7.03879 5.3805 6.93245 5.5785C6.90638 5.62705 6.88351 5.67735 6.86383 5.72943C6.75806 6.00931 6.5304 6.2605 6.2312 6.2605C5.932 6.2605 5.68157 6.01527 5.74167 5.72217C5.78989 5.48707 5.87148 5.27051 5.98645 5.0725C6.18445 4.7315 6.46312 4.4675 6.82245 4.2805C7.18179 4.0935 7.59612 4 8.06545 4C8.51279 4 8.90695 4.08617 9.24795 4.2585C9.58895 4.43083 9.85295 4.67467 10.04 4.99C10.227 5.30167 10.3186 5.661 10.315 6.068C10.315 6.38333 10.2655 6.662 10.1665 6.904C10.0675 7.14233 9.94645 7.34217 9.80345 7.5035C9.66045 7.66483 9.47529 7.84633 9.24795 8.048C9.07929 8.19833 8.94729 8.32483 8.85195 8.4275C8.75662 8.53017 8.67595 8.64567 8.60995 8.774C8.59197 8.80997 8.57743 8.84636 8.56569 8.88312C8.47784 9.15799 8.28252 9.401 7.99395 9.401C7.70538 9.401 7.45381 9.16525 7.4934 8.87941C7.51026 8.75764 7.54001 8.6378 7.59245 8.521Z" fill="#868A91" />
+      <circle cx="8" cy="10.75" r="0.75" fill="#868A91" />
+    </svg>
+  );
+  const modeItems = [
+    {
+      id: 'chat',
+      label: 'Chat',
+      selected: true,
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M4.00002 13.5C4.00003 13.2238 4.22388 13 4.50002 13L11.5 13C11.7761 13 12 13.2239 12 13.5C12 13.7761 11.7761 14 11.5 14L4.50002 14C4.22387 14 4.00001 13.7761 4.00002 13.5Z" fill="#CED0D6" />
+          <path d="M4 2.5L12 2.5C12.8284 2.5 13.5 3.17157 13.5 4L13.5 10C13.5 10.8284 12.8284 11.5 12 11.5L4 11.5C3.17157 11.5 2.5 10.8284 2.5 10L2.5 4C2.5 3.17157 3.17157 2.5 4 2.5Z" stroke="#CED0D6" />
+        </svg>
+      ),
+    },
+    { id: 'terminal', label: 'Terminal', icon: <Icon name="toolwindows/terminal" size={16} /> },
+    {
+      id: 'spec-driven',
+      label: 'Spec-driven',
+      icon: (
+        <span className="main-toolbar-ai-dropdown-bulb" aria-hidden="true">
+          <span />
+          <span />
+          <svg width="10" height="11" viewBox="0 0 10 11" fill="none">
+            <path d="M4.7998 0.5C7.17457 0.5 9.0995 2.42507 9.09961 4.7998C9.09961 6.21038 8.42075 7.46253 7.36992 8.24746L7.0198 10H2.5798L2.22871 8.24746C1.17834 7.4625 0.5 6.21002 0.5 4.7998C0.500095 2.42512 2.42512 0.500095 4.7998 0.5Z" stroke="#CED0D6" />
+          </svg>
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <div className="main-toolbar-ai-dropdown" style={style ?? undefined} ref={ref}>
+      <div className="main-toolbar-ai-dropdown-spacer" />
+      <div className="main-toolbar-ai-dropdown-title">AI Mode</div>
+      <div className="main-toolbar-ai-dropdown-tabs" role="tablist" aria-label="AI Mode">
+        {modeItems.map((item) => (
+          <button
+            key={item.id}
+            className={`main-toolbar-ai-dropdown-tab${item.selected ? ' is-selected' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={Boolean(item.selected)}
+            onClick={onClose ?? undefined}
+          >
+            <span className="main-toolbar-ai-dropdown-tab-content">
+              <span className="main-toolbar-ai-dropdown-tab-icon">{item.icon}</span>
+              <span>{item.label}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="main-toolbar-ai-dropdown-separator" />
+      <button className="main-toolbar-ai-dropdown-settings" type="button" onClick={onClose ?? undefined}>
+        <Icon name="general/settings" size={20} />
+        <span>AI Chat Settings...</span>
+      </button>
+      <div className="main-toolbar-ai-dropdown-footer">
+        <div className="main-toolbar-ai-dropdown-credit-row">
+          <span><strong>13.4</strong> <strong>/</strong> <strong>30</strong> monthly credits left</span>
+          <span className="main-toolbar-ai-dropdown-credit-meta">till 17.04 11:00</span>
+          {helpIcon}
+        </div>
+        <div className="main-toolbar-ai-dropdown-credit-row">
+          <span><strong>50.00 / 70</strong> top-up credits left</span>
+          <span className="main-toolbar-ai-dropdown-credit-meta">Shared</span>
+          {helpIcon}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const MY_PROJECTS = [
   { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
@@ -326,6 +505,60 @@ class VisitControllerTests {
 }`,
   },
 };
+
+const MY_COMMIT_FILES = [
+  {
+    id: 'changes',
+    label: 'Changes',
+    count: '4 files',
+    isExpanded: true,
+    children: [
+      {
+        id: 'visit-controller',
+        label: 'VisitController.java',
+        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+        icon: 'fileTypes/java',
+        status: 'modified',
+      },
+      {
+        id: 'diff-visit',
+        label: 'Visit.java',
+        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+        icon: 'fileTypes/java',
+        status: 'modified',
+      },
+      {
+        id: 'adapter-script',
+        label: 'AdapterScript.java',
+        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
+        icon: 'fileTypes/java',
+        status: 'modified',
+      },
+      {
+        id: 'function-utils',
+        label: 'FunctionUtils.java',
+        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
+        icon: 'fileTypes/java',
+        status: 'modified',
+      },
+    ],
+  },
+  {
+    id: 'unversioned',
+    label: 'Unversioned Files',
+    count: '1 file',
+    isExpanded: false,
+    children: [
+      {
+        id: 'visit-controller-test',
+        label: 'VisitControllerTests.java',
+        path: '~/IdeaProjects/payment-service/src/test/java/org/springframework/samples/petclinic/owner',
+        icon: 'fileTypes/java',
+        status: 'added',
+      },
+    ],
+  },
+];
 
 const PLAN_CODE_DIFF_PRESETS = {
   0: {
@@ -703,6 +936,21 @@ function buildTerminalContextLabel({
   }
 
   return resolvedTaskLabel;
+}
+
+function formatAgentRunLineForChat(line) {
+  if (!line?.text) return '';
+  if (line.type === 'command') return `$ ${line.text}`;
+  if (line.type === 'success') return `[ok] ${line.text}`;
+  if (line.type === 'error') return `[error] ${line.text}`;
+  return line.text;
+}
+
+function formatAgentRunLinesForChat(lines = []) {
+  return lines
+    .map(formatAgentRunLineForChat)
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildTerminalRunSequence({
@@ -2791,6 +3039,73 @@ function flattenStoredDiffCommentsState(diffComments = {}) {
     });
 }
 
+function getAiChatListItem(chatId) {
+  return [...AI_CHAT_RECENT_ITEMS, ...AI_CHAT_OLDER_THAN_7_ITEMS]
+    .find((item) => item.id === chatId) ?? null;
+}
+
+function normalizeDiffSessionCommentsByChatId(sessionCommentsByChatId = {}) {
+  if (!sessionCommentsByChatId || typeof sessionCommentsByChatId !== 'object') {
+    return {};
+  }
+
+  return Object.entries(sessionCommentsByChatId).reduce((nextState, [chatId, entry]) => {
+    if (!chatId || !entry || typeof entry !== 'object') {
+      return nextState;
+    }
+
+    const comments = normalizeStoredDiffCommentsState(entry.comments);
+    if (Object.keys(comments).length === 0) {
+      return nextState;
+    }
+
+    const scenario = AI_CHAT_SCENARIOS[chatId] ?? null;
+    const listItem = getAiChatListItem(chatId);
+    nextState[chatId] = {
+      chatId,
+      messageId: typeof entry.messageId === 'string' && entry.messageId.length > 0
+        ? entry.messageId
+        : (scenario?.messageId ?? `chat-${chatId}`),
+      title: typeof entry.title === 'string' && entry.title.length > 0
+        ? entry.title
+        : (scenario?.title ?? chatId),
+      icon: typeof entry.icon === 'string' && entry.icon.length > 0
+        ? entry.icon
+        : (listItem?.icon ?? 'claude'),
+      comments,
+    };
+
+    return nextState;
+  }, {});
+}
+
+function mergeDiffCommentsFromSessions(sessionCommentsByChatId = {}) {
+  const normalizedSessions = normalizeDiffSessionCommentsByChatId(sessionCommentsByChatId);
+  return Object.values(normalizedSessions).reduce((mergedComments, session) => {
+    Object.entries(session.comments ?? {}).forEach(([rowId, comments]) => {
+      const existingComments = Array.isArray(mergedComments[rowId]) ? mergedComments[rowId] : [];
+      const seenComments = new Set(existingComments.map((comment) => comment.trim().toLowerCase()));
+      const nextRowComments = [...existingComments];
+
+      (comments ?? []).forEach((comment) => {
+        if (typeof comment !== 'string') return;
+        const normalizedComment = comment.trim();
+        if (!normalizedComment) return;
+        const dedupeKey = normalizedComment.toLowerCase();
+        if (seenComments.has(dedupeKey)) return;
+        seenComments.add(dedupeKey);
+        nextRowComments.push(normalizedComment);
+      });
+
+      if (nextRowComments.length > 0) {
+        mergedComments[rowId] = nextRowComments;
+      }
+    });
+
+    return mergedComments;
+  }, {});
+}
+
 function getCommentsForCommentTarget(commentEntries = [], target) {
   const normalizedTarget = normalizeCommentTarget(target);
   if (!normalizedTarget) return [];
@@ -4782,6 +5097,9 @@ function DoneCommentCountIcon() {
 
 function DoneCommentPopup({
   comments = [],
+  commentContextLabel = '',
+  commentContextIcon = 'claude',
+  commentContextSessionLabel = 'Active',
   value,
   editingIndex = null,
   onChange,
@@ -4790,90 +5108,40 @@ function DoneCommentPopup({
   onStartEdit,
   onDelete,
 }) {
-  const popupRef = useRef(null);
-  const textareaRef = useRef(null);
-  const hasComments = comments.length > 0;
   const isEditing = Number.isInteger(editingIndex);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
-  }, [value]);
-
-  useEffect(() => {
-    const input = textareaRef.current;
-    if (input instanceof HTMLTextAreaElement) {
-      input.focus();
-      if (isEditing) {
-        input.select();
-      }
-    }
-  }, [hasComments, isEditing]);
+  const showCompose = comments.length === 0 || isEditing;
+  const commentGroups = comments.length > 0
+    ? [{
+        label: commentContextLabel,
+        icon: commentContextIcon,
+        sessionLabel: commentContextSessionLabel,
+        showHeaderWhenEmpty: true,
+        comments: comments.map((text, index) => ({
+          text,
+          editable: true,
+          localIndex: index,
+        })),
+      }]
+    : null;
 
   return (
-    <div
-      ref={popupRef}
-      className={`cmp-popup spec-done-comment-popup${hasComments ? ' has-comments' : ''}`}
-      onMouseDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        if (!(event.target instanceof HTMLTextAreaElement)) return;
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          onCancel?.();
-        }
-        if (event.key === 'Enter' && !event.shiftKey) {
-          event.preventDefault();
-          onSubmit?.();
-        }
-      }}
-    >
-      {hasComments && (
-        <>
-          <div className="spec-done-comment-popup-header">
-            <span className="spec-done-comment-popup-title text-ui-default-semibold">Comments</span>
-          </div>
-          <div className="spec-done-comment-popup-list">
-            {comments.map((comment, index) => (
-              <div key={`comment-${index}`} className="spec-done-comment-popup-item">
-                <div className="spec-done-comment-popup-item-body">
-                  <div className="spec-done-comment-popup-item-text text-ui-default">{comment}</div>
-                  <div className="spec-done-comment-popup-item-actions">
-                    <button type="button" className="spec-done-comment-popup-link" onClick={() => onStartEdit?.(index)}>Change</button>
-                    <button type="button" className="spec-done-comment-popup-link" onClick={() => onDelete?.(index)}>Delete</button>
-                  </div>
-                </div>
-                <button type="button" className="spec-done-comment-popup-more-btn" aria-label="More actions">
-                  <Icon name="general/moreVertical" size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-      <div className="spec-done-comment-popup-compose">
-        <div className="spec-done-comment-popup-input-wrap">
-          <textarea
-            ref={textareaRef}
-            className="spec-done-comment-popup-textarea text-ui-default"
-            value={value}
-            placeholder="Write a comment"
-            data-demo-id="spec-comment-input"
-            onChange={(event) => onChange?.(event.target.value)}
-            rows={1}
-          />
-        </div>
-        <div className="spec-done-comment-popup-actions">
-          <Button type="secondary" data-demo-id="spec-comment-cancel" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="primary" data-demo-id="spec-comment-submit" onClick={onSubmit}>
-            {isEditing ? 'Save Comment' : 'Add a Comment'}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <DiffInlineCommentPopup
+      comments={commentGroups ? [] : comments}
+      commentGroups={commentGroups}
+      commentContextLabel={commentContextLabel}
+      commentContextIcon={commentContextIcon}
+      commentContextSessionLabel={commentContextSessionLabel}
+      value={value}
+      editingIndex={editingIndex}
+      showCompose={showCompose}
+      defaultSubmitAttachMode="new"
+      submitAttachModes={['new']}
+      onChange={onChange}
+      onCancel={onCancel}
+      onSubmit={onSubmit}
+      onStartEdit={onStartEdit}
+      onDelete={onDelete}
+    />
   );
 }
 
@@ -5620,6 +5888,35 @@ function buildPlanDiffTabId(sourceTabId) {
   return `plan-diff-${sourceTabId}`;
 }
 
+function buildPlainFileRows(code = '') {
+  const lines = String(code).split(/\r?\n/);
+  return lines.map((line, index) => {
+    const lineNumber = index + 1;
+    return {
+      id: `plain-line-${lineNumber}`,
+      kind: 'context',
+      oldNumber: lineNumber,
+      newNumber: lineNumber,
+      text: line,
+      fragments: [{ text: line || ' ', tone: 'plain' }],
+    };
+  });
+}
+
+function buildPlainFileData(code = '', label = '', language = 'text') {
+  const rows = buildPlainFileRows(code);
+  return {
+    sourceTabLabel: label,
+    title: label,
+    differenceCount: 0,
+    focusRowId: rows[0]?.id ?? null,
+    status: 'passed',
+    lineText: '',
+    language,
+    rows,
+  };
+}
+
 function buildSpecVersionDiffTabId(sourceTabId, fromVersionId, toVersionId) {
   return `spec-version-diff-${sourceTabId}-${fromVersionId}-to-${toVersionId}`;
 }
@@ -6054,7 +6351,10 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     const checked = checkMatch[2].toLowerCase() === 'x';
     const normalizedRunTarget = normalizeCommentTarget(activeRunRequest?.checkTarget ?? null);
     const normalizedSectionTitle = typeof currentSectionTitle === 'string' ? currentSectionTitle.trim().toLowerCase() : '';
+    const isGlobalSpecifyingRun = activeRunRequest?.mode === 'specify' && !normalizedRunTarget;
     const isRunning = Boolean(activeRunRequest) && (
+      (isGlobalSpecifyingRun && (checkTarget?.kind === 'ac' || checkTarget?.kind === 'plan'))
+      ||
       (normalizedRunTarget
         && checkTarget
         && normalizedRunTarget.kind === checkTarget.kind
@@ -6689,7 +6989,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -6706,6 +7006,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     ),
     [code, effectiveDocumentSections]
   );
+  const commentContextLabel = useMemo(() => {
+    const normalizedProvidedLabel = typeof providedCommentContextLabel === 'string'
+      ? providedCommentContextLabel.trim()
+      : '';
+    return normalizedProvidedLabel || extractGoalTitleFromMarkdown(effectiveCode) || 'New Chat';
+  }, [effectiveCode, providedCommentContextLabel]);
   const [extraDecisionItems, setExtraDecisionItems] = useState([]);
   const addExtraDecisionItem = useCallback((text) => {
     setExtraDecisionItems((prev) => prev.includes(text) ? prev : [...prev, text]);
@@ -7229,17 +7535,21 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
+    const existingComments = rowComments[rowCommentKey] ?? [];
 
     if (Number.isInteger(editingIndex)) {
       updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
         index === editingIndex ? nextValue : comment
       )));
+    } else if (existingComments.length > 0) {
+      closeCommentPopup(rowIndex);
+      return;
     } else {
       updateRowComments(rowCommentKey, (comments) => [...comments, nextValue]);
     }
 
     closeCommentPopup(rowIndex);
-  }, [closeCommentPopup, commentPopup, updateRowComments]);
+  }, [closeCommentPopup, commentPopup, rowComments, updateRowComments]);
 
   const handleCommentDelete = useCallback((rowKey, rowCommentKey, commentIndex) => {
     updateRowComments(rowCommentKey, (comments) => comments.filter((_, index) => index !== commentIndex));
@@ -7647,8 +7957,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     (sum, comments) => sum + (Array.isArray(comments) ? comments.length : 0),
     0,
   );
-  const hasPendingCommentChanges = rowCommentsSignature !== baselineCommentSignatureRef.current;
-  const hasPendingEnhanceChanges = hasEditedLines || hasPendingCommentChanges;
+  const hasPendingEnhanceChanges = hasEditedLines;
   const commentEntries = useMemo(() => rowMetaList.reduce((entries, rowMeta) => {
     const rowCommentKey = getRowMetaCommentStorageKey(rowMeta);
     const comments = rowComments[rowCommentKey] ?? [];
@@ -7668,6 +7977,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
     return entries;
   }, []), [rowComments, rowMetaList]);
+  const commentEntriesSignature = useMemo(
+    () => buildSpecVersionCommentEntriesSignature(commentEntries),
+    [commentEntries],
+  );
+  const lastEmittedCommentsSignatureRef = useRef(null);
   const commentedPlanOriginalIndices = useMemo(() => {
     const nextIndices = new Set();
 
@@ -7686,8 +8000,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [onCommentCountChange, totalCommentCount]);
 
   useEffect(() => {
+    if (lastEmittedCommentsSignatureRef.current === commentEntriesSignature) return;
+    lastEmittedCommentsSignatureRef.current = commentEntriesSignature;
     onCommentsChange?.(commentEntries);
-  }, [commentEntries, onCommentsChange]);
+  }, [commentEntries, commentEntriesSignature, onCommentsChange]);
 
   useEffect(() => {
     let frameId = requestAnimationFrame(() => {
@@ -8127,6 +8443,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       <PositionedPopup triggerRect={commentPopup.rect} onDismiss={() => closeCommentPopup()} gap={8}>
         <DoneCommentPopup
           comments={rowComments[commentPopup.rowCommentKey] ?? []}
+          commentContextLabel={commentContextLabel}
+          commentContextIcon="claude"
+          commentContextSessionLabel={commentContextSessionLabel}
           value={commentPopup.value}
           editingIndex={commentPopup.editingIndex ?? null}
           onChange={(nextValue) => {
@@ -8299,24 +8618,14 @@ function AttachedFileChip({ label, onRemove, className = '' }) {
 }
 
 function AgentTaskTopBarIcon({ style }) {
-  const gradientId = useId();
-
   return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
-      <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill={`url(#${gradientId})`} />
-      <path d="M10.4202 17.71C6.0202 17.71 2.4502 14.26 2.4502 10C2.4502 5.74004 6.0202 2.29004 10.4202 2.29004" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
-      <path d="M17.34 7.87004C17.34 10.86 14.35 13.45 10.43 13.45C6.51002 13.45 3.52002 10.86 3.52002 7.87004C3.52002 4.88004 6.51002 2.29004 10.43 2.29004C14.35 2.29004 17.34 4.88004 17.34 7.87004Z" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
-      <defs>
-        <linearGradient id={gradientId} x1="3.11034" y1="4.46608" x2="21.2559" y2="17.3374" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#955AE0" />
-          <stop offset="1" stopColor="#4D67F0" />
-        </linearGradient>
-      </defs>
-    </svg>
+    <span className="agent-task-top-bar-agent-icon" style={style} aria-hidden="true">
+      <AiChatClaudeIcon />
+    </span>
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -8327,17 +8636,15 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const [doneOverlayHost, setDoneOverlayHost] = useState(null);
   const [hasPendingDoneEnhanceChanges, setHasPendingDoneEnhanceChanges] = useState(false);
   const [doneEnhanceLocksBySession, setDoneEnhanceLocksBySession] = useState({});
-  const [doneEnhanceHintRect, setDoneEnhanceHintRect] = useState(null);
+  const [doneEnhanceHintPosition, setDoneEnhanceHintPosition] = useState(null);
   const [isDoneEnhanceHintDismissing, setIsDoneEnhanceHintDismissing] = useState(false);
   const [doneEnhanceHintArrowPosition, setDoneEnhanceHintArrowPosition] = useState('top');
   const [isDoneToolbarInputFocused, setIsDoneToolbarInputFocused] = useState(false);
   const [isToolbarInputMultiline, setIsToolbarInputMultiline] = useState(false);
   const addBtnRef = useRef(null);
   const doneEnhanceBtnRef = useRef(null);
-  const prevDoneCommentCountRef = useRef(0);
   const prevAttachedFileCountRef = useRef(Array.isArray(attachedFiles) ? attachedFiles.length : 0);
   const prevNullSlotCountRef = useRef(0);
-  const doneEnhanceBadgeRef = useRef(null);
   const suppressEnhanceBadgeRef = useRef(false);
   const allowDoneEnhanceAttentionRef = useRef(false);
   const suppressEnhanceBadgeTimerRef = useRef(0);
@@ -8351,24 +8658,32 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const toolbarPlaceholder = 'Describe your task for an agent or create an .md file';
   const goalTitle = extractGoalTitleFromMarkdown(currentCode) || toolbarPlaceholder;
   const hasToolbarText = value.trim().length > 0;
+  const stripTopBarStatusTitle = (title = '') => String(title)
+    .replace(/^(Generated|Build|Specified|Specify):\s*/u, '')
+    .replace(/\s+·\s+(Build|Specified|Specify)$/u, '')
+    .trim();
+  const topBarBaseTitle = stripTopBarStatusTitle(value.replace(/\s+/g, ' ').trim())
+    || (goalTitle !== toolbarPlaceholder ? goalTitle : toolbarPlaceholder);
+  const topBarDisplayStatus = ['Build', 'Specified'].includes(topBarStatus)
+    ? topBarStatus
+    : 'Specified';
   const collapsedDoneToolbarText = hasToolbarText ? value.replace(/\s+/g, ' ').trim() : toolbarPlaceholder;
-  const isDoneToolbarInputCollapsed = genState === 'done' && (!TOOLBAR_INPUT_IS_EDITABLE || !isDoneToolbarInputFocused);
+  const isWysiwygReadyState = genState === 'done' || genState === 'idle';
+  const isDoneToolbarInputCollapsed = isWysiwygReadyState && (!TOOLBAR_INPUT_IS_EDITABLE || !isDoneToolbarInputFocused);
   const showLoadingState = AGENT_TASK_LOADING_STATE_ENABLED && genState === 'loading';
   const showGeneratingState = AGENT_TASK_GENERATING_STATE_ENABLED && genState === 'generating';
-  const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
+  const shouldRenderDoneOverlay = isWysiwygReadyState || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
   const hasPendingQuickFixRerun =
     (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
     || (Array.isArray(planRunResult) && planRunResult.some((status) => status === null));
   const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || hasPendingQuickFixRerun;
-  const shouldShowDoneEnhanceHint = genState === 'done'
+  const shouldShowDoneEnhanceHint = isWysiwygReadyState
     && runState !== 'running'
     && hasPendingSpecifyChanges
     && !isDoneEnhanceLocked;
-  const isDoneEnhanceEnabled = genState === 'done'
-    && hasPendingSpecifyChanges
-    && !isDoneEnhanceLocked;
+  const isDoneEnhanceEnabled = isWysiwygReadyState;
   const setDoneEnhanceLockedForSession = useCallback((locked) => {
     setDoneEnhanceLocksBySession((prev) => {
       const isCurrentlyLocked = Boolean(prev[doneEnhanceSessionKey]);
@@ -8396,7 +8711,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }, []);
   const resetDoneEnhanceAttention = useCallback((suppressMs = 2000) => {
     setHasPendingDoneEnhanceChanges(false);
-    setDoneEnhanceHintRect(null);
+    setDoneEnhanceHintPosition(null);
     setIsDoneEnhanceHintDismissing(false);
     setDoneEnhanceHintArrowPosition('top');
     previousDoneEnhanceHintVisibilityRef.current = false;
@@ -8415,20 +8730,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }, []);
 
   useEffect(() => {
-    if (genState === 'idle') {
-      setValue('');
-      setHasBreakpoint(false);
+    if (!isWysiwygReadyState) {
       setIsDoneToolbarInputFocused(false);
       setIsToolbarInputMultiline(false);
       doneTitleHydratedRef.current = false;
-      return;
     }
-
-    if (genState !== 'done') {
-      setIsDoneToolbarInputFocused(false);
-      doneTitleHydratedRef.current = false;
-    }
-  }, [genState]);
+  }, [genState, isWysiwygReadyState]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -8452,7 +8759,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
   useEffect(() => {
     if (!TOOLBAR_INPUT_IS_EDITABLE) return;
-    if (genState !== 'idle') return;
+    if (!isWysiwygReadyState || isDoneToolbarInputCollapsed) return;
     if (doneInputFocusFrameRef.current) {
       cancelAnimationFrame(doneInputFocusFrameRef.current);
     }
@@ -8463,7 +8770,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       const nextCaretPos = ta.value.length;
       ta.setSelectionRange(nextCaretPos, nextCaretPos);
     });
-  }, [genState]);
+  }, [isDoneToolbarInputCollapsed, isWysiwygReadyState]);
 
   useEffect(() => () => {
     if (doneInputFocusFrameRef.current) {
@@ -8481,21 +8788,27 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }, []);
 
   useEffect(() => {
-    if (genState !== 'done') return;
+    if (!isWysiwygReadyState) return;
     doneTitleHydratedRef.current = false;
-  }, [genState, currentCode]);
+  }, [isWysiwygReadyState, currentCode]);
 
   useEffect(() => {
     prevAttachedFileCountRef.current = Array.isArray(attachedFiles) ? attachedFiles.length : 0;
   }, [genState, specSessionKey]);
 
   useEffect(() => {
-    if (genState !== 'done' || doneTitleHydratedRef.current) return;
+    if (!isWysiwygReadyState || doneTitleHydratedRef.current) return;
     doneTitleHydratedRef.current = true;
     if (!value.trim() && goalTitle !== toolbarPlaceholder) {
-      setValue(goalTitle);
+      setValue(`${topBarDisplayStatus}: ${stripTopBarStatusTitle(goalTitle)}`);
     }
-  }, [genState, goalTitle, toolbarPlaceholder, value]);
+  }, [isWysiwygReadyState, goalTitle, toolbarPlaceholder, topBarDisplayStatus, value]);
+
+  useEffect(() => {
+    if (goalTitle === toolbarPlaceholder) return;
+    const nextValue = `${topBarDisplayStatus}: ${stripTopBarStatusTitle(goalTitle)}`;
+    setValue((prev) => (prev === nextValue ? prev : nextValue));
+  }, [goalTitle, toolbarPlaceholder, topBarDisplayStatus]);
 
   useEffect(() => {
     if (completion && toolbarRef.current) {
@@ -8540,36 +8853,62 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     }
     if (!shouldShowDoneEnhanceHint) {
       previousDoneEnhanceHintVisibilityRef.current = false;
-      setDoneEnhanceHintRect(null);
+      setDoneEnhanceHintPosition(null);
       setDoneEnhanceHintArrowPosition('top');
       return;
     }
 
-    if (previousDoneEnhanceHintVisibilityRef.current) {
-      return;
-    }
-
-    previousDoneEnhanceHintVisibilityRef.current = true;
-
-    const captureRect = () => {
-      const triggerEl = doneEnhanceBadgeRef.current ?? doneEnhanceBtnRef.current;
+    const updatePosition = () => {
+      const triggerEl = doneEnhanceBtnRef.current;
       if (!(triggerEl instanceof HTMLElement)) return;
       const rect = triggerEl.getBoundingClientRect();
-      setDoneEnhanceHintArrowPosition(
-        rect.bottom + 156 > window.innerHeight ? 'bottom' : 'top'
+      const gap = 8;
+      const viewportPadding = 12;
+      const preferredWidth = 360;
+      const anchorLeftOffset = 64;
+      const chatWindowRect = document.querySelector('.ai-chat-window')?.getBoundingClientRect();
+      const rightBoundary = chatWindowRect && chatWindowRect.left > rect.right
+        ? chatWindowRect.left
+        : window.innerWidth;
+      const popupLeftLimit = Math.max(viewportPadding, rightBoundary - preferredWidth - viewportPadding);
+      const left = Math.round(
+        Math.max(
+          viewportPadding,
+          Math.min(rect.left - anchorLeftOffset, popupLeftLimit)
+        )
       );
-      const leftShift = 0;
-      setDoneEnhanceHintRect({
-        top: rect.top,
-        bottom: rect.bottom,
-        left: rect.left - leftShift,
-        right: rect.right - leftShift,
-      });
+      const popupHeight = 44;
+      const placeAbove = rect.bottom + gap + popupHeight > window.innerHeight
+        && rect.top - gap - popupHeight >= viewportPadding;
+
+      const nextPosition = placeAbove
+        ? {
+            top: Math.max(viewportPadding, Math.round(rect.top - gap - popupHeight)),
+            left,
+          }
+        : {
+            top: Math.min(window.innerHeight - viewportPadding, Math.round(rect.bottom + gap)),
+            left,
+          };
+
+      setDoneEnhanceHintArrowPosition(placeAbove ? 'bottom' : 'top');
+      setDoneEnhanceHintPosition((prev) => {
+        if (
+          prev
+          && prev.top === nextPosition.top
+          && prev.left === nextPosition.left
+          && prev.right === nextPosition.right
+        ) {
+          return prev;
+        }
+        return nextPosition;
+      }
+      );
     };
 
     doneEnhanceHintFrameRef.current = requestAnimationFrame(() => {
       doneEnhanceHintFrameRef.current = 0;
-      const triggerEl = doneEnhanceBadgeRef.current ?? doneEnhanceBtnRef.current;
+      const triggerEl = doneEnhanceBtnRef.current;
       if (!(triggerEl instanceof HTMLElement)) return;
       const rect = triggerEl.getBoundingClientRect();
 
@@ -8577,25 +8916,58 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       // then capture its updated rect after the scroll settles.
       if (rect.bottom < 0 || rect.top > window.innerHeight) {
         triggerEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        setTimeout(captureRect, 400);
+        setTimeout(updatePosition, 400);
       } else {
-        captureRect();
+        updatePosition();
       }
     });
+
+    if (!previousDoneEnhanceHintVisibilityRef.current) {
+      previousDoneEnhanceHintVisibilityRef.current = true;
+    }
+
+    const schedulePositionUpdate = () => {
+      if (doneEnhanceHintFrameRef.current) return;
+      doneEnhanceHintFrameRef.current = requestAnimationFrame(() => {
+        doneEnhanceHintFrameRef.current = 0;
+        updatePosition();
+      });
+    };
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(schedulePositionUpdate)
+      : null;
+
+    if (resizeObserver) {
+      if (doneEnhanceBtnRef.current instanceof HTMLElement) {
+        resizeObserver.observe(doneEnhanceBtnRef.current);
+      }
+      if (toolbarRef.current instanceof HTMLElement) {
+        resizeObserver.observe(toolbarRef.current);
+      }
+    }
+
+    window.addEventListener('resize', schedulePositionUpdate);
+    window.addEventListener('scroll', schedulePositionUpdate, true);
+
+    return () => {
+      window.removeEventListener('resize', schedulePositionUpdate);
+      window.removeEventListener('scroll', schedulePositionUpdate, true);
+      resizeObserver?.disconnect();
+    };
   }, [shouldShowDoneEnhanceHint]);
 
   useEffect(() => {
-    if (!doneEnhanceHintRect) {
+    if (!doneEnhanceHintPosition) {
       setIsDoneEnhanceHintDismissing(false);
       return;
     }
     const outTimer = setTimeout(() => setIsDoneEnhanceHintDismissing(true), 7000);
-    const clearTimer = setTimeout(() => setDoneEnhanceHintRect(null), 7200);
+    const clearTimer = setTimeout(() => setDoneEnhanceHintPosition(null), 7200);
     return () => {
       clearTimeout(outTimer);
       clearTimeout(clearTimer);
     };
-  }, [doneEnhanceHintRect]);
+  }, [doneEnhanceHintPosition]);
 
   useEffect(() => {
     if (skipNextDoneEnhanceBaselineResetCountRef.current > 0) {
@@ -8633,28 +9005,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     }
     prevNullSlotCountRef.current = nullCount;
   }, [acRunResult, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
-
-  // When a comment arrives from outside (e.g. from the diff view) the baseline
-  // inside DoneMarkdownOverlay already matches, so hasPendingCommentChanges
-  // stays false. Detect the increase in total comment count here instead.
-  useEffect(() => {
-    const totalCount = Array.isArray(doneCommentEntries)
-      ? doneCommentEntries.reduce((sum, e) => sum + (Array.isArray(e.comments) ? e.comments.length : 0), 0)
-      : 0;
-    if (totalCount > prevDoneCommentCountRef.current) {
-      // New comment added - unlock session and trigger enhance
-      // Use setTimeout to ensure state updates are processed
-      setTimeout(() => {
-        if (isDoneEnhanceLocked) {
-          setDoneEnhanceLockedForSession(false);
-        }
-        liftDoneEnhanceSuppression();
-        allowDoneEnhanceAttentionRef.current = true;
-        setHasPendingDoneEnhanceChanges(true);
-      }, 0);
-    }
-    prevDoneCommentCountRef.current = totalCount;
-  }, [doneCommentEntries, isDoneEnhanceLocked, liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
 
   useEffect(() => {
     if (genState !== 'done') return;
@@ -8770,10 +9120,29 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     onSend?.({ openTerminal: true, question, sourceCode });
   }
 
+  function updateTopBarTitleAction(actionLabel) {
+    setValue(`${actionLabel}: ${topBarBaseTitle}`);
+    onTopBarStatusChange?.(actionLabel);
+  }
+
+  function handleBuildClick() {
+    updateTopBarTitleAction('Build');
+    onTopBarAction?.('Build', { sendMessage: true });
+  }
+
+  function handleSpecifyClick() {
+    updateTopBarTitleAction('Specified');
+    onTopBarAction?.('Specified', { sendMessage: true });
+    onSend?.({
+      openTerminal: false,
+      question: '',
+      sourceCode: getCurrentEditorContent(),
+    });
+  }
+
   function handleDoneEnhance() {
-    if (!hasPendingDoneEnhanceChanges) {
-      return;
-    }
+    updateTopBarTitleAction('Specified');
+    onTopBarAction?.('Specified', { sendMessage: true });
     // Reset the done-state attention immediately so a completed Enhance cycle
     // doesn't reopen the popup/badge until the user makes fresh edits.
     setDoneEnhanceLockedForSession(true);
@@ -8781,6 +9150,10 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     onDoneRegenerate?.({
       commentEntries: doneCommentEntries,
     });
+  }
+
+  function handleTopBarTitleOpenChat() {
+    onTopBarAction?.(topBarDisplayStatus);
   }
 
   function handleAddToolbarClick() {
@@ -8892,7 +9265,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (genState === 'done') {
+            if (isWysiwygReadyState) {
               setIsDoneToolbarInputFocused(true);
             }
           }}
@@ -8911,7 +9284,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           ref={textareaRef}
           className={`at-input at-input-readonly${isCollapsed ? ' at-input-collapsed' : ''}`}
           rows={1}
-          value={value}
+          value={collapsedDoneToolbarText === toolbarPlaceholder ? '' : collapsedDoneToolbarText}
           readOnly
           tabIndex={-1}
           placeholder={toolbarPlaceholder}
@@ -8942,7 +9315,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           </div>
 
           <div className="agent-task-toolbar-right">
-            <button className="at-send-btn" onClick={() => onStop()}>
+            <button type="button" className="at-send-btn" onClick={() => onStop()}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                 <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
               </svg>
@@ -8988,11 +9361,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="loading">
-          {renderBusyToolbar('Analizing...')}
+          {renderBusyToolbar(busyLabel ?? 'Analizing...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9003,21 +9376,21 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="generating">
-          {renderBusyToolbar('Specifying...')}
+          {renderBusyToolbar(busyLabel ?? 'Specifying...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
     );
   }
 
-  if (genState === 'done') {
+  if (isWysiwygReadyState) {
     return (
       <>
-        <div className="agent-task-editor-area" data-gen-state="done">
+        <div className="agent-task-editor-area" data-gen-state={genState}>
           <div className="agent-task-toolbar" ref={toolbarRef}>
             <div className="agent-task-toolbar-gradient" />
             <div className="agent-task-toolbar-content">
@@ -9036,15 +9409,22 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   </svg>
                   <span className="at-generating-label">Building...</span>
                 </>) : (<>
-                  <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
-                  {renderToolbarInput({ collapsibleInDone: true })}
+                  <button
+                    type="button"
+                    className="agent-task-toolbar-title-trigger"
+                    aria-label={`Open ${topBarDisplayStatus} chat`}
+                    onClick={handleTopBarTitleOpenChat}
+                  >
+                    <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
+                    {renderToolbarInput({ collapsibleInDone: true })}
+                  </button>
                 </>)}
               </div>
 
               {/* Default state — right */}
               <div className="agent-task-toolbar-right">
                 {runState === 'running' ? (
-                  <button className="at-send-btn" onClick={() => onStop()}>
+                  <button type="button" className="at-send-btn" onClick={() => onStop()}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
                     </svg>
@@ -9062,7 +9442,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       ))}
                     </div>
                   )}
-                  <button className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
+                  <button type="button" className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
+                    updateTopBarTitleAction('Build');
+                    onTopBarAction?.('Build', { sendMessage: true });
                     // Suppress badge during and after the run — the run itself
                     // will produce authoritative statuses, so pre-run pending
                     // changes are no longer relevant.
@@ -9075,7 +9457,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       suppressEnhanceBadgeRef.current = false;
                       suppressEnhanceBadgeTimerRef.current = 0;
                     }, 4000);
-                    onOpenTerminal?.(null);
                   }}>
                     <Icon name="run/run" size={16} />
                     <span className="at-send-label">Build</span>
@@ -9084,7 +9465,8 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   <div className="at-vsep" />
 
                   <button
-                    className={`at-send-btn at-send-btn-enhance${shouldShowDoneEnhanceHint ? ' has-attention' : ''}`}
+                    type="button"
+                    className="at-send-btn at-send-btn-enhance"
                     ref={doneEnhanceBtnRef}
                     data-demo-id="agent-task-enhance"
                     onClick={handleDoneEnhance}
@@ -9095,11 +9477,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
                     </svg>
                     <span className="at-send-label">Specify</span>
-                    {shouldShowDoneEnhanceHint && (
-                      <span className="at-enhance-attention-badge" ref={doneEnhanceBadgeRef} aria-hidden="true">
-                        <IconWarning />
-                      </span>
-                    )}
                   </button>
                 </>)}
               </div>
@@ -9128,18 +9505,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             </>,
             document.body
           )}
-          {doneEnhanceHintRect && shouldShowDoneEnhanceHint && (
-            <PositionedPopup triggerRect={doneEnhanceHintRect} onDismiss={() => setDoneEnhanceHintRect(null)} gap={20}>
-              <DoneEnhanceGuidePopup
-                arrowPosition={doneEnhanceHintArrowPosition}
-                dismissing={isDoneEnhanceHintDismissing}
-                onDismiss={() => setDoneEnhanceHintRect(null)}
-              />
-            </PositionedPopup>
-          )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9165,12 +9533,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                 <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                 <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
               </svg>
-              <span className="at-generating-label">Specifying...</span>
+              <span className="at-generating-label">{busyLabel ?? 'Specifying...'}</span>
             </div>
 
             {/* Generating state — right */}
             <div className="agent-task-toolbar-right">
-              <button className="at-send-btn" onClick={() => onStop()}>
+              <button type="button" className="at-send-btn" onClick={() => onStop()}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
                   <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" />
                 </svg>
@@ -9197,12 +9565,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   ))}
                 </div>
               )}
-		              <button className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleGenerate}>
+		              <button type="button" className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleBuildClick}>
 		                <Icon name="run/run" size={16} />
 		                <span className="at-send-label">Build</span>
 		              </button>
 	              <div className="at-vsep" />
-	              <button className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleGenerate}>
+	              <button type="button" className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleSpecifyClick}>
 	                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
 	                  <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#C4C4C4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 	                </svg>
@@ -9239,7 +9607,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
 const AGENT_TASKS = [
   { id: 't1', label: 'visit-booking.md',   time: '2m',  status: null },
-  { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'running' },
+  { id: 't2', label: 'vet-schedules.md',   time: '15m', status: null },
 ];
 
 const VET_SCHEDULES_AC_RUN_STATUSES = [
@@ -9368,13 +9736,13 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
   if (normalizedTabId === 'agent-task-t2' || normalizedLabel === 'vet-schedules.md') {
     const documentSections = createVetSchedulesSpecDocument();
     return {
-      initialCode: createVetSchedulesTaskDraft(),
+      initialCode: serializeSpecDocument(documentSections),
       defaultDocument: documentSections,
       acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
       planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       initialTaskState: createInteractiveTaskState({
         documentSections,
-        genState: 'idle',
+        genState: 'done',
         acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
         planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       }),
@@ -9394,7 +9762,6 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
       genState: isVisitBookingPreset ? 'done' : 'idle',
       acBaseStatuses: AC_RUN_STATUSES,
       planBaseStatuses: PLAN_RUN_STATUSES,
-      seedRunResults: isVisitBookingPreset,
     }),
   };
 }
@@ -9438,17 +9805,90 @@ function getAgentTaskTabId(taskId) {
 }
 
 function buildInitialEditorTabs() {
-  const presetTabs = ['t1', 't2']
-    .map((taskId) => getPresetAgentTaskDefinition(taskId)?.tab)
-    .filter(Boolean);
+  const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
+  const visitBookingPreset = getPresetAgentTaskDefinition('t1');
+  const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
+  const visitBookingTab = visitBookingPreset?.tab ?? {
+    id: 'agent-task-t1',
+    label: 'visit-booking.md',
+    icon: 'fileTypes/markdown',
+    closable: true,
+  };
+  const vetSchedulesTab = vetSchedulesPreset?.tab ?? {
+    id: 'agent-task-t2',
+    label: 'vet-schedules.md',
+    icon: 'fileTypes/markdown',
+    closable: true,
+  };
 
   return [
-    ...presetTabs,
-    ...MY_EDITOR_TABS,
+    visitBookingTab,
+    vetSchedulesTab,
+    visitControllerTab,
+    {
+      id: INITIAL_PLAN_DIFF_TAB_ID,
+      label: 'Diff VisitController.java',
+      icon: DIFF_TAB_ICON_NAME,
+      closable: true,
+      sourceTabId: INITIAL_PLAN_DIFF_SOURCE_TAB_ID,
+    },
+    ...remainingEditorTabs,
   ];
 }
 
 function buildInitialEditorTabContents() {
+  const sourceTabLabel = MY_EDITOR_TABS.find((tab) => tab.id === INITIAL_PLAN_DIFF_SOURCE_TAB_ID)?.label ?? 'VisitController.java';
+  const sourceCode = MY_EDITOR_TAB_CONTENTS[INITIAL_PLAN_DIFF_SOURCE_TAB_ID]?.code ?? '';
+  const diffLineText = 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()';
+  const diffTarget = normalizeCommentTarget({ kind: 'plan', index: 3 });
+  const diffData = buildPlanDiffData({
+    sourceCode,
+    text: diffLineText,
+    statusItem: { status: 'passed' },
+    issueTarget: diffTarget,
+    sourceTabLabel,
+  });
+  const diffCode = buildPlanDiffTabContent({
+    sourceCode,
+    text: diffLineText,
+    statusItem: { status: 'passed' },
+    issueTarget: diffTarget,
+    sourceTabLabel,
+  });
+  const baseContents = {
+    ...MY_EDITOR_TAB_CONTENTS,
+    '1': {
+      ...MY_EDITOR_TAB_CONTENTS['1'],
+      plainFileData: buildPlainFileData(
+        MY_EDITOR_TAB_CONTENTS['1']?.code ?? '',
+        MY_EDITOR_TABS.find((t) => t.id === '1')?.label ?? 'VisitController.java',
+        MY_EDITOR_TAB_CONTENTS['1']?.language ?? 'java',
+      ),
+      inspectionSummary: { warningCount: 2, errorCount: 1 },
+      initialDiffComments: {},
+    },
+    '2': {
+      ...MY_EDITOR_TAB_CONTENTS['2'],
+      plainFileData: buildPlainFileData(
+        MY_EDITOR_TAB_CONTENTS['2']?.code ?? '',
+        MY_EDITOR_TABS.find((t) => t.id === '2')?.label ?? 'Visit.java',
+        MY_EDITOR_TAB_CONTENTS['2']?.language ?? 'java',
+      ),
+      inspectionSummary: { warningCount: 2, errorCount: 1 },
+      initialDiffComments: {},
+    },
+    [INITIAL_PLAN_DIFF_TAB_ID]: {
+      language: diffData.language || 'text',
+      code: diffCode,
+      diffData,
+      diffSourceTabId: INITIAL_PLAN_DIFF_SOURCE_TAB_ID,
+      diffTarget,
+      diffLineText,
+      initialDiffComments: {},
+      diffCommentsReadOnly: false,
+    },
+  };
+
   return ['t1', 't2'].reduce((contents, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.content) return contents;
@@ -9457,7 +9897,7 @@ function buildInitialEditorTabContents() {
       ...contents,
       [preset.tab.id]: preset.content,
     };
-  }, { ...MY_EDITOR_TAB_CONTENTS });
+  }, baseContents);
 }
 
 function buildInitialInteractiveTaskStates() {
@@ -9904,6 +10344,1065 @@ function AgentTasksPanel({
   );
 }
 
+function snapshotAiChatMessageAttachment(attachment = null) {
+  if (!attachment || typeof attachment !== 'object') {
+    return attachment;
+  }
+
+  const diffComments = normalizeStoredDiffCommentsState(attachment.diffComments);
+  const sddCommentEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
+  const sddCommentCount = sddCommentEntries.reduce((sum, entry) => (
+    sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+  ), 0);
+
+  return {
+    ...attachment,
+    diffComments: Object.keys(diffComments).length > 0 ? diffComments : attachment.diffComments ?? null,
+    sddCommentEntries,
+    commentCount: Number.isFinite(attachment.commentCount)
+      ? attachment.commentCount
+      : Math.max(flattenStoredDiffCommentsState(diffComments).length, sddCommentCount),
+  };
+}
+
+function getAiChatAttachmentCommentPreviewItems(attachment = null) {
+  if (!attachment || typeof attachment !== 'object') {
+    return [];
+  }
+
+  const seenComments = new Set();
+  const addComment = (items, comment) => {
+    if (typeof comment !== 'string') return items;
+    const trimmedComment = comment.trim();
+    if (!trimmedComment) return items;
+
+    const normalizedComment = trimmedComment.toLowerCase();
+    if (seenComments.has(normalizedComment)) return items;
+    seenComments.add(normalizedComment);
+    items.push(trimmedComment);
+    return items;
+  };
+
+  const items = [];
+  flattenStoredDiffCommentsState(attachment.diffComments).forEach((comment) => addComment(items, comment));
+  normalizeSpecVersionCommentEntries(attachment.sddCommentEntries).forEach((entry) => {
+    (entry.comments ?? []).forEach((comment) => addComment(items, comment));
+  });
+
+  return items;
+}
+
+function ChatToolWindow({
+  ctx,
+  onOpenDiffTab = null,
+  onClearDiffComments = null,
+  onClearAllDiffAttachments = null,
+  onRemoveComposerAttachment = null,
+  onOpenPlainFileArchive = null,
+  onOpenSddDocument = null,
+  onNewChat = null,
+  diffComments = {},
+  diffCommentCount = 0,
+  sddCommentEntries = [],
+  composerDiffAttachments = [],
+  scrollTarget = null,
+  selectedChatId: controlledSelectedChatId = 'visit-model-attributes',
+  onSelectedChatIdChange = null,
+  sentChatMessages: controlledSentChatMessages = null,
+  sentChatMessagesByChatId: controlledSentChatMessagesByChatId = null,
+  onSentChatMessagesChange = null,
+  onChatMessageSent = null,
+  chatScenarios = AI_CHAT_SCENARIOS,
+  recentChatItems = AI_CHAT_RECENT_ITEMS,
+  olderChatItems = AI_CHAT_OLDER_THAN_7_ITEMS,
+}) {
+  const [selectedChatId, setSelectedChatId] = useState(controlledSelectedChatId);
+  const [composerText, setComposerText] = useState('');
+  const [localSentChatMessages, setLocalSentChatMessages] = useState([]);
+  const [optimisticSentMessagesByChatId, setOptimisticSentMessagesByChatId] = useState({});
+  const currentChatId = controlledSelectedChatId ?? selectedChatId;
+  const controlledSentChatMessagesForSelected = controlledSentChatMessagesByChatId
+    ? (controlledSentChatMessagesByChatId[currentChatId] ?? [])
+    : controlledSentChatMessages;
+  const optimisticSentMessages = optimisticSentMessagesByChatId[currentChatId] ?? [];
+  const sentChatMessages = controlledSentChatMessagesForSelected
+    ? [
+        ...controlledSentChatMessagesForSelected,
+        ...optimisticSentMessages.filter((message) => (
+          !controlledSentChatMessagesForSelected.some((controlledMessage) => controlledMessage.id === message.id)
+        )),
+      ]
+    : localSentChatMessages;
+  const [dismissedComposerAttachmentIdsByChatId, setDismissedComposerAttachmentIdsByChatId] = useState({});
+  const [isChatListOpen, setIsChatListOpen] = useState(false);
+  const [chatListPopupStyle, setChatListPopupStyle] = useState(null);
+  const chatScrollRef = useRef(null);
+  const chatTitleChevronRef = useRef(null);
+  const chatListPopupRef = useRef(null);
+  const composerTextareaRef = useRef(null);
+  const selectedChat = chatScenarios[currentChatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
+  const latestSddCommentEntries = useMemo(
+    () => normalizeSpecVersionCommentEntries(sddCommentEntries),
+    [sddCommentEntries],
+  );
+  const latestSddCommentCount = useMemo(
+    () => latestSddCommentEntries.reduce((sum, entry) => (
+      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+    ), 0),
+    [latestSddCommentEntries],
+  );
+  const normalizeSddAttachment = useCallback((attachment) => {
+    if (!attachment?.isSddDocument) {
+      return attachment;
+    }
+
+    const hasOwnCommentEntries = Object.prototype.hasOwnProperty.call(attachment, 'sddCommentEntries');
+    const attachmentCommentEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
+    const effectiveCommentEntries = hasOwnCommentEntries
+      ? attachmentCommentEntries
+      : latestSddCommentEntries;
+    const effectiveCommentCount = effectiveCommentEntries.reduce((sum, entry) => (
+      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+    ), 0);
+
+    return {
+      ...attachment,
+      commentCount: effectiveCommentCount,
+      isSddCommentAttachment: effectiveCommentCount > 0,
+      sddCommentEntries: effectiveCommentEntries,
+    };
+  }, [latestSddCommentEntries]);
+  const isEmptyChatState = Boolean(selectedChat.emptyState);
+  const composerPlaceholder = isEmptyChatState
+    ? 'Type your task, use @ to add files or / for commands'
+    : 'Type task, use @mentions or /commands';
+  const selectedChatMessageAttachments = Array.isArray(selectedChat.attachments)
+    ? selectedChat.attachments.map(normalizeSddAttachment)
+    : [];
+  const selectedChatMessageId = selectedChat.messageId ?? `chat-${currentChatId}`;
+  const dismissedAttachmentIds = dismissedComposerAttachmentIdsByChatId[currentChatId] ?? {};
+  const chatComposerAttachments = selectedChat.emptyState && Array.isArray(selectedChatMessageAttachments)
+    ? selectedChatMessageAttachments
+    : [];
+  const visibleComposerAttachments = [...chatComposerAttachments, ...(Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])]
+    .map(normalizeSddAttachment)
+    .filter((attachment, index, attachments) => (
+      attachment && !attachments.slice(index + 1).some((candidate) => candidate?.id === attachment.id)
+    ))
+    .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
+  const hasComposerAttachment = visibleComposerAttachments.length > 0;
+  const canSendMessage = composerText.trim().length > 0;
+
+  useEffect(() => {
+    setSelectedChatId(controlledSelectedChatId);
+  }, [controlledSelectedChatId]);
+
+  useEffect(() => {
+    if (!Array.isArray(controlledSentChatMessagesForSelected) || controlledSentChatMessagesForSelected.length === 0) return;
+
+    setOptimisticSentMessagesByChatId((prev) => {
+      const currentOptimisticMessages = prev[currentChatId] ?? [];
+      if (currentOptimisticMessages.length === 0) return prev;
+
+      const controlledIds = new Set(controlledSentChatMessagesForSelected.map((message) => message.id));
+      const nextOptimisticMessages = currentOptimisticMessages.filter((message) => !controlledIds.has(message.id));
+      if (nextOptimisticMessages.length === currentOptimisticMessages.length) return prev;
+
+      return {
+        ...prev,
+        [currentChatId]: nextOptimisticMessages,
+      };
+    });
+  }, [controlledSentChatMessagesForSelected, currentChatId]);
+
+  useEffect(() => {
+    if (!scrollTarget?.restoreComposerAttachment) return;
+    const targetChatId = scrollTarget.chatId ?? currentChatId;
+    if (!targetChatId) return;
+
+    setDismissedComposerAttachmentIdsByChatId((prev) => {
+      if (!(targetChatId in prev)) return prev;
+      const { [targetChatId]: _dismissedIds, ...remainingDismissedAttachments } = prev;
+      return remainingDismissedAttachments;
+    });
+  }, [currentChatId, scrollTarget?.chatId, scrollTarget?.nonce, scrollTarget?.restoreComposerAttachment]);
+
+  useEffect(() => {
+    const scrollElement = chatScrollRef.current;
+    if (!scrollElement || sentChatMessages.length === 0) return;
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+  }, [sentChatMessages.length]);
+
+  useEffect(() => {
+    const targetMessageId = scrollTarget?.messageId;
+    if (!targetMessageId) return undefined;
+
+    let timeoutId = 0;
+    let frameId = 0;
+
+    const scrollToTarget = (attempt = 0) => {
+      const scrollElement = chatScrollRef.current;
+      const searchRoot = scrollElement?.closest('.ai-chat-surface') ?? scrollElement;
+      const targetElement = searchRoot
+        ? Array.from(searchRoot.querySelectorAll('.ai-chat-user-card[data-ai-chat-message-id]')).find(
+            (node) => node instanceof HTMLElement && node.dataset.aiChatMessageId === targetMessageId,
+          )
+        : null;
+
+      if (scrollElement && targetElement instanceof HTMLElement && scrollElement.contains(targetElement)) {
+        const targetTop = targetElement.offsetTop - scrollElement.offsetTop;
+        scrollElement.scrollTo({
+          top: Math.max(0, targetTop - ((scrollElement.clientHeight - targetElement.offsetHeight) / 2)),
+          behavior: 'smooth',
+        });
+        return;
+      }
+
+      if (scrollElement && targetElement instanceof HTMLElement) {
+        scrollElement.scrollTo({ top: 0, behavior: 'smooth' });
+        targetElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        return;
+      }
+
+      if (attempt < 10) {
+        timeoutId = window.setTimeout(() => scrollToTarget(attempt + 1), 50);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(() => scrollToTarget());
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [scrollTarget?.messageId, scrollTarget?.nonce, sentChatMessages.length]);
+
+  useEffect(() => {
+    if (!isChatListOpen) return undefined;
+
+    const updatePopupPosition = () => {
+      const titleButtonRect = chatTitleChevronRef.current?.getBoundingClientRect();
+      const chatWindowRect = chatTitleChevronRef.current?.closest('.ai-chat-window')?.getBoundingClientRect();
+      if (!titleButtonRect || !chatWindowRect) return;
+
+      const viewportPadding = 8;
+      const popupWidth = Math.min(chatWindowRect.width - 16, window.innerWidth - (viewportPadding * 2));
+      setChatListPopupStyle({
+        top: Math.max(viewportPadding, titleButtonRect.bottom + 2),
+        left: Math.max(viewportPadding, Math.min(chatWindowRect.left + 8, window.innerWidth - popupWidth - viewportPadding)),
+        width: popupWidth,
+      });
+    };
+
+    updatePopupPosition();
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (chatListPopupRef.current?.contains(target) || chatTitleChevronRef.current?.contains(target)) {
+        return;
+      }
+      setIsChatListOpen(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsChatListOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', updatePopupPosition);
+    window.addEventListener('scroll', updatePopupPosition, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', updatePopupPosition);
+      window.removeEventListener('scroll', updatePopupPosition, true);
+    };
+  }, [isChatListOpen]);
+
+  const handleSendMessage = useCallback(() => {
+    const messageText = (composerTextareaRef.current?.value ?? composerText).trim();
+    if (!messageText) return;
+    const targetChatId = currentChatId;
+
+    const messageAttachments = hasComposerAttachment
+      ? visibleComposerAttachments.map((attachment) => snapshotAiChatMessageAttachment(attachment))
+      : [];
+
+    const newMessage = {
+      id: `${targetChatId}-${Date.now()}-${sentChatMessages.length}`,
+      text: messageText,
+      attachments: messageAttachments,
+    };
+    const appendMessage = (prev) => [...prev, newMessage];
+
+    if (onSentChatMessagesChange) {
+      onSentChatMessagesChange(appendMessage, targetChatId);
+      setOptimisticSentMessagesByChatId((prev) => ({
+        ...prev,
+        [targetChatId]: [
+          ...(prev[targetChatId] ?? []).filter((message) => message.id !== newMessage.id),
+          newMessage,
+        ],
+      }));
+    } else {
+      setLocalSentChatMessages(appendMessage);
+    }
+    setComposerText('');
+    if (hasComposerAttachment) {
+      const dismissedIds = {};
+      for (const attachment of visibleComposerAttachments) {
+        dismissedIds[attachment.id] = true;
+      }
+      setDismissedComposerAttachmentIdsByChatId((prev) => ({
+        ...prev,
+        [targetChatId]: { ...(prev[targetChatId] ?? {}), ...dismissedIds },
+      }));
+      onClearAllDiffAttachments?.();
+    }
+    onChatMessageSent?.({ chatId: targetChatId, message: newMessage });
+  }, [composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
+
+  const handleContextAttachmentOpen = useCallback((messageId, attachment) => {
+    const restoredRowId = Object.keys(attachment?.diffComments ?? {})[0] ?? null;
+    if (attachment?.isSddDocument) {
+      onOpenSddDocument?.({
+        commentEntries: attachment.sddCommentEntries ?? [],
+        isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
+        contextMessageId: messageId,
+        contextChatId: currentChatId,
+        sourceTabId: attachment.sourceTabId,
+      });
+      return;
+    }
+    if (attachment?.isPlainFile && attachment?.diffTabId) {
+      onOpenPlainFileArchive?.(
+        attachment.diffTabId,
+        attachment.diffComments ?? {},
+        messageId,
+        currentChatId,
+      );
+      return;
+    }
+    const diffRequest = attachment?.diffRequest ?? AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST;
+    onOpenDiffTab?.({
+      ...diffRequest,
+      initialDiffCommentsOverride: attachment?.diffComments ?? {},
+      commentsReadOnly: true,
+      contextMessageId: messageId,
+      contextChatId: currentChatId,
+      navigation: {
+        activeRowId: restoredRowId,
+      },
+    });
+  }, [currentChatId, onOpenDiffTab, onOpenPlainFileArchive, onOpenSddDocument]);
+
+  const handleChatSelect = useCallback((chatId) => {
+    setSelectedChatId(chatId);
+    onSelectedChatIdChange?.(chatId);
+    setComposerText('');
+    setIsChatListOpen(false);
+    requestAnimationFrame(() => {
+      const scrollElement = chatScrollRef.current;
+      if (scrollElement) {
+        scrollElement.scrollTop = 0;
+      }
+    });
+  }, [onSelectedChatIdChange]);
+
+  return (
+	    <ToolWindow
+	      title={isEmptyChatState ? 'AI Chat' : selectedChat.title}
+      width={377}
+      height="auto"
+      focused={ctx.focusedPanel === 'right'}
+      onFocus={() => ctx.setFocusedPanel('right')}
+      onActionClick={(action) => {
+        if (action === 'minimize') ctx.setShowRightPanel(false);
+      }}
+      actions={[]}
+	      toolbarExtra={(
+	        <div className="ai-chat-header-extra">
+	          <button
+	            ref={chatTitleChevronRef}
+	            className={`ai-chat-title-button${isChatListOpen ? ' is-selected' : ''}`}
+	            type="button"
+	            aria-label="Open chats list"
+	            aria-expanded={isChatListOpen}
+	            onClick={() => setIsChatListOpen((prev) => !prev)}
+	          >
+	            <span className="ai-chat-title-button-text">{selectedChat.title}</span>
+	            <Icon name="general/chevronDown" size={16} />
+	          </button>
+          <div className="ai-chat-header-toolbar">
+            <button className="ai-chat-new-chat-button" type="button" title="New Chat" aria-label="New Chat" onClick={() => onNewChat?.()}>
+              <Icon name="general/add" size={16} />
+              <span>New Chat</span>
+            </button>
+            <IconButton icon="general/openNewTab" tooltip="Open in New Tab" className="ai-chat-toolbar-button" />
+            <IconButton icon="general/moreVertical" tooltip="More Options" className="ai-chat-toolbar-button" />
+            <IconButton icon="general/hide" tooltip="Hide" className="ai-chat-toolbar-button" onClick={() => ctx.setShowRightPanel(false)} />
+          </div>
+        </div>
+      )}
+      className="ai-chat-window main-window-tool-window main-window-tool-window-right"
+    >
+      {isChatListOpen && chatListPopupStyle && typeof document !== 'undefined' && createPortal(
+	        <ChatListPopup
+	          ref={chatListPopupRef}
+	          style={chatListPopupStyle}
+	          selectedChatId={currentChatId}
+	          onSelectChat={handleChatSelect}
+	          recentItems={recentChatItems}
+	          olderItems={olderChatItems}
+	        />,
+	        document.body,
+	      )}
+	      <div className="ai-chat-surface">
+	        {!isEmptyChatState && sentChatMessages.length === 0 && (
+	          <ChatUserCard
+	            messageId={selectedChatMessageId}
+            attachments={selectedChatMessageAttachments}
+            onAttachmentOpen={
+              selectedChatMessageAttachments.length > 0
+                ? (attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment)
+                : null
+            }
+          >
+            {selectedChat.userPrompt}
+          </ChatUserCard>
+        )}
+
+	        <div className={`ai-chat-scroll${isEmptyChatState && sentChatMessages.length === 0 ? ' is-empty-state' : ''}`} ref={chatScrollRef}>
+	          {isEmptyChatState && sentChatMessages.length === 0 && (
+	            <AiChatEmptyState />
+	          )}
+	          {!isEmptyChatState && sentChatMessages.length > 0 && (
+	            <ChatUserCard
+              messageId={selectedChatMessageId}
+              attachments={selectedChatMessageAttachments}
+              onAttachmentOpen={
+                selectedChatMessageAttachments.length > 0
+                  ? (attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment)
+                  : null
+              }
+            >
+              {selectedChat.userPrompt}
+            </ChatUserCard>
+          )}
+
+	          {!isEmptyChatState && (
+	            <div className="ai-chat-ai-message">
+	              {selectedChat.assistantParagraphs.map((paragraph) => (
+	                <p className="ai-chat-assistant-copy" key={paragraph}>{paragraph}</p>
+	              ))}
+	            </div>
+	          )}
+
+	          {!isEmptyChatState && selectedChat.changeCard && (
+	            <ChatChangeCard icon="java" name={selectedChat.changeCard.name} added={selectedChat.changeCard.added} removed={selectedChat.changeCard.removed} onClick={onOpenDiffTab && selectedChat.diffRequest ? () => onOpenDiffTab(selectedChat.diffRequest) : null}>
+	              <SyntaxCode code={selectedChat.changeCard.code} />
+	            </ChatChangeCard>
+	          )}
+
+	          {!isEmptyChatState && (
+	            <section className="ai-chat-result">
+	              <h4>Result</h4>
+	              {selectedChat.result.map((paragraph) => (
+	                <p key={paragraph}>{paragraph}</p>
+	              ))}
+	            </section>
+	          )}
+
+	          {!isEmptyChatState && (
+	            <div className="ai-chat-command-card">
+	              <div className="ai-chat-command-left">
+	                <span className="ai-chat-terminal-icon" aria-hidden="true">
+	                  <Icon name="toolwindows/terminal" size={16} />
+	                </span>
+	                <span>{selectedChat.command}</span>
+	              </div>
+	              <div className="ai-chat-command-actions">
+	                <IconButton icon="general/moreVertical" tooltip="More Options" className="ai-chat-toolbar-button" />
+	                <AiChatToolbarIconButton label="Open in Tool Window">
+	                  <AiChatOpenInToolWindowIcon />
+	                </AiChatToolbarIconButton>
+	                <IconButton icon="general/expandAll" tooltip="Expand All" className="ai-chat-toolbar-button" />
+	              </div>
+	            </div>
+	          )}
+
+          {sentChatMessages.map((message) => (
+            message.role === 'assistant'
+              ? (
+                <ChatAssistantMessage key={message.id} streaming={Boolean(message.streaming)}>
+                  {message.text}
+                </ChatAssistantMessage>
+              )
+              : (
+                <ChatUserCard
+                  key={message.id}
+                  messageId={message.id}
+                  attachments={message.attachments}
+                  onAttachmentOpen={(attachment) => handleContextAttachmentOpen(message.id, attachment)}
+                >
+                  {message.text}
+                </ChatUserCard>
+              )
+          ))}
+        </div>
+
+        <div className="ai-chat-composer">
+	          <textarea
+              ref={composerTextareaRef}
+	            rows={1}
+	            placeholder={composerPlaceholder}
+            aria-label="Task prompt"
+            value={composerText}
+            onChange={(event) => setComposerText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.shiftKey) return;
+              event.preventDefault();
+              handleSendMessage();
+            }}
+          />
+          {hasComposerAttachment && (
+            <div className="ai-chat-attachments">
+              {visibleComposerAttachments.map((attachment) => (
+                <span key={attachment.id} className="ai-chat-attachment-chip" role="button" tabIndex={0} onClick={() => {
+                    if (attachment.isSddDocument) {
+                      onOpenSddDocument?.({
+                        commentEntries: attachment.sddCommentEntries ?? [],
+                        isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
+                        contextMessageId: selectedChatMessageId,
+                        contextChatId: currentChatId,
+                        sourceTabId: attachment.sourceTabId,
+                      });
+                      return;
+                    }
+                    onOpenDiffTab?.({
+                      ...(attachment.diffRequest ?? selectedChat.diffRequest ?? AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST),
+                      initialDiffCommentsOverride: attachment.diffComments ?? {},
+                      contextMessageId: selectedChatMessageId,
+                      contextChatId: currentChatId,
+                    });
+                  }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
+                  <AiChatAttachmentIcon icon={attachment.icon} />
+                  <span className="ai-chat-attachment-name">{attachment.label}</span>
+                  {attachment.commentCount > 0 && (
+                    <span className="ai-chat-attachment-comment-count">
+                      <Icon name="general/balloon" size={16} />
+                      {attachment.commentCount}
+                    </span>
+                  )}
+                  <button
+                    className="ai-chat-attachment-close-button"
+                    type="button"
+                    aria-label="Remove attachment from input"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDismissedComposerAttachmentIdsByChatId((prev) => ({
+                        ...prev,
+                        [currentChatId]: {
+                          ...dismissedAttachmentIds,
+                          [attachment.id]: true,
+                        },
+                      }));
+                      onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
+                    }}
+                  >
+                    <Icon name="windows/closeSmall" size={16} className="ai-chat-attachment-close" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="ai-chat-composer-toolbar">
+            <div className="ai-chat-composer-left">
+              <button className="ai-chat-plus-button" type="button" aria-label="Add context">
+                <Icon name="general/add" size={16} />
+              </button>
+	              <button className="ai-chat-mode-button" type="button">
+	                Default
+	                <Icon name="general/chevronDown" size={16} />
+	              </button>
+            </div>
+            <div className="ai-chat-composer-actions">
+              <AiChatToolbarIconButton label="Select context">
+                <AiChatSelectContextIcon />
+              </AiChatToolbarIconButton>
+              <AiChatToolbarIconButton label="Generating" className="ai-chat-progress-button">
+                <AiChatProgressIcon />
+              </AiChatToolbarIconButton>
+              <AiChatToolbarIconButton label="Send" onClick={handleSendMessage} disabled={!canSendMessage}>
+                <AiChatSendIcon />
+              </AiChatToolbarIconButton>
+            </div>
+          </div>
+        </div>
+
+	        <footer className="ai-chat-footer">
+	          <AiChatFooterSelector icon={<AiChatClaudeIcon />} label="Claude Agent" />
+	          <AiChatFooterSelector label="Opus 4.5" />
+          <button type="button" className="ai-chat-feedback">Feedback <Icon name="ide/externalLink" size={16} /></button>
+        </footer>
+      </div>
+    </ToolWindow>
+  );
+}
+
+function AiChatAttachmentIcon({ icon = 'vcs/diff' }) {
+  return <Icon name={icon} size={16} className="icon ai-chat-attachment-icon" />;
+}
+
+function AiChatFooterSelector({ icon = null, label }) {
+  return (
+    <button type="button" className="ai-chat-agent-select">
+      {icon}
+      <span>{label}</span>
+      <Icon name="general/chevronDown" size={16} />
+    </button>
+  );
+}
+
+const AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS = {
+  'plan-code-1-added-10': ['Keep vet as a required relationship on Visit so controller validation and persistence use the same model shape.'],
+};
+
+const AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST = {
+  text: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()',
+  statusItem: { status: 'passed' },
+  issueTarget: { kind: 'plan', index: 3 },
+  source: { tabId: '1', label: 'VisitController.java' },
+};
+
+const AI_CHAT_VISIT_DIFF_REQUEST = {
+  text: 'Visit.java — add visit time and required vet relationship',
+  statusItem: { status: 'passed' },
+  issueTarget: { kind: 'plan', index: 1 },
+  source: { tabId: '2', label: 'Visit.java' },
+};
+
+const AI_CHAT_VISIT_MODEL_ATTRIBUTES_ATTACHMENTS = [
+  {
+    id: 'diff-visit-model-attributes',
+    label: 'Diff Visit.java',
+    commentCount: flattenStoredDiffCommentsState(AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS).length,
+    diffComments: AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS,
+    diffRequest: AI_CHAT_VISIT_DIFF_REQUEST,
+  },
+];
+
+const AI_CHAT_RECENT_ITEMS = [
+  {
+    id: 'refactor-time-slots',
+    title: 'Refactor VisitController time slots',
+    time: '1m',
+    selected: true,
+    added: '+10',
+    removed: '-7',
+    status: 'ready',
+    icon: 'claude',
+  },
+  {
+    id: 'visit-model-attributes',
+    title: 'Review Visit model fields',
+    time: '4m',
+    added: '+6',
+    removed: '-2',
+    icon: 'claude',
+  },
+  {
+    id: 'petclinic-tests',
+    title: 'Run PetClinic controller tests',
+    time: '9m',
+    status: 'loading',
+    icon: 'claude',
+  },
+];
+
+const AI_CHAT_OLDER_THAN_7_ITEMS = [
+  {
+    id: 'owners-search',
+    title: 'Fix owner search empty result copy',
+    time: '8d',
+    icon: 'claude',
+  },
+  {
+    id: 'vet-list-model',
+    title: 'Expose vets list through @ModelAttribute',
+    time: '12d',
+    added: '+8',
+    removed: '-3',
+    icon: 'claude',
+  },
+  {
+    id: 'appointment-validation',
+    title: 'Tighten visit appointment validation',
+    time: '19d',
+    icon: 'junie',
+  },
+];
+
+const AI_CHAT_SCENARIOS = {
+  'refactor-time-slots': {
+    title: 'Refactor VisitController time slots',
+    userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
+    assistantParagraphs: [
+      'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
+      'This removes the repeated ArrayList construction from populateTimeSlots(), keeps the 9:00-16:00 range in one place, and preserves the existing @ModelAttribute("timeSlots") contract for the view.',
+    ],
+    changeCard: {
+      name: 'VisitController.java',
+      added: '+10',
+      removed: '-7',
+      code: `private final List<LocalTime> timeSlots;
+
+public VisitController(...) {
+    this.timeSlots = IntStream.rangeClosed(9, 16)
+        .mapToObj(hour -> LocalTime.of(hour, 0))
+        .toList();
+}
+
+@ModelAttribute("timeSlots")
+public List<LocalTime> populateTimeSlots() {
+    return this.timeSlots;
+}`,
+    },
+    result: [
+      'VisitController.java now prepares the hourly visit slots once in the controller constructor and reuses that list when Spring populates the timeSlots model attribute.',
+      'No template changes were required.',
+    ],
+    command: 'Ran ./gradlew test',
+    attachmentLabel: 'Diff VisitController.java',
+    diffRequest: AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST,
+  },
+  'visit-model-attributes': {
+    title: 'Review Visit model fields',
+    messageId: 'chat-history-visit-model-attributes',
+    userPrompt: 'Review Visit.java and make sure the visit date, time, vet, pet, and description fields match the appointment booking flow.',
+    assistantParagraphs: [
+      'I reviewed the Visit entity against the appointment form and added the missing persisted fields for visit time and assigned vet.',
+      'The model now stores date, time, description, vet, and pet together, so the controller can validate bookings against the same data that will be saved.',
+      'Keeping vet required on the Visit object also makes the form binding explicit: a submitted appointment needs both a time slot and a selected vet before it can be persisted.',
+    ],
+    changeCard: {
+      name: 'Visit.java',
+      added: '+6',
+      removed: '-2',
+      code: `@Column(name = "visit_time")
+@NotNull
+private LocalTime time;
+
+@ManyToOne
+@JoinColumn(name = "vet_id")
+@NotNull
+private Vet vet;
+
+public LocalTime getTime() {
+    return this.time;
+}
+
+public Vet getVet() {
+    return this.vet;
+}`,
+    },
+    result: [
+      'Visit.java now persists the selected appointment time and vet alongside the existing visit date, pet, and description.',
+      'The entity shape matches the booking workflow and supports the repository duplicate-booking check.',
+      'The diff is available as Diff Visit.java with the restored comment context attached to this chat.',
+    ],
+    command: 'Ran ./gradlew test --tests VisitControllerTests',
+    attachmentLabel: 'Diff Visit.java',
+    attachments: AI_CHAT_VISIT_MODEL_ATTRIBUTES_ATTACHMENTS,
+    diffRequest: AI_CHAT_VISIT_DIFF_REQUEST,
+  },
+  'petclinic-tests': {
+    title: 'Run PetClinic controller tests',
+    userPrompt: 'Run the PetClinic controller tests and summarize the VisitController coverage.',
+    assistantParagraphs: [
+      'I started the controller test subset and focused on the VisitController paths touched by the current refactor.',
+      'The run is still in progress, but the selected test scope covers visit creation, owner context, and model population.',
+    ],
+    changeCard: null,
+    result: [
+      'VisitControllerTests are running for the controller-level regression check.',
+      'I will use the result to verify the timeSlots and vets model attributes remain available to the view.',
+    ],
+    command: 'Running ./gradlew test --tests VisitControllerTests',
+    attachmentLabel: null,
+  },
+};
+
+function ChatListRow({ item, selected = false, onSelect = null }) {
+  return (
+    <button className={`ai-chat-list-row${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
+      <AiChatListLeading title={item.title} icon={item.icon} />
+      <span className="ai-chat-list-trailing">
+        <span className="ai-chat-list-diff">
+          {item.added && item.removed && (
+            <>
+              <span className="ai-chat-list-added">{item.added}</span>
+              <span className="ai-chat-list-removed">{item.removed}</span>
+            </>
+          )}
+        </span>
+        <span className="ai-chat-list-status">
+          {item.status === 'ready' && <span className="ai-chat-list-ready" aria-label="Ready" />}
+          {item.status === 'loading' && <IconLoaderSpinner />}
+        </span>
+        <span className="ai-chat-list-time">{item.time}</span>
+      </span>
+    </button>
+  );
+}
+
+function ChatListGroupHeader({ children, expanded = true }) {
+  return (
+    <div className="ai-chat-list-group-header">
+      <span className="ai-chat-list-group-label">
+        <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        <span>{children}</span>
+      </span>
+      <span className="ai-chat-list-group-separator" aria-hidden="true" />
+    </div>
+  );
+}
+
+function AiChatEmptyState() {
+  return (
+    <div className="ai-chat-empty-state">
+      <div className="ai-chat-empty-row">
+        <span>Multiline code completion</span>
+        <span className="ai-chat-empty-shortcuts">
+          <kbd>⌥</kbd>
+          <kbd>⇧</kbd>
+          <kbd>\</kbd>
+        </span>
+      </div>
+      <div className="ai-chat-empty-row">
+        <span>Code generation in the editor</span>
+        <span className="ai-chat-empty-shortcuts">
+          <kbd>⌘</kbd>
+          <kbd>\</kbd>
+        </span>
+      </div>
+      <div className="ai-chat-empty-row">
+        <span>AI actions in the editor's context menu</span>
+      </div>
+      <button type="button" className="ai-chat-empty-link">All features</button>
+    </div>
+  );
+}
+
+const ChatListPopup = forwardRef(function ChatListPopup({
+  style = null,
+  selectedChatId = 'visit-model-attributes',
+  onSelectChat = null,
+  recentItems = AI_CHAT_RECENT_ITEMS,
+  olderItems = AI_CHAT_OLDER_THAN_7_ITEMS,
+}, ref) {
+  return (
+    <div className="ai-chat-list-popup" ref={ref} style={style ?? undefined} role="dialog" aria-label="Chats list">
+      <div className="ai-chat-list-search">
+        <Icon name="general/search" size={16} />
+        <input type="text" aria-label="Search chats" placeholder="Search" />
+      </div>
+      <div className="ai-chat-list-section">
+        {recentItems.map((item) => (
+          <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} />
+        ))}
+      </div>
+      <ChatListGroupHeader>Older than 7 days</ChatListGroupHeader>
+      <div className="ai-chat-list-section">
+        {olderItems.map((item) => (
+          <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} />
+        ))}
+      </div>
+      <ChatListGroupHeader expanded={false}>Older than 30 days</ChatListGroupHeader>
+    </div>
+  );
+});
+
+function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null }) {
+  const [isContextExpanded, setIsContextExpanded] = useState(false);
+  const attachmentCount = attachments.length;
+
+  return (
+    <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
+      <p>{children}</p>
+      {attachmentCount > 0 && (
+        <div className="ai-chat-sent-context">
+          <button
+            className="ai-chat-sent-context-toggle"
+            type="button"
+            aria-expanded={isContextExpanded}
+            onClick={() => setIsContextExpanded((prev) => !prev)}
+          >
+            <span>{`Attachments ${attachmentCount}`}</span>
+            <Icon name="general/chevronDown" size={16} className={isContextExpanded ? 'is-expanded' : ''} />
+          </button>
+          {isContextExpanded && (
+            <div className="ai-chat-sent-context-attachments">
+              {attachments.map((attachment) => {
+                const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+                const visibleCommentPreviewItems = commentPreviewItems.slice(0, 3);
+                const hiddenCommentPreviewCount = Math.max(0, commentPreviewItems.length - visibleCommentPreviewItems.length);
+
+                return (
+                  <span
+                    key={attachment.id}
+                    className="ai-chat-attachment-chip ai-chat-sent-attachment-chip"
+                    role={onAttachmentOpen ? 'button' : undefined}
+                    tabIndex={onAttachmentOpen ? 0 : undefined}
+                    onClick={onAttachmentOpen ? () => onAttachmentOpen(attachment) : undefined}
+                    onKeyDown={onAttachmentOpen ? (event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      onAttachmentOpen(attachment);
+                    } : undefined}
+                  >
+                    <AiChatAttachmentIcon icon={attachment.icon} />
+                    <span className="ai-chat-attachment-name">{attachment.label}</span>
+                    {attachment.commentCount > 0 && (
+                      <span className="ai-chat-attachment-comment-count">
+                        <Icon name="general/balloon" size={16} />
+                        {attachment.commentCount}
+                      </span>
+                    )}
+                    {commentPreviewItems.length > 0 && (
+                      <span className="ai-chat-attachment-comment-preview" role="tooltip">
+                        {visibleCommentPreviewItems.map((comment, index) => (
+                          <span key={`${attachment.id}-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
+                            {comment}
+                          </span>
+                        ))}
+                        {hiddenCommentPreviewCount > 0 && (
+                          <span className="ai-chat-attachment-comment-preview-more">
+                            {`+${hiddenCommentPreviewCount} more`}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      <button className="ai-chat-card-menu" type="button" aria-label="Message actions">
+        <span />
+        <span />
+        <span />
+      </button>
+    </article>
+  );
+}
+
+function ChatAssistantMessage({ children, streaming = false }) {
+  return (
+    <div className={`ai-chat-ai-message${streaming ? ' is-streaming' : ''}`}>
+      <div className="ai-chat-assistant-header">
+        <AiChatClaudeIcon />
+        <span>Claude Agent</span>
+      </div>
+      <p className="ai-chat-assistant-copy">
+        {children}
+        {streaming && <span className="ai-chat-streaming-caret" aria-hidden="true" />}
+      </p>
+    </div>
+  );
+}
+
+function AiChatToolbarIconButton({ label, className = '', children, onClick = null, disabled = false }) {
+  return (
+    <button
+      className={`toolbar-icon-button toolbar-icon-button-action ai-chat-toolbar-button ai-chat-composer-icon-button${className ? ` ${className}` : ''}`}
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick ?? undefined}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AiChatSelectContextIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
+      <path d="M8.02299 8.45408C7.99895 8.39378 7.99312 8.32777 8.00621 8.2642C8.0193 8.20062 8.05073 8.14228 8.09663 8.09639C8.14253 8.05049 8.20087 8.01905 8.26444 8.00597C8.32801 7.99288 8.39403 7.99871 8.45432 8.02274L14.4543 10.3561C14.5186 10.3812 14.5736 10.4257 14.6115 10.4834C14.6495 10.5411 14.6685 10.6092 14.6661 10.6782C14.6637 10.7472 14.6399 10.8138 14.598 10.8687C14.5562 10.9236 14.4982 10.9642 14.4323 10.9847L12.1363 11.6967C12.0327 11.7288 11.9385 11.7856 11.8618 11.8623C11.7852 11.9389 11.7283 12.0331 11.6963 12.1367L10.985 14.4321C10.9644 14.498 10.9239 14.5559 10.869 14.5978C10.814 14.6397 10.7475 14.6635 10.6785 14.6659C10.6094 14.6683 10.5414 14.6492 10.4837 14.6113C10.426 14.5733 10.3815 14.5184 10.3563 14.4541L8.02299 8.45408Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 7.33333V3.33333C14 2.97971 13.8595 2.64057 13.6095 2.39052C13.3594 2.14048 13.0203 2 12.6667 2H3.33333C2.97971 2 2.64057 2.14048 2.39052 2.39052C2.14048 2.64057 2 2.97971 2 3.33333V12.6667C2 13.0203 2.14048 13.3594 2.39052 13.6095C2.64057 13.8595 2.97971 14 3.33333 14H7.33333" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AiChatProgressIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
+      <circle cx="8" cy="8" r="6.25" stroke="#4C4F56" strokeWidth="1.5" />
+      <path d="M8 1.75C8.99794 1.75 9.98138 1.98897 10.868 2.44691C11.7547 2.90485 12.5188 3.56846 13.0965 4.38221C13.6741 5.19597 14.0485 6.13623 14.1884 7.12432C14.3282 8.11242 14.2293 9.11964 13.9002 10.0617" stroke="#B4B8BF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AiChatOpenInToolWindowIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
+      <path d="M7 9L10.5 5.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7.5 5.5L10.5 5.5L10.5 8.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="13.5" y="13.5" width="11" height="11" rx="1.5" transform="rotate(180 13.5 13.5)" stroke="currentColor" />
+    </svg>
+  );
+}
+
+function AiChatSendIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
+      <path d="M9.5 8H3.5L2.5 14.5L14.5 8L2.5 1.5L3.192 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+
+function SyntaxCode({ code, language = 'java' }) {
+  const lines = code.split('\n');
+  return (
+    <pre>
+      {lines.map((line, li) => (
+        <Fragment key={li}>
+          {li > 0 && '\n'}
+          {tokenizeCodeFragment(line || ' ', language).map((token, ti) => (
+            <span key={ti} className={`plan-diff-token plan-diff-token-${token.type}`}>{token.text}</span>
+          ))}
+        </Fragment>
+      ))}
+    </pre>
+  );
+}
+
+function ChatChangeCard({ icon, name, added, removed, children, onClick = null }) {
+  return (
+    <section className="ai-chat-change-card">
+      <header className="ai-chat-change-header" role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick ?? undefined} onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}>
+        <Icon name={icon === 'yaml' ? 'fileTypes/yaml' : 'fileTypes/java'} size={16} className="ai-chat-file-icon" />
+        <span className="ai-chat-change-name">{name}</span>
+        <span className="ai-chat-diff-add">{added}</span>
+        <span className="ai-chat-diff-remove">{removed}</span>
+        <span className="ai-chat-edited">Edited</span>
+        <IconButton icon="general/expandAll" tooltip="Collapse file diff" className="ai-chat-toolbar-button" />
+      </header>
+      <div className="ai-chat-code-preview">{children}</div>
+    </section>
+  );
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -9911,14 +11410,53 @@ export default function App() {
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
-  const [activeEditorTab, setActiveEditorTab] = useState(null);
+  const [activeEditorTab, setActiveEditorTab] = useState(() => {
+    const initialTabs = buildInitialEditorTabs();
+    const visitBookingTabIndex = initialTabs.findIndex((tab) => tab.id === 'agent-task-t1');
+    return visitBookingTabIndex >= 0 ? visitBookingTabIndex : 0;
+  });
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'ai']);
+  const [chatScrollTarget, setChatScrollTarget] = useState(null);
+  const [selectedAiChatId, setSelectedAiChatId] = useState('visit-model-attributes');
+  const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
+  const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  const aiChatStreamingTimersRef = useRef({});
+  const specActionDocStateTimersRef = useRef({});
+  const suppressDoneCommentsChangeRef = useRef(false);
+  const suppressDoneCommentsChangeTimerRef = useRef(null);
+  const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
+  const aiChatDraftSessionCounterRef = useRef(0);
+  const openAiToolWindow = useCallback(() => {
+    setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('ai') ? prev : [...prev, 'ai']
+    ));
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const revealAiPanel = () => {
+      const chatWindow = document.querySelector('.ai-chat-window');
+      if (chatWindow instanceof HTMLElement && chatWindow.getClientRects().length > 0) {
+        return;
+      }
+
+      const aiStripe = document.querySelector('.main-window-stripe-right [title="AI Assistant"]');
+      if (aiStripe instanceof HTMLElement) {
+        aiStripe.click();
+      }
+    };
+
+    window.requestAnimationFrame(() => {
+      revealAiPanel();
+      window.setTimeout(revealAiPanel, 0);
+    });
+  }, []);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -9937,7 +11475,92 @@ export default function App() {
     }),
     [],
   );
+  const aiChatScenarios = useMemo(
+    () => ({
+      ...AI_CHAT_SCENARIOS,
+      ...aiChatDraftSessionsById,
+    }),
+    [aiChatDraftSessionsById],
+  );
+  const aiChatDraftListItems = useMemo(
+    () => Object.values(aiChatDraftSessionsById)
+      .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+      .map((session) => ({
+        id: session.id,
+        title: session.title,
+        time: 'now',
+        status: session.attachmentLabel ? 'ready' : undefined,
+        icon: typeof session.icon === 'string' && session.icon.length > 0
+          ? session.icon
+          : (typeof session.title === 'string' && session.title.endsWith('.md') ? 'fileTypes/markdown' : 'claude'),
+      })),
+    [aiChatDraftSessionsById],
+  );
+  const aiChatRecentItems = useMemo(
+    () => [
+      ...aiChatDraftListItems,
+      ...AI_CHAT_RECENT_ITEMS.filter((item) => !aiChatDraftSessionsById[item.id]),
+    ],
+    [aiChatDraftListItems, aiChatDraftSessionsById],
+  );
+  const getAiChatScenarioById = useCallback(
+    (chatId) => aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'],
+    [aiChatScenarios],
+  );
+  const getAiChatListItemById = useCallback(
+    (chatId) => [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS].find((item) => item.id === chatId) ?? null,
+    [aiChatRecentItems],
+  );
+  const createEmptyAiChatSession = useCallback(({
+    id: providedId = null,
+    createdAt: providedCreatedAt = null,
+    diffRequest = null,
+    attachmentLabel = null,
+    attachments = [],
+    title = 'New Chat',
+    icon = 'claude',
+    select = true,
+  } = {}) => {
+    const createdAt = Number.isFinite(providedCreatedAt) ? providedCreatedAt : Date.now();
+    const id = typeof providedId === 'string' && providedId.length > 0
+      ? providedId
+      : `new-chat-${createdAt}-${aiChatDraftSessionCounterRef.current + 1}`;
+    if (!providedId) {
+      aiChatDraftSessionCounterRef.current += 1;
+    }
+    const session = {
+      id,
+      title,
+      createdAt,
+      icon,
+      emptyState: true,
+      userPrompt: '',
+      assistantParagraphs: [],
+      changeCard: null,
+      result: [],
+      command: '',
+      attachmentLabel,
+      attachments: Array.isArray(attachments) ? attachments : [],
+      diffRequest,
+    };
+
+    setAiChatDraftSessionsById((prev) => ({
+      ...prev,
+      [id]: session,
+    }));
+    setAiChatSentMessagesByChatId((prev) => ({
+      ...prev,
+      [id]: prev[id] ?? [],
+    }));
+    if (select) {
+      setSelectedAiChatId(id);
+      openAiToolWindow();
+    }
+
+    return session;
+  }, [openAiToolWindow]);
   const [runStatesByTab, setRunStatesByTab] = useState({});
+  const [specDocumentRunRequestsByTab, setSpecDocumentRunRequestsByTab] = useState({});
   const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
   const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
@@ -9956,10 +11579,16 @@ export default function App() {
   const [removedIssueIndices, setRemovedIssueIndices] = useState(() => initialVisitBookingTaskState.removedIssueIndices ?? { ac: {}, plan: {} });
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
+  const [sddCommentSessionId, setSddCommentSessionId] = useState(null); // chat ID created when first SDD comment is left
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
+  const [specTopBarStatusesByTab, setSpecTopBarStatusesByTab] = useState({
+    'agent-task-t1': 'Specified',
+  });
   const doneEnhanceFlowRef = useRef(null);
-  const seededPresetTaskRef = useRef(false);
+  const commentChatCreatedForTabRef = useRef(null); // tracks tabId for which we already created a chat on first comment
+  const specStatusChatIdsRef = useRef({});
+  const seededPresetTaskRef = useRef(true);
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
@@ -9976,6 +11605,22 @@ export default function App() {
   const [specVersionsByTab, setSpecVersionsByTab] = useState({});
   const [planDiffUiStates, setPlanDiffUiStates] = useState({});
   const addPopupFiles = buildAddPopupFiles(agentTasks);
+
+  useEffect(() => () => {
+    Object.values(aiChatStreamingTimersRef.current).forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    aiChatStreamingTimersRef.current = {};
+    Object.values(specActionDocStateTimersRef.current).forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    specActionDocStateTimersRef.current = {};
+    if (suppressDoneCommentsChangeTimerRef.current) {
+      window.clearTimeout(suppressDoneCommentsChangeTimerRef.current);
+      suppressDoneCommentsChangeTimerRef.current = null;
+    }
+  }, []);
+
   const ideWindowKey = ideOpenWindows.join('|');
   const activeEditorTabMeta = ideTabs[activeEditorTab ?? 0] ?? null;
   const activeEditorTabId = activeEditorTabMeta?.id ?? null;
@@ -9987,6 +11632,23 @@ export default function App() {
       : activeEditorTabId);
   const visibleEditorStateTabId = activeSourceEditorTabId ?? activeEditorTabId;
   const runState = visibleEditorStateTabId ? (runStatesByTab[visibleEditorStateTabId] ?? 'default') : 'default';
+  const activeSpecDocumentRunRequest = visibleEditorStateTabId
+    ? (specDocumentRunRequestsByTab[visibleEditorStateTabId] ?? null)
+    : null;
+  const activeSpecTopBarStatus = visibleEditorStateTabId
+    ? (specTopBarStatusesByTab[visibleEditorStateTabId] ?? 'Specified')
+    : 'Specified';
+  const setSpecTopBarStatusForTab = useCallback((status, tabId = visibleEditorStateTabId) => {
+    if (!tabId || !['Build', 'Specified'].includes(status)) return;
+    setSpecTopBarStatusesByTab((prev) => (
+      prev[tabId] === status
+        ? prev
+        : {
+            ...prev,
+            [tabId]: status,
+          }
+    ));
+  }, [visibleEditorStateTabId]);
   const attachedFiles = visibleEditorStateTabId && Array.isArray(attachedFilesByTab[visibleEditorStateTabId])
     ? attachedFilesByTab[visibleEditorStateTabId]
     : [];
@@ -10131,6 +11793,22 @@ export default function App() {
       };
     });
   }, [resolveRunStateTabId]);
+
+  const clearSpecDocumentRunRequestForTab = useCallback((tabId) => {
+    if (!tabId) return;
+    setSpecDocumentRunRequestsByTab((prev) => {
+      if (!(tabId in prev)) return prev;
+      const { [tabId]: _removedRunRequest, ...rest } = prev;
+      return rest;
+    });
+    if (lastTerminalRunRequestRef.current?.sourceTabId === tabId) {
+      lastTerminalRunRequestRef.current = null;
+    }
+    if (currentRunSourceTabIdRef.current === tabId) {
+      currentRunSourceTabIdRef.current = null;
+    }
+    setRunStateForTab('default', tabId);
+  }, [setRunStateForTab]);
 
   const updateTerminalSession = useCallback((tabId, updater) => {
     if (!tabId) return;
@@ -10371,6 +12049,11 @@ export default function App() {
     if (!sourceTabId) return;
     const terminalTabId = buildTerminalSessionTabId(sourceTabId);
     setRunStateForTab('default', sourceTabId);
+    setSpecDocumentRunRequestsByTab((prev) => {
+      if (!(sourceTabId in prev)) return prev;
+      const { [sourceTabId]: _removedRunRequest, ...rest } = prev;
+      return rest;
+    });
     setPendingTerminalRunForTab(null, terminalTabId);
     setTerminalPermissionPromptForTab(null, terminalTabId);
     setAcWarningBannerForTab(null, terminalTabId);
@@ -10508,7 +12191,18 @@ export default function App() {
   const clearTaskCommentsForTab = useCallback((tabId) => {
     if (!tabId) return;
 
-    setAgentTaskCommentEntries((prev) => (Array.isArray(prev) && prev.length > 0 ? [] : prev));
+    suppressDoneCommentsChangeRef.current = true;
+    if (suppressDoneCommentsChangeTimerRef.current) {
+      window.clearTimeout(suppressDoneCommentsChangeTimerRef.current);
+    }
+    suppressDoneCommentsChangeTimerRef.current = window.setTimeout(() => {
+      suppressDoneCommentsChangeRef.current = false;
+      suppressDoneCommentsChangeTimerRef.current = null;
+    }, 300);
+
+    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+      setAgentTaskCommentEntries((prev) => (Array.isArray(prev) && prev.length > 0 ? [] : prev));
+    }
     setInteractiveTaskStates((prev) => {
       const currentTaskState = prev[tabId];
       if (!currentTaskState || !Array.isArray(currentTaskState.commentEntries) || currentTaskState.commentEntries.length === 0) {
@@ -10524,17 +12218,19 @@ export default function App() {
       };
     });
     setDoneCommentResetToken((prev) => prev + 1);
-  }, []);
+  }, [activeSourceEditorTabId, generationTabId]);
 
   const clearTaskCommentTargetForTab = useCallback((tabId, target) => {
     const normalizedTarget = normalizeCommentTarget(target);
     if (!tabId || !normalizedTarget) return;
 
-    setAgentTaskCommentEntries((prev) => {
-      if (!Array.isArray(prev) || prev.length === 0) return prev;
-      const nextEntries = prev.filter((entry) => !doesEntryMatchCommentTarget(entry, normalizedTarget));
-      return nextEntries.length === prev.length ? prev : nextEntries;
-    });
+    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+      setAgentTaskCommentEntries((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        const nextEntries = prev.filter((entry) => !doesEntryMatchCommentTarget(entry, normalizedTarget));
+        return nextEntries.length === prev.length ? prev : nextEntries;
+      });
+    }
     setInteractiveTaskStates((prev) => {
       const currentTaskState = prev[tabId];
       if (!currentTaskState || !Array.isArray(currentTaskState.commentEntries) || currentTaskState.commentEntries.length === 0) {
@@ -10554,7 +12250,7 @@ export default function App() {
         },
       };
     });
-  }, []);
+  }, [activeSourceEditorTabId, generationTabId]);
 
   const getCommentEntriesForTaskTab = useCallback((tabId) => {
     if (!tabId) return [];
@@ -11075,7 +12771,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -11112,11 +12808,13 @@ export default function App() {
     });
     const diffTabLabel = diffData.title || `Diff ${diffData.sourceTabLabel || sourceTabLabel}`;
     const currentTaskCommentEntries = getCommentEntriesForTaskTab(sourceTabId);
-    const initialDiffComments = buildPlanDiffInitialComments(
-      currentTaskCommentEntries,
-      diffData,
-      diffTarget,
-    );
+    const initialDiffComments = initialDiffCommentsOverride && Object.keys(initialDiffCommentsOverride).length > 0
+      ? normalizeStoredDiffCommentsState(initialDiffCommentsOverride)
+      : buildPlanDiffInitialComments(
+          currentTaskCommentEntries,
+          diffData,
+          diffTarget,
+        );
 
     const sourceTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
     const existingDiffTabIndex = ideTabs.findIndex((tab) => tab.id === diffTabId);
@@ -11139,18 +12837,44 @@ export default function App() {
           diffTab,
           ...ideTabs.slice(insertIndex),
         ]);
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [diffTabId]: {
-        language: diffData.language || 'text',
-        code: diffCode,
-        diffData,
-        diffSourceTabId: sourceTabId,
-        diffTarget,
-        diffLineText: text,
-        initialDiffComments,
-      },
-    }));
+    setIdeTabContents((prev) => {
+      const existingDiffTabContent = prev[diffTabId] ?? {};
+      const previousSessionComments = normalizeDiffSessionCommentsByChatId(existingDiffTabContent.diffSessionCommentsByChatId);
+      const sessionChatId = contextChatId ?? selectedAiChatId;
+      const scenario = getAiChatScenarioById(sessionChatId);
+      const listItem = getAiChatListItemById(sessionChatId);
+      const shouldSeedSessionComments = Boolean(contextChatId);
+      const nextSessionComments = shouldSeedSessionComments && Object.keys(initialDiffComments).length > 0
+        ? {
+            ...previousSessionComments,
+            [sessionChatId]: {
+              chatId: sessionChatId,
+              messageId: contextMessageId ?? scenario?.messageId ?? `chat-${sessionChatId}`,
+              title: scenario?.title ?? sessionChatId,
+              icon: listItem?.icon ?? 'claude',
+              comments: initialDiffComments,
+            },
+          }
+        : previousSessionComments;
+
+      return {
+        ...prev,
+        [diffTabId]: {
+          ...existingDiffTabContent,
+          language: diffData.language || 'text',
+          code: diffCode,
+          diffData,
+          diffSourceTabId: sourceTabId,
+          diffTarget,
+          diffLineText: text,
+          initialDiffComments: commentsReadOnly ? {} : initialDiffComments,
+          diffCommentsReadOnly: Boolean(commentsReadOnly),
+          diffContextMessageId: contextMessageId,
+          diffContextChatId: contextChatId,
+          diffSessionCommentsByChatId: nextSessionComments,
+        },
+      };
+    });
     if (navigation?.activeRowId) {
       updatePlanDiffUiStateForTab(
         {
@@ -11173,21 +12897,24 @@ export default function App() {
       if (issueTarget?.kind === 'plan' && Number.isInteger(issueTarget.index)) {
         setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:${issueTarget.index}:0`);
       }
+      setIdeOpenWindows((prev) => (
+        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+      ));
     }
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
     setActiveEditorTab(nextActiveTabIndex);
   }, [
     activeEditorTab,
     activeEditorTabId,
     activeSourceEditorTabId,
     agentTasks,
-    getCommentDrivenViewStateForTaskTab,
-    getCommentEntriesForTaskTab,
-    ideTabContents,
+	    getCommentDrivenViewStateForTaskTab,
+	    getCommentEntriesForTaskTab,
+	    getAiChatListItemById,
+	    getAiChatScenarioById,
+	    ideTabContents,
     ideTabs,
+    selectedAiChatId,
     updatePlanDiffUiStateForTab,
   ]);
 
@@ -12073,18 +13800,40 @@ export default function App() {
   };
 
   const handleDoneRegenerate = (payload = {}) => {
+    const specifyChatId = ensureSpecStatusChat('Specified', { select: true });
+    if (specifyChatId) {
+      setSddCommentSessionId(specifyChatId);
+    }
     const commentEntries = payload?.commentEntries?.length
       ? payload.commentEntries
       : agentTaskCommentEntries;
     const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
 
     if (!currentTabId) return;
+    setSpecTopBarStatusForTab('Specified', currentTabId);
+    const specifyRunRequest = {
+      mode: 'specify',
+      sourceTabId: currentTabId,
+      sectionTitle: 'Plan',
+      taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? currentAgentTaskLabel,
+    };
+    setRunStateForTab('running', currentTabId);
+    currentRunSourceTabIdRef.current = currentTabId;
+    lastTerminalRunRequestRef.current = specifyRunRequest;
+    setSpecDocumentRunRequestsByTab((prev) => ({
+      ...prev,
+      [currentTabId]: specifyRunRequest,
+    }));
 
     const pendingDoneSpecState = buildPendingDoneSpecState({
       tabId: currentTabId,
       commentEntries,
     });
-    if (!pendingDoneSpecState) return;
+    if (!pendingDoneSpecState) {
+      clearSpecDocumentRunRequestForTab(currentTabId);
+      setRunStateForTab('default', currentTabId);
+      return;
+    }
 
     const {
       currentCode,
@@ -12104,7 +13853,27 @@ export default function App() {
       hasPendingComments,
       hasSpecChanges,
     } = pendingDoneSpecState;
+    setPlanRunResult(null);
+    setAcRunResult(null);
+
     if (!hasSpecChanges && !hasPendingComments && !hasPendingReruns) {
+      setGenerationTabId(currentTabId);
+      setGenProgress(0);
+      terminalDrivenGenerationRef.current = false;
+      doneEnhanceFlowRef.current = {
+        mode: 'preview-only',
+        sourceTabId: currentTabId,
+        runRequest: specifyRunRequest,
+        nextAcRunResult,
+        nextPlanRunResult,
+        currentAcRunResult,
+        currentPlanRunResult,
+        currentRemovedIssueIndices,
+        nextRemovedIssueIndices,
+        rerunAcOriginalIndices,
+        rerunPlanOriginalIndices,
+      };
+      setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
       return;
     }
 
@@ -12112,9 +13881,17 @@ export default function App() {
     clearStatusReveal('plan');
     clearStatusReveal('ac');
     resetRunUiForTab(currentTabId);
+    setRunStateForTab('running', currentTabId);
+    currentRunSourceTabIdRef.current = currentTabId;
+    lastTerminalRunRequestRef.current = specifyRunRequest;
+    setSpecDocumentRunRequestsByTab((prev) => ({
+      ...prev,
+      [currentTabId]: specifyRunRequest,
+    }));
 
     doneEnhanceFlowRef.current = {
       sourceTabId: currentTabId,
+      runRequest: specifyRunRequest,
       initialCode: currentCode,
       targetCode,
       nextDocument,
@@ -12149,20 +13926,10 @@ export default function App() {
 
     setGenerationTabId(currentTabId);
     setGenProgress(0);
-    terminalDrivenGenerationRef.current = true;
+    terminalDrivenGenerationRef.current = false;
     if (hasPendingComments) {
       clearTaskCommentsForTab(currentTabId);
     }
-    queueTerminalRun({
-      mode: 'generate',
-      sourceTabId: currentTabId,
-      taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
-      question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
-    }, {
-      preserveAcRunResult: true,
-      preservePlanRunResult: true,
-      preserveWarningBanner: true,
-    });
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
   };
 
@@ -12874,9 +14641,19 @@ export default function App() {
           commentsAlreadyCleared = false,
           usesDirectSwap = false,
           versionCommit = null,
+          runRequest = null,
         } = doneEnhanceFlow;
         setGenProgress(0);
         resetRunUiForTab(sourceTabId);
+        if (runRequest) {
+          setRunStateForTab('running', sourceTabId);
+          currentRunSourceTabIdRef.current = sourceTabId;
+          lastTerminalRunRequestRef.current = runRequest;
+          setSpecDocumentRunRequestsByTab((prev) => ({
+            ...prev,
+            [sourceTabId]: runRequest,
+          }));
+        }
 
         if (mode === 'preview-only') {
           let cancelled = false;
@@ -12884,7 +14661,17 @@ export default function App() {
           genTimerRef.current = setTimeout(() => {
             if (cancelled) return;
             doneEnhanceFlowRef.current = null;
+            startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
+              currentPlanStatuses: currentPlanRunResult,
+              currentAcStatuses: currentAcRunResult,
+              currentRemovedIssueIndices,
+              nextRemovedIssueIndices,
+              rerunPlanOriginalIndices,
+              rerunAcOriginalIndices,
+              allowPendingOutdated: false,
+            });
             setGenProgress(1);
+            clearSpecDocumentRunRequestForTab(sourceTabId);
             setGenState('done');
           }, Math.max(AGENT_TASK_LOADING_STEP_DELAY_MS, 180));
 
@@ -12947,6 +14734,7 @@ export default function App() {
             }));
           }
           setGenProgress(1);
+          clearSpecDocumentRunRequestForTab(sourceTabId);
           setGenState('done');
           return undefined;
         }
@@ -12987,6 +14775,7 @@ export default function App() {
             allowPendingOutdated: false,
           });
           setGenProgress(1);
+          clearSpecDocumentRunRequestForTab(sourceTabId);
           setGenState('done');
           return undefined;
         }
@@ -13052,6 +14841,7 @@ export default function App() {
             }));
           }
           setGenProgress(1);
+          clearSpecDocumentRunRequestForTab(sourceTabId);
           setGenState('done');
         }
 
@@ -13088,6 +14878,7 @@ export default function App() {
           return;
         }
 
+        clearSpecDocumentRunRequestForTab(activeTabIdForGen);
         setGenState('done');
       }
 
@@ -13126,6 +14917,7 @@ export default function App() {
     pendingTerminalRun,
     resetDoneComments,
     resetRunUiForTab,
+    setRunStateForTab,
     startDoneEnhanceStatusReveal,
     terminalPermissionPrompt,
     updateSpecVersionsForTab,
@@ -13170,20 +14962,60 @@ export default function App() {
       return;
     }
 
+    const targetTabId = visibleEditorStateTabId;
+    if (!targetTabId) return;
+
     const normalizedNextEntries = Array.isArray(nextEntries) ? nextEntries : [];
 
-    setAgentTaskCommentEntries((prev) => {
-      const mergedNextEntries = mergeCommentEntriesWithExistingDiffAnchors(normalizedNextEntries, prev);
+    if (suppressDoneCommentsChangeRef.current) {
+      if (normalizedNextEntries.length === 0) {
+        suppressDoneCommentsChangeRef.current = false;
+        if (suppressDoneCommentsChangeTimerRef.current) {
+          window.clearTimeout(suppressDoneCommentsChangeTimerRef.current);
+          suppressDoneCommentsChangeTimerRef.current = null;
+        }
+      }
+      return;
+    }
+
+    setInteractiveTaskStates((prev) => {
+      const currentTaskState = prev[targetTabId] ?? getAgentTaskScenario({
+        tabId: targetTabId,
+        label: ideTabs.find((tab) => tab.id === targetTabId)?.label ?? '',
+      }).initialTaskState;
+      const mergedNextEntries = mergeCommentEntriesWithExistingDiffAnchors(
+        normalizedNextEntries,
+        currentTaskState?.commentEntries ?? [],
+      );
       const nextSignature = buildSpecVersionCommentEntriesSignature(mergedNextEntries);
 
-      return buildSpecVersionCommentEntriesSignature(prev) === nextSignature
-        ? prev
-        : mergedNextEntries;
+      if (buildSpecVersionCommentEntriesSignature(currentTaskState?.commentEntries ?? []) === nextSignature) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [targetTabId]: {
+          ...currentTaskState,
+          commentEntries: mergedNextEntries,
+        },
+      };
     });
-  }, []);
+
+    if (targetTabId === activeSourceEditorTabId || targetTabId === generationTabId) {
+      setAgentTaskCommentEntries((prev) => {
+        const mergedNextEntries = mergeCommentEntriesWithExistingDiffAnchors(normalizedNextEntries, prev);
+        const nextSignature = buildSpecVersionCommentEntriesSignature(mergedNextEntries);
+
+        return buildSpecVersionCommentEntriesSignature(prev) === nextSignature
+          ? prev
+          : mergedNextEntries;
+      });
+    }
+  }, [activeSourceEditorTabId, generationTabId, ideTabs, visibleEditorStateTabId]);
   const activeAgentTaskViewState = useMemo(
     () => (
-      activeEditorTabId?.startsWith('agent-task-') && (genState === 'done' || Boolean(doneEnhanceFlowRef.current))
+      activeEditorTabId?.startsWith('agent-task-') && (genState === 'done' || genState === 'idle' || Boolean(doneEnhanceFlowRef.current))
         ? getCommentDrivenViewStateForTaskTab(activeEditorTabId)
         : null
     ),
@@ -13503,7 +15335,7 @@ export default function App() {
   useEffect(() => {
     const isDoneAgentTaskTab =
       currentProblemsTab?.id?.startsWith('agent-task-') &&
-      genState === 'done';
+      (genState === 'done' || genState === 'idle');
 
     if (isDoneAgentTaskTab) return;
 
@@ -13661,6 +15493,10 @@ export default function App() {
   ]);
 
   const handleDoneOpenTerminal = (input) => {
+    const buildChatId = ensureSpecStatusChat('Build', { select: true });
+    if (buildChatId) {
+      setSddCommentSessionId(buildChatId);
+    }
     const runTarget = normalizeCommentTarget(typeof input === 'object' ? input?.runTarget ?? input?.checkTarget : null);
     const sectionTitle = typeof input === 'string'
       ? input
@@ -13814,7 +15650,437 @@ export default function App() {
   const activeTabContent = activeEditorTabContentEntry;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
   const isDiffTab = Boolean(activeTabContent?.diffData);
+  const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
+  const normalizedSpecChatCommentEntries = useMemo(
+    () => normalizeSpecVersionCommentEntries(agentTaskCommentEntries),
+    [agentTaskCommentEntries],
+  );
+  const specChatCommentCount = useMemo(
+    () => normalizedSpecChatCommentEntries.reduce((sum, entry) => (
+      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+    ), 0),
+    [normalizedSpecChatCommentEntries],
+  );
+  const resolveSpecStatusSourceTabId = useCallback((tabId = null) => (
+    tabId ?? visibleEditorStateTabId ?? activeEditorTabId ?? 'agent-task-t1'
+  ), [activeEditorTabId, visibleEditorStateTabId]);
+  const getSpecStatusChatKey = useCallback((status, tabId = null) => (
+    `${resolveSpecStatusSourceTabId(tabId)}:${status}`
+  ), [resolveSpecStatusSourceTabId]);
+  const getSpecStatusChatId = useCallback((status, tabId = null) => {
+    const sourceTabId = resolveSpecStatusSourceTabId(tabId);
+    return `spec-chat-${sourceTabId}-${String(status).toLowerCase()}`;
+  }, [resolveSpecStatusSourceTabId]);
+  const buildSpecStatusAttachment = useCallback((status, tabId = null) => {
+    const sourceTabId = resolveSpecStatusSourceTabId(tabId);
+    const tabMeta = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+    const commentEntries = normalizeSpecVersionCommentEntries(getCommentEntriesForTaskTab(sourceTabId));
+    const commentCount = commentEntries.reduce((sum, entry) => (
+      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+    ), 0);
+
+    return {
+      id: `sdd-document-${sourceTabId}-${String(status).toLowerCase()}`,
+      sourceTabId,
+      label: tabMeta?.label ?? currentAgentTaskLabel ?? 'visit-booking.md',
+      icon: tabMeta?.icon ?? 'fileTypes/markdown',
+      commentCount,
+      diffComments: null,
+      diffRequest: null,
+      diffTabId: null,
+      isPlainFile: false,
+      isSddDocument: true,
+      isSddCommentAttachment: commentCount > 0,
+      sddCommentEntries: commentEntries,
+    };
+  }, [currentAgentTaskLabel, getCommentEntriesForTaskTab, ideTabs, resolveSpecStatusSourceTabId]);
+  const getSpecStatusChatTitle = useCallback((status, tabId = null) => {
+    const sourceTabId = resolveSpecStatusSourceTabId(tabId);
+    const tabMeta = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+    const tabCode = sourceTabId === visibleEditorStateTabId
+      ? activeAgentTaskCode
+      : (getCommentDrivenViewStateForTaskTab(sourceTabId)?.code ?? ideTabContents[sourceTabId]?.code ?? '');
+    const baseTitle = extractGoalTitleFromMarkdown(tabCode) || tabMeta?.label || currentAgentTaskLabel || 'visit-booking.md';
+    return `${status}: ${baseTitle.replace(/^(Generated|Build|Specified|Specify):\s*/u, '').trim()}`;
+  }, [activeAgentTaskCode, currentAgentTaskLabel, getCommentDrivenViewStateForTaskTab, ideTabContents, ideTabs, resolveSpecStatusSourceTabId, visibleEditorStateTabId]);
+  const ensureSpecStatusChat = useCallback((status, { select = false, sourceTabId = null } = {}) => {
+    if (!status) return null;
+
+    const key = getSpecStatusChatKey(status, sourceTabId);
+    const stableChatId = getSpecStatusChatId(status, sourceTabId);
+    const existingChatId = specStatusChatIdsRef.current[key] ?? stableChatId;
+    specStatusChatIdsRef.current[key] = stableChatId;
+    const attachment = buildSpecStatusAttachment(status, sourceTabId);
+    const title = getSpecStatusChatTitle(status, sourceTabId)
+
+    if (aiChatDraftSessionsById[existingChatId]) {
+      setAiChatDraftSessionsById((prev) => {
+        const existingSession = prev[existingChatId];
+        if (
+          existingSession?.title === title
+          && existingSession?.attachmentLabel === attachment.label
+          && JSON.stringify(existingSession?.attachments ?? []) === JSON.stringify([attachment])
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          [existingChatId]: {
+            ...existingSession,
+            title,
+            attachmentLabel: attachment.label,
+            attachments: [attachment],
+          },
+        };
+      });
+      if (select) {
+        setSelectedAiChatId(existingChatId);
+      }
+      return existingChatId;
+    }
+
+    const statusCreatedAt = {
+      Build: 2,
+      Specified: 3,
+    }[status] ?? 0;
+    const session = createEmptyAiChatSession({
+      id: stableChatId,
+      createdAt: statusCreatedAt,
+      title,
+      attachmentLabel: attachment.label,
+      attachments: [attachment],
+      icon: 'claude',
+      select,
+    });
+    return session.id;
+  }, [
+    aiChatDraftSessionsById,
+    buildSpecStatusAttachment,
+    createEmptyAiChatSession,
+    getSpecStatusChatId,
+    getSpecStatusChatKey,
+    getSpecStatusChatTitle,
+  ]);
+  useEffect(() => {
+    if (!isAgentTaskTab || genState !== 'done') return;
+
+    const specifiedKey = getSpecStatusChatKey('Specified');
+    const shouldSelectSpecifiedChat = !specStatusChatIdsRef.current[specifiedKey]
+      || (typeof selectedAiChatId === 'string' && selectedAiChatId.endsWith('-generated'));
+    const specifiedChatId = ensureSpecStatusChat('Specified', { select: shouldSelectSpecifiedChat });
+    ensureSpecStatusChat('Build', { select: false });
+    Object.keys(specStatusChatIdsRef.current).forEach((key) => {
+      if (!key.endsWith(':Generated')) return;
+      delete specStatusChatIdsRef.current[key];
+    });
+    if (shouldSelectSpecifiedChat && specifiedChatId) {
+      setSddCommentSessionId(specifiedChatId);
+    }
+  }, [ensureSpecStatusChat, genState, getSpecStatusChatKey, isAgentTaskTab, selectedAiChatId]);
+  useEffect(() => {
+    if (!isAgentTaskTab || genState !== 'done') return;
+
+    setAiChatDraftSessionsById((prev) => {
+      let didChange = false;
+      const next = { ...prev };
+
+      Object.keys(next).forEach((chatId) => {
+        if (!chatId.endsWith('-generated')) return;
+        delete next[chatId];
+        didChange = true;
+      });
+
+      ['Specified', 'Build'].forEach((status) => {
+        const chatId = specStatusChatIdsRef.current[getSpecStatusChatKey(status)];
+        const existingSession = chatId ? next[chatId] : null;
+        if (!existingSession) return;
+
+        const attachment = buildSpecStatusAttachment(status);
+        const title = getSpecStatusChatTitle(status);
+        if (
+          existingSession.title === title
+          && existingSession.attachmentLabel === attachment.label
+          && JSON.stringify(existingSession.attachments ?? []) === JSON.stringify([attachment])
+        ) {
+          return;
+        }
+
+        next[chatId] = {
+          ...existingSession,
+          title,
+          attachmentLabel: attachment.label,
+          attachments: [attachment],
+        };
+        didChange = true;
+      });
+
+      return didChange ? next : prev;
+    });
+  }, [
+    buildSpecStatusAttachment,
+    genState,
+    getSpecStatusChatKey,
+    getSpecStatusChatTitle,
+    isAgentTaskTab,
+    normalizedSpecChatCommentEntries,
+    specChatCommentCount,
+  ]);
+  const activeSpecCommentContextLabel = useMemo(() => (
+    getSpecStatusChatTitle('Specified', visibleEditorStateTabId)
+  ), [getSpecStatusChatTitle, visibleEditorStateTabId]);
+
+  const buildSpecStatusChatUserMessage = useCallback((status) => {
+    const label = currentAgentTaskLabel || 'visit-booking.md';
+    if (status === 'Build') return `Build ${label}`;
+    if (status === 'Specified') return `Specify ${label}`;
+    return `Open ${label}`;
+  }, [currentAgentTaskLabel]);
+  const buildSpecStatusChatAssistantResponse = useCallback((status) => {
+    const label = currentAgentTaskLabel || 'visit-booking.md';
+
+    if (status === 'Build') {
+      const { initialLines } = buildTerminalRunSequence({
+        mode: 'section',
+        sectionTitle: 'Plan',
+        taskLabel: label,
+      });
+      return formatAgentRunLinesForChat(initialLines);
+    }
+
+    if (status === 'Specified') {
+      const { initialLines } = buildTerminalRunSequence({
+        mode: 'generate',
+        taskLabel: label,
+        permissionChoice: 'allow-session',
+      });
+      return formatAgentRunLinesForChat(initialLines);
+    }
+
+    return formatAgentRunLinesForChat([
+      { type: 'command', text: `agent open "${label}" --context` },
+      { type: 'output', text: `Reading ${label}` },
+      { type: 'output', text: `Context: ${label} > Generated specification` },
+      { type: 'output', text: 'Loaded specification context into chat' },
+    ]);
+  }, [currentAgentTaskLabel]);
+  const clearAiChatStreamingTimersForChat = useCallback((chatId) => {
+    Object.entries(aiChatStreamingTimersRef.current).forEach(([key, timerId]) => {
+      if (!key.startsWith(`${chatId}:`)) return;
+      window.clearTimeout(timerId);
+      delete aiChatStreamingTimersRef.current[key];
+    });
+  }, []);
+  const startSpecStatusChatStreamingTurn = useCallback((status, chatId, options = {}) => {
+    if (!chatId) return;
+
+    const sourceTabId = resolveSpecStatusSourceTabId(options?.sourceTabId);
+    clearAiChatStreamingTimersForChat(chatId);
+    const createdAt = Date.now();
+    const attachment = snapshotAiChatMessageAttachment(buildSpecStatusAttachment(status, sourceTabId));
+    const userMessage = {
+      id: `${chatId}-action-${createdAt}`,
+      role: 'user',
+      text: buildSpecStatusChatUserMessage(status),
+      attachments: attachment ? [attachment] : [],
+    };
+    const assistantMessageId = `${chatId}-assistant-${createdAt}`;
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      text: '',
+      streaming: true,
+    };
+    const fullResponse = buildSpecStatusChatAssistantResponse(status);
+    const timerKey = `${chatId}:${assistantMessageId}`;
+
+    setAiChatSentMessagesByChatId((prev) => ({
+      ...prev,
+      [chatId]: [
+        ...(prev[chatId] ?? []),
+        userMessage,
+      assistantMessage,
+      ],
+    }));
+
+    clearTaskCommentsForTab(sourceTabId);
+
+    let index = 0;
+    const streamNextChunk = () => {
+      index = Math.min(fullResponse.length, index + 4);
+      const nextText = fullResponse.slice(0, index);
+      const isComplete = index >= fullResponse.length;
+
+      setAiChatSentMessagesByChatId((prev) => ({
+        ...prev,
+        [chatId]: (prev[chatId] ?? []).map((message) => (
+          message.id === assistantMessageId
+            ? { ...message, text: nextText, streaming: !isComplete }
+            : message
+        )),
+      }));
+
+      if (isComplete) {
+        delete aiChatStreamingTimersRef.current[timerKey];
+        return;
+      }
+
+      aiChatStreamingTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 28);
+    };
+
+    aiChatStreamingTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 80);
+  }, [
+    buildSpecStatusAttachment,
+    buildSpecStatusChatAssistantResponse,
+    buildSpecStatusChatUserMessage,
+    clearAiChatStreamingTimersForChat,
+    clearTaskCommentsForTab,
+    activeEditorTabId,
+    resolveSpecStatusSourceTabId,
+  ]);
+  const startSpecBuildDocumentState = useCallback((tabId) => {
+    if (!tabId) return;
+
+    const timerKey = `build:${tabId}`;
+    if (specActionDocStateTimersRef.current[timerKey]) {
+      window.clearTimeout(specActionDocStateTimersRef.current[timerKey]);
+      delete specActionDocStateTimersRef.current[timerKey];
+    }
+
+    clearChainedRunTimeout();
+    clearStatusReveal('plan');
+    clearStatusReveal('ac');
+    clearAcWarningFlow();
+    const scenario = getCurrentAgentTaskScenario(tabId);
+    const nextPlanRunStatuses = buildResolvedRunStatuses(
+      scenario.planBaseStatuses,
+      'plan',
+      appliedIssueFixes,
+      removedIssueIndices,
+      { runComplete: true },
+    );
+    const nextAcRunStatuses = buildResolvedRunStatuses(
+      scenario.acBaseStatuses,
+      'ac',
+      appliedIssueFixes,
+      removedIssueIndices,
+      { runComplete: true },
+    );
+
+    setRunStateForTab('running', tabId);
+    currentRunSourceTabIdRef.current = tabId;
+    const planRunRequest = {
+      mode: 'section',
+      sourceTabId: tabId,
+      sectionTitle: 'Plan',
+      taskLabel: ideTabs.find((tab) => tab.id === tabId)?.label ?? currentAgentTaskLabel,
+    };
+    const acRunRequest = {
+      ...planRunRequest,
+      sectionTitle: 'Acceptance Criteria',
+    };
+    lastTerminalRunRequestRef.current = planRunRequest;
+    setSpecDocumentRunRequestsByTab((prev) => ({
+      ...prev,
+      [tabId]: planRunRequest,
+    }));
+    setPlanRunResult(null);
+    setAcRunResult(null);
+
+    const finishBuildState = () => {
+      setAppliedIssueFixes({ ac: {}, plan: {} });
+      clearSpecDocumentRunRequestForTab(tabId);
+      delete specActionDocStateTimersRef.current[timerKey];
+    };
+
+    revealRunStatuses('plan', nextPlanRunStatuses, {
+      onComplete: () => {
+        specActionDocStateTimersRef.current[timerKey] = window.setTimeout(() => {
+          lastTerminalRunRequestRef.current = acRunRequest;
+          setSpecDocumentRunRequestsByTab((prev) => ({
+            ...prev,
+            [tabId]: acRunRequest,
+          }));
+          revealRunStatuses('ac', nextAcRunStatuses, {
+            onComplete: finishBuildState,
+          });
+        }, CHAINED_SECTION_START_DELAY_MS);
+      },
+    });
+  }, [
+    appliedIssueFixes,
+    clearAcWarningFlow,
+    clearChainedRunTimeout,
+    clearSpecDocumentRunRequestForTab,
+    clearStatusReveal,
+    currentAgentTaskLabel,
+    getCurrentAgentTaskScenario,
+    ideTabs,
+    removedIssueIndices,
+    revealRunStatuses,
+    setAppliedIssueFixes,
+    setRunStateForTab,
+  ]);
+  const startSpecSpecifyDocumentState = useCallback((tabId) => {
+    if (!tabId) return;
+
+    const request = {
+      mode: 'specify',
+      sourceTabId: tabId,
+      sectionTitle: 'Specify',
+      taskLabel: ideTabs.find((tab) => tab.id === tabId)?.label ?? currentAgentTaskLabel,
+    };
+
+    setRunStateForTab('running', tabId);
+    currentRunSourceTabIdRef.current = tabId;
+    lastTerminalRunRequestRef.current = request;
+    setSpecDocumentRunRequestsByTab((prev) => ({
+      ...prev,
+      [tabId]: request,
+    }));
+  }, [currentAgentTaskLabel, ideTabs, setRunStateForTab]);
+  const handleAgentTaskTopBarAction = useCallback((status, options = {}) => {
+    if (!['Build', 'Specified'].includes(status)) return;
+    const sourceTabId = resolveSpecStatusSourceTabId(options?.sourceTabId ?? null);
+    openAiToolWindow();
+    setSpecTopBarStatusForTab(status, sourceTabId);
+    const chatId = ensureSpecStatusChat(status, { select: true, sourceTabId });
+    if (chatId) {
+      setSddCommentSessionId(chatId);
+      if (options?.sendMessage) {
+        startSpecStatusChatStreamingTurn(status, chatId, { sourceTabId });
+        if (status === 'Build') {
+          startSpecBuildDocumentState(sourceTabId);
+        } else if (status === 'Specified') {
+          startSpecSpecifyDocumentState(sourceTabId);
+        }
+      }
+    }
+  }, [
+    ensureSpecStatusChat,
+    openAiToolWindow,
+    resolveSpecStatusSourceTabId,
+    setSpecTopBarStatusForTab,
+    startSpecBuildDocumentState,
+    startSpecSpecifyDocumentState,
+    startSpecStatusChatStreamingTurn,
+  ]);
+  const handleAiChatMessageSent = useCallback(({ chatId } = {}) => {
+    if (!chatId) return;
+    const isBuildOrSpecifyStatusChat =
+      chatId === getSpecStatusChatId('Build')
+      || chatId === getSpecStatusChatId('Specified');
+    if (!isBuildOrSpecifyStatusChat) return;
+
+    clearTaskCommentsForTab(visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId);
+  }, [
+    activeEditorTabId,
+    clearTaskCommentsForTab,
+    generationTabId,
+    getSpecStatusChatId,
+    visibleEditorStateTabId,
+  ]);
   const currentPersistedSpecCode = visibleEditorStateTabId
     ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
         ? (doneEnhanceFlowRef.current.initialCode ?? '')
@@ -13832,19 +16098,138 @@ export default function App() {
   const activeDoneOverlayUiState = visibleEditorStateTabId
     ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
     : null;
-  const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
+  const activeAgentTaskCommentEntries = visibleEditorStateTabId
+    ? getCommentEntriesForTaskTab(visibleEditorStateTabId)
+    : [];
+  const activePlanDiffData = isDiffTab
+    ? (activeTabContent?.diffData ?? null)
+    : (isPlainFileOverlayTab ? (activeTabContent?.plainFileData ?? null) : null);
   const activePlanDiffTarget = isDiffTab
     ? normalizeCommentTarget(activeTabContent?.diffTarget)
     : null;
   const activePlanDiffSourceTabId = isDiffTab
     ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
     : null;
+  const activePlanDiffCommentsReadOnly = (isDiffTab || isPlainFileOverlayTab) && Boolean(activeTabContent?.diffCommentsReadOnly);
+  const activePlanDiffContextMessageId = isDiffTab ? (activeTabContent?.diffContextMessageId ?? null) : null;
+  const activePlanDiffContextChatId = isDiffTab ? (activeTabContent?.diffContextChatId ?? null) : null;
+  const activePlanDiffSessionCommentsByChatId = (isDiffTab || isPlainFileOverlayTab)
+    ? normalizeDiffSessionCommentsByChatId(activeTabContent?.diffSessionCommentsByChatId)
+    : {};
   const activePlanDiffComments =
-    isDiffTab && activePlanDiffData
-      ? normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
+    (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
+      ? (
+          Object.keys(activePlanDiffSessionCommentsByChatId).length > 0
+            ? normalizeStoredDiffCommentsState(activePlanDiffSessionCommentsByChatId[selectedAiChatId]?.comments)
+            : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
+        )
       : {};
+  const activePlanDiffSessionComments = Object.values(activePlanDiffSessionCommentsByChatId);
   const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
-  const activePlanDiffLineText = isDiffTab ? (activeTabContent?.diffLineText ?? '') : '';
+  const activePlanDiffLineText = (isDiffTab || isPlainFileOverlayTab) ? (activeTabContent?.diffLineText ?? '') : '';
+  const planDiffContextChatId = activePlanDiffCommentsReadOnly
+    ? (activePlanDiffContextChatId ?? selectedAiChatId)
+    : selectedAiChatId;
+  const planDiffContextChatTitle = getAiChatScenarioById(planDiffContextChatId)?.title ?? AI_CHAT_SCENARIOS['visit-model-attributes'].title;
+  const planDiffContextChatListItem = getAiChatListItemById(planDiffContextChatId);
+  const planDiffContextChatIcon = planDiffContextChatListItem?.icon ?? 'claude';
+  const planDiffContextSessionLabel = activePlanDiffCommentsReadOnly
+    ? 'Archive'
+    : planDiffContextChatId === selectedAiChatId
+      ? 'Active'
+      : 'Inactive';
+  const selectedAiChatScenario = getAiChatScenarioById(selectedAiChatId);
+  const aiChatComposerDiffAttachments = useMemo(() => {
+    const diffEntries = Object.entries(ideTabContents)
+      .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
+    const pinnedDiffTabId = aiChatComposerDiffTabByChatId[selectedAiChatId] ?? null;
+    const scenarioDiffTabId = selectedAiChatScenario?.diffRequest?.source?.tabId
+      ? buildPlanDiffTabId(selectedAiChatScenario.diffRequest.source.tabId)
+      : null;
+
+    const orderedDiffEntries = [
+      ...diffEntries.filter(([tabId]) => tabId === pinnedDiffTabId),
+      ...diffEntries.filter(([tabId]) => tabId !== pinnedDiffTabId && tabId === scenarioDiffTabId),
+      ...diffEntries.filter(([tabId]) => tabId !== pinnedDiffTabId && tabId !== scenarioDiffTabId).reverse(),
+    ];
+
+    const attachments = [];
+    for (const [diffTabId, tabContent] of orderedDiffEntries) {
+      const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
+      const selectedSessionComments = normalizeStoredDiffCommentsState(sessionCommentsByChatId[selectedAiChatId]?.comments);
+      const selectedSessionCommentCount = flattenStoredDiffCommentsState(selectedSessionComments).length;
+
+      if (selectedSessionCommentCount === 0) {
+        continue;
+      }
+
+      const isPlainFile = !tabContent.diffData && Boolean(tabContent.plainFileData);
+      const fileData = tabContent.diffData ?? tabContent.plainFileData;
+      const sourceTabId = isPlainFile
+        ? diffTabId
+        : (tabContent.diffSourceTabId ?? selectedAiChatScenario?.diffRequest?.source?.tabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+      const sourceLabel =
+        fileData?.sourceTabLabel
+        ?? selectedAiChatScenario?.diffRequest?.source?.label
+        ?? 'VisitController.java';
+      const diffRequest = {
+        text: tabContent.diffLineText || fileData?.lineText || fileData?.title || '',
+        statusItem: selectedAiChatScenario?.diffRequest?.statusItem ?? { status: 'passed' },
+        issueTarget: isPlainFile
+          ? null
+          : (normalizeCommentTarget(tabContent.diffTarget)
+              ?? normalizeCommentTarget(selectedAiChatScenario?.diffRequest?.issueTarget)
+              ?? { kind: 'plan', index: 3 }),
+        source: {
+          tabId: sourceTabId,
+          label: sourceLabel,
+        },
+      };
+      const tabMeta = isPlainFile ? ideTabs.find((t) => t.id === diffTabId) : null;
+
+      attachments.push({
+        id: `diff-${selectedAiChatId}-${diffTabId}`,
+        label: isPlainFile ? sourceLabel : (fileData?.title || `Diff ${sourceLabel}`),
+        icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : 'vcs/diff',
+        commentCount: selectedSessionCommentCount,
+        diffComments: selectedSessionComments,
+        diffRequest,
+        diffTabId,
+        isPlainFile,
+      });
+    }
+
+    return attachments;
+  }, [aiChatComposerDiffTabByChatId, ideTabContents, selectedAiChatId, selectedAiChatScenario?.diffRequest]);
+  const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
+    attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
+  )) ?? null;
+  const aiChatComposerDiffSourceTabId =
+    aiChatComposerDiffAttachment?.diffRequest?.source?.tabId
+    ?? selectedAiChatScenario?.diffRequest?.source?.tabId
+    ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID;
+  const aiChatComposerDiffTabId = aiChatComposerDiffAttachment?.diffTabId
+    ?? buildPlanDiffTabId(aiChatComposerDiffSourceTabId);
+  const aiChatDiffTabContent = ideTabContents[aiChatComposerDiffTabId] ?? {};
+  const aiChatDiffSessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(aiChatDiffTabContent.diffSessionCommentsByChatId);
+  const aiChatComposerDiffComments = aiChatComposerDiffAttachment?.diffComments ?? (
+    Object.keys(aiChatDiffSessionCommentsByChatId).length > 0
+      ? normalizeStoredDiffCommentsState(aiChatDiffSessionCommentsByChatId[selectedAiChatId]?.comments)
+      : normalizeStoredDiffCommentsState(aiChatDiffTabContent.initialDiffComments)
+  );
+  const aiChatComposerDiffCommentCount = flattenStoredDiffCommentsState(aiChatComposerDiffComments).length;
+  const selectedAiChatSentMessages = aiChatSentMessagesByChatId[selectedAiChatId] ?? [];
+  const handleSelectedAiChatSentMessagesChange = useCallback((updater, chatIdOverride = null) => {
+    const targetChatId = chatIdOverride ?? selectedAiChatId;
+    setAiChatSentMessagesByChatId((prev) => {
+      const currentMessages = prev[targetChatId] ?? [];
+      const nextMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
+      return {
+        ...prev,
+        [targetChatId]: Array.isArray(nextMessages) ? nextMessages : currentMessages,
+      };
+    });
+  }, [selectedAiChatId]);
   const handleDoneVersionSelect = (version) => {
     if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
       return;
@@ -13861,12 +16246,108 @@ export default function App() {
       toVersion: currentVersion,
     });
   };
-  const handleActivePlanDiffCommentsChange = useCallback((comments) => {
+  const handleActivePlanDiffCommentsChange = useCallback((comments, metadata = {}) => {
+    if (activePlanDiffCommentsReadOnly) {
+      return;
+    }
+
+    const nextComments = normalizeStoredDiffCommentsState(comments);
+    const shouldCreateNewChat =
+      metadata?.attachMode === 'new'
+      && !metadata?.isEditing
+      && Object.keys(nextComments).length > 0;
+    const activePlanDiffSourceLabel = activePlanDiffData?.sourceTabLabel ?? 'VisitController.java';
+    const activePlanDiffRequest = {
+      text: activePlanDiffLineText || activePlanDiffData?.lineText || activePlanDiffData?.title || '',
+      statusItem: { status: 'passed' },
+      issueTarget: activePlanDiffTarget ?? { kind: 'plan', index: 3 },
+      source: {
+        tabId: activePlanDiffSourceTabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID,
+        label: activePlanDiffSourceLabel,
+      },
+    };
+    const newChatSession = shouldCreateNewChat
+      ? createEmptyAiChatSession({
+          diffRequest: activePlanDiffRequest,
+          attachmentLabel: activePlanDiffData?.title || `Diff ${activePlanDiffSourceLabel}`,
+        })
+      : null;
+    const targetChatId = newChatSession?.id ?? selectedAiChatId;
+    const targetSessionComments = shouldCreateNewChat && typeof metadata?.rowId === 'string'
+      ? normalizeStoredDiffCommentsState({
+          [metadata.rowId]: [metadata.comment],
+        })
+      : nextComments;
+    const hasNextComments = Object.keys(targetSessionComments).length > 0;
+    if (activeTabId) {
+      setAiChatComposerDiffTabByChatId((prev) => {
+        if (hasNextComments) {
+          return prev[targetChatId] === activeTabId
+            ? prev
+            : { ...prev, [targetChatId]: activeTabId };
+        }
+        if (prev[targetChatId] !== activeTabId) {
+          return prev;
+        }
+        const { [targetChatId]: _removedDiffTabId, ...rest } = prev;
+        return rest;
+      });
+    }
+    const scenarioForSync = newChatSession ?? getAiChatScenarioById(targetChatId);
+    const listItemForSync = newChatSession ? { icon: newChatSession.icon } : getAiChatListItemById(targetChatId);
+    const { [targetChatId]: _previousSelectedSessionForSync, ...remainingSessionCommentsForSync } = activePlanDiffSessionCommentsByChatId;
+    const nextSessionCommentsForSync = hasNextComments
+      ? {
+          ...activePlanDiffSessionCommentsByChatId,
+          [targetChatId]: {
+            chatId: targetChatId,
+            messageId: scenarioForSync?.messageId ?? `chat-${targetChatId}`,
+            title: scenarioForSync?.title ?? targetChatId,
+            icon: listItemForSync?.icon ?? 'claude',
+            comments: targetSessionComments,
+          },
+        }
+      : remainingSessionCommentsForSync;
+    const mergedDiffCommentsForTask = mergeDiffCommentsFromSessions(nextSessionCommentsForSync);
+
     if (activeTabId) {
       setIdeTabContents((prev) => {
         const existing = prev[activeTabId];
         if (!existing) return prev;
-        return { ...prev, [activeTabId]: { ...existing, initialDiffComments: comments } };
+        if (
+          JSON.stringify(normalizeStoredDiffCommentsState(existing.initialDiffComments))
+          === JSON.stringify(targetSessionComments)
+          && JSON.stringify(normalizeStoredDiffCommentsState(existing.diffSessionCommentsByChatId?.[targetChatId]?.comments))
+          === JSON.stringify(targetSessionComments)
+        ) {
+          return prev;
+        }
+        const previousSessionComments = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+        const { [targetChatId]: _previousSelectedSession, ...remainingSessionComments } = previousSessionComments;
+        const scenario = newChatSession ?? getAiChatScenarioById(targetChatId);
+        const listItem = newChatSession ? { icon: newChatSession.icon } : getAiChatListItemById(targetChatId);
+        const nextSessionComments = hasNextComments
+          ? {
+              ...previousSessionComments,
+              [targetChatId]: {
+                chatId: targetChatId,
+                messageId: scenario?.messageId ?? `chat-${targetChatId}`,
+                title: scenario?.title ?? targetChatId,
+                icon: listItem?.icon ?? 'claude',
+                comments: targetSessionComments,
+              },
+            }
+          : remainingSessionComments;
+        const nextMergedDiffComments = mergeDiffCommentsFromSessions(nextSessionComments);
+        return {
+          ...prev,
+          [activeTabId]: {
+            ...existing,
+            initialDiffComments: nextMergedDiffComments,
+            diffSessionCommentsByChatId: nextSessionComments,
+            diffCommentsReadOnly: false,
+          },
+        };
       });
     }
 
@@ -13875,17 +16356,246 @@ export default function App() {
     syncDiffCommentsToTaskTarget({
       sourceTabId: activePlanDiffSourceTabId,
       target: activePlanDiffTarget,
-      comments,
+      comments: mergedDiffCommentsForTask,
       sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
       line: activePlanDiffLineText,
     });
   }, [
     activeTabId,
-    activePlanDiffLineText,
-    activePlanDiffSourceTabId,
-    activePlanDiffTarget,
-    syncDiffCommentsToTaskTarget,
+	    activePlanDiffSessionCommentsByChatId,
+	    activePlanDiffLineText,
+	    activePlanDiffData,
+	    activePlanDiffSourceTabId,
+	    activePlanDiffTarget,
+	    activePlanDiffCommentsReadOnly,
+	    createEmptyAiChatSession,
+	    getAiChatListItemById,
+	    getAiChatScenarioById,
+	    selectedAiChatId,
+	    syncDiffCommentsToTaskTarget,
+	  ]);
+  const handlePlanDiffReturnToChat = useCallback((context = {}) => {
+    const shouldSwitchChat = context?.source === 'diff-comment-context';
+	    const contextMessageId = context?.messageId ?? activePlanDiffContextMessageId;
+	    const contextChatId = context?.chatId
+	      ?? activePlanDiffContextChatId
+	      ?? Object.entries(aiChatScenarios).find(([chatId, scenario]) => (
+	        scenario.messageId === contextMessageId || `chat-${chatId}` === contextMessageId
+	      ))?.[0]
+	      ?? Object.keys(aiChatScenarios).find((chatId) => (
+	        typeof contextMessageId === 'string' && contextMessageId.startsWith(`${chatId}-`)
+	      ))
+	      ?? null;
+
+    setScreen('ide');
+    if (shouldSwitchChat && contextChatId) {
+      setSelectedAiChatId(contextChatId);
+    }
+    if (contextMessageId) {
+      setChatScrollTarget({
+        messageId: contextMessageId,
+        chatId: contextChatId,
+        restoreComposerAttachment: Boolean(shouldSwitchChat && contextChatId),
+        nonce: Date.now(),
+      });
+    }
+    openAiToolWindow();
+	  }, [activePlanDiffContextChatId, activePlanDiffContextMessageId, aiChatScenarios, openAiToolWindow]);
+  const handleChatDiffCommentsClear = useCallback(() => {
+    const diffTabId = aiChatComposerDiffTabId;
+    const diffTabContent = ideTabContents[diffTabId];
+    const diffSessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(diffTabContent?.diffSessionCommentsByChatId);
+    const { [selectedAiChatId]: _removedSessionForSync, ...remainingSessionCommentsForSync } = diffSessionCommentsByChatId;
+    const remainingDiffCommentsForTask = mergeDiffCommentsFromSessions(remainingSessionCommentsForSync);
+    const diffSourceTabId = diffTabContent?.diffSourceTabId ?? aiChatComposerDiffSourceTabId;
+    const diffTarget = normalizeCommentTarget(diffTabContent?.diffTarget)
+      ?? normalizeCommentTarget(selectedAiChatScenario?.diffRequest?.issueTarget)
+      ?? normalizeCommentTarget({ kind: 'plan', index: 3 });
+
+    setIdeTabContents((prev) => {
+      const existing = prev[diffTabId];
+      if (!existing) return prev;
+      const previousSessionComments = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+      const { [selectedAiChatId]: _removedSession, ...remainingSessionComments } = previousSessionComments;
+      return {
+        ...prev,
+        [diffTabId]: {
+          ...existing,
+          initialDiffComments: {},
+          diffSessionCommentsByChatId: remainingSessionComments,
+        },
+      };
+    });
+    setAiChatComposerDiffTabByChatId((prev) => {
+      if (prev[selectedAiChatId] !== diffTabId) {
+        return prev;
+      }
+      const { [selectedAiChatId]: _removedDiffTabId, ...rest } = prev;
+      return rest;
+    });
+
+    updatePlanDiffUiStateForTab({
+      activeRowId: planDiffUiStates[diffTabId]?.activeRowId ?? null,
+      commentRowId: null,
+      commentValue: '',
+      commentEditingIndex: null,
+      caretState: planDiffUiStates[diffTabId]?.caretState ?? {
+        rowId: planDiffUiStates[diffTabId]?.activeRowId ?? null,
+        left: 12,
+      },
+    }, diffTabId);
+
+    syncDiffCommentsToTaskTarget({
+      sourceTabId: diffSourceTabId,
+      target: diffTarget,
+      comments: remainingDiffCommentsForTask,
+      sectionTitle: diffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+      line: diffTabContent?.diffLineText ?? '',
+    });
+  }, [aiChatComposerDiffSourceTabId, aiChatComposerDiffTabId, ideTabContents, planDiffUiStates, selectedAiChatId, selectedAiChatScenario?.diffRequest?.issueTarget, syncDiffCommentsToTaskTarget, updatePlanDiffUiStateForTab]);
+  const getSourceTabIdFromSddAttachment = useCallback((attachment = null) => {
+    if (typeof attachment?.sourceTabId === 'string' && attachment.sourceTabId.trim().length > 0) {
+      return attachment.sourceTabId;
+    }
+    const rawId = typeof attachment?.id === 'string' ? attachment.id : '';
+    const match = rawId.match(/^sdd-document-(.+)-(?:build|specified)$/u);
+    return match?.[1] ?? visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId;
+  }, [activeEditorTabId, generationTabId, visibleEditorStateTabId]);
+
+  const handleRemoveComposerAttachment = useCallback((attachment = null) => {
+    if (!attachment?.isSddCommentAttachment) return;
+    clearTaskCommentsForTab(getSourceTabIdFromSddAttachment(attachment));
+  }, [clearTaskCommentsForTab, getSourceTabIdFromSddAttachment]);
+
+  const handleClearAllComposerDiffAttachments = useCallback(() => {
+    if (aiChatComposerDiffAttachments.length === 0) return;
+    setIdeTabContents((prev) => {
+      const next = { ...prev };
+      for (const attachment of aiChatComposerDiffAttachments) {
+        const tabId = attachment.diffTabId;
+        const existing = next[tabId];
+        if (!existing) continue;
+        const previousSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+        const { [selectedAiChatId]: _removed, ...remaining } = previousSessions;
+        next[tabId] = {
+          ...existing,
+          initialDiffComments: {},
+          diffSessionCommentsByChatId: remaining,
+        };
+      }
+      return next;
+    });
+    setAiChatComposerDiffTabByChatId((prev) => {
+      const { [selectedAiChatId]: _removed, ...rest } = prev;
+      return rest;
+    });
+    const sddSourceTabIds = aiChatComposerDiffAttachments
+      .filter((attachment) => attachment?.isSddCommentAttachment)
+      .map((attachment) => getSourceTabIdFromSddAttachment(attachment))
+      .filter(Boolean);
+    sddSourceTabIds.forEach((sourceTabId) => {
+      clearTaskCommentsForTab(sourceTabId);
+      if (commentChatCreatedForTabRef.current === sourceTabId) {
+        commentChatCreatedForTabRef.current = null;
+      }
+    });
+    if (sddSourceTabIds.length > 0) {
+      setSddCommentSessionId(null);
+    }
+  }, [
+    aiChatComposerDiffAttachments,
+    clearTaskCommentsForTab,
+    getSourceTabIdFromSddAttachment,
+    selectedAiChatId,
   ]);
+
+  const handleOpenSddDocument = useCallback((context = {}) => {
+    const normalizedCommentEntries = normalizeSpecVersionCommentEntries(context?.commentEntries);
+    const sourceTabId = context?.sourceTabId
+      ?? getSourceTabIdFromSddAttachment(context?.attachment)
+      ?? visibleEditorStateTabId
+      ?? activeEditorTabId
+      ?? generationTabId;
+    const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+
+    if (context?.isCommentAttachment && normalizedCommentEntries.length > 0) {
+      setInteractiveTaskStates((prev) => {
+        const currentTaskState = prev[sourceTabId] ?? getAgentTaskScenario({
+          tabId: sourceTabId,
+          label: sourceTab?.label ?? '',
+        }).initialTaskState;
+
+        return {
+          ...prev,
+          [sourceTabId]: {
+            ...currentTaskState,
+            commentEntries: normalizedCommentEntries,
+          },
+        };
+      });
+      if (sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
+        setAgentTaskCommentEntries(normalizedCommentEntries);
+      }
+      setSddCommentSessionId(context?.contextChatId ?? selectedAiChatId);
+      commentChatCreatedForTabRef.current = sourceTabId;
+    }
+    if (sourceTabId) {
+      const existingTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
+      if (existingTabIndex >= 0) {
+        setScreen('ide');
+        setActiveEditorTab(existingTabIndex);
+        return;
+      }
+    }
+    openEditorTabByLabel(sourceTab?.label ?? 'visit-booking.md');
+  }, [
+    activeEditorTabId,
+    activeSourceEditorTabId,
+    generationTabId,
+    getSourceTabIdFromSddAttachment,
+    ideTabs,
+    openEditorTabByLabel,
+    selectedAiChatId,
+    visibleEditorStateTabId,
+  ]);
+
+  const handleOpenPlainFileArchive = useCallback((tabId, diffComments, contextMessageId, contextChatId) => {
+    const tabIndex = ideTabs.findIndex((tab) => tab.id === tabId);
+    if (tabIndex < 0) return;
+    const scenario = getAiChatScenarioById(contextChatId);
+    const listItem = getAiChatListItemById(contextChatId);
+    const normalizedComments = normalizeStoredDiffCommentsState(diffComments);
+    setIdeTabContents((prev) => {
+      const existing = prev[tabId];
+      if (!existing) return prev;
+      const previousSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+      const nextSessions = Object.keys(normalizedComments).length > 0
+        ? {
+            ...previousSessions,
+            [contextChatId]: {
+              chatId: contextChatId,
+              messageId: contextMessageId ?? scenario?.messageId ?? `chat-${contextChatId}`,
+              title: scenario?.title ?? contextChatId,
+              icon: listItem?.icon ?? 'claude',
+              comments: normalizedComments,
+            },
+          }
+        : previousSessions;
+      return {
+        ...prev,
+        [tabId]: {
+          ...existing,
+          initialDiffComments: {},
+          diffSessionCommentsByChatId: nextSessions,
+          diffCommentsReadOnly: true,
+          diffContextMessageId: contextMessageId,
+          diffContextChatId: contextChatId,
+        },
+      };
+    });
+    setActiveEditorTab(tabIndex);
+  }, [getAiChatListItemById, getAiChatScenarioById, ideTabs]);
+
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
   }, [activeTabId, updatePlanDiffUiStateForTab]);
@@ -13934,6 +16644,53 @@ export default function App() {
     handleAgentTaskPlanTreeNodeSelect,
     ideTabs,
   ]);
+  const handleCommitPanelClick = useCallback((event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('input, .checkbox, .checkbox-box')) return;
+
+    const commitWindow = target.closest('.commit-window');
+    if (!commitWindow) return;
+
+    const fileNameNode = target.closest('.commit-file-name');
+    const treeNode = target.closest('.tree-node');
+    const clickedLabel = fileNameNode instanceof HTMLElement
+      ? fileNameNode.textContent?.trim()
+      : treeNode instanceof HTMLElement
+        ? (
+            treeNode.textContent?.includes('Visit.java')
+              ? 'Visit.java'
+              : treeNode.textContent?.includes('VisitController.java')
+                ? 'VisitController.java'
+                : ''
+          )
+        : '';
+    const diffRequest = clickedLabel === 'VisitController.java'
+      ? AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST
+      : clickedLabel === 'Visit.java'
+        ? AI_CHAT_VISIT_DIFF_REQUEST
+        : null;
+
+    if (!diffRequest) return;
+    if (!(treeNode instanceof HTMLElement)) return;
+
+    event.preventDefault();
+    openPlanDiffTab(diffRequest);
+  }, [openPlanDiffTab]);
+  useEffect(() => {
+    if (screen !== 'ide') return undefined;
+
+    const handleDocumentCommitClick = (event) => {
+      handleCommitPanelClick(event);
+    };
+
+    document.addEventListener('pointerdown', handleDocumentCommitClick, true);
+    document.addEventListener('click', handleDocumentCommitClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleDocumentCommitClick, true);
+      document.removeEventListener('click', handleDocumentCommitClick, true);
+    };
+  }, [handleCommitPanelClick, screen]);
   const handleActivePlanMarkerClick = useCallback(() => {
     if (!activePlanDiffSourceTabId) return;
 
@@ -14081,6 +16838,13 @@ export default function App() {
               projectColor="blue"
               branchName={BRANCH_NAME}
               runConfig="Current File"
+              rightActions={(
+                <>
+                  <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
+                  <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
+                  <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" />
+                </>
+              )}
             />
           )}
 
@@ -14110,7 +16874,7 @@ export default function App() {
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
-          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
+	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
           bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
           statusBarProps={{
@@ -14212,7 +16976,7 @@ export default function App() {
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideOpenWindows.join('-')}`}
-        height={800}
+        height={865}
         projectName={PROJECT_NAME}
         projectIcon="SD"
         projectColor="blue"
@@ -14225,6 +16989,13 @@ export default function App() {
             branchName={BRANCH_NAME}
             runConfig="Current File"
             onSettings={() => setScreen('settings')}
+            rightActions={(
+              <>
+                <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
+                <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
+                <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setScreen('settings')} />
+              </>
+            )}
           />
         )}
 
@@ -14247,21 +17018,29 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
-            : (isDiffTab && activePlanDiffData
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Active" />
+            : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffComments}
+                    commentsReadOnly={activePlanDiffCommentsReadOnly}
+                    commentContextLabel={planDiffContextChatTitle}
+                    commentContextIcon={planDiffContextChatIcon}
+                    commentContextSessionLabel={planDiffContextSessionLabel}
+                    commentSessions={activePlanDiffSessionComments}
+                    commentSessionActiveChatId={selectedAiChatId}
                     onDiffCommentsChange={handleActivePlanDiffCommentsChange}
                     onRowDelete={handlePlanDiffRowDelete}
                     onRowFix={handlePlanDiffRowFix}
                     onPlanMarkerClick={handleActivePlanMarkerClick}
+                    onReturnToChat={handlePlanDiffReturnToChat}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
+                    singleLineNumbers={isPlainFileOverlayTab}
                   />
                 )
                 : undefined)
@@ -14281,10 +17060,25 @@ export default function App() {
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
+          if (id === 'commit') return (
+            <CommitWindow
+              title="Commit"
+              width="100%"
+              height="100%"
+              files={MY_COMMIT_FILES}
+              toolbarButtons={DEFAULT_COMMIT_TOOLBAR_BUTTONS}
+              focused={ctx.focusedPanel === 'left'}
+              onFocus={() => ctx.setFocusedPanel('left')}
+              onActionClick={(action) => {
+                if (action === 'minimize') ctx.setShowLeftPanel(false);
+              }}
+              className="main-window-tool-window main-window-tool-window-left"
+            />
+          );
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
-        rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
+	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
