@@ -606,6 +606,11 @@ body {
   contain: layout paint;
 }
 
+.plan-diff-inspection-widget {
+  z-index: 8;
+  right: 12px;
+}
+
 @media (max-width: 960px) {
   .spec-done-success-banner .banner-actions {
     gap: 12px;
@@ -753,6 +758,7 @@ body {
 }
 
 .spec-done-inspection-version-btn.is-open,
+.spec-done-inspection-comment-toggle.is-active,
 .spec-done-inspection-version-btn:active,
 .spec-done-inspection-counts-btn:active,
 .spec-done-inspection-nav .spec-done-inspection-nav-btn:active {
@@ -760,6 +766,7 @@ body {
 }
 
 .spec-done-inspection-version-btn.is-open::before,
+.spec-done-inspection-comment-toggle.is-active::before,
 .spec-done-inspection-version-btn:active::before,
 .spec-done-inspection-counts-btn:active::before,
 .spec-done-inspection-nav .spec-done-inspection-nav-btn:active::before {
@@ -774,7 +781,8 @@ body {
 
 .spec-done-inspection-separator {
   width: 1px;
-  align-self: stretch;
+  height: 14px;
+  align-self: center;
   background: #26282C;
 }
 
@@ -984,6 +992,23 @@ body {
   min-width: 0;
 }
 
+.spec-done-row-comment {
+  cursor: default;
+}
+
+.spec-done-row-comment .spec-done-comment-thread-gutter {
+  align-self: stretch;
+}
+
+.spec-done-comment-thread-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.spec-done-inline-comment-thread {
+  padding: 6px 12px 12px;
+}
+
 .spec-done-gutter-cell {
   width: var(--spec-done-gutter-width) !important;
   height: auto !important;
@@ -993,7 +1018,7 @@ body {
   overflow: visible;
   display: flex;
   justify-content: flex-start;
-  align-items: flex-start;
+  align-items: center;
   gap: 2px;
   padding-left: var(--spec-done-gutter-inline-offset);
 }
@@ -1002,16 +1027,17 @@ body {
 .spec-done-gutter-cell .spec-done-gutter-breakpoint-btn,
 .spec-done-gutter-cell .spec-done-gutter-line-number-run,
 .spec-done-gutter-cell .spec-done-gutter-intention-btn,
+.spec-done-gutter-cell .spec-done-gutter-comment-slot,
 .spec-done-gutter-cell .spec-done-gutter-slot {
   min-height: 22px;
-  align-self: flex-start;
+  align-self: center;
 }
 
 .spec-done-row[data-issue-severity="warning"] .spec-done-gutter-cell,
 .spec-done-row[data-issue-severity="failed"] .spec-done-gutter-cell,
 .spec-done-row[data-issue-severity="error"] .spec-done-gutter-cell {
-  align-self: flex-start;
-  height: 22px !important;
+  align-self: stretch;
+  height: auto !important;
   min-height: 22px;
 }
 
@@ -1021,6 +1047,39 @@ body {
   width: 20px;
   height: 20px;
   flex: 0 0 20px;
+}
+
+.spec-done-gutter-comment-slot {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.spec-done-gutter-comment-slot:has(.plan-diff-comment-badge) {
+  width: auto;
+  flex-basis: auto;
+}
+
+.spec-done-gutter-comment-slot .spec-done-comment-adornment,
+.spec-done-gutter-comment-slot .spec-done-comment-slot {
+  width: 20px;
+  min-width: 20px;
+  max-width: 20px;
+}
+
+.spec-done-gutter-comment-slot .spec-done-comment-adornment.has-comments,
+.spec-done-gutter-comment-slot .spec-done-comment-slot.has-comments {
+  width: auto;
+  min-width: 20px;
+  max-width: none;
+}
+
+.spec-done-gutter-comment-slot .spec-done-comment-count {
+  display: none;
 }
 
 .spec-done-gutter-breakpoint-btn {
@@ -1084,7 +1143,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  align-self: flex-start;
+  align-self: center;
   width: 20px;
   height: 20px;
   flex: 0 0 20px;
@@ -1622,6 +1681,7 @@ body {
 
 .spec-done-comment-btn.has-comments {
   color: var(--gray-130, #CED0D6);
+  width: auto;
 }
 
 .spec-done-comment-btn::before {
@@ -1709,6 +1769,10 @@ body {
   gap: 0;
 }
 
+.spec-done-comment-popup.has-comments .spec-done-comment-popup-groups {
+  padding-top: 10px;
+}
+
 .spec-done-comment-popup-header {
   display: flex;
   align-items: center;
@@ -1730,6 +1794,11 @@ body {
   align-items: stretch;
   gap: 0;
   padding: 6px 0 4px;
+}
+
+.spec-done-comment-popup-groups:not(:has(.spec-done-comment-popup-context-header)):not(:has(.spec-done-comment-popup-item)) {
+  display: none;
+  padding: 0;
 }
 
 .spec-done-comment-popup-group,
@@ -2549,23 +2618,75 @@ body {
   color: var(--icon-secondary-stroke);
 }
 
-.problems-active-file-icon svg path[fill]:not([fill="none"]) {
+.problems-window .tool-window-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.problems-window .problems-content {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+
+.problems-window .problems-tree-area {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.problems-window .problems-tree-area > .tree {
+  min-height: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.problems-window .problems-tree-area .tree-node-container {
+  overflow: visible;
+}
+
+.problems-window .problems-tree-area::-webkit-scrollbar {
+  width: 10px;
+}
+
+.problems-window .problems-tree-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.problems-window .problems-tree-area::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(115, 118, 124, 0.55);
+  background-clip: padding-box;
+}
+
+.problems-window .problems-tree-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 146, 153, 0.72);
+  background-clip: padding-box;
+}
+
+.problems-active-file-icon.is-markdown svg path[fill]:not([fill="none"]) {
   fill: var(--icon-purple-solid) !important;
 }
 
-.problems-active-file-icon svg path[stroke]:not([stroke="none"]) {
+.problems-active-file-icon.is-markdown svg path[stroke]:not([stroke="none"]) {
   stroke: var(--icon-purple-solid) !important;
 }
 
-.problems-active-file-icon svg rect[fill]:not([fill="none"]),
-.problems-active-file-icon svg circle[fill]:not([fill="none"]),
-.problems-active-file-icon svg polygon[fill]:not([fill="none"]) {
+.problems-active-file-icon.is-markdown svg rect[fill]:not([fill="none"]),
+.problems-active-file-icon.is-markdown svg circle[fill]:not([fill="none"]),
+.problems-active-file-icon.is-markdown svg polygon[fill]:not([fill="none"]) {
   fill: var(--icon-purple-solid) !important;
 }
 
-.problems-active-file-icon svg rect[stroke]:not([stroke="none"]),
-.problems-active-file-icon svg circle[stroke]:not([stroke="none"]),
-.problems-active-file-icon svg polygon[stroke]:not([stroke="none"]) {
+.problems-active-file-icon.is-markdown svg rect[stroke]:not([stroke="none"]),
+.problems-active-file-icon.is-markdown svg circle[stroke]:not([stroke="none"]),
+.problems-active-file-icon.is-markdown svg polygon[stroke]:not([stroke="none"]) {
   stroke: var(--icon-purple-solid) !important;
 }
 
@@ -3111,13 +3232,16 @@ body {
 }
 
 .plan-diff-gutter-icon-slot {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 22px;
+  border-radius: 4px;
   cursor: pointer;
   color: #8C8F96;
   transition:
+    background var(--motion-duration-fast) var(--motion-ease-soft),
     color var(--motion-duration-fast) var(--motion-ease-soft),
     opacity var(--motion-duration-fast) var(--motion-ease-soft);
   opacity: 0;
@@ -3151,9 +3275,14 @@ body {
 }
 
 .plan-diff-row:hover .plan-diff-gutter-icon-slot,
-.plan-diff-gutter-icon-slot:has(.plan-diff-comment-badge) {
+.plan-diff-gutter-icon-slot:has(.plan-diff-comment-badge),
+.plan-diff-gutter-icon-slot.is-open {
   color: #B9BDC6;
   opacity: 1;
+}
+
+.plan-diff-gutter-icon-slot.is-open {
+  background: var(--icon-button-pressed-bg, var(--toolbar-bg-pressed, rgba(255, 255, 255, 0.12)));
 }
 
 .plan-diff-row-code {
@@ -3210,74 +3339,25 @@ body {
   cursor: default;
 }
 
+.plan-diff-row-comment .plan-diff-inline-comment {
+  padding-top: 6px;
+}
+
 .plan-diff-row-comment > .plan-diff-row-gutter {
   border-right: 1px solid var(--plan-diff-gutter-divider, #303238);
 }
 
-.plan-diff-row-plan-marker {
-  min-height: 32px;
-  cursor: default;
-  background: #1b1c1f;
-}
-
-.plan-diff-row-plan-marker[role="button"] {
-  cursor: pointer;
-}
-
-.plan-diff-row-plan-marker[role="button"]:hover .plan-diff-plan-marker-text,
-.plan-diff-row-plan-marker[role="button"]:focus-visible .plan-diff-plan-marker-text {
-  color: #D3D6DE;
-}
-
-.plan-diff-row-plan-marker[role="button"]:focus-visible {
-  outline: none;
-}
-
-.plan-diff-row-plan-marker .plan-diff-row-code {
-  min-height: 32px;
-  padding-left: 12px;
-  overflow: visible;
-}
-
-.plan-diff-row-plan-marker .plan-diff-gutter-icon-slot {
-  opacity: 0;
-}
-
-.plan-diff-plan-marker-content {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: #8E939D;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
-.plan-diff-plan-marker-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-
-.plan-diff-plan-marker-icon svg,
-.plan-diff-plan-marker-icon .icon {
-  width: 16px;
-  height: 16px;
-}
-
-.plan-diff-plan-marker-text {
-  color: #B7BBC4;
-  font-weight: 500;
-}
-
 .plan-diff-inline-comment {
-  padding: 8px 12px;
+  padding: 12px;
+}
+
+.spec-done-row-comment .spec-done-inline-comment-thread {
+  padding: 6px 12px 12px;
+}
+
+.spec-done-row-comment .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups,
+.plan-diff-row-comment .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups {
+  padding-top: 6px;
 }
 
 .plan-diff-inline-comment *,
@@ -3298,9 +3378,11 @@ body {
 }
 
 .plan-diff-comment-badge {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  padding: 2px;
 }
 
 .plan-diff-comment-count {
@@ -5322,6 +5404,59 @@ body {
   gap: 0;
 }
 
+.ai-chat-list-document-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0 -4px 2px;
+  padding: 0 0 3px;
+}
+
+.ai-chat-list-document-row {
+  all: unset;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 4px 0;
+  margin: 0;
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: #D1D3D9;
+  cursor: pointer;
+}
+
+.ai-chat-list-document-row:hover,
+.ai-chat-list-document-row:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ai-chat-list-document-row .ai-chat-list-agent-icon {
+  margin-left: 4px;
+}
+
+.ai-chat-list-document-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ai-chat-list-document-title > .icon {
+  flex: 0 0 auto;
+  color: #B4B8BF;
+}
+
+.ai-chat-list-document-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-left: 9px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(180, 184, 191, 0.24);
+}
+
 .ai-chat-list-row {
   all: unset;
   display: grid;
@@ -5343,6 +5478,11 @@ body {
 
 .ai-chat-list-row.is-selected {
   background: #2A4371;
+}
+
+.ai-chat-list-row.is-nested {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .ai-chat-list-agent-icon {
@@ -5779,6 +5919,25 @@ body {
   overflow-wrap: anywhere;
 }
 
+.ai-chat-attachment-source-preview {
+  min-width: 240px;
+  padding: 6px;
+  gap: 2px;
+}
+
+.ai-chat-attachment-source-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 4px;
+  color: #D1D3D9;
+}
+
+.ai-chat-attachment-source-preview-item .ai-chat-attachment-source-count {
+  margin-left: 8px;
+}
+
 .ai-chat-attachment-comment-preview-more {
   color: #8E939D;
 }
@@ -6042,6 +6201,7 @@ body {
 }
 
 .ai-chat-attachment-chip {
+  position: relative;
   display: inline-flex;
   height: 24px;
   max-width: 200px;
@@ -6083,6 +6243,88 @@ body {
   color: #73767C;
   font-size: 11px;
   line-height: 16px;
+}
+
+.ai-chat-attachment-sources-toggle {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: -1px;
+  cursor: pointer;
+  color: #73767C;
+}
+
+.ai-chat-attachment-sources-toggle .icon {
+  transition: transform 120ms ease;
+}
+
+.ai-chat-attachment-sources-toggle .icon.is-expanded {
+  transform: rotate(180deg);
+}
+
+.ai-chat-attachment-source-list {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 280px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: #2B2D30;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+.ai-chat-attachment-source-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #D1D3D9;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-chat-attachment-source-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-chat-attachment-source-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.ai-chat-attachment-source-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-attachment-source-count {
+  flex: 0 0 auto;
+  color: #73767C;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .ai-chat-attachment-comment-count svg {

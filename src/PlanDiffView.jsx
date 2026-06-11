@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Button, PositionedPopup, Popup, PopupCell, ToolbarButton, Badge } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
@@ -110,12 +110,12 @@ export function DiffTabIcon() {
   return <Icon name="vcs/diff" size={16} />;
 }
 
-function PlanDiffAgentTaskIcon() {
+export function PlanDiffCommentBadge({ count }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M12.5929 9.9438L12.5929 4.70001L13.7929 4.70002L13.7929 9.94379L15.0763 8.66037L15.9248 9.5089L13.1929 12.2409L10.4609 9.5089L11.3095 8.66037L12.5929 9.9438Z" fill="#9B6BDA" />
-      <path d="M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z" fill="#9B6BDA" />
-    </svg>
+    <span className="plan-diff-comment-badge">
+      <Icon name="general/balloon" size={16} />
+      <span className="plan-diff-comment-count">{count}</span>
+    </span>
   );
 }
 
@@ -235,7 +235,8 @@ export function DiffInlineCommentPopup({
   showCompose = true,
   commentsReadOnly = false,
   defaultSubmitAttachMode = 'current',
-  submitAttachModes = ['current', 'new'],
+  submitAttachModes = ['current', 'new', 'document'],
+  submitButtonLabel = '',
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
@@ -253,10 +254,10 @@ export function DiffInlineCommentPopup({
   const [actionMenu, setActionMenu] = useState(null);
   const normalizedSubmitAttachModes = useMemo(() => {
     const nextModes = Array.isArray(submitAttachModes)
-      ? submitAttachModes.filter((mode) => mode === 'current' || mode === 'new')
+      ? submitAttachModes.filter((mode) => mode === 'current' || mode === 'new' || mode === 'document')
       : [];
 
-    return nextModes.length > 0 ? Array.from(new Set(nextModes)) : ['current', 'new'];
+    return nextModes.length > 0 ? Array.from(new Set(nextModes)) : ['current', 'new', 'document'];
   }, [submitAttachModes]);
   const normalizedDefaultSubmitAttachMode = normalizedSubmitAttachModes.includes(defaultSubmitAttachMode)
     ? defaultSubmitAttachMode
@@ -267,10 +268,16 @@ export function DiffInlineCommentPopup({
   const hasGroupedComments = Boolean(normalizedCommentGroups?.length);
   const hasComments = comments.length > 0 || hasGroupedComments;
   const canChooseSubmitAttachMode = normalizedSubmitAttachModes.length > 1;
-  const submitOptionLabel = submitAttachMode === 'new'
-    ? 'Add to New Session'
-    : 'Add to Current Session';
-  const submitButtonLabel = isEditing ? 'Save Comment' : 'Add Comment';
+  const getSubmitAttachModeLabel = (attachMode) => {
+    if (attachMode === 'new') return 'Add to New Chat Session';
+    if (attachMode === 'document') return 'Add to Current Agent MD';
+    return 'Add to Current Chat Session';
+  };
+  const submitOptionLabel = getSubmitAttachModeLabel(submitAttachMode);
+  const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
+  const effectiveSubmitButtonLabel = isEditing
+    ? 'Save Comment'
+    : (normalizedSubmitButtonLabel || submitOptionLabel);
   const normalizedCommentContextLabel = typeof commentContextLabel === 'string'
     ? commentContextLabel.trim()
     : '';
@@ -283,8 +290,11 @@ export function DiffInlineCommentPopup({
     sessionLabel = normalizedCommentContextSessionLabel,
     messageId = null,
     chatId = null,
+    sourceTabId = null,
+    contextType = 'chat',
   } = {}) => {
     const normalizedSessionLabel = typeof sessionLabel === 'string' ? sessionLabel.trim() : '';
+    const isActiveSessionLabel = normalizedSessionLabel === 'Active' || normalizedSessionLabel === 'Related chats';
 
     return label.length > 0
       ? (
@@ -300,7 +310,7 @@ export function DiffInlineCommentPopup({
                   <Badge
                     className="spec-done-comment-popup-context-session"
                     text={normalizedSessionLabel}
-                    color={normalizedSessionLabel === 'Active' ? 'blue-secondary' : 'gray-secondary'}
+                    color={isActiveSessionLabel ? 'blue-secondary' : 'gray-secondary'}
                   />
                 )}
               </span>
@@ -308,7 +318,12 @@ export function DiffInlineCommentPopup({
             data-demo-id="diff-comment-context-message"
             aria-label={`Open chat context: ${label}`}
             title={label}
-            onClick={() => onReturnToChat?.({ messageId, chatId, source: 'diff-comment-context' })}
+            onClick={() => onReturnToChat?.({
+              messageId,
+              chatId,
+              sourceTabId,
+              source: contextType === 'document' ? 'diff-comment-document-context' : 'diff-comment-context',
+            })}
           />
         )
       : null
@@ -382,9 +397,9 @@ export function DiffInlineCommentPopup({
       : null
   );
 
-  const getEditableCommentActions = (index) => [
-    { label: 'Change', icon: 'general/edit', onSelect: () => onStartEdit?.(index) },
-    { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index) },
+  const getEditableCommentActions = (index, source = 'diff') => [
+    { label: 'Edit', icon: 'general/edit', onSelect: () => onStartEdit?.(index, source) },
+    { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index, source) },
   ];
 
   const getReturnToContextActions = (context = null) => (
@@ -418,7 +433,7 @@ export function DiffInlineCommentPopup({
                 <div className="spec-done-comment-popup-list">
                   {group.comments.map((commentEntry, i) => {
                     const actions = commentEntry.editable
-                      ? getEditableCommentActions(commentEntry.localIndex)
+                      ? getEditableCommentActions(commentEntry.localIndex, commentEntry.source)
                       : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId });
 
                     return (
@@ -490,11 +505,11 @@ export function DiffInlineCommentPopup({
                 <Button
                   type="primary"
                   data-demo-id="diff-comment-submit"
-                  title={submitButtonLabel}
-                  aria-label={submitButtonLabel}
+                  title={effectiveSubmitButtonLabel}
+                  aria-label={effectiveSubmitButtonLabel}
                   onClick={() => handleSubmit()}
                 >
-                  {submitButtonLabel}
+                  {effectiveSubmitButtonLabel}
                 </Button>
                 {canChooseSubmitAttachMode && (
                   <Button
@@ -516,22 +531,15 @@ export function DiffInlineCommentPopup({
             <div className="theme-dark">
               <PositionedPopup triggerRect={submitOptionsRect} onDismiss={() => setSubmitOptionsRect(null)} gap={4}>
                 <Popup visible className="diff-comment-submit-options-popup" onClose={() => setSubmitOptionsRect(null)}>
-                  {normalizedSubmitAttachModes.includes('current') && (
+                  {normalizedSubmitAttachModes.map((attachMode) => (
                     <PopupCell
-                      selected={submitAttachMode === 'current'}
-                      onClick={() => handleSubmitOptionSelect('current')}
+                      key={attachMode}
+                      selected={submitAttachMode === attachMode}
+                      onClick={() => handleSubmitOptionSelect(attachMode)}
                     >
-                      Add to Current Session
+                      {getSubmitAttachModeLabel(attachMode)}
                     </PopupCell>
-                  )}
-                  {normalizedSubmitAttachModes.includes('new') && (
-                    <PopupCell
-                      selected={submitAttachMode === 'new'}
-                      onClick={() => handleSubmitOptionSelect('new')}
-                    >
-                      Add to New Session
-                    </PopupCell>
-                  )}
+                  ))}
                 </Popup>
               </PositionedPopup>
             </div>,
@@ -625,24 +633,7 @@ function normalizeCommentSessions(commentSessions = []) {
   ));
 }
 
-function buildPlanDiffPlanMarkerRow(anchorRow, text = '') {
-  const normalizedText = typeof text === 'string' ? text.trim() : '';
-
-  if (!anchorRow || normalizedText.length === 0) {
-    return null;
-  }
-
-  return {
-    id: `${anchorRow.id}-plan-marker`,
-    kind: 'plan-marker',
-    text: normalizedText,
-    oldNumber: null,
-    newNumber: null,
-    isSynthetic: true,
-  };
-}
-
-function orderPlanDiffRowsForDisplay(rows = [], planMarkerText = '') {
+function orderPlanDiffRowsForDisplay(rows = []) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return [];
   }
@@ -667,11 +658,9 @@ function orderPlanDiffRowsForDisplay(rows = [], planMarkerText = '') {
 
     const removedRows = changedRows.filter((changedRow) => changedRow.kind === 'removed');
     const addedRows = changedRows.filter((changedRow) => changedRow.kind === 'added');
-    const markerRow = buildPlanDiffPlanMarkerRow(addedRows[0], planMarkerText);
 
     orderedRows.push(
       ...removedRows,
-      ...(markerRow ? [markerRow] : []),
       ...addedRows,
     );
   }
@@ -736,6 +725,11 @@ function shouldFixRow(comment) {
 export function PlanDiffOverlay({
   diffData,
   initialDiffComments = {},
+  documentDiffComments = {},
+  documentContextLabel = '',
+  documentContextIcon = 'fileTypes/markdown',
+  documentContextSessionLabel = 'Related chats',
+  documentContextSourceTabId = null,
   commentSessions = [],
   commentSessionActiveChatId = '',
   commentsReadOnly = false,
@@ -751,23 +745,30 @@ export function PlanDiffOverlay({
   uiState = null,
   onUiStateChange = null,
   singleLineNumbers = false,
+  inspectionWidget = null,
 }) {
+  const hasInspectionWidget = Boolean(inspectionWidget);
   const [commentsEnabled, setCommentsEnabled] = useState(!singleLineNumbers);
   const scrollRef = useRef(null);
   const onDiffCommentsChangeRef = useRef(onDiffCommentsChange);
   const onUiStateChangeRef = useRef(onUiStateChange);
   const displayRows = useMemo(
-    () => orderPlanDiffRowsForDisplay(diffData?.rows ?? [], diffData?.lineText ?? ''),
-    [diffData?.lineText, diffData?.rows],
+    () => orderPlanDiffRowsForDisplay(diffData?.rows ?? []),
+    [diffData?.rows],
   );
   const normalizedUiState = useMemo(
     () => normalizePlanDiffUiState(uiState),
     [uiState],
   );
   const initialDiffCommentsSignature = JSON.stringify(normalizeDiffCommentsState(initialDiffComments));
+  const documentDiffCommentsSignature = JSON.stringify(normalizeDiffCommentsState(documentDiffComments));
   const normalizedInitialDiffComments = useMemo(
     () => normalizeDiffCommentsState(initialDiffComments),
     [initialDiffCommentsSignature],
+  );
+  const normalizedDocumentDiffComments = useMemo(
+    () => normalizeDiffCommentsState(documentDiffComments),
+    [documentDiffCommentsSignature],
   );
   const normalizedCommentSessions = useMemo(
     () => normalizeCommentSessions(commentSessions),
@@ -783,6 +784,7 @@ export function PlanDiffOverlay({
   const [commentRowId, setCommentRowId] = useState(normalizedUiState.commentRowId);
   const [commentValue, setCommentValue] = useState(normalizedUiState.commentValue);
   const [commentEditingIndex, setCommentEditingIndex] = useState(normalizedUiState.commentEditingIndex);
+  const [commentEditingSource, setCommentEditingSource] = useState('diff');
   const [diffComments, setDiffComments] = useState(() => normalizedInitialDiffComments);
   const [caretState, setCaretState] = useState({
     rowId: initialCaretRowId,
@@ -811,6 +813,7 @@ export function PlanDiffOverlay({
     setCommentRowId(null);
     setCommentValue('');
     setCommentEditingIndex(null);
+    setCommentEditingSource('diff');
     onUiStateChangeRef.current?.({
       activeRowId: nextActiveRowId,
       commentRowId: null,
@@ -823,6 +826,13 @@ export function PlanDiffOverlay({
   useEffect(() => {
     onUiStateChangeRef.current = onUiStateChange;
   }, [onUiStateChange]);
+
+  const resolvedInspectionWidget = isValidElement(inspectionWidget)
+    ? cloneElement(inspectionWidget, {
+        commentsEnabled,
+        onToggleComments: () => setCommentsEnabled((prev) => !prev),
+      })
+    : inspectionWidget;
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -883,6 +893,7 @@ export function PlanDiffOverlay({
     setCommentRowId(rowId);
     setCommentValue('');
     setCommentEditingIndex(null);
+    setCommentEditingSource('diff');
   };
 
   useEffect(() => {
@@ -897,6 +908,7 @@ export function PlanDiffOverlay({
     setCommentRowId(normalizedUiState.commentRowId);
     setCommentValue(normalizedUiState.commentValue);
     setCommentEditingIndex(normalizedUiState.commentEditingIndex);
+    setCommentEditingSource('diff');
     setDiffComments(normalizedInitialDiffComments);
     setCaretState({
       rowId: nextCaretRowId,
@@ -926,6 +938,9 @@ export function PlanDiffOverlay({
     setCommentEditingIndex((prev) => (
       prev === normalizedUiState.commentEditingIndex ? prev : normalizedUiState.commentEditingIndex
     ));
+    if (!Number.isInteger(normalizedUiState.commentEditingIndex)) {
+      setCommentEditingSource('diff');
+    }
     setCaretState((prev) => (
       prev.rowId === nextCaretRowId && prev.left === normalizedUiState.caretState.left
         ? prev
@@ -963,7 +978,6 @@ export function PlanDiffOverlay({
   const commentedRowIds = useMemo(() => {
     const ids = [];
     for (const row of displayRows) {
-      if (row.kind === 'plan-marker') continue;
       const hasLocal = (diffComments[row.id] ?? []).length > 0;
       const hasSession = normalizedCommentSessions.some((s) => (s.comments[row.id] ?? []).length > 0);
       if (hasLocal || hasSession) ids.push(row.id);
@@ -1028,7 +1042,8 @@ export function PlanDiffOverlay({
 
   return (
     <div className={`plan-diff-overlay${singleLineNumbers ? ' plan-diff-overlay--single' : ''}${singleLineNumbers && !commentsEnabled ? ' plan-diff-overlay--comments-off' : ''}`}>
-      {singleLineNumbers && (
+      {resolvedInspectionWidget}
+      {singleLineNumbers && !hasInspectionWidget && (
         <div className="plan-diff-comment-toggle-widget">
           <button
             type="button"
@@ -1072,41 +1087,26 @@ export function PlanDiffOverlay({
       <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
         <div className="plan-diff-code">
           {displayRows.map((row) => {
-            if (row.kind === 'plan-marker') {
-              return (
-                <div
-                  key={row.id}
-                  className="plan-diff-row plan-diff-row-plan-marker"
-                  data-diff-row-id={row.id}
-                  data-demo-id={`diff-row-${row.id}`}
-                  role={onPlanMarkerClick ? 'button' : undefined}
-                  tabIndex={onPlanMarkerClick ? 0 : undefined}
-                  onClick={onPlanMarkerClick ? () => onPlanMarkerClick(row) : undefined}
-                  onKeyDown={onPlanMarkerClick ? (event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    onPlanMarkerClick(row);
-                  } : undefined}
-                >
-                  <div className="plan-diff-row-gutter">
-                    <span className="plan-diff-line-number" />
-                    {!singleLineNumbers && <span className="plan-diff-line-number" />}
-                    <span className="plan-diff-gutter-icon-slot" />
-                  </div>
-                  <div className="plan-diff-row-code">
-                      <span className="plan-diff-plan-marker-content">
-                        <span className="plan-diff-plan-marker-icon" aria-hidden="true">
-                        <PlanDiffAgentTaskIcon />
-                      </span>
-                      <span className="plan-diff-plan-marker-text">{row.text}</span>
-                    </span>
-                  </div>
-                </div>
-              );
-            }
-
             const hasInlineHighlight = row.kind === 'added' || row.kind === 'removed';
             const rowComments = diffComments[row.id] ?? [];
+            const documentRowComments = normalizedDocumentDiffComments[row.id] ?? [];
+            const documentGroup = documentRowComments.length > 0
+              ? {
+                  label: documentContextLabel,
+                  icon: documentContextIcon,
+                  sessionLabel: documentContextSessionLabel,
+                  contextType: 'document',
+                  sourceTabId: documentContextSourceTabId,
+                  messageId: null,
+                  chatId: null,
+                  comments: documentRowComments.map((comment, commentIndex) => ({
+                    text: comment,
+                    editable: !commentsReadOnly,
+                    localIndex: commentIndex,
+                    source: 'document',
+                  })),
+                }
+              : null;
             const sessionGroups = normalizedCommentSessions
               .map((session) => {
                 const sessionComments = session.comments[row.id] ?? [];
@@ -1154,14 +1154,17 @@ export function PlanDiffOverlay({
             const isEmptyLocalComposeGroup = Boolean(localGroup && localGroup.comments.length === 0 && commentRowId === row.id);
             const rowCommentGroups = isEmptyLocalComposeGroup
               ? [
+                  ...(documentGroup ? [documentGroup] : []),
                   ...sessionGroups,
                   localGroup,
                 ]
               : [
+                  ...(documentGroup ? [documentGroup] : []),
                   ...(localGroup ? [localGroup] : []),
                   ...sessionGroups,
                 ];
-            const hasVisibleRowComments = rowComments.length > 0 || rowCommentGroups.some((group) => group.comments.length > 0);
+            const hasVisibleRowComments = rowComments.length > 0 || documentRowComments.length > 0 || rowCommentGroups.some((group) => group.comments.length > 0);
+            const isCommentComposeOpen = commentRowId === row.id;
 
             return (<Fragment key={row.id}>
               <div
@@ -1181,7 +1184,7 @@ export function PlanDiffOverlay({
                   <span className="plan-diff-line-number">{row.oldNumber ?? ''}</span>
                   {!singleLineNumbers && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
                   <span
-                    className="plan-diff-gutter-icon-slot"
+                    className={`plan-diff-gutter-icon-slot${isCommentComposeOpen ? ' is-open' : ''}`}
                     data-demo-id={`diff-comment-toggle-${row.id}`}
                     role="button"
                     tabIndex={0}
@@ -1197,12 +1200,9 @@ export function PlanDiffOverlay({
                     }}
                   >
                     {hasVisibleRowComments ? (
-                      <span className="plan-diff-comment-badge">
-                        <Icon name="general/balloon" size={16} />
-                        <span className="plan-diff-comment-count">
-                          {rowCommentGroups.reduce((count, group) => count + group.comments.length, 0) || rowComments.length}
-                        </span>
-                      </span>
+                      <PlanDiffCommentBadge
+                        count={rowCommentGroups.reduce((count, group) => count + group.comments.length, 0) || rowComments.length}
+                      />
                     ) : (
                       <Icon name="general/balloon" size={16} />
                     )}
@@ -1262,14 +1262,32 @@ export function PlanDiffOverlay({
                       commentContextIcon={commentContextIcon}
                       commentContextSessionLabel={commentContextSessionLabel}
                       onChange={setCommentValue}
-                      onStartEdit={(idx) => {
+                      onStartEdit={(idx, source = 'diff') => {
                         if (commentsReadOnly) return;
+                        const sourceComments = source === 'document'
+                          ? (normalizedDocumentDiffComments[row.id] ?? [])
+                          : rowComments;
                         setCommentRowId(row.id);
-                        setCommentValue(rowComments[idx] ?? '');
+                        setCommentValue(sourceComments[idx] ?? '');
                         setCommentEditingIndex(idx);
+                        setCommentEditingSource(source === 'document' ? 'document' : 'diff');
                       }}
-                      onDelete={(idx) => {
+                      onDelete={(idx, source = 'diff') => {
                         if (commentsReadOnly) return;
+                        if (source === 'document') {
+                          const existing = normalizedDocumentDiffComments[row.id] ?? [];
+                          const nextDocumentComments = normalizeDiffCommentsState({
+                            ...normalizedDocumentDiffComments,
+                            [row.id]: existing.filter((_, i) => i !== idx),
+                          });
+                          onDiffCommentsChangeRef.current?.(nextDocumentComments, {
+                            attachMode: 'document',
+                            rowId: row.id,
+                            isEditing: true,
+                          });
+                          return;
+                        }
+
                         const existing = diffComments[row.id] ?? [];
                         commitDiffComments({
                           ...diffComments,
@@ -1299,27 +1317,42 @@ export function PlanDiffOverlay({
                           return;
                         }
 
-                        const existing = diffComments[row.id] ?? [];
+                        const isEditingDocumentComment = commentEditingSource === 'document' && Number.isInteger(commentEditingIndex);
+                        const isDocumentAttachMode = isEditingDocumentComment || (attachMode === 'document' && !Number.isInteger(commentEditingIndex));
+                        const existing = isDocumentAttachMode
+                          ? (normalizedDocumentDiffComments[row.id] ?? [])
+                          : (diffComments[row.id] ?? []);
                         const nextRowComments = Number.isInteger(commentEditingIndex)
                           ? existing.map((comment, index) => (index === commentEditingIndex ? trimmed : comment))
                           : [...existing, trimmed];
-                        const nextSubmittedComments = attachMode === 'new' && !Number.isInteger(commentEditingIndex)
+                        const nextSubmittedComments = isDocumentAttachMode
+                          ? {
+                              ...normalizedDocumentDiffComments,
+                              [row.id]: nextRowComments,
+                            }
+                          : attachMode === 'new' && !Number.isInteger(commentEditingIndex)
                           ? { [row.id]: [trimmed] }
                           : {
                               ...diffComments,
                               [row.id]: nextRowComments,
                             };
-                        const nextDiffComments = commitDiffComments(
-                          nextSubmittedComments,
-                          {
-                            attachMode,
-                            rowId: row.id,
-                            comment: trimmed,
-                            isEditing: Number.isInteger(commentEditingIndex),
-                          },
-                        );
+                        const submitMetadata = {
+                          attachMode: isDocumentAttachMode ? 'document' : attachMode,
+                          rowId: row.id,
+                          comment: trimmed,
+                          isEditing: Number.isInteger(commentEditingIndex),
+                        };
+                        const nextDiffComments = isDocumentAttachMode
+                          ? (
+                              onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
+                              normalizeDiffCommentsState(nextSubmittedComments)
+                            )
+                          : commitDiffComments(
+                              nextSubmittedComments,
+                              submitMetadata,
+                            );
                         onDiffCommentSubmit?.({
-                          attachMode,
+                          attachMode: isDocumentAttachMode ? 'document' : attachMode,
                           rowId: row.id,
                           comment: trimmed,
                           comments: nextDiffComments,
@@ -1347,23 +1380,14 @@ function formatPlanDiffDifferenceLabel(count) {
 
 export function PlanDiffInline({ diffData }) {
   const rows = useMemo(
-    () => orderPlanDiffRowsForDisplay(diffData?.rows ?? [], diffData?.lineText ?? ''),
-    [diffData?.rows, diffData?.lineText],
+    () => orderPlanDiffRowsForDisplay(diffData?.rows ?? []),
+    [diffData?.rows],
   );
   const language = diffData?.language || 'text';
 
   return (
     <div className="plan-diff-inline">
       {rows.map((row) => {
-        if (row.kind === 'plan-marker') {
-          return (
-            <div key={row.id} className="plan-diff-inline-row plan-diff-inline-marker">
-              <PlanDiffAgentTaskIcon />
-              <span className="plan-diff-inline-marker-text">{row.text}</span>
-            </div>
-          );
-        }
-
         const fragments = row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }];
         return (
           <div key={row.id} className={`plan-diff-inline-row plan-diff-inline-${row.kind}`}>
@@ -1390,6 +1414,11 @@ export function PlanDiffEditorArea({
   diffData,
   viewerData = null,
   initialDiffComments = {},
+  documentDiffComments = {},
+  documentContextLabel = '',
+  documentContextIcon = 'fileTypes/markdown',
+  documentContextSessionLabel = 'Related chats',
+  documentContextSourceTabId = null,
   commentSessions = [],
   commentSessionActiveChatId = '',
   commentsReadOnly = false,
@@ -1407,6 +1436,7 @@ export function PlanDiffEditorArea({
   uiState = null,
   onUiStateChange = null,
   singleLineNumbers = false,
+  inspectionWidget = null,
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
@@ -1482,6 +1512,11 @@ export function PlanDiffEditorArea({
         <PlanDiffOverlay
           diffData={diffData}
           initialDiffComments={initialDiffComments}
+          documentDiffComments={documentDiffComments}
+          documentContextLabel={documentContextLabel}
+          documentContextIcon={documentContextIcon}
+          documentContextSessionLabel={documentContextSessionLabel}
+          documentContextSourceTabId={documentContextSourceTabId}
           commentSessions={commentSessions}
           commentSessionActiveChatId={commentSessionActiveChatId}
           commentsReadOnly={commentsReadOnly}
@@ -1497,6 +1532,7 @@ export function PlanDiffEditorArea({
           uiState={uiState}
           onUiStateChange={onUiStateChange}
           singleLineNumbers={singleLineNumbers}
+          inspectionWidget={inspectionWidget}
         />,
         overlayHost
       )}

@@ -7,8 +7,9 @@ import {
   arePlanDiffUiStatesEqual,
   normalizePlanDiffUiState,
   DiffInlineCommentPopup,
+  PlanDiffCommentBadge,
 } from './PlanDiffView.jsx';
-import { AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
+import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import {
   ThemeProvider,
   MainWindow,
@@ -43,8 +44,8 @@ import './App.css';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'payment-service';
-const BRANCH_NAME = 'feature/visit-booking';
+const PROJECT_NAME = 'Code-review';
+const BRANCH_NAME = 'Code-review';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
@@ -1812,6 +1813,35 @@ function buildProblemTreeNodeId(issue, fallbackIndex) {
   return `problem-line-${rawIndex}-${suffix}`;
 }
 
+function buildProblemOpenTabTreeNodeId(issue, fallbackIndex) {
+  const tabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+  const rowId = typeof issue?.navigationRowId === 'string' ? issue.navigationRowId : '';
+  const suffix = issue?.id ?? `idx-${fallbackIndex}`;
+
+  return [
+    'problem-open-tab',
+    encodeURIComponent(tabId),
+    encodeURIComponent(rowId),
+    encodeURIComponent(suffix),
+  ].join(':');
+}
+
+function getProblemOpenTabTargetFromTreeNodeId(nodeId) {
+  if (typeof nodeId !== 'string') return null;
+
+  const [prefix, encodedTabId = '', encodedRowId = ''] = nodeId.split(':');
+  if (prefix !== 'problem-open-tab') return null;
+
+  const tabId = decodeURIComponent(encodedTabId);
+  if (!tabId) return null;
+
+  const rowId = decodeURIComponent(encodedRowId);
+  return {
+    tabId,
+    rowId: rowId || null,
+  };
+}
+
 function getProblemRawIndexFromTreeNodeId(nodeId) {
   if (typeof nodeId !== 'string') return null;
 
@@ -2848,20 +2878,23 @@ function ProblemsCommentNodeIcon() {
 }
 
 function renderProblemsFileIcon(tab) {
+  const isMarkdownIcon = tab?.icon === 'fileTypes/markdown' || (typeof tab?.label === 'string' && tab.label.endsWith('.md'));
+  const className = `problems-active-file-icon${isMarkdownIcon ? ' is-markdown' : ''}`;
+
   if (typeof tab?.icon === 'string') {
     return (
-      <span className="problems-active-file-icon">
+      <span className={className}>
         <Icon name={tab.icon} size={16} />
       </span>
     );
   }
 
   if (tab?.icon) {
-    return <span className="problems-active-file-icon">{tab.icon}</span>;
+    return <span className={className}>{tab.icon}</span>;
   }
 
   return (
-    <span className="problems-active-file-icon">
+    <span className={className}>
       <ProblemsFileNodeIcon />
     </span>
   );
@@ -2937,8 +2970,12 @@ function getProblemsMetaForTab(tab, agentTaskIssuesOverride = null) {
 }
 
 function buildCommentIssuesFromEntries(commentEntries = []) {
-  return commentEntries.flatMap((entry, entryIndex) => (
-    (entry.comments ?? []).map((comment, commentIndex) => ({
+  return commentEntries.flatMap((entry, entryIndex) => {
+    if (Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0) {
+      return [];
+    }
+
+    return (entry.comments ?? []).map((comment, commentIndex) => ({
       id: `comment-${entry.rowIndex ?? entryIndex}-${commentIndex}`,
       severity: 'comment',
       label: comment,
@@ -2946,8 +2983,383 @@ function buildCommentIssuesFromEntries(commentEntries = []) {
       secondaryText: Number.isInteger(entry.rawIndex)
         ? `Line ${entry.rawIndex + 1}`
         : (entry.sectionTitle || 'Comment'),
-    }))
+    }));
+  });
+}
+
+function getDiffCommentRowSecondaryText(row, sourceLabel = '') {
+  const normalizedSourceLabel = typeof sourceLabel === 'string' && sourceLabel.trim().length > 0
+    ? sourceLabel.trim()
+    : 'Comment';
+  const rowNumber = Number.isInteger(row?.newNumber)
+    ? row.newNumber
+    : (Number.isInteger(row?.oldNumber) ? row.oldNumber : null);
+
+  return Number.isInteger(rowNumber)
+    ? `${normalizedSourceLabel}:${rowNumber}`
+    : normalizedSourceLabel;
+}
+
+function renderProblemsSourceIcon(iconId) {
+  if (typeof iconId !== 'string' || iconId.length === 0) {
+    return <ProblemsCommentNodeIcon />;
+  }
+
+  return <Icon name={iconId} size={16} className="tab-icon" />;
+}
+
+function buildCommentIssuesFromDiffTabs(ideTabContents = {}, ideTabs = [], options = {}) {
+  if (!ideTabContents || typeof ideTabContents !== 'object') {
+    return [];
+  }
+
+  const {
+    includeDocument = true,
+    includeInitial = true,
+    includeChatSessions = true,
+  } = options;
+
+  return Object.entries(ideTabContents).flatMap(([tabId, tabContent]) => {
+    const fileData = tabContent?.diffData ?? tabContent?.plainFileData;
+    if (!fileData) return [];
+
+    const rowById = new Map((fileData.rows ?? []).map((row) => [row?.id, row]));
+    const isPlainFile = !tabContent?.diffData && Boolean(tabContent?.plainFileData);
+    const sourceLabel = isPlainFile
+      ? (fileData.sourceTabLabel ?? fileData.title ?? 'File')
+      : (fileData.title ?? `Diff ${fileData.sourceTabLabel ?? 'File'}`);
+    const tabMeta = Array.isArray(ideTabs)
+      ? (ideTabs.find((tab) => tab?.id === tabId) ?? null)
+      : null;
+    const sourceIcon = isPlainFile
+      ? (tabMeta?.icon ?? resolveAgentTaskPlanFileIcon(sourceLabel))
+      : DIFF_TAB_ICON_NAME;
+    const commentSources = [
+      includeDocument
+        ? {
+            kind: 'document',
+            comments: normalizeStoredDiffCommentsState(tabContent?.documentDiffComments),
+          }
+        : null,
+      includeInitial
+        ? {
+            kind: 'initial',
+            comments: normalizeStoredDiffCommentsState(tabContent?.initialDiffComments),
+          }
+        : null,
+      ...(includeChatSessions
+        ? Object.values(normalizeDiffSessionCommentsByChatId(tabContent?.diffSessionCommentsByChatId)).map((session) => ({
+            kind: `chat-${session.chatId}`,
+            comments: normalizeStoredDiffCommentsState(session.comments),
+          }))
+        : []),
+    ].filter(Boolean);
+
+    return commentSources.flatMap((source) => (
+      Object.entries(source.comments).flatMap(([rowId, comments]) => {
+        const row = rowById.get(rowId) ?? null;
+
+        return (comments ?? []).map((comment, commentIndex) => ({
+        id: `diff-comment-${tabId}-${source.kind}-${rowId}-${commentIndex}`,
+        sourceKind: 'diff',
+        severity: 'comment',
+          label: comment,
+          icon: renderProblemsSourceIcon(sourceIcon),
+          navigationTabId: tabId,
+          navigationRowId: rowId,
+          secondaryText: getDiffCommentRowSecondaryText(row, sourceLabel),
+        }));
+      })
+    ));
+  });
+}
+
+function buildCommentIssuesFromEntryDiffComments(commentEntries = [], sourceLabel = 'Diff') {
+  const normalizedSourceLabel = typeof sourceLabel === 'string' && sourceLabel.trim().length > 0
+    ? sourceLabel.trim()
+    : 'Diff';
+
+  return normalizeSpecVersionCommentEntries(commentEntries).flatMap((entry, entryIndex) => {
+    const diffComments = normalizeStoredDiffCommentsState(entry?.diffComments);
+    const entrySourceLabel = entry?.sourceLabel || (
+      entry?.sectionTitle && entry?.line
+        ? `${entry.sectionTitle}: ${entry.line}`
+        : (entry?.sectionTitle || normalizedSourceLabel)
+    );
+    const entrySourceIcon = entry?.sourceIcon || DIFF_TAB_ICON_NAME;
+    const entryLineNumber = Number.isInteger(entry?.sourceLineNumber)
+      ? entry.sourceLineNumber
+      : (Number.isInteger(entry?.rawIndex) ? entry.rawIndex + 1 : null);
+
+    return Object.entries(diffComments).flatMap(([rowId, comments]) => (
+      comments.map((comment, commentIndex) => ({
+        id: `entry-diff-comment-${entry.id ?? entryIndex}-${rowId}-${commentIndex}`,
+        sourceKind: 'diff',
+        severity: 'comment',
+        label: comment,
+        icon: renderProblemsSourceIcon(entrySourceIcon),
+        secondaryText: entrySourceLabel,
+        navigationTabId: entry?.sourceNavigationTabId ?? null,
+        navigationRowId: entry?.sourceNavigationRowId ?? rowId,
+        lineNumber: entryLineNumber,
+      }))
+    ));
+  });
+}
+
+function dedupeCommentIssues(commentIssues = []) {
+  const issuesByLabel = new Map();
+  const orderedLabels = [];
+
+  commentIssues.forEach((issue) => {
+    const normalizedLabel = typeof issue?.label === 'string'
+      ? issue.label.trim().toLowerCase()
+      : '';
+    if (!normalizedLabel) return;
+
+    const existingIssue = issuesByLabel.get(normalizedLabel);
+    if (!existingIssue) {
+      orderedLabels.push(normalizedLabel);
+      issuesByLabel.set(normalizedLabel, issue);
+      return;
+    }
+
+    if (
+      (issue?.navigationTabId && !existingIssue?.navigationTabId)
+      || (issue?.sourceKind === 'diff' && existingIssue?.sourceKind !== 'diff')
+    ) {
+      issuesByLabel.set(normalizedLabel, issue);
+    }
+  });
+
+  return orderedLabels.map((label) => issuesByLabel.get(label)).filter(Boolean);
+}
+
+function getCommentIssueSourceKey(issue = null) {
+  const label = typeof issue?.label === 'string' ? issue.label.trim().toLowerCase() : '';
+  const navigationTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+  const navigationRowId = typeof issue?.navigationRowId === 'string' ? issue.navigationRowId : '';
+  const secondaryText = typeof issue?.secondaryText === 'string' ? issue.secondaryText.trim().toLowerCase() : '';
+  const lineNumber = Number.isInteger(issue?.lineNumber) ? String(issue.lineNumber) : '';
+  return [label, navigationTabId, navigationRowId, secondaryText, lineNumber].join('|');
+}
+
+function areCommentListsEqual(left = [], right = []) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((comment, index) => comment === right[index]);
+}
+
+function countLogicalCommentEntries(commentEntries = []) {
+  return normalizeSpecVersionCommentEntries(commentEntries).reduce((sum, entry) => {
+    const directComments = Array.isArray(entry?.comments) ? entry.comments : [];
+    const diffComments = flattenStoredDiffCommentsState(entry?.diffComments);
+
+    if (diffComments.length > 0 && areCommentListsEqual(directComments, diffComments)) {
+      return sum + diffComments.length;
+    }
+
+    return sum + directComments.length + diffComments.length;
+  }, 0);
+}
+
+function countDirectCommentEntries(commentEntries = []) {
+  return normalizeSpecVersionCommentEntries(commentEntries).reduce((sum, entry) => {
+    if (Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0) {
+      return sum;
+    }
+
+    return sum + (Array.isArray(entry?.comments) ? entry.comments.length : 0);
+  }, 0);
+}
+
+function buildMergedExternalCommentIssues(commentEntries = [], relatedCommentIssues = []) {
+  return mergeCommentIssuesBySourceKey(
+    buildCommentIssuesFromEntryDiffComments(commentEntries),
+    Array.isArray(relatedCommentIssues) ? relatedCommentIssues : [],
+  );
+}
+
+function getAggregatedCommentIssueCount(commentEntries = [], relatedCommentIssues = []) {
+  return countDirectCommentEntries(commentEntries)
+    + buildMergedExternalCommentIssues(commentEntries, relatedCommentIssues).length;
+}
+
+function getCommentEntryTotalCount(commentEntries = [], relatedCommentIssues = []) {
+  return getAggregatedCommentIssueCount(
+    normalizeSpecVersionCommentEntries(commentEntries),
+    relatedCommentIssues,
+  );
+}
+
+function buildDocumentRelatedCommentIssuesFromDiffTabs(ideTabContents = {}, ideTabs = []) {
+  return buildCommentIssuesFromDiffTabs(ideTabContents, ideTabs, {
+    includeDocument: true,
+    includeInitial: false,
+    includeChatSessions: false,
+  });
+}
+
+function buildCommentIssuesForFileTab(tabId, tabContent = null, ideTabs = []) {
+  if (!tabId || !tabContent || (!tabContent.diffData && !tabContent.plainFileData)) {
+    return [];
+  }
+
+  const scopedContents = { [tabId]: tabContent };
+  const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
+  const hasChatSessionComments = Object.values(sessionCommentsByChatId).some((session) => (
+    flattenStoredDiffCommentsState(session?.comments).length > 0
   ));
+
+  return [
+    ...buildCommentIssuesFromDiffTabs(scopedContents, ideTabs, {
+      includeDocument: true,
+      includeInitial: false,
+      includeChatSessions: false,
+    }),
+    ...buildCommentIssuesFromDiffTabs(scopedContents, ideTabs, {
+      includeDocument: false,
+      includeInitial: !hasChatSessionComments,
+      includeChatSessions: hasChatSessionComments,
+    }),
+  ];
+}
+
+function mergeCommentIssuesBySourceKey(...issueGroups) {
+  const issuesByKey = new Map();
+  issueGroups.flat().forEach((issue) => {
+    const normalizedLabel = typeof issue?.label === 'string'
+      ? issue.label.trim().toLowerCase()
+      : '';
+    const navigationTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+    const navigationRowId = typeof issue?.navigationRowId === 'string' ? issue.navigationRowId : '';
+    const key = normalizedLabel && navigationTabId && navigationRowId
+      ? [normalizedLabel, navigationTabId, navigationRowId].join('|')
+      : getCommentIssueSourceKey(issue);
+    if (!key || issuesByKey.has(key)) return;
+    issuesByKey.set(key, issue);
+  });
+  return Array.from(issuesByKey.values());
+}
+
+function buildDocumentEntryCommentIssuesForTab(tabId, commentEntryGroups = []) {
+  if (!tabId) return [];
+
+  return commentEntryGroups.flatMap((commentEntries) => (
+    buildCommentIssuesFromEntryDiffComments(commentEntries)
+      .filter((issue) => issue?.navigationTabId === tabId)
+  ));
+}
+
+function getCommentIssueSourceLabel(issue = null) {
+  const secondaryText = typeof issue?.secondaryText === 'string' ? issue.secondaryText.trim() : '';
+  if (!secondaryText) return 'Comment';
+
+  return secondaryText.replace(/:\d+$/u, '');
+}
+
+function getCommentIssueLineLabel(issue = null) {
+  if (Number.isInteger(issue?.lineNumber) && issue.lineNumber > 0) {
+    return `Line ${issue.lineNumber}`;
+  }
+
+  if (Number.isInteger(issue?.rawIndex) && issue.rawIndex >= 0) {
+    return `Line ${issue.rawIndex + 1}`;
+  }
+
+  const secondaryText = typeof issue?.secondaryText === 'string' ? issue.secondaryText.trim() : '';
+  if (!secondaryText) return '';
+
+  const lineMatch = secondaryText.match(/\bLine\s+(\d+)\b/iu);
+  if (lineMatch) return `Line ${lineMatch[1]}`;
+
+  const sourceLineMatch = secondaryText.match(/:(\d+)$/u);
+  if (sourceLineMatch) return `Line ${sourceLineMatch[1]}`;
+
+  return '';
+}
+
+function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'Comment') {
+  const hasExternalSource = Boolean(issue?.sourceKind || issue?.navigationTabId);
+  const sourceLabel = hasExternalSource
+    ? getCommentIssueSourceLabel(issue)
+    : fallbackSourceLabel;
+  const lineLabel = getCommentIssueLineLabel(issue);
+  const secondaryText = [sourceLabel, lineLabel].filter(Boolean).join(' · ');
+
+  return {
+    label: issue?.label ?? 'Comment',
+    secondaryText,
+  };
+}
+
+function getSourceLineLabel(lineNumber = null) {
+  return Number.isInteger(lineNumber) && lineNumber > 0 ? `Line ${lineNumber}` : '';
+}
+
+function buildCommentSourceSummaries({
+  attachment = null,
+  commentEntries = [],
+  relatedCommentIssues = [],
+} = {}) {
+  const summariesByKey = new Map();
+  const addSource = ({ key, label, icon = null, count = 0, navigationTabId = null, navigationRowId = null, lineNumber = null }) => {
+    const normalizedKey = key || label;
+    const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'Comment';
+    const normalizedCount = Number.isFinite(count) ? count : 0;
+    if (!normalizedKey || normalizedCount <= 0) return;
+
+    const existing = summariesByKey.get(normalizedKey);
+    summariesByKey.set(normalizedKey, {
+      key: normalizedKey,
+      label: existing?.label ?? normalizedLabel,
+      icon: existing?.icon ?? icon,
+      count: (existing?.count ?? 0) + normalizedCount,
+      navigationTabId: existing?.navigationTabId ?? navigationTabId,
+      navigationRowId: existing?.navigationRowId ?? navigationRowId,
+      lineNumber: existing?.lineNumber ?? lineNumber,
+      lineLabel: existing?.lineLabel ?? getSourceLineLabel(lineNumber),
+    });
+  };
+
+  const normalizedCommentEntries = normalizeSpecVersionCommentEntries(commentEntries);
+  const documentCommentCount = normalizedCommentEntries.reduce((sum, entry) => (
+    Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0
+      ? sum
+      : sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+  ), 0);
+  const documentCommentLineNumber = normalizedCommentEntries.find((entry) => (
+    Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length === 0
+    && Array.isArray(entry.comments)
+    && entry.comments.length > 0
+    && Number.isInteger(entry.rawIndex)
+    && entry.rawIndex >= 0
+  ))?.rawIndex;
+  addSource({
+    key: attachment?.sourceTabId ?? attachment?.id ?? attachment?.label ?? 'sdd-document',
+    label: attachment?.label ?? 'visit-booking.md',
+    icon: attachment?.icon ?? 'fileTypes/markdown',
+    count: documentCommentCount,
+    navigationTabId: attachment?.sourceTabId ?? null,
+    lineNumber: Number.isInteger(documentCommentLineNumber) ? documentCommentLineNumber + 1 : null,
+  });
+
+  buildMergedExternalCommentIssues(normalizedCommentEntries, relatedCommentIssues).forEach((issue) => {
+    const sourceLabel = getCommentIssueSourceLabel(issue);
+    addSource({
+      key: `entry-diff:${sourceLabel}`,
+      label: sourceLabel,
+      icon: issue?.icon ?? renderProblemsSourceIcon(DIFF_TAB_ICON_NAME),
+      count: 1,
+      navigationTabId: issue?.navigationTabId ?? null,
+      navigationRowId: issue?.navigationRowId ?? null,
+      lineNumber: Number.isInteger(issue?.lineNumber) ? issue.lineNumber : null,
+    });
+  });
+
+  return Array.from(summariesByKey.values());
 }
 
 function getCommentTargetStorageKey(entry) {
@@ -3147,9 +3559,47 @@ function replaceCommentEntriesForTarget(commentEntries = [], target, comments = 
       rawIndex: metadata.rawIndex ?? existingEntry?.rawIndex,
       rowStableKey: metadata.rowStableKey ?? existingEntry?.rowStableKey,
       diffComments: Object.keys(normalizedDiffComments).length > 0 ? normalizedDiffComments : undefined,
+      hideInlineInDocument: Boolean(metadata.hideInlineInDocument ?? existingEntry?.hideInlineInDocument),
       checkTarget: normalizedTarget,
       issueTarget: normalizedTarget,
       comments: nextComments,
+    },
+  ];
+}
+
+function upsertHiddenDiffCommentEntry(commentEntries = [], entryId, comments = {}, metadata = {}) {
+  const existingEntries = Array.isArray(commentEntries) ? commentEntries : [];
+  const normalizedEntryId = typeof entryId === 'string' && entryId.length > 0
+    ? entryId
+    : 'document-diff-comment';
+  const diffComments = normalizeStoredDiffCommentsState(comments);
+  const flattenedComments = flattenStoredDiffCommentsState(diffComments);
+  const remainingEntries = existingEntries.filter((entry) => entry?.id !== normalizedEntryId);
+
+  if (flattenedComments.length === 0 && Object.keys(diffComments).length === 0) {
+    return remainingEntries;
+  }
+
+  const normalizedTarget = normalizeCommentTarget(metadata.target);
+  return [
+    ...remainingEntries,
+    {
+      id: normalizedEntryId,
+      sectionTitle: metadata.sectionTitle ?? '',
+      line: metadata.line ?? '',
+      rawIndex: metadata.rawIndex,
+      rowStableKey: metadata.rowStableKey,
+      sourceKind: metadata.sourceKind,
+      sourceLabel: metadata.sourceLabel,
+      sourceIcon: metadata.sourceIcon,
+      sourceNavigationTabId: metadata.sourceNavigationTabId,
+      sourceNavigationRowId: metadata.sourceNavigationRowId,
+      sourceLineNumber: metadata.sourceLineNumber,
+      checkTarget: normalizedTarget ?? undefined,
+      issueTarget: normalizedTarget ?? undefined,
+      comments: flattenedComments,
+      diffComments,
+      hideInlineInDocument: true,
     },
   ];
 }
@@ -3179,8 +3629,16 @@ function buildPlanDiffInitialComments(commentEntries = [], diffData = null, targ
 
 function mergeCommentEntriesWithExistingDiffAnchors(nextEntries = [], previousEntries = []) {
   const normalizedPreviousEntries = Array.isArray(previousEntries) ? previousEntries : [];
+  const isHiddenExternalCommentEntry = (entry) => (
+    entry?.hideInlineInDocument
+    && typeof entry?.id === 'string'
+    && (
+      entry.id.startsWith('document-comment-')
+      || entry.id.startsWith('document-diff-comment-')
+    )
+  );
 
-  return (Array.isArray(nextEntries) ? nextEntries : []).map((entry) => {
+  const mergedEntries = (Array.isArray(nextEntries) ? nextEntries : []).map((entry) => {
     const currentDiffComments = normalizeStoredDiffCommentsState(entry?.diffComments);
     if (Object.keys(currentDiffComments).length > 0) {
       return entry;
@@ -3189,7 +3647,11 @@ function mergeCommentEntriesWithExistingDiffAnchors(nextEntries = [], previousEn
     const entryTarget = normalizeCommentTarget(entry?.checkTarget) ?? normalizeCommentTarget(entry?.issueTarget);
     const entryStorageKey = getCommentEntryStorageKey(entry);
     const previousEntry = normalizedPreviousEntries.find((candidate) => {
-      if (entryTarget && doesEntryMatchCommentTarget(candidate, entryTarget)) {
+      if (isHiddenExternalCommentEntry(candidate)) {
+        return Boolean(entry?.id) && candidate.id === entry.id;
+      }
+
+      if (!isHiddenExternalCommentEntry(entry) && entryTarget && doesEntryMatchCommentTarget(candidate, entryTarget)) {
         return true;
       }
 
@@ -3201,9 +3663,32 @@ function mergeCommentEntriesWithExistingDiffAnchors(nextEntries = [], previousEn
       ? { ...entry, diffComments: previousDiffComments }
       : entry;
   });
+
+  const mergedEntryIds = new Set(mergedEntries.map((entry) => entry?.id).filter(Boolean));
+  const preservedHiddenEntries = normalizedPreviousEntries.filter((entry) => (
+    isHiddenExternalCommentEntry(entry)
+    && !mergedEntryIds.has(entry.id)
+    && Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0
+  ));
+
+  return [
+    ...preservedHiddenEntries,
+    ...mergedEntries,
+  ];
 }
 
 function getCommentEntryStorageKey(entry) {
+  if (
+    entry?.hideInlineInDocument
+    && typeof entry?.id === 'string'
+    && (
+      entry.id.startsWith('document-comment-')
+      || entry.id.startsWith('document-diff-comment-')
+    )
+  ) {
+    return `hidden:${entry.id}`;
+  }
+
   if (typeof entry?.rowStableKey === 'string' && entry.rowStableKey) {
     return `row-key:${entry.rowStableKey}`;
   }
@@ -3286,6 +3771,8 @@ function buildRowCommentsStateFromEntries(rowMetaList = [], commentEntries = [])
   const nextState = {};
 
   (commentEntries ?? []).forEach((entry) => {
+    if (entry?.hideInlineInDocument) return;
+
     const comments = Array.isArray(entry?.comments)
       ? entry.comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
       : [];
@@ -3490,11 +3977,20 @@ function buildSmoothInlineTransitionFrames(sourceText = '', targetText = '') {
   return frames;
 }
 
-function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEntries = []) {
+function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEntries = [], relatedCommentIssues = []) {
   const meta = getProblemsMetaForTab(tab, agentTaskIssuesOverride);
-  const commentIssues = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
-    ? buildCommentIssuesFromEntries(commentEntries)
+  const fileIcon = renderProblemsFileIcon(tab);
+  const mdCommentIssues = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
+    ? buildCommentIssuesFromEntries(commentEntries).map((issue) => ({
+        ...issue,
+        icon: fileIcon,
+      }))
     : [];
+  const externalCommentIssues = buildMergedExternalCommentIssues(commentEntries, relatedCommentIssues);
+  const commentIssues = [
+    ...mdCommentIssues,
+    ...externalCommentIssues,
+  ];
   const problemsCount = meta.issues.length;
   const commentCount = commentIssues.length;
   const secondarySuffixParts = [];
@@ -3503,10 +3999,55 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
   const secondarySuffix = secondarySuffixParts.length > 0
     ? `${PROBLEMS_SECONDARY_GAP}${secondarySuffixParts.join(PROBLEMS_SECONDARY_GAP)}`
     : '';
-  const fileIcon = renderProblemsFileIcon(tab);
-  const treeIssues = [
-    ...meta.issues,
-    ...commentIssues,
+  const problemNodes = meta.issues.map((issue, index) => {
+    const normalizedIssue = {
+      ...issue,
+      rawIndex: Number.isInteger(issue?.rawIndex)
+        ? issue.rawIndex
+        : parseProblemRawIndexFromSecondaryText(issue?.secondaryText),
+    };
+
+    return {
+      id: buildProblemTreeNodeId(normalizedIssue, index),
+      label: normalizedIssue.label,
+      icon:
+        normalizedIssue.severity === 'error'
+          ? <ProblemsErrorNodeIcon />
+          : <ProblemsWarningNodeIcon />,
+      secondaryText: normalizedIssue.secondaryText,
+    };
+  });
+  const commentNodes = commentIssues.map((issue, index) => {
+    const normalizedIssue = {
+      ...issue,
+      rawIndex: Number.isInteger(issue?.rawIndex)
+        ? issue.rawIndex
+        : parseProblemRawIndexFromSecondaryText(issue?.secondaryText),
+    };
+    const display = getProblemsCommentNodeDisplay(normalizedIssue, meta.label);
+
+    return {
+      id: normalizedIssue.navigationTabId
+        ? buildProblemOpenTabTreeNodeId(normalizedIssue, index)
+        : buildProblemTreeNodeId(normalizedIssue, index),
+      label: display.label,
+      icon: normalizedIssue.icon ?? <ProblemsCommentNodeIcon />,
+      secondaryText: display.secondaryText,
+    };
+  });
+  const commentsGroupNode = commentNodes.length > 0
+    ? {
+        id: 'active-problems-comments',
+        label: 'Comments',
+        icon: <ProblemsCommentNodeIcon />,
+        secondaryText: String(commentNodes.length),
+        isExpanded: true,
+        children: commentNodes,
+      }
+    : null;
+  const treeChildren = [
+    ...problemNodes,
+    ...(commentsGroupNode ? [commentsGroupNode] : []),
   ];
 
   return [
@@ -3515,27 +4056,8 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
       label: meta.label,
       icon: fileIcon,
       secondaryText: `${meta.path}${secondarySuffix}`,
-      isExpanded: treeIssues.length > 0,
-      children: treeIssues.map((issue, index) => {
-        const normalizedIssue = {
-          ...issue,
-          rawIndex: Number.isInteger(issue?.rawIndex)
-            ? issue.rawIndex
-            : parseProblemRawIndexFromSecondaryText(issue?.secondaryText),
-        };
-
-        return {
-          id: buildProblemTreeNodeId(normalizedIssue, index),
-          label: normalizedIssue.label,
-          icon:
-            normalizedIssue.severity === 'error'
-              ? <ProblemsErrorNodeIcon />
-              : normalizedIssue.severity === 'comment'
-                ? <ProblemsCommentNodeIcon />
-                : <ProblemsWarningNodeIcon />,
-          secondaryText: normalizedIssue.secondaryText,
-        };
-      }),
+      isExpanded: treeChildren.length > 0,
+      children: treeChildren,
     },
   ];
 }
@@ -4477,6 +4999,34 @@ function normalizeSpecVersionCommentEntries(commentEntries = []) {
       normalizedEntry.issueSeverity = entry.issueSeverity;
     }
 
+    if (entry?.hideInlineInDocument) {
+      normalizedEntry.hideInlineInDocument = true;
+    }
+
+    if (typeof entry?.sourceKind === 'string' && entry.sourceKind.length > 0) {
+      normalizedEntry.sourceKind = entry.sourceKind;
+    }
+
+    if (typeof entry?.sourceLabel === 'string' && entry.sourceLabel.length > 0) {
+      normalizedEntry.sourceLabel = entry.sourceLabel;
+    }
+
+    if (typeof entry?.sourceIcon === 'string' && entry.sourceIcon.length > 0) {
+      normalizedEntry.sourceIcon = entry.sourceIcon;
+    }
+
+    if (typeof entry?.sourceNavigationTabId === 'string' && entry.sourceNavigationTabId.length > 0) {
+      normalizedEntry.sourceNavigationTabId = entry.sourceNavigationTabId;
+    }
+
+    if (typeof entry?.sourceNavigationRowId === 'string' && entry.sourceNavigationRowId.length > 0) {
+      normalizedEntry.sourceNavigationRowId = entry.sourceNavigationRowId;
+    }
+
+    if (Number.isInteger(entry?.sourceLineNumber) && entry.sourceLineNumber > 0) {
+      normalizedEntry.sourceLineNumber = entry.sourceLineNumber;
+    }
+
     if (Object.keys(diffComments).length > 0) {
       normalizedEntry.diffComments = diffComments;
     }
@@ -4732,6 +5282,13 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
 }
 
 const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
+const INLINE_INSPECTION_SELECTOR = '[data-inline-inspection="true"], .spec-inline-warning-highlight, .spec-inline-error-highlight';
+
+function getClosestInlineInspectionElement(target) {
+  return target instanceof Element
+    ? target.closest(INLINE_INSPECTION_SELECTOR)
+    : null;
+}
 
 function getInlineInspectionTooltipData(highlight = null, issue = null) {
   const title = typeof highlight?.tooltip?.title === 'string'
@@ -4872,6 +5429,7 @@ function InlineInspectionHighlight({ className, tooltip = null, onAccept = null,
       <span
         ref={anchorRef}
         className={`${className}${hasTooltip ? ' spec-inline-hover-trigger' : ''}`}
+        data-inline-inspection="true"
         onMouseEnter={hasTooltip ? () => {
           cancelClose();
           updateRect();
@@ -5026,9 +5584,8 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
           onOpen?.(event.currentTarget.getBoundingClientRect());
         }}
       >
-        {hasComments ? <DoneCommentCountIcon /> : <Icon name="general/balloon" size={16} />}
+        {hasComments ? <PlanDiffCommentBadge count={commentCount} /> : <Icon name="general/balloon" size={16} />}
       </button>
-      {commentCount > 0 && <span className="spec-done-comment-count">{commentCount}</span>}
     </span>
   );
 }
@@ -5136,6 +5693,7 @@ function DoneCommentPopup({
       showCompose={showCompose}
       defaultSubmitAttachMode="new"
       submitAttachModes={['new']}
+      submitButtonLabel="Add a Comment"
       onChange={onChange}
       onCancel={onCancel}
       onSubmit={onSubmit}
@@ -6441,6 +6999,9 @@ function DoneInspectionWidget({
   commentCount = 0,
   versions = [],
   onVersionSelect = null,
+  className = '',
+  commentsEnabled = false,
+  onToggleComments = null,
 }) {
   const [versionPopupRect, setVersionPopupRect] = useState(null);
   const versionEntries = Array.isArray(versions) && versions.length > 0
@@ -6456,11 +7017,14 @@ function DoneInspectionWidget({
   const hasWarnings = warningCount > 0;
   const hasErrors = errorCount > 0;
   const hasComments = commentCount > 0;
-  const hasIssues = hasWarnings || hasErrors || hasComments;
+  const hasCommentToggle = typeof onToggleComments === 'function';
+  const hasProblemCounts = hasWarnings || hasErrors;
+  const hasIssues = hasWarnings || hasErrors || hasComments || hasCommentToggle;
+  const commentLabel = `${commentCount} comment${commentCount === 1 ? '' : 's'}`;
   const problemLabelParts = [
+    hasComments && !hasCommentToggle ? commentLabel : null,
     hasWarnings ? `${warningCount} warning${warningCount === 1 ? '' : 's'}` : null,
     hasErrors ? `${errorCount} error${errorCount === 1 ? '' : 's'}` : null,
-    hasComments ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : null,
   ].filter(Boolean);
 
   useEffect(() => {
@@ -6495,19 +7059,45 @@ function DoneInspectionWidget({
 
   return (
     <>
-    <div className="spec-done-inspection-widget">
+    <div className={`spec-done-inspection-widget${className ? ` ${className}` : ''}`}>
       {hasIssues && (
         <>
-          <button
-            type="button"
-            className="spec-done-inspection-counts-btn"
-            aria-label={problemLabelParts.join(' and ')}
-            data-demo-id="spec-inspection-counts"
-            onClick={() => onOpenProblems?.()}
-          >
-            {hasWarnings && (
+          {hasCommentToggle && (
+            <button
+              type="button"
+              className={`spec-done-inspection-counts-btn spec-done-inspection-comment-toggle${commentsEnabled ? ' is-active' : ''}`}
+              aria-label={commentsEnabled ? 'Disable comments' : 'Enable comments'}
+              data-demo-id="spec-comment-toggle"
+              onClick={() => onToggleComments?.()}
+            >
               <span className="spec-done-inspection-group">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <DoneCommentCountIcon />
+                {commentCount > 0 && (
+                  <span className="spec-done-inspection-text">{commentCount}</span>
+                )}
+              </span>
+            </button>
+          )}
+          {hasCommentToggle && hasProblemCounts && (
+            <span className="spec-done-inspection-separator" aria-hidden="true" />
+          )}
+          {(!hasCommentToggle || hasProblemCounts) && (
+            <button
+              type="button"
+              className="spec-done-inspection-counts-btn"
+              aria-label={problemLabelParts.join(' and ')}
+              data-demo-id="spec-inspection-counts"
+              onClick={() => onOpenProblems?.()}
+            >
+              {hasComments && !hasCommentToggle && (
+                <span className="spec-done-inspection-group">
+                  <DoneCommentCountIcon />
+                  <span className="spec-done-inspection-text">{commentCount}</span>
+                </span>
+              )}
+              {hasWarnings && (
+                <span className="spec-done-inspection-group">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path fillRule="evenodd" clipRule="evenodd" d="M1.27603 10.8634L6.3028 1.98903C7.04977 0.670323 8.94893 0.670326 9.69589 1.98903L14.7227 10.8634C15.516 12.2639 14.5047 14 12.8956 14H3.10308C1.494 14 0.482737 12.2639 1.27603 10.8634Z" fill="#C7A450" />
                   <path d="M9 5C9 4.44772 8.55228 4 8 4C7.44772 4 7 4.44772 7 5V7.5C7 8.05229 7.44772 8.5 8 8.5C8.55229 8.5 9 8.05228 9 7.5L9 5Z" fill="#1E1F22" />
                   <path d="M8 12C8.55228 12 9 11.5523 9 11C9 10.4477 8.55228 10 8 10C7.44772 10 7 10.4477 7 11C7 11.5523 7.44772 12 8 12Z" fill="#1E1F22" />
@@ -6520,16 +7110,11 @@ function DoneInspectionWidget({
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path fillRule="evenodd" clipRule="evenodd" d="M2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8ZM7 5C7 4.44772 7.44772 4 8 4C8.55229 4 9 4.44772 9 5V8C9 8.55228 8.55229 9 8 9C7.44772 9 7 8.55228 7 8V5ZM9 11C9 11.5523 8.55229 12 8 12C7.44772 12 7 11.5523 7 11C7 10.4477 7.44772 10 8 10C8.55229 10 9 10.4477 9 11Z" fill="#DB5C5C" />
                 </svg>
-                <span className="spec-done-inspection-text">{errorCount}</span>
-              </span>
-            )}
-            {hasComments && (
-              <span className="spec-done-inspection-group">
-                <DoneCommentCountIcon />
-                <span className="spec-done-inspection-text">{commentCount}</span>
-              </span>
-            )}
-          </button>
+                  <span className="spec-done-inspection-text">{errorCount}</span>
+                </span>
+              )}
+            </button>
+          )}
           {(hasWarnings || hasErrors) && (
             <div className="spec-done-inspection-nav">
               <Tooltip text="Previous Highlighted Error" shortcut="⇧F2" placement="bottom" delay={0}>
@@ -6989,7 +7574,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -7114,6 +7699,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [resolvedProposalRowKeys, setResolvedProposalRowKeys] = useState(() => new Set());
   const [focusedCommentRowKey, setFocusedCommentRowKey] = useState(null);
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
+  const [hoveredIssueRowKey, setHoveredIssueRowKey] = useState(null);
   const [commentPopup, setCommentPopup] = useState(null);
   const [intentionPopup, setIntentionPopup] = useState(null);
   const normalizedCode = useMemo(
@@ -7576,6 +8162,23 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
   }, [rowComments]);
 
+  const handleInlineCommentEditStart = useCallback((rowMeta, rowCommentKey, commentIndex) => {
+    if (!rowMeta?.stableKey) return;
+
+    const rowEl = Array.from(scrollRef.current?.querySelectorAll('.spec-done-row') ?? [])
+      .find((node) => node instanceof HTMLElement && node.dataset.rowKey === rowMeta.stableKey);
+    const rect = rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect() : null;
+
+    setCommentPopup({
+      rowKey: rowMeta.stableKey,
+      rowCommentKey,
+      rowIndex: rowMeta.rowIndex,
+      rect,
+      value: rowComments[rowCommentKey]?.[commentIndex] ?? '',
+      editingIndex: commentIndex,
+    });
+  }, [rowComments]);
+
   const toggleBreakpoint = (rowKey) => {
     if (typeof rowKey !== 'string' || !rowKey) return;
 
@@ -7902,10 +8505,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       activeRow?.classList.add('spec-done-active-line');
       const activeRowSeverity = activeRow?.dataset.issueSeverity;
       const activeRowKey = typeof activeRow?.dataset.rowKey === 'string' ? activeRow.dataset.rowKey : null;
+      const activeInlineInspection = getClosestInlineInspectionElement(anchorElement);
       const nextActiveIssueRowKey =
-        activeRowSeverity === 'warning'
-        || activeRowSeverity === 'failed'
-        || activeRowSeverity === 'error'
+        activeInlineInspection
+        && (
+          activeRowSeverity === 'warning'
+          || activeRowSeverity === 'failed'
+          || activeRowSeverity === 'error'
+        )
           ? activeRowKey
           : null;
       setActiveIssueRowKey(nextActiveIssueRowKey);
@@ -7953,12 +8560,24 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     };
   }, []);
 
-  const totalCommentCount = Object.values(rowComments).reduce(
+  const hiddenInlineCommentEntries = useMemo(
+    () => normalizeSpecVersionCommentEntries(persistedCommentEntries).filter((entry) => entry.hideInlineInDocument),
+    [persistedCommentEntries],
+  );
+  const hiddenInlineCommentCount = useMemo(
+    () => hiddenInlineCommentEntries.reduce((sum, entry) => (
+      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
+    ), 0),
+    [hiddenInlineCommentEntries],
+  );
+  const totalCommentCount = hiddenInlineCommentCount + Object.values(rowComments).reduce(
     (sum, comments) => sum + (Array.isArray(comments) ? comments.length : 0),
     0,
   );
   const hasPendingEnhanceChanges = hasEditedLines;
-  const commentEntries = useMemo(() => rowMetaList.reduce((entries, rowMeta) => {
+  const commentEntries = useMemo(() => [
+    ...hiddenInlineCommentEntries,
+    ...rowMetaList.reduce((entries, rowMeta) => {
     const rowCommentKey = getRowMetaCommentStorageKey(rowMeta);
     const comments = rowComments[rowCommentKey] ?? [];
     if (comments.length === 0) return entries;
@@ -7976,11 +8595,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
 
     return entries;
-  }, []), [rowComments, rowMetaList]);
+  }, []),
+  ], [hiddenInlineCommentEntries, rowComments, rowMetaList]);
   const commentEntriesSignature = useMemo(
     () => buildSpecVersionCommentEntriesSignature(commentEntries),
     [commentEntries],
   );
+  const inspectionCommentCount = useMemo(() => (
+    getAggregatedCommentIssueCount(commentEntries)
+  ), [commentEntries]);
   const lastEmittedCommentsSignatureRef = useRef(null);
   const commentedPlanOriginalIndices = useMemo(() => {
     const nextIndices = new Set();
@@ -7996,8 +8619,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [commentEntries]);
 
   useEffect(() => {
-    onCommentCountChange?.(totalCommentCount);
-  }, [onCommentCountChange, totalCommentCount]);
+    onCommentCountChange?.(inspectionCommentCount);
+  }, [inspectionCommentCount, onCommentCountChange]);
 
   useEffect(() => {
     if (lastEmittedCommentsSignatureRef.current === commentEntriesSignature) return;
@@ -8064,6 +8687,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setNavigatedIssueRowKey(null);
     }
 
+    if (hoveredIssueRowKey && (!rowMetaByKey.has(hoveredIssueRowKey) || resolvedProposalRowKeys.has(hoveredIssueRowKey))) {
+      setHoveredIssueRowKey(null);
+    }
+
     if (focusedCommentRowKey && !rowMetaByKey.has(focusedCommentRowKey)) {
       setFocusedCommentRowKey(null);
     }
@@ -8071,6 +8698,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     activeIssueRowKey,
     commentPopup?.rowKey,
     focusedCommentRowKey,
+    hoveredIssueRowKey,
     intentionPopup?.rowKey,
     navigatedIssueRowKey,
     resolvedProposalRowKeys,
@@ -8081,6 +8709,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
+    setHoveredIssueRowKey(null);
     setResolvedProposalRowKeys(new Set());
     setFocusedCommentRowKey(null);
     setCommentPopup(null);
@@ -8106,6 +8735,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setSelectionToolbarPos(null);
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
+    setHoveredIssueRowKey(null);
     setFocusedCommentRowKey(null);
     pendingFocusRowKeyRef.current = null;
     pendingFocusNextRowKeyRef.current = null;
@@ -8145,7 +8775,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         onNavigateNextIssue={() => navigateInspectionIssue(1)}
         warningCount={inspectionSummary?.warningCount ?? 0}
         errorCount={inspectionSummary?.errorCount ?? 0}
-        commentCount={totalCommentCount}
+        commentCount={inspectionCommentCount}
         versions={versionHistory?.versions ?? []}
         onVersionSelect={onOpenVersionDiff}
       />
@@ -8193,11 +8823,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isIssuePopupOpen = intentionPopup?.rowKey === stableKey;
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
+            const isHoveredIssueRow = hoveredIssueRowKey === stableKey;
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
             const showIssueBulb = hasIssueBulb
-              && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
+              && (activeIssueRowKey === stableKey || isHoveredIssueRow || isNavigatedIssueRow || isIssuePopupOpen);
             const hasRunnableGutterAction = showRunIcon || Boolean(effectiveCheckTarget);
-            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
+            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isHoveredIssueRow || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
@@ -8231,6 +8862,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 }}
               />
             ) : null;
+            const commentThreadGroups = commentCount > 0
+              ? [{
+                  label: commentContextLabel,
+                  icon: 'fileTypes/markdown',
+                  sessionLabel: commentContextSessionLabel,
+                  messageId: null,
+                  chatId: null,
+                  comments: commentsForRow.map((comment, commentIndex) => ({
+                    text: comment,
+                    editable: true,
+                    localIndex: commentIndex,
+                  })),
+                }]
+              : null;
             return (
             <Fragment key={stableKey}>
             <div
@@ -8243,8 +8888,18 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               data-run-outdated={isRunOutdated ? 'true' : undefined}
               data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
               onMouseEnter={() => setHoveredRowKey(stableKey)}
+              onMouseMove={(event) => {
+                const nextHoveredIssueRowKey =
+                  effectiveIssueSeverity && getClosestInlineInspectionElement(event.target)
+                    ? stableKey
+                    : null;
+                setHoveredIssueRowKey((prev) => (
+                  prev === nextHoveredIssueRowKey ? prev : nextHoveredIssueRowKey
+                ));
+              }}
               onMouseLeave={() => {
                 setHoveredRowKey(null);
+                setHoveredIssueRowKey((prev) => (prev === stableKey ? null : prev));
               }}
               onClick={(e) => {
                 if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn') || e.target.closest('.spec-done-gutter-breakpoint-btn')) {
@@ -8267,9 +8922,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   focusDoneRowEditable(rowIndex);
                 }
 
-                if (effectiveIssueSeverity) {
+                if (effectiveIssueSeverity && getClosestInlineInspectionElement(e.target)) {
                   setActiveIssueRowKey(stableKey);
                   setNavigatedIssueRowKey(stableKey);
+                } else {
+                  setActiveIssueRowKey((prev) => (prev === stableKey ? null : prev));
+                  setNavigatedIssueRowKey((prev) => (prev === stableKey ? null : prev));
                 }
               }}
             >
@@ -8342,6 +9000,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   >
                     <Icon name="codeInsight/intentionBulb" size={16} />
                   </button>
+                ) : commentAdornment ? (
+                  <span className="spec-done-gutter-comment-slot">
+                    {commentAdornment}
+                  </span>
                 ) : (
                   <span className="spec-done-gutter-slot" aria-hidden="true" />
                 )}
@@ -8359,7 +9021,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   sectionMeta,
                   effectivePlanStatus,
                   showIssueLineHighlight,
-                  commentAdornment,
+                  null,
                   effectiveIssueTarget,
                   onOpenDiffTab,
                   effectiveCheckTarget,
@@ -8392,6 +9054,33 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 )}
               </div>
             </div>
+            {commentThreadGroups && (
+              <div
+                className="spec-done-row spec-done-row-comment"
+                data-row-key={`${stableKey}:comments`}
+                data-comment-row-for={stableKey}
+              >
+                <div className="editor-gutter-row spec-done-gutter-cell spec-done-comment-thread-gutter" />
+                <div className="spec-done-row-content spec-done-comment-thread-content">
+                  <div className="plan-diff-inline-comment spec-done-inline-comment-thread">
+                    <DiffInlineCommentPopup
+                      comments={[]}
+                      commentGroups={commentThreadGroups}
+                      value=""
+                      editingIndex={null}
+                      showCompose={false}
+                      commentContextLabel={commentContextLabel}
+                      commentContextIcon="fileTypes/markdown"
+                      commentContextSessionLabel={commentContextSessionLabel}
+                      onStartEdit={(commentIndex) => handleInlineCommentEditStart(rowMeta, rowCommentKey, commentIndex)}
+                      onDelete={(commentIndex) => handleCommentDelete(stableKey, rowCommentKey, commentIndex)}
+                      onCancel={() => {}}
+                      onSubmit={() => {}}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             {headingTitle?.toLowerCase() === 'decisions' && extraDecisionItems.map((item, i) => (
               <div key={`extra-decision-${i}`} className="spec-done-row">
                 <div className="editor-gutter-row spec-done-gutter-cell" />
@@ -8444,7 +9133,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         <DoneCommentPopup
           comments={rowComments[commentPopup.rowCommentKey] ?? []}
           commentContextLabel={commentContextLabel}
-          commentContextIcon="claude"
+          commentContextIcon="fileTypes/markdown"
           commentContextSessionLabel={commentContextSessionLabel}
           value={commentPopup.value}
           editingIndex={commentPopup.editingIndex ?? null}
@@ -8625,7 +9314,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -9365,7 +10054,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9380,7 +10069,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9507,7 +10196,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9807,23 +10496,15 @@ function getAgentTaskTabId(taskId) {
 function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
   const visitBookingPreset = getPresetAgentTaskDefinition('t1');
-  const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
   const visitBookingTab = visitBookingPreset?.tab ?? {
     id: 'agent-task-t1',
     label: 'visit-booking.md',
     icon: 'fileTypes/markdown',
     closable: true,
   };
-  const vetSchedulesTab = vetSchedulesPreset?.tab ?? {
-    id: 'agent-task-t2',
-    label: 'vet-schedules.md',
-    icon: 'fileTypes/markdown',
-    closable: true,
-  };
 
   return [
     visitBookingTab,
-    vetSchedulesTab,
     visitControllerTab,
     {
       id: INITIAL_PLAN_DIFF_TAB_ID,
@@ -9889,7 +10570,7 @@ function buildInitialEditorTabContents() {
     },
   };
 
-  return ['t1', 't2'].reduce((contents, taskId) => {
+  return ['t1'].reduce((contents, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.content) return contents;
 
@@ -9901,7 +10582,7 @@ function buildInitialEditorTabContents() {
 }
 
 function buildInitialInteractiveTaskStates() {
-  return ['t1', 't2'].reduce((states, taskId) => {
+  return ['t1'].reduce((states, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.interactiveState) return states;
 
@@ -10392,6 +11073,21 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   return items;
 }
 
+function getAiChatAttachmentSourcePreviewItems(attachment = null) {
+  if (!attachment?.isSddDocument || !Array.isArray(attachment.commentSources)) {
+    return [];
+  }
+
+  return attachment.commentSources
+    .filter((source) => source && typeof source.label === 'string' && source.label.trim().length > 0)
+    .map((source) => ({
+      key: source.key ?? source.label,
+      label: source.label.trim(),
+      icon: source.icon ?? 'general/balloon',
+      lineLabel: source.lineLabel ?? '',
+    }));
+}
+
 function ChatToolWindow({
   ctx,
   onOpenDiffTab = null,
@@ -10400,10 +11096,13 @@ function ChatToolWindow({
   onRemoveComposerAttachment = null,
   onOpenPlainFileArchive = null,
   onOpenSddDocument = null,
+  onOpenAttachmentSource = null,
   onNewChat = null,
   diffComments = {},
   diffCommentCount = 0,
   sddCommentEntries = [],
+  sddCommentCount = 0,
+  sddRelatedCommentIssues = [],
   composerDiffAttachments = [],
   scrollTarget = null,
   selectedChatId: controlledSelectedChatId = 'visit-model-attributes',
@@ -10434,6 +11133,7 @@ function ChatToolWindow({
       ]
     : localSentChatMessages;
   const [dismissedComposerAttachmentIdsByChatId, setDismissedComposerAttachmentIdsByChatId] = useState({});
+  const [expandedAttachmentSourceId, setExpandedAttachmentSourceId] = useState(null);
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [chatListPopupStyle, setChatListPopupStyle] = useState(null);
   const chatScrollRef = useRef(null);
@@ -10445,11 +11145,15 @@ function ChatToolWindow({
     () => normalizeSpecVersionCommentEntries(sddCommentEntries),
     [sddCommentEntries],
   );
+  const latestSddRelatedCommentIssues = useMemo(
+    () => (Array.isArray(sddRelatedCommentIssues) ? sddRelatedCommentIssues : []),
+    [sddRelatedCommentIssues],
+  );
   const latestSddCommentCount = useMemo(
-    () => latestSddCommentEntries.reduce((sum, entry) => (
-      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
-    ), 0),
-    [latestSddCommentEntries],
+    () => (Number.isFinite(sddCommentCount)
+      ? sddCommentCount
+      : getAggregatedCommentIssueCount(latestSddCommentEntries, latestSddRelatedCommentIssues)),
+    [latestSddCommentEntries, latestSddRelatedCommentIssues, sddCommentCount],
   );
   const normalizeSddAttachment = useCallback((attachment) => {
     if (!attachment?.isSddDocument) {
@@ -10461,17 +11165,22 @@ function ChatToolWindow({
     const effectiveCommentEntries = hasOwnCommentEntries
       ? attachmentCommentEntries
       : latestSddCommentEntries;
-    const effectiveCommentCount = effectiveCommentEntries.reduce((sum, entry) => (
-      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
-    ), 0);
+    const effectiveRelatedCommentIssues = latestSddRelatedCommentIssues;
+    const entryCommentCount = getCommentEntryTotalCount(effectiveCommentEntries, effectiveRelatedCommentIssues);
+    const effectiveCommentCount = Math.max(entryCommentCount, latestSddCommentCount);
 
     return {
       ...attachment,
       commentCount: effectiveCommentCount,
       isSddCommentAttachment: effectiveCommentCount > 0,
       sddCommentEntries: effectiveCommentEntries,
+      commentSources: buildCommentSourceSummaries({
+        attachment,
+        commentEntries: effectiveCommentEntries,
+        relatedCommentIssues: effectiveRelatedCommentIssues,
+      }),
     };
-  }, [latestSddCommentEntries]);
+  }, [latestSddCommentCount, latestSddCommentEntries, latestSddRelatedCommentIssues]);
   const isEmptyChatState = Boolean(selectedChat.emptyState);
   const composerPlaceholder = isEmptyChatState
     ? 'Type your task, use @ to add files or / for commands'
@@ -10481,7 +11190,7 @@ function ChatToolWindow({
     : [];
   const selectedChatMessageId = selectedChat.messageId ?? `chat-${currentChatId}`;
   const dismissedAttachmentIds = dismissedComposerAttachmentIdsByChatId[currentChatId] ?? {};
-  const chatComposerAttachments = selectedChat.emptyState && Array.isArray(selectedChatMessageAttachments)
+  const chatComposerAttachments = (selectedChat.emptyState || selectedChat.showAttachmentsInComposer) && Array.isArray(selectedChatMessageAttachments)
     ? selectedChatMessageAttachments
     : [];
   const visibleComposerAttachments = [...chatComposerAttachments, ...(Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])]
@@ -10492,6 +11201,12 @@ function ChatToolWindow({
     .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
   const hasComposerAttachment = visibleComposerAttachments.length > 0;
   const canSendMessage = composerText.trim().length > 0;
+
+  useEffect(() => {
+    if (!expandedAttachmentSourceId) return;
+    if (visibleComposerAttachments.some((attachment) => attachment?.id === expandedAttachmentSourceId)) return;
+    setExpandedAttachmentSourceId(null);
+  }, [expandedAttachmentSourceId, visibleComposerAttachments]);
 
   useEffect(() => {
     setSelectedChatId(controlledSelectedChatId);
@@ -10701,6 +11416,31 @@ function ChatToolWindow({
     });
   }, [currentChatId, onOpenDiffTab, onOpenPlainFileArchive, onOpenSddDocument]);
 
+  const handleAttachmentSourceOpen = useCallback((event, attachment, source) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (source?.navigationTabId && source.navigationTabId !== attachment?.sourceTabId) {
+      onOpenAttachmentSource?.({
+        attachment,
+        source,
+        messageId: selectedChatMessageId,
+        chatId: currentChatId,
+      });
+      return;
+    }
+
+    if (attachment?.isSddDocument) {
+      onOpenSddDocument?.({
+        commentEntries: attachment.sddCommentEntries ?? [],
+        isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
+        contextMessageId: selectedChatMessageId,
+        contextChatId: currentChatId,
+        sourceTabId: attachment.sourceTabId,
+      });
+    }
+  }, [currentChatId, onOpenAttachmentSource, onOpenSddDocument, selectedChatMessageId]);
+
   const handleChatSelect = useCallback((chatId) => {
     setSelectedChatId(chatId);
     onSelectedChatIdChange?.(chatId);
@@ -10713,6 +11453,14 @@ function ChatToolWindow({
       }
     });
   }, [onSelectedChatIdChange]);
+
+  const handleChatListDocumentOpen = useCallback((group) => {
+    if (!group?.sourceTabId) return;
+    setIsChatListOpen(false);
+    onOpenSddDocument?.({
+      sourceTabId: group.sourceTabId,
+    });
+  }, [onOpenSddDocument]);
 
   return (
 	    <ToolWindow
@@ -10757,6 +11505,7 @@ function ChatToolWindow({
 	          style={chatListPopupStyle}
 	          selectedChatId={currentChatId}
 	          onSelectChat={handleChatSelect}
+	          onOpenDocument={handleChatListDocumentOpen}
 	          recentItems={recentChatItems}
 	          olderItems={olderChatItems}
 	        />,
@@ -10797,6 +11546,10 @@ function ChatToolWindow({
 
 	          {!isEmptyChatState && (
 	            <div className="ai-chat-ai-message">
+                <div className="ai-chat-assistant-header">
+                  <AiChatClaudeIcon />
+                  <span>Claude Agent</span>
+                </div>
 	              {selectedChat.assistantParagraphs.map((paragraph) => (
 	                <p className="ai-chat-assistant-copy" key={paragraph}>{paragraph}</p>
 	              ))}
@@ -10872,8 +11625,16 @@ function ChatToolWindow({
           />
           {hasComposerAttachment && (
             <div className="ai-chat-attachments">
-              {visibleComposerAttachments.map((attachment) => (
-                <span key={attachment.id} className="ai-chat-attachment-chip" role="button" tabIndex={0} onClick={() => {
+              {visibleComposerAttachments.map((attachment) => {
+                const commentSources = Array.isArray(attachment.commentSources) ? attachment.commentSources : [];
+                const hasNestedCommentSources = attachment.isSddDocument && commentSources.some((source) => (
+                  source?.key !== attachment.sourceTabId
+                ));
+                const canShowCommentSources = attachment.isSddDocument && commentSources.length > 0;
+                const isSourceListOpen = expandedAttachmentSourceId === attachment.id;
+
+                return (
+                <span key={attachment.id} className={`ai-chat-attachment-chip${isSourceListOpen ? ' is-source-list-open' : ''}`} role="button" tabIndex={0} onClick={() => {
                     if (attachment.isSddDocument) {
                       onOpenSddDocument?.({
                         commentEntries: attachment.sddCommentEntries ?? [],
@@ -10897,6 +11658,44 @@ function ChatToolWindow({
                     <span className="ai-chat-attachment-comment-count">
                       <Icon name="general/balloon" size={16} />
                       {attachment.commentCount}
+                      {canShowCommentSources && (
+                        <button
+                          type="button"
+                          className="ai-chat-attachment-sources-toggle"
+                          aria-label={isSourceListOpen ? 'Hide comment sources' : 'Show comment sources'}
+                          aria-expanded={isSourceListOpen}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setExpandedAttachmentSourceId((currentId) => (
+                              currentId === attachment.id ? null : attachment.id
+                            ));
+                          }}
+                        >
+                          <Icon name="general/chevronDown" size={16} className={isSourceListOpen ? 'is-expanded' : ''} />
+                        </button>
+                      )}
+                    </span>
+                  )}
+                  {canShowCommentSources && isSourceListOpen && (
+                    <span className="ai-chat-attachment-source-list" role="menu">
+                      {commentSources.map((source) => (
+                        <button
+                          key={source.key}
+                          type="button"
+                          className="ai-chat-attachment-source-row"
+                          role="menuitem"
+                          onClick={(event) => handleAttachmentSourceOpen(event, attachment, source)}
+                        >
+                          <span className="ai-chat-attachment-source-icon">
+                            {typeof source.icon === 'string'
+                              ? <Icon name={source.icon} size={16} className="tab-icon" />
+                              : (source.icon ?? <Icon name="general/balloon" size={16} />)}
+                          </span>
+                          <span className="ai-chat-attachment-source-name">{source.label}</span>
+                          <span className="ai-chat-attachment-source-count">{source.lineLabel || ''}</span>
+                        </button>
+                      ))}
                     </span>
                   )}
                   <button
@@ -10918,7 +11717,8 @@ function ChatToolWindow({
                     <Icon name="windows/closeSmall" size={16} className="ai-chat-attachment-close" />
                   </button>
                 </span>
-              ))}
+                );
+              })}
             </div>
           )}
           <div className="ai-chat-composer-toolbar">
@@ -11138,9 +11938,9 @@ public Vet getVet() {
   },
 };
 
-function ChatListRow({ item, selected = false, onSelect = null }) {
+function ChatListRow({ item, selected = false, onSelect = null, nested = false }) {
   return (
-    <button className={`ai-chat-list-row${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
+    <button className={`ai-chat-list-row${nested ? ' is-nested' : ''}${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
       <AiChatListLeading title={item.title} icon={item.icon} />
       <span className="ai-chat-list-trailing">
         <span className="ai-chat-list-diff">
@@ -11159,6 +11959,73 @@ function ChatListRow({ item, selected = false, onSelect = null }) {
       </span>
     </button>
   );
+}
+
+function ChatListDocumentRow({ group, onOpen = null }) {
+  return (
+    <button className="ai-chat-list-document-row" type="button" onClick={() => onOpen?.(group)}>
+      <span className="ai-chat-list-agent-icon">
+        <AiChatAgentIcon icon={group.icon} title={group.label} />
+      </span>
+      <span className="ai-chat-list-document-title">
+        <span className="ai-chat-list-title">{group.label}</span>
+      </span>
+      <span className="ai-chat-list-trailing">
+        <span className="ai-chat-list-diff" />
+        <span className="ai-chat-list-status">
+          {group.status === 'ready' && <span className="ai-chat-list-ready" aria-label="Ready" />}
+          {group.status === 'loading' && <IconLoaderSpinner />}
+        </span>
+        <span className="ai-chat-list-time">{group.time}</span>
+      </span>
+    </button>
+  );
+}
+
+function buildRecentChatListNodes(items = []) {
+  const groupsByKey = new Map();
+  const nodes = [];
+
+  items.forEach((item) => {
+    const isSpecDocumentChat =
+      (item?.specChatStatus === 'Specified' || item?.specChatStatus === 'Build')
+      && typeof item?.sourceDocumentLabel === 'string'
+      && item.sourceDocumentLabel.trim().length > 0;
+
+    if (!isSpecDocumentChat) {
+      nodes.push({ type: 'chat', item });
+      return;
+    }
+
+    const sourceKey = item.sourceDocumentTabId ?? item.sourceDocumentLabel;
+    let group = groupsByKey.get(sourceKey);
+    if (!group) {
+      group = {
+        type: 'document',
+        key: sourceKey,
+        sourceTabId: item.sourceDocumentTabId ?? null,
+        label: item.sourceDocumentLabel,
+        icon: item.sourceDocumentIcon ?? 'fileTypes/markdown',
+        status: item.status,
+        time: item.time,
+        items: [],
+      };
+      groupsByKey.set(sourceKey, group);
+      nodes.push(group);
+    }
+
+    if (item.status === 'loading') {
+      group.status = 'loading';
+    } else if (!group.status && item.status) {
+      group.status = item.status;
+    }
+    if (!group.time && item.time) {
+      group.time = item.time;
+    }
+    group.items.push(item);
+  });
+
+  return nodes;
 }
 
 function ChatListGroupHeader({ children, expanded = true }) {
@@ -11203,9 +12070,12 @@ const ChatListPopup = forwardRef(function ChatListPopup({
   style = null,
   selectedChatId = 'visit-model-attributes',
   onSelectChat = null,
+  onOpenDocument = null,
   recentItems = AI_CHAT_RECENT_ITEMS,
   olderItems = AI_CHAT_OLDER_THAN_7_ITEMS,
 }, ref) {
+  const recentNodes = buildRecentChatListNodes(recentItems);
+
   return (
     <div className="ai-chat-list-popup" ref={ref} style={style ?? undefined} role="dialog" aria-label="Chats list">
       <div className="ai-chat-list-search">
@@ -11213,8 +12083,19 @@ const ChatListPopup = forwardRef(function ChatListPopup({
         <input type="text" aria-label="Search chats" placeholder="Search" />
       </div>
       <div className="ai-chat-list-section">
-        {recentItems.map((item) => (
-          <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} />
+        {recentNodes.map((node) => (
+          node.type === 'document'
+            ? (
+              <div className="ai-chat-list-document-group" key={node.key}>
+                <ChatListDocumentRow group={node} onOpen={onOpenDocument} />
+                <div className="ai-chat-list-document-children">
+                  {node.items.map((item) => (
+                    <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} nested />
+                  ))}
+                </div>
+              </div>
+            )
+            : <ChatListRow key={node.item.id} item={node.item} selected={node.item.id === selectedChatId} onSelect={onSelectChat} />
         ))}
       </div>
       <ChatListGroupHeader>Older than 7 days</ChatListGroupHeader>
@@ -11250,8 +12131,11 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
             <div className="ai-chat-sent-context-attachments">
               {attachments.map((attachment) => {
                 const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+                const sourcePreviewItems = getAiChatAttachmentSourcePreviewItems(attachment);
                 const visibleCommentPreviewItems = commentPreviewItems.slice(0, 3);
                 const hiddenCommentPreviewCount = Math.max(0, commentPreviewItems.length - visibleCommentPreviewItems.length);
+                const visibleSourcePreviewItems = sourcePreviewItems.slice(0, 4);
+                const hiddenSourcePreviewCount = Math.max(0, sourcePreviewItems.length - visibleSourcePreviewItems.length);
 
                 return (
                   <span
@@ -11274,7 +12158,26 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                         {attachment.commentCount}
                       </span>
                     )}
-                    {commentPreviewItems.length > 0 && (
+                    {sourcePreviewItems.length > 0 ? (
+                      <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-preview" role="tooltip">
+                        {visibleSourcePreviewItems.map((source) => (
+                          <span key={`${attachment.id}-source-preview-${source.key}`} className="ai-chat-attachment-source-preview-item">
+                            <span className="ai-chat-attachment-source-icon">
+                              {typeof source.icon === 'string'
+                                ? <Icon name={source.icon} size={16} className="tab-icon" />
+                                : (source.icon ?? <Icon name="general/balloon" size={16} />)}
+                            </span>
+                            <span className="ai-chat-attachment-source-name">{source.label}</span>
+                            <span className="ai-chat-attachment-source-count">{source.lineLabel}</span>
+                          </span>
+                        ))}
+                        {hiddenSourcePreviewCount > 0 && (
+                          <span className="ai-chat-attachment-comment-preview-more">
+                            {`+${hiddenSourcePreviewCount} more`}
+                          </span>
+                        )}
+                      </span>
+                    ) : commentPreviewItems.length > 0 && (
                       <span className="ai-chat-attachment-comment-preview" role="tooltip">
                         {visibleCommentPreviewItems.map((comment, index) => (
                           <span key={`${attachment.id}-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
@@ -11485,15 +12388,36 @@ export default function App() {
   const aiChatDraftListItems = useMemo(
     () => Object.values(aiChatDraftSessionsById)
       .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-      .map((session) => ({
-        id: session.id,
-        title: session.title,
-        time: 'now',
-        status: session.attachmentLabel ? 'ready' : undefined,
-        icon: typeof session.icon === 'string' && session.icon.length > 0
-          ? session.icon
-          : (typeof session.title === 'string' && session.title.endsWith('.md') ? 'fileTypes/markdown' : 'claude'),
-      })),
+      .map((session) => {
+        const sddAttachment = Array.isArray(session.attachments)
+          ? session.attachments.find((attachment) => attachment?.isSddDocument)
+          : null;
+        const specChatStatus = typeof session.id === 'string'
+          && session.id.startsWith('spec-chat-')
+          && typeof session.title === 'string'
+          && session.title.startsWith('Specified:')
+          ? 'Specified'
+          : (typeof session.id === 'string'
+              && session.id.startsWith('spec-chat-')
+              && typeof session.title === 'string'
+              && session.title.startsWith('Build:')
+                ? 'Build'
+                : null);
+
+        return {
+          id: session.id,
+          title: session.title,
+          time: 'now',
+          status: session.attachmentLabel ? 'ready' : undefined,
+          icon: typeof session.icon === 'string' && session.icon.length > 0
+            ? session.icon
+            : (typeof session.title === 'string' && session.title.endsWith('.md') ? 'fileTypes/markdown' : 'claude'),
+          specChatStatus,
+          sourceDocumentLabel: sddAttachment?.label ?? null,
+          sourceDocumentIcon: sddAttachment?.icon ?? 'fileTypes/markdown',
+          sourceDocumentTabId: sddAttachment?.sourceTabId ?? null,
+        };
+      }),
     [aiChatDraftSessionsById],
   );
   const aiChatRecentItems = useMemo(
@@ -11519,6 +12443,13 @@ export default function App() {
     attachments = [],
     title = 'New Chat',
     icon = 'claude',
+    emptyState = true,
+    userPrompt = '',
+    assistantParagraphs = [],
+    changeCard = null,
+    result = [],
+    command = '',
+    showAttachmentsInComposer = false,
     select = true,
   } = {}) => {
     const createdAt = Number.isFinite(providedCreatedAt) ? providedCreatedAt : Date.now();
@@ -11533,12 +12464,13 @@ export default function App() {
       title,
       createdAt,
       icon,
-      emptyState: true,
-      userPrompt: '',
-      assistantParagraphs: [],
-      changeCard: null,
-      result: [],
-      command: '',
+      emptyState,
+      userPrompt,
+      assistantParagraphs: Array.isArray(assistantParagraphs) ? assistantParagraphs : [],
+      changeCard,
+      result: Array.isArray(result) ? result : [],
+      command,
+      showAttachmentsInComposer,
       attachmentLabel,
       attachments: Array.isArray(attachments) ? attachments : [],
       diffRequest,
@@ -11579,14 +12511,12 @@ export default function App() {
   const [removedIssueIndices, setRemovedIssueIndices] = useState(() => initialVisitBookingTaskState.removedIssueIndices ?? { ac: {}, plan: {} });
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
-  const [sddCommentSessionId, setSddCommentSessionId] = useState(null); // chat ID created when first SDD comment is left
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
   const [specTopBarStatusesByTab, setSpecTopBarStatusesByTab] = useState({
     'agent-task-t1': 'Specified',
   });
   const doneEnhanceFlowRef = useRef(null);
-  const commentChatCreatedForTabRef = useRef(null); // tracks tabId for which we already created a chat on first comment
   const specStatusChatIdsRef = useRef({});
   const seededPresetTaskRef = useRef(true);
   const genTimerRef = useRef(null);
@@ -12217,6 +13147,37 @@ export default function App() {
         },
       };
     });
+    setIdeTabContents((prev) => {
+      let didChange = false;
+      const next = {};
+
+      Object.entries(prev).forEach(([contentTabId, content]) => {
+        const documentDiffComments = normalizeStoredDiffCommentsState(content?.documentDiffComments);
+        const hasDocumentDiffComments = flattenStoredDiffCommentsState(documentDiffComments).length > 0;
+        const documentCommentSourceTabId = content?.documentCommentSourceTabId ?? null;
+        const isLegacyAgentTaskComment =
+          !documentCommentSourceTabId
+          && tabId === 'agent-task-t1'
+          && hasDocumentDiffComments;
+
+        if (
+          hasDocumentDiffComments
+          && (documentCommentSourceTabId === tabId || isLegacyAgentTaskComment)
+        ) {
+          next[contentTabId] = {
+            ...content,
+            documentDiffComments: {},
+            documentCommentSourceTabId: null,
+          };
+          didChange = true;
+          return;
+        }
+
+        next[contentTabId] = content;
+      });
+
+      return didChange ? next : prev;
+    });
     setDoneCommentResetToken((prev) => prev + 1);
   }, [activeSourceEditorTabId, generationTabId]);
 
@@ -12339,6 +13300,7 @@ export default function App() {
     comments,
     sectionTitle = null,
     line = '',
+    hideInlineInDocument = false,
   }) => {
     const normalizedTarget = normalizeCommentTarget(target);
     if (!sourceTabId || !normalizedTarget) return;
@@ -12362,6 +13324,7 @@ export default function App() {
       rawIndex: targetMetadata.rawIndex,
       rowStableKey: targetMetadata.rowStableKey,
       diffComments: nextDiffComments,
+      hideInlineInDocument,
     };
 
     setInteractiveTaskStates((prev) => {
@@ -12569,11 +13532,34 @@ export default function App() {
   const handleProblemsNodeSelect = useCallback((nodeId, selected) => {
     if (!selected) return;
 
+    const openTabTarget = getProblemOpenTabTargetFromTreeNodeId(nodeId);
+    if (openTabTarget) {
+      const tabIndex = ideTabs.findIndex((tab) => tab?.id === openTabTarget.tabId);
+      if (tabIndex >= 0) {
+        setScreen('ide');
+        setActiveEditorTab(tabIndex);
+      }
+
+      if (openTabTarget.rowId) {
+        updatePlanDiffUiStateForTab({
+          activeRowId: openTabTarget.rowId,
+          commentRowId: null,
+          commentValue: '',
+          commentEditingIndex: null,
+          caretState: {
+            rowId: openTabTarget.rowId,
+            left: 12,
+          },
+        }, openTabTarget.tabId);
+      }
+      return;
+    }
+
     const rawIndex = getProblemRawIndexFromTreeNodeId(nodeId);
     if (!Number.isInteger(rawIndex)) return;
 
     requestProblemHighlight(rawIndex);
-  }, [requestProblemHighlight]);
+  }, [ideTabs, requestProblemHighlight, updatePlanDiffUiStateForTab]);
 
   const buildDoneCommentResolution = useCallback((commentEntriesOverride = null) => {
     const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
@@ -13800,10 +14786,7 @@ export default function App() {
   };
 
   const handleDoneRegenerate = (payload = {}) => {
-    const specifyChatId = ensureSpecStatusChat('Specified', { select: true });
-    if (specifyChatId) {
-      setSddCommentSessionId(specifyChatId);
-    }
+    ensureSpecStatusChat('Specified', { select: true });
     const commentEntries = payload?.commentEntries?.length
       ? payload.commentEntries
       : agentTaskCommentEntries;
@@ -14958,14 +15941,23 @@ export default function App() {
     updateDoneOverlayUiStateForTab(uiState, visibleEditorStateTabId);
   }, [updateDoneOverlayUiStateForTab, visibleEditorStateTabId]);
   const handleDoneCommentsChange = useCallback((nextEntries) => {
-    if (doneEnhanceFlowRef.current?.commentsAlreadyCleared) {
-      return;
-    }
-
     const targetTabId = visibleEditorStateTabId;
     if (!targetTabId) return;
 
     const normalizedNextEntries = Array.isArray(nextEntries) ? nextEntries : [];
+    if (doneEnhanceFlowRef.current?.commentsAlreadyCleared) {
+      if (
+        doneEnhanceFlowRef.current.sourceTabId === targetTabId
+        && normalizedNextEntries.length > 0
+      ) {
+        doneEnhanceFlowRef.current = {
+          ...doneEnhanceFlowRef.current,
+          commentsAlreadyCleared: false,
+        };
+      } else {
+        return;
+      }
+    }
 
     if (suppressDoneCommentsChangeRef.current) {
       if (normalizedNextEntries.length === 0) {
@@ -15493,10 +16485,7 @@ export default function App() {
   ]);
 
   const handleDoneOpenTerminal = (input) => {
-    const buildChatId = ensureSpecStatusChat('Build', { select: true });
-    if (buildChatId) {
-      setSddCommentSessionId(buildChatId);
-    }
+    ensureSpecStatusChat('Build', { select: true });
     const runTarget = normalizeCommentTarget(typeof input === 'object' ? input?.runTarget ?? input?.checkTarget : null);
     const sectionTitle = typeof input === 'string'
       ? input
@@ -15591,15 +16580,57 @@ export default function App() {
       });
     }
     if (id === 'problems') {
+      const currentProblemsTabContent = currentProblemsTab?.id
+        ? ideTabContents[currentProblemsTab.id]
+        : null;
+      const isCurrentProblemsDiff = Boolean(currentProblemsTabContent?.diffData);
+      const isCurrentProblemsPlainFile = !isCurrentProblemsDiff && Boolean(currentProblemsTabContent?.plainFileData);
+
+      if (isCurrentProblemsDiff) {
+        return cloneElement(panel, {
+          className: [
+            panel.props?.className ?? '',
+            'problems-window',
+          ].filter(Boolean).join(' '),
+          empty: true,
+          emptyText: 'No problems in diff',
+          treeData: [],
+          onNodeSelect: handleProblemsNodeSelect,
+        });
+      }
+
+      const isCurrentProblemsMd =
+        currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md');
+      const currentProblemsCommentEntries = isCurrentProblemsMd
+        ? getCommentEntriesForTaskTab(currentProblemsTab?.id)
+        : [];
+      const currentProblemsDocumentEntryCommentIssues = isCurrentProblemsPlainFile
+        ? buildDocumentEntryCommentIssuesForTab(
+            currentProblemsTab?.id,
+            ideTabs
+              .filter((tab) => tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
+              .map((tab) => getCommentEntriesForTaskTab(tab.id)),
+          )
+        : [];
+      const relatedDiffCommentIssues = isCurrentProblemsMd
+        ? buildDocumentRelatedCommentIssuesFromDiffTabs(ideTabContents, ideTabs)
+        : (isCurrentProblemsPlainFile
+            ? mergeCommentIssuesBySourceKey(
+                buildCommentIssuesForFileTab(currentProblemsTab?.id, currentProblemsTabContent, ideTabs),
+                currentProblemsDocumentEntryCommentIssues,
+              )
+            : []);
+
       return cloneElement(panel, {
+        className: [
+          panel.props?.className ?? '',
+          'problems-window',
+        ].filter(Boolean).join(' '),
         treeData: buildProblemsTreeForTab(
           currentProblemsTab,
-          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
-            ? agentTaskInspectionSummary.issues
-            : null,
-          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
-            ? agentTaskCommentEntries
-            : []
+          isCurrentProblemsMd ? agentTaskInspectionSummary.issues : null,
+          currentProblemsCommentEntries,
+          relatedDiffCommentIssues
         ),
         onNodeSelect: handleProblemsNodeSelect,
       });
@@ -15652,15 +16683,20 @@ export default function App() {
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
+  const activeAgentTaskCommentEntries = visibleEditorStateTabId
+    ? getCommentEntriesForTaskTab(visibleEditorStateTabId)
+    : [];
   const normalizedSpecChatCommentEntries = useMemo(
-    () => normalizeSpecVersionCommentEntries(agentTaskCommentEntries),
-    [agentTaskCommentEntries],
+    () => normalizeSpecVersionCommentEntries(activeAgentTaskCommentEntries),
+    [activeAgentTaskCommentEntries],
+  );
+  const activeRelatedDiffCommentIssues = useMemo(
+    () => buildDocumentRelatedCommentIssuesFromDiffTabs(ideTabContents, ideTabs),
+    [ideTabContents, ideTabs],
   );
   const specChatCommentCount = useMemo(
-    () => normalizedSpecChatCommentEntries.reduce((sum, entry) => (
-      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
-    ), 0),
-    [normalizedSpecChatCommentEntries],
+    () => getAggregatedCommentIssueCount(normalizedSpecChatCommentEntries, activeRelatedDiffCommentIssues),
+    [activeRelatedDiffCommentIssues, normalizedSpecChatCommentEntries],
   );
   const resolveSpecStatusSourceTabId = useCallback((tabId = null) => (
     tabId ?? visibleEditorStateTabId ?? activeEditorTabId ?? 'agent-task-t1'
@@ -15676,9 +16712,10 @@ export default function App() {
     const sourceTabId = resolveSpecStatusSourceTabId(tabId);
     const tabMeta = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
     const commentEntries = normalizeSpecVersionCommentEntries(getCommentEntriesForTaskTab(sourceTabId));
-    const commentCount = commentEntries.reduce((sum, entry) => (
-      sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
-    ), 0);
+    const relatedCommentIssues = sourceTabId === visibleEditorStateTabId
+      ? activeRelatedDiffCommentIssues
+      : [];
+    const commentCount = getAggregatedCommentIssueCount(commentEntries, relatedCommentIssues);
 
     return {
       id: `sdd-document-${sourceTabId}-${String(status).toLowerCase()}`,
@@ -15694,7 +16731,7 @@ export default function App() {
       isSddCommentAttachment: commentCount > 0,
       sddCommentEntries: commentEntries,
     };
-  }, [currentAgentTaskLabel, getCommentEntriesForTaskTab, ideTabs, resolveSpecStatusSourceTabId]);
+  }, [activeRelatedDiffCommentIssues, currentAgentTaskLabel, getCommentEntriesForTaskTab, ideTabs, resolveSpecStatusSourceTabId, visibleEditorStateTabId]);
   const getSpecStatusChatTitle = useCallback((status, tabId = null) => {
     const sourceTabId = resolveSpecStatusSourceTabId(tabId);
     const tabMeta = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
@@ -15704,6 +16741,51 @@ export default function App() {
     const baseTitle = extractGoalTitleFromMarkdown(tabCode) || tabMeta?.label || currentAgentTaskLabel || 'visit-booking.md';
     return `${status}: ${baseTitle.replace(/^(Generated|Build|Specified|Specify):\s*/u, '').trim()}`;
   }, [activeAgentTaskCode, currentAgentTaskLabel, getCommentDrivenViewStateForTaskTab, ideTabContents, ideTabs, resolveSpecStatusSourceTabId, visibleEditorStateTabId]);
+  const buildSpecStatusChatContent = useCallback((status, attachment) => {
+    const label = attachment?.label ?? currentAgentTaskLabel ?? 'visit-booking.md';
+
+    if (status === 'Build') {
+      return {
+        emptyState: false,
+        userPrompt: `Build ${label} and run the checks defined by this specification.`,
+        assistantParagraphs: [
+          `I loaded ${label} as the source specification for this Build chat.`,
+          'The build context is scoped to the attached MD document, including any unresolved document comments that are currently attached to it.',
+          'I will use the specification plan and acceptance criteria as the execution target before reporting the result back here.',
+        ],
+        result: [
+          `${label} is attached as the active SDD document for this chat.`,
+          'Build actions from this chat will use that document context.',
+        ],
+        command: `agent run "${label}" --section "Plan"`,
+      };
+    }
+
+    if (status === 'Specified') {
+      return {
+        emptyState: false,
+        userPrompt: `Specify ${label} using the current MD document as context.`,
+        assistantParagraphs: [
+          `I loaded ${label} as the source specification for this Specified chat.`,
+          'The chat is tied to the attached MD document, so specification updates and related comments are evaluated against that document context.',
+          'I will use the current document structure to refine the plan, acceptance criteria, and implementation notes.',
+        ],
+        result: [
+          `${label} is attached as the active SDD document for this chat.`,
+          'Specify actions from this chat will keep using that document context.',
+        ],
+        command: `agent run "${label}" --specify`,
+      };
+    }
+
+    return {
+      emptyState: false,
+      userPrompt: `Open ${label}`,
+      assistantParagraphs: [`I loaded ${label} as the source document for this chat.`],
+      result: [`${label} is attached as context.`],
+      command: `agent open "${label}" --context`,
+    };
+  }, [currentAgentTaskLabel]);
   const ensureSpecStatusChat = useCallback((status, { select = false, sourceTabId = null } = {}) => {
     if (!status) return null;
 
@@ -15713,6 +16795,7 @@ export default function App() {
     specStatusChatIdsRef.current[key] = stableChatId;
     const attachment = buildSpecStatusAttachment(status, sourceTabId);
     const title = getSpecStatusChatTitle(status, sourceTabId)
+    const chatContent = buildSpecStatusChatContent(status, attachment);
 
     if (aiChatDraftSessionsById[existingChatId]) {
       setAiChatDraftSessionsById((prev) => {
@@ -15720,6 +16803,12 @@ export default function App() {
         if (
           existingSession?.title === title
           && existingSession?.attachmentLabel === attachment.label
+          && existingSession?.emptyState === chatContent.emptyState
+          && existingSession?.userPrompt === chatContent.userPrompt
+          && JSON.stringify(existingSession?.assistantParagraphs ?? []) === JSON.stringify(chatContent.assistantParagraphs)
+          && JSON.stringify(existingSession?.result ?? []) === JSON.stringify(chatContent.result)
+          && existingSession?.command === chatContent.command
+          && existingSession?.showAttachmentsInComposer === true
           && JSON.stringify(existingSession?.attachments ?? []) === JSON.stringify([attachment])
         ) {
           return prev;
@@ -15731,6 +16820,8 @@ export default function App() {
             ...existingSession,
             title,
             attachmentLabel: attachment.label,
+            ...chatContent,
+            showAttachmentsInComposer: true,
             attachments: [attachment],
           },
         };
@@ -15751,12 +16842,15 @@ export default function App() {
       title,
       attachmentLabel: attachment.label,
       attachments: [attachment],
+      ...chatContent,
+      showAttachmentsInComposer: true,
       icon: 'claude',
       select,
     });
     return session.id;
   }, [
     aiChatDraftSessionsById,
+    buildSpecStatusChatContent,
     buildSpecStatusAttachment,
     createEmptyAiChatSession,
     getSpecStatusChatId,
@@ -15769,15 +16863,12 @@ export default function App() {
     const specifiedKey = getSpecStatusChatKey('Specified');
     const shouldSelectSpecifiedChat = !specStatusChatIdsRef.current[specifiedKey]
       || (typeof selectedAiChatId === 'string' && selectedAiChatId.endsWith('-generated'));
-    const specifiedChatId = ensureSpecStatusChat('Specified', { select: shouldSelectSpecifiedChat });
+    ensureSpecStatusChat('Specified', { select: shouldSelectSpecifiedChat });
     ensureSpecStatusChat('Build', { select: false });
     Object.keys(specStatusChatIdsRef.current).forEach((key) => {
       if (!key.endsWith(':Generated')) return;
       delete specStatusChatIdsRef.current[key];
     });
-    if (shouldSelectSpecifiedChat && specifiedChatId) {
-      setSddCommentSessionId(specifiedChatId);
-    }
   }, [ensureSpecStatusChat, genState, getSpecStatusChatKey, isAgentTaskTab, selectedAiChatId]);
   useEffect(() => {
     if (!isAgentTaskTab || genState !== 'done') return;
@@ -15799,9 +16890,16 @@ export default function App() {
 
         const attachment = buildSpecStatusAttachment(status);
         const title = getSpecStatusChatTitle(status);
+        const chatContent = buildSpecStatusChatContent(status, attachment);
         if (
           existingSession.title === title
           && existingSession.attachmentLabel === attachment.label
+          && existingSession.emptyState === chatContent.emptyState
+          && existingSession.userPrompt === chatContent.userPrompt
+          && JSON.stringify(existingSession.assistantParagraphs ?? []) === JSON.stringify(chatContent.assistantParagraphs)
+          && JSON.stringify(existingSession.result ?? []) === JSON.stringify(chatContent.result)
+          && existingSession.command === chatContent.command
+          && existingSession.showAttachmentsInComposer === true
           && JSON.stringify(existingSession.attachments ?? []) === JSON.stringify([attachment])
         ) {
           return;
@@ -15811,6 +16909,8 @@ export default function App() {
           ...existingSession,
           title,
           attachmentLabel: attachment.label,
+          ...chatContent,
+          showAttachmentsInComposer: true,
           attachments: [attachment],
         };
         didChange = true;
@@ -15819,6 +16919,7 @@ export default function App() {
       return didChange ? next : prev;
     });
   }, [
+    buildSpecStatusChatContent,
     buildSpecStatusAttachment,
     genState,
     getSpecStatusChatKey,
@@ -15827,16 +16928,20 @@ export default function App() {
     normalizedSpecChatCommentEntries,
     specChatCommentCount,
   ]);
-  const activeSpecCommentContextLabel = useMemo(() => (
-    getSpecStatusChatTitle('Specified', visibleEditorStateTabId)
-  ), [getSpecStatusChatTitle, visibleEditorStateTabId]);
+  const activeSpecCommentContextLabel = useMemo(() => {
+    const tabMeta = visibleEditorStateTabId
+      ? ideTabs.find((tab) => tab.id === visibleEditorStateTabId)
+      : null;
+    return tabMeta?.label ?? currentAgentTaskLabel ?? 'visit-booking.md';
+  }, [currentAgentTaskLabel, ideTabs, visibleEditorStateTabId]);
 
-  const buildSpecStatusChatUserMessage = useCallback((status) => {
-    const label = currentAgentTaskLabel || 'visit-booking.md';
+  const buildSpecStatusChatUserMessage = useCallback((status, tabId = null) => {
+    const sourceTabId = resolveSpecStatusSourceTabId(tabId);
+    const label = ideTabs.find((tab) => tab.id === sourceTabId)?.label ?? currentAgentTaskLabel ?? 'visit-booking.md';
     if (status === 'Build') return `Build ${label}`;
     if (status === 'Specified') return `Specify ${label}`;
     return `Open ${label}`;
-  }, [currentAgentTaskLabel]);
+  }, [currentAgentTaskLabel, ideTabs, resolveSpecStatusSourceTabId]);
   const buildSpecStatusChatAssistantResponse = useCallback((status) => {
     const label = currentAgentTaskLabel || 'visit-booking.md';
 
@@ -15882,7 +16987,7 @@ export default function App() {
     const userMessage = {
       id: `${chatId}-action-${createdAt}`,
       role: 'user',
-      text: buildSpecStatusChatUserMessage(status),
+      text: buildSpecStatusChatUserMessage(status, sourceTabId),
       attachments: attachment ? [attachment] : [],
     };
     const assistantMessageId = `${chatId}-assistant-${createdAt}`;
@@ -15936,7 +17041,6 @@ export default function App() {
     buildSpecStatusChatUserMessage,
     clearAiChatStreamingTimersForChat,
     clearTaskCommentsForTab,
-    activeEditorTabId,
     resolveSpecStatusSourceTabId,
   ]);
   const startSpecBuildDocumentState = useCallback((tabId) => {
@@ -16047,7 +17151,6 @@ export default function App() {
     setSpecTopBarStatusForTab(status, sourceTabId);
     const chatId = ensureSpecStatusChat(status, { select: true, sourceTabId });
     if (chatId) {
-      setSddCommentSessionId(chatId);
       if (options?.sendMessage) {
         startSpecStatusChatStreamingTurn(status, chatId, { sourceTabId });
         if (status === 'Build') {
@@ -16068,19 +17171,12 @@ export default function App() {
   ]);
   const handleAiChatMessageSent = useCallback(({ chatId } = {}) => {
     if (!chatId) return;
-    const isBuildOrSpecifyStatusChat =
-      chatId === getSpecStatusChatId('Build')
-      || chatId === getSpecStatusChatId('Specified');
-    if (!isBuildOrSpecifyStatusChat) return;
 
-    clearTaskCommentsForTab(visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId);
-  }, [
-    activeEditorTabId,
-    clearTaskCommentsForTab,
-    generationTabId,
-    getSpecStatusChatId,
-    visibleEditorStateTabId,
-  ]);
+    const statusChatMatch = String(chatId).match(/^spec-chat-(.+)-(build|specified)$/u);
+    if (!statusChatMatch) return;
+
+    clearTaskCommentsForTab(statusChatMatch[1]);
+  }, [clearTaskCommentsForTab]);
   const currentPersistedSpecCode = visibleEditorStateTabId
     ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
         ? (doneEnhanceFlowRef.current.initialCode ?? '')
@@ -16098,9 +17194,6 @@ export default function App() {
   const activeDoneOverlayUiState = visibleEditorStateTabId
     ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
     : null;
-  const activeAgentTaskCommentEntries = visibleEditorStateTabId
-    ? getCommentEntriesForTaskTab(visibleEditorStateTabId)
-    : [];
   const activePlanDiffData = isDiffTab
     ? (activeTabContent?.diffData ?? null)
     : (isPlainFileOverlayTab ? (activeTabContent?.plainFileData ?? null) : null);
@@ -16124,6 +17217,35 @@ export default function App() {
             : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
         )
       : {};
+  const activePlanDiffDocumentComments = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
+    ? normalizeStoredDiffCommentsState(activeTabContent?.documentDiffComments)
+    : {};
+  const activePlainFileCommentIssues = useMemo(
+    () => {
+      if (!isPlainFileOverlayTab) return [];
+
+      const documentEntryIssues = buildDocumentEntryCommentIssuesForTab(
+        activeTabId,
+        ideTabs
+          .filter((tab) => tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
+          .map((tab) => getCommentEntriesForTaskTab(tab.id)),
+      );
+
+      return mergeCommentIssuesBySourceKey(
+        buildCommentIssuesForFileTab(activeTabId, activeTabContent, ideTabs),
+        documentEntryIssues,
+      );
+    },
+    [activeTabContent, activeTabId, getCommentEntriesForTaskTab, ideTabs, isPlainFileOverlayTab],
+  );
+  const activePlainFileProblemSummary = useMemo(
+    () => {
+      if (!isPlainFileOverlayTab) return { warningCount: 0, errorCount: 0 };
+
+      return countIssuesBySeverity(getProblemsMetaForTab(activeEditorTabMeta).issues);
+    },
+    [activeEditorTabMeta, isPlainFileOverlayTab],
+  );
   const activePlanDiffSessionComments = Object.values(activePlanDiffSessionCommentsByChatId);
   const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
   const activePlanDiffLineText = (isDiffTab || isPlainFileOverlayTab) ? (activeTabContent?.diffLineText ?? '') : '';
@@ -16138,7 +17260,63 @@ export default function App() {
     : planDiffContextChatId === selectedAiChatId
       ? 'Active'
       : 'Inactive';
+  const activePlanDiffDocumentSourceTabId = 'agent-task-t1';
+  const activePlanDiffDocumentTabMeta = activePlanDiffDocumentSourceTabId
+    ? (ideTabs.find((tab) => tab.id === activePlanDiffDocumentSourceTabId) ?? null)
+    : null;
+  const activePlanDiffDocumentContextLabel =
+    activePlanDiffDocumentTabMeta?.label
+    ?? currentAgentTaskLabel
+    ?? 'visit-booking.md';
   const selectedAiChatScenario = getAiChatScenarioById(selectedAiChatId);
+  const upsertSddAttachmentForChat = useCallback((chatId, attachment) => {
+    if (!chatId || !attachment?.isSddDocument) return;
+
+    setAiChatDraftSessionsById((prev) => {
+      const existingSession = prev[chatId] ?? getAiChatScenarioById(chatId);
+      if (!existingSession) return prev;
+
+      const previousAttachments = Array.isArray(existingSession.attachments)
+        ? existingSession.attachments
+        : [];
+      let didReplace = false;
+      const nextAttachments = previousAttachments.map((item) => {
+        const isSameDocumentAttachment =
+          item?.isSddDocument
+          && (
+            item.sourceTabId === attachment.sourceTabId
+            || item.id === attachment.id
+          );
+
+        if (!isSameDocumentAttachment) return item;
+        didReplace = true;
+        return {
+          ...item,
+          ...attachment,
+        };
+      });
+
+      if (!didReplace) {
+        nextAttachments.push(attachment);
+      }
+
+      if (JSON.stringify(previousAttachments) === JSON.stringify(nextAttachments)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [chatId]: {
+          ...existingSession,
+          id: chatId,
+          createdAt: existingSession.createdAt ?? Date.now(),
+          attachmentLabel: attachment.label,
+          attachments: nextAttachments,
+          showAttachmentsInComposer: true,
+        },
+      };
+    });
+  }, [getAiChatScenarioById]);
   const aiChatComposerDiffAttachments = useMemo(() => {
     const diffEntries = Object.entries(ideTabContents)
       .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
@@ -16266,6 +17444,132 @@ export default function App() {
         label: activePlanDiffSourceLabel,
       },
     };
+
+    if (metadata?.attachMode === 'document') {
+      const sourceDocumentTabId = activePlanDiffDocumentSourceTabId;
+      const currentDocumentEntries = normalizeSpecVersionCommentEntries(
+        sourceDocumentTabId ? getCommentEntriesForTaskTab(sourceDocumentTabId) : [],
+      );
+      let nextDocumentEntries = currentDocumentEntries;
+      const sourceRowId = typeof metadata?.rowId === 'string' ? metadata.rowId : null;
+      const sourceRow = sourceRowId
+        ? (activePlanDiffData?.rows ?? []).find((row) => row?.id === sourceRowId)
+        : null;
+      const sourceLineNumber = Number.isInteger(sourceRow?.newNumber)
+        ? sourceRow.newNumber
+        : (Number.isInteger(sourceRow?.oldNumber) ? sourceRow.oldNumber : null);
+
+      if (sourceDocumentTabId && activePlanDiffTarget) {
+        const runtimeState = getTaskRuntimeState(sourceDocumentTabId);
+        const targetMetadata = buildCommentTargetEntryMetadata(
+          runtimeState?.taskState?.documentSections ?? runtimeState?.scenario?.defaultDocument ?? [],
+          activePlanDiffTarget,
+          runtimeState?.taskState?.removedIssueIndices ?? cloneIssueStateMap(),
+        );
+        nextDocumentEntries = upsertHiddenDiffCommentEntry(
+          currentDocumentEntries,
+          `document-diff-comment-${activeTabId ?? sourceDocumentTabId}-${activePlanDiffTarget.kind}-${activePlanDiffTarget.index}`,
+          nextComments,
+          {
+            sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+            line: targetMetadata.line || activePlanDiffLineText,
+            rawIndex: targetMetadata.rawIndex,
+            rowStableKey: targetMetadata.rowStableKey,
+            sourceKind: 'diff',
+            sourceLabel: activePlanDiffData?.title || `Diff ${activePlanDiffSourceLabel}`,
+            sourceIcon: DIFF_TAB_ICON_NAME,
+            sourceNavigationTabId: activeTabId,
+            sourceNavigationRowId: sourceRowId,
+            sourceLineNumber,
+            target: activePlanDiffTarget,
+          },
+        );
+      } else if (sourceDocumentTabId) {
+        const fallbackEntryId = `document-comment-${activeTabId ?? sourceDocumentTabId}-${metadata?.rowId ?? 'file'}`;
+        nextDocumentEntries = upsertHiddenDiffCommentEntry(
+          currentDocumentEntries,
+          fallbackEntryId,
+          nextComments,
+          {
+            sectionTitle: 'Current Document',
+            line: activePlanDiffLineText || activePlanDiffData?.title || activePlanDiffSourceLabel,
+            sourceKind: 'file',
+            sourceLabel: activePlanDiffSourceLabel,
+            sourceIcon: resolveAgentTaskPlanFileIcon(activePlanDiffSourceLabel),
+            sourceNavigationTabId: activeTabId,
+            sourceNavigationRowId: sourceRowId,
+            sourceLineNumber,
+          },
+        );
+      }
+
+      if (activeTabId) {
+        setIdeTabContents((prev) => {
+          const existing = prev[activeTabId];
+          if (!existing) return prev;
+
+          return {
+            ...prev,
+            [activeTabId]: {
+              ...existing,
+              documentDiffComments: nextComments,
+              documentCommentSourceTabId: sourceDocumentTabId,
+              diffCommentsReadOnly: false,
+            },
+          };
+        });
+      }
+
+      if (sourceDocumentTabId) {
+        setInteractiveTaskStates((prev) => {
+          const runtimeState = getTaskRuntimeState(sourceDocumentTabId);
+          const currentTaskState =
+            prev[sourceDocumentTabId]
+            ?? runtimeState?.taskState
+            ?? runtimeState?.scenario?.initialTaskState
+            ?? {};
+          if (buildSpecVersionCommentEntriesSignature(currentTaskState?.commentEntries ?? []) === buildSpecVersionCommentEntriesSignature(nextDocumentEntries)) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            [sourceDocumentTabId]: {
+              ...currentTaskState,
+              commentEntries: nextDocumentEntries,
+            },
+          };
+        });
+
+        if (sourceDocumentTabId === activeSourceEditorTabId || sourceDocumentTabId === generationTabId || sourceDocumentTabId === 'agent-task-t1') {
+          setAgentTaskCommentEntries((prev) => (
+            buildSpecVersionCommentEntriesSignature(prev ?? []) === buildSpecVersionCommentEntriesSignature(nextDocumentEntries)
+              ? prev
+              : nextDocumentEntries
+          ));
+        }
+
+        const tabMeta = ideTabs.find((tab) => tab.id === sourceDocumentTabId) ?? null;
+        const commentCount = getAggregatedCommentIssueCount(nextDocumentEntries);
+
+        upsertSddAttachmentForChat(selectedAiChatId, {
+          id: `sdd-document-${sourceDocumentTabId}-current`,
+          sourceTabId: sourceDocumentTabId,
+          label: tabMeta?.label ?? currentAgentTaskLabel ?? 'visit-booking.md',
+          icon: tabMeta?.icon ?? 'fileTypes/markdown',
+          commentCount,
+          diffComments: null,
+          diffRequest: null,
+          diffTabId: null,
+          isPlainFile: false,
+          isSddDocument: true,
+          isSddCommentAttachment: commentCount > 0,
+          sddCommentEntries: nextDocumentEntries,
+        });
+      }
+      return;
+    }
+
     const newChatSession = shouldCreateNewChat
       ? createEmptyAiChatSession({
           diffRequest: activePlanDiffRequest,
@@ -16365,16 +17669,40 @@ export default function App() {
 	    activePlanDiffSessionCommentsByChatId,
 	    activePlanDiffLineText,
 	    activePlanDiffData,
+      activePlanDiffDocumentSourceTabId,
 	    activePlanDiffSourceTabId,
 	    activePlanDiffTarget,
 	    activePlanDiffCommentsReadOnly,
+      activeSourceEditorTabId,
+      activeRelatedDiffCommentIssues,
 	    createEmptyAiChatSession,
+      currentAgentTaskLabel,
+      generationTabId,
+      getCommentEntriesForTaskTab,
 	    getAiChatListItemById,
 	    getAiChatScenarioById,
+      getTaskRuntimeState,
+      ideTabs,
 	    selectedAiChatId,
 	    syncDiffCommentsToTaskTarget,
+      upsertSddAttachmentForChat,
+      visibleEditorStateTabId,
 	  ]);
   const handlePlanDiffReturnToChat = useCallback((context = {}) => {
+    if (context?.source === 'diff-comment-document-context') {
+      const sourceTabId = context?.sourceTabId ?? activePlanDiffDocumentSourceTabId;
+      const existingTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
+      if (existingTabIndex >= 0) {
+        setScreen('ide');
+        setActiveEditorTab(existingTabIndex);
+        return;
+      }
+
+      const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+      openEditorTabByLabel(sourceTab?.label ?? activePlanDiffDocumentContextLabel);
+      return;
+    }
+
     const shouldSwitchChat = context?.source === 'diff-comment-context';
 	    const contextMessageId = context?.messageId ?? activePlanDiffContextMessageId;
 	    const contextChatId = context?.chatId
@@ -16400,7 +17728,7 @@ export default function App() {
       });
     }
     openAiToolWindow();
-	  }, [activePlanDiffContextChatId, activePlanDiffContextMessageId, aiChatScenarios, openAiToolWindow]);
+	  }, [activePlanDiffContextChatId, activePlanDiffContextMessageId, activePlanDiffDocumentContextLabel, activePlanDiffDocumentSourceTabId, aiChatScenarios, ideTabs, openAiToolWindow, openEditorTabByLabel]);
   const handleChatDiffCommentsClear = useCallback(() => {
     const diffTabId = aiChatComposerDiffTabId;
     const diffTabContent = ideTabContents[diffTabId];
@@ -16462,10 +17790,7 @@ export default function App() {
     return match?.[1] ?? visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId;
   }, [activeEditorTabId, generationTabId, visibleEditorStateTabId]);
 
-  const handleRemoveComposerAttachment = useCallback((attachment = null) => {
-    if (!attachment?.isSddCommentAttachment) return;
-    clearTaskCommentsForTab(getSourceTabIdFromSddAttachment(attachment));
-  }, [clearTaskCommentsForTab, getSourceTabIdFromSddAttachment]);
+  const handleRemoveComposerAttachment = useCallback(() => {}, []);
 
   const handleClearAllComposerDiffAttachments = useCallback(() => {
     if (aiChatComposerDiffAttachments.length === 0) return;
@@ -16489,28 +17814,12 @@ export default function App() {
       const { [selectedAiChatId]: _removed, ...rest } = prev;
       return rest;
     });
-    const sddSourceTabIds = aiChatComposerDiffAttachments
-      .filter((attachment) => attachment?.isSddCommentAttachment)
-      .map((attachment) => getSourceTabIdFromSddAttachment(attachment))
-      .filter(Boolean);
-    sddSourceTabIds.forEach((sourceTabId) => {
-      clearTaskCommentsForTab(sourceTabId);
-      if (commentChatCreatedForTabRef.current === sourceTabId) {
-        commentChatCreatedForTabRef.current = null;
-      }
-    });
-    if (sddSourceTabIds.length > 0) {
-      setSddCommentSessionId(null);
-    }
   }, [
     aiChatComposerDiffAttachments,
-    clearTaskCommentsForTab,
-    getSourceTabIdFromSddAttachment,
     selectedAiChatId,
   ]);
 
   const handleOpenSddDocument = useCallback((context = {}) => {
-    const normalizedCommentEntries = normalizeSpecVersionCommentEntries(context?.commentEntries);
     const sourceTabId = context?.sourceTabId
       ?? getSourceTabIdFromSddAttachment(context?.attachment)
       ?? visibleEditorStateTabId
@@ -16518,27 +17827,6 @@ export default function App() {
       ?? generationTabId;
     const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
 
-    if (context?.isCommentAttachment && normalizedCommentEntries.length > 0) {
-      setInteractiveTaskStates((prev) => {
-        const currentTaskState = prev[sourceTabId] ?? getAgentTaskScenario({
-          tabId: sourceTabId,
-          label: sourceTab?.label ?? '',
-        }).initialTaskState;
-
-        return {
-          ...prev,
-          [sourceTabId]: {
-            ...currentTaskState,
-            commentEntries: normalizedCommentEntries,
-          },
-        };
-      });
-      if (sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
-        setAgentTaskCommentEntries(normalizedCommentEntries);
-      }
-      setSddCommentSessionId(context?.contextChatId ?? selectedAiChatId);
-      commentChatCreatedForTabRef.current = sourceTabId;
-    }
     if (sourceTabId) {
       const existingTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
       if (existingTabIndex >= 0) {
@@ -16550,14 +17838,44 @@ export default function App() {
     openEditorTabByLabel(sourceTab?.label ?? 'visit-booking.md');
   }, [
     activeEditorTabId,
-    activeSourceEditorTabId,
     generationTabId,
     getSourceTabIdFromSddAttachment,
     ideTabs,
     openEditorTabByLabel,
-    selectedAiChatId,
     visibleEditorStateTabId,
   ]);
+
+  const handleOpenAttachmentSource = useCallback(({ attachment = null, source = null } = {}) => {
+    const targetTabId = source?.navigationTabId ?? null;
+    if (!targetTabId) return;
+
+    const targetTabIndex = ideTabs.findIndex((tab) => tab?.id === targetTabId);
+    if (targetTabIndex >= 0) {
+      setScreen('ide');
+      setActiveEditorTab(targetTabIndex);
+    }
+
+    if (source?.navigationRowId) {
+      updatePlanDiffUiStateForTab({
+        activeRowId: source.navigationRowId,
+        commentRowId: null,
+        commentValue: '',
+        commentEditingIndex: null,
+        caretState: {
+          rowId: source.navigationRowId,
+          left: 12,
+        },
+      }, targetTabId);
+    }
+
+    if (targetTabId === attachment?.sourceTabId) {
+      handleOpenSddDocument({
+        commentEntries: attachment?.sddCommentEntries ?? [],
+        isCommentAttachment: Boolean(attachment?.isSddCommentAttachment),
+        sourceTabId: attachment?.sourceTabId,
+      });
+    }
+  }, [handleOpenSddDocument, ideTabs, updatePlanDiffUiStateForTab]);
 
   const handleOpenPlainFileArchive = useCallback((tabId, diffComments, contextMessageId, contextChatId) => {
     const tabIndex = ideTabs.findIndex((tab) => tab.id === tabId);
@@ -16874,7 +18192,7 @@ export default function App() {
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
-	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
+	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
           bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
           statusBarProps={{
@@ -17018,13 +18336,18 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Active" />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related chats" />
             : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffComments}
+                    documentDiffComments={activePlanDiffDocumentComments}
+                    documentContextLabel={activePlanDiffDocumentContextLabel}
+                    documentContextIcon="fileTypes/markdown"
+                    documentContextSessionLabel="Related chats"
+                    documentContextSourceTabId={activePlanDiffDocumentSourceTabId}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     commentContextLabel={planDiffContextChatTitle}
                     commentContextIcon={planDiffContextChatIcon}
@@ -17041,6 +18364,15 @@ export default function App() {
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
+                    inspectionWidget={isPlainFileOverlayTab ? (
+                      <DoneInspectionWidget
+                        className="plan-diff-inspection-widget"
+                        onOpenProblems={() => toggleIdeBottomToolWindow('problems')}
+                        warningCount={activePlainFileProblemSummary.warningCount}
+                        errorCount={activePlainFileProblemSummary.errorCount}
+                        commentCount={activePlainFileCommentIssues.length}
+                      />
+                    ) : null}
                   />
                 )
                 : undefined)
@@ -17078,7 +18410,7 @@ export default function App() {
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
-	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
+	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} /> : defaultRightPanelContent(id, ctx))}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
