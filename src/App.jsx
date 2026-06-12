@@ -1816,12 +1816,16 @@ function buildProblemTreeNodeId(issue, fallbackIndex) {
 function buildProblemOpenTabTreeNodeId(issue, fallbackIndex) {
   const tabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
   const rowId = typeof issue?.navigationRowId === 'string' ? issue.navigationRowId : '';
+  const rawIndex = Number.isInteger(issue?.rawIndex)
+    ? String(issue.rawIndex)
+    : '';
   const suffix = issue?.id ?? `idx-${fallbackIndex}`;
 
   return [
     'problem-open-tab',
     encodeURIComponent(tabId),
     encodeURIComponent(rowId),
+    encodeURIComponent(rawIndex),
     encodeURIComponent(suffix),
   ].join(':');
 }
@@ -1829,16 +1833,18 @@ function buildProblemOpenTabTreeNodeId(issue, fallbackIndex) {
 function getProblemOpenTabTargetFromTreeNodeId(nodeId) {
   if (typeof nodeId !== 'string') return null;
 
-  const [prefix, encodedTabId = '', encodedRowId = ''] = nodeId.split(':');
+  const [prefix, encodedTabId = '', encodedRowId = '', encodedRawIndex = ''] = nodeId.split(':');
   if (prefix !== 'problem-open-tab') return null;
 
   const tabId = decodeURIComponent(encodedTabId);
   if (!tabId) return null;
 
   const rowId = decodeURIComponent(encodedRowId);
+  const rawIndex = Number(decodeURIComponent(encodedRawIndex));
   return {
     tabId,
     rowId: rowId || null,
+    rawIndex: Number.isInteger(rawIndex) && rawIndex >= 0 ? rawIndex : null,
   };
 }
 
@@ -2969,19 +2975,29 @@ function getProblemsMetaForTab(tab, agentTaskIssuesOverride = null) {
   };
 }
 
-function buildCommentIssuesFromEntries(commentEntries = []) {
+function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
+  const {
+    navigationTabId = null,
+    icon = null,
+  } = options ?? {};
+
   return commentEntries.flatMap((entry, entryIndex) => {
     if (Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0) {
       return [];
     }
 
+    const rawIndex = Number.isInteger(entry.rawIndex) ? entry.rawIndex : null;
+
     return (entry.comments ?? []).map((comment, commentIndex) => ({
       id: `comment-${entry.rowIndex ?? entryIndex}-${commentIndex}`,
       severity: 'comment',
       label: comment,
-      rawIndex: Number.isInteger(entry.rawIndex) ? entry.rawIndex : null,
-      secondaryText: Number.isInteger(entry.rawIndex)
-        ? `Line ${entry.rawIndex + 1}`
+      icon,
+      navigationTabId,
+      rawIndex,
+      lineNumber: Number.isInteger(rawIndex) ? rawIndex + 1 : null,
+      secondaryText: Number.isInteger(rawIndex)
+        ? `Line ${rawIndex + 1}`
         : (entry.sectionTitle || 'Comment'),
     }));
   });
@@ -3981,10 +3997,10 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
   const meta = getProblemsMetaForTab(tab, agentTaskIssuesOverride);
   const fileIcon = renderProblemsFileIcon(tab);
   const mdCommentIssues = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
-    ? buildCommentIssuesFromEntries(commentEntries).map((issue) => ({
-        ...issue,
+    ? buildCommentIssuesFromEntries(commentEntries, {
+        navigationTabId: tab?.id ?? null,
         icon: fileIcon,
-      }))
+      })
     : [];
   const externalCommentIssues = buildMergedExternalCommentIssues(commentEntries, relatedCommentIssues);
   const commentIssues = [
@@ -13472,12 +13488,12 @@ export default function App() {
     applyInteractiveTaskState(nextTab.id, nextTaskState);
   }, [agentTasks, applyInteractiveTaskState, ideTabs, interactiveTaskStates, restoreSpecDoneScrollForTab, selectedTask]);
 
-  const requestProblemHighlight = useCallback((rawIndex) => {
+  const requestProblemHighlight = useCallback((rawIndex, tabIdOverride = null) => {
     if (!Number.isInteger(rawIndex) || rawIndex < 0) return;
 
     setHighlightedProblemLocation((prev) => ({
       rawIndex,
-      tabId: activeEditorTabId,
+      tabId: tabIdOverride ?? activeEditorTabId,
       requestKey: (prev?.requestKey ?? 0) + 1,
     }));
   }, [activeEditorTabId]);
@@ -13551,6 +13567,10 @@ export default function App() {
             left: 12,
           },
         }, openTabTarget.tabId);
+      }
+
+      if (Number.isInteger(openTabTarget.rawIndex)) {
+        requestProblemHighlight(openTabTarget.rawIndex, openTabTarget.tabId);
       }
       return;
     }
