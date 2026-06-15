@@ -5,7 +5,7 @@ import './WelcomeScreen.css';
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const RECENT_PROJECTS = [
-  { id: '1', name: 'payment-service',              path: '~/projects/payment-service',              initials: 'PS', bg: 'linear-gradient(180deg, #E08855 0%, #E9806F 100%)' },
+  { id: '1', name: 'spring-petclinic',             path: '~/projects/spring-petclinic',             initials: 'SP', bg: 'linear-gradient(180deg, #E08855 0%, #E9806F 100%)' },
   { id: '2', name: 'IntelliJ IDEA',                path: 'Hint',                                    initials: 'II', bg: 'linear-gradient(180deg, #A1A359 0%, #87AA59 100%)' },
   { id: '3', name: 'calculator-unit-tests-java',   path: 'Hint',                                    initials: 'CU', bg: '#24A394' },
   { id: '4', name: 'calculator-unit-tests-java',   path: 'Hint',                                    initials: 'CU', bg: '#24A394' },

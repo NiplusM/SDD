@@ -56,7 +56,7 @@ iconRegistry[PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON] = ProblemsReferenceViewOption
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'payment-service';
+const PROJECT_NAME = 'spring-petclinic';
 const BRANCH_NAME = 'feature/visit-booking';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
@@ -75,6 +75,7 @@ const ISSUE_INTENTION_POPUP_OPEN_DELAY_MS = 140;
 const ISSUE_INTENTION_POPUP_GAP = 4;
 const ISSUE_INTENTION_POPUP_WIDTH = 414;
 const ISSUE_INTENTION_POPUP_OPEN_EVENT = 'spec-done-intention-popup-opened';
+const VISIT_BOOKING_PROMPT_TEXT = 'Book visits against a specific vet and time slot, with no double-booking';
 
 function getSpecDoneScrollElement() {
   if (typeof document === 'undefined') return null;
@@ -111,216 +112,13 @@ function scheduleSpecDoneScrollRestore(snapshot) {
 }
 
 const MY_PROJECTS = [
-  { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
+  { id: '1', name: 'spring-petclinic', path: '~/projects/spring-petclinic', initials: 'SP', gradient: ['#22c55e', '#15803d'] },
   { id: '2', name: 'auth-module',     path: '~/projects/auth-module',     initials: 'AM', gradient: ['#8b5cf6', '#6d28d9'] },
   { id: '3', name: 'api-gateway',     path: '~/projects/api-gateway',     initials: 'AG', gradient: ['#10b981', '#059669'] },
 ];
 
-const MY_EDITOR_TABS = [
-  { id: '1', label: 'VisitController.java',          icon: 'fileTypes/java', closable: true },
-  { id: '2', label: 'Visit.java',                    icon: 'fileTypes/java', closable: true },
-  { id: '3', label: 'createOrUpdateVisitForm.html',  icon: 'fileTypes/html', closable: true },
-  { id: '4', label: 'schema.sql',                    icon: 'fileTypes/text', closable: true },
-];
-
-const MY_EDITOR_TAB_CONTENTS = {
-  '1': {
-    language: 'java',
-    code: `@Controller
-class VisitController {
-
-    private final OwnerRepository ownerRepository;
-    private final VisitRepository visitRepository;
-    private final VetRepository vetRepository;
-
-    public VisitController(
-            OwnerRepository ownerRepository,
-            VisitRepository visitRepository,
-            VetRepository vetRepository) {
-        this.ownerRepository = ownerRepository;
-        this.visitRepository = visitRepository;
-        this.vetRepository = vetRepository;
-    }
-
-    @ModelAttribute("vets")
-    public Collection<Vet> populateVets(
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {
-        if (date == null || time == null) {
-            return this.vetRepository.findAll();
-        }
-        return this.vetRepository.findAvailableFor(date, time);
-    }
-
-    @ModelAttribute("timeSlots")
-    public List<LocalTime> populateTimeSlots() {
-        List<LocalTime> slots = new ArrayList<>();
-        for (int hour = 9; hour <= 16; hour++) {
-            slots.add(LocalTime.of(hour, 0));
-        }
-        return slots;
-    }
-
-    @GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-    public String initNewVisitForm(@PathVariable int ownerId, @PathVariable int petId, Map<String, Object> model) {
-        Owner owner = this.ownerRepository.findById(ownerId);
-        Pet pet = owner.getPet(petId);
-        Visit visit = new Visit();
-        pet.addVisit(visit);
-        model.put("visit", visit);
-        return "pets/createOrUpdateVisitForm";
-    }
-
-    @PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-    public String processNewVisitForm(@PathVariable int ownerId,
-                                      @PathVariable int petId,
-                                      @Valid Visit visit,
-                                      BindingResult result,
-                                      Model model) {
-        if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null
-                && this.visitRepository.existsByVetIdAndDateAndTime(
-                    visit.getVet().getId(), visit.getDate(), visit.getTime())) {
-            result.rejectValue("time", "duplicate",
-                "This vet is already booked for the selected date and time.");
-        }
-
-        if (result.hasErrors()) {
-            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
-            model.addAttribute("timeSlots", populateTimeSlots());
-            return "pets/createOrUpdateVisitForm";
-        }
-
-        try {
-            Owner owner = this.ownerRepository.findById(ownerId);
-            Pet pet = owner.getPet(petId);
-            pet.addVisit(visit);
-            this.visitRepository.save(visit);
-        }
-        catch (DataIntegrityViolationException ex) {
-            result.rejectValue("time", "duplicate",
-                "Concurrent booking detected. Please choose another slot.");
-            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
-            model.addAttribute("timeSlots", populateTimeSlots());
-            return "pets/createOrUpdateVisitForm";
-        }
-        return "redirect:/owners/{ownerId}";
-    }
-}`,
-  },
-  '2': {
-    language: 'java',
-    code: `@Entity
-@Table(name = "visits")
-public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    @NotNull
-    private LocalDate date;
-
-    @Column(name = "visit_time")
-    @NotNull
-    private LocalTime time;
-
-    @Column(name = "description")
-    private String description;
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    @NotNull
-    private Vet vet;
-
-    @ManyToOne
-    @JoinColumn(name = "pet_id")
-    private Pet pet;
-
-    public LocalDate getDate() { return this.date; }
-    public void setDate(LocalDate date) { this.date = date; }
-
-    public LocalTime getTime() { return this.time; }
-    public void setTime(LocalTime time) { this.time = time; }
-
-    public String getDescription() { return this.description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public Vet getVet() { return this.vet; }
-    public void setVet(Vet vet) { this.vet = vet; }
-
-    public Pet getPet() { return this.pet; }
-    public void setPet(Pet pet) { this.pet = pet; }
-}`,
-  },
-  '3': {
-    language: 'html',
-    code: `<html xmlns:th="https://www.thymeleaf.org">
-<body>
-  <h2>New Visit</h2>
-  <form th:object="\${visit}"
-        th:action="@{/owners/{ownerId}/pets/{petId}/visits/new(ownerId=\${owner.id},petId=\${pet.id})}"
-        method="post">
-
-    <div>
-      <label>Date</label>
-      <input type="date" th:field="*{date}" />
-    </div>
-
-    <div>
-      <label>Vet</label>
-      <select th:field="*{vet}">
-        <option value="">-- select vet --</option>
-        <option th:each="vet : \${vets}"
-                th:value="\${vet}"
-                th:text="\${vet.firstName + ' ' + vet.lastName}"></option>
-      </select>
-    </div>
-
-    <div>
-      <label>Time</label>
-      <select th:field="*{time}">
-        <option value="">-- select time --</option>
-        <option th:each="slot : \${timeSlots}"
-                th:value="\${slot}"
-                th:text="\${#temporals.format(slot, 'HH:mm')}"></option>
-      </select>
-    </div>
-
-    <div>
-      <label>Description</label>
-      <textarea th:field="*{description}" rows="3"></textarea>
-    </div>
-
-    <button type="submit">Add Visit</button>
-  </form>
-</body>
-</html>`,
-  },
-  '4': {
-    language: 'sql',
-    code: `DROP TABLE IF EXISTS visits;
-DROP TABLE IF EXISTS pets;
-DROP TABLE IF EXISTS types;
-DROP TABLE IF EXISTS vets;
-DROP TABLE IF EXISTS owners;
-
-CREATE TABLE vets (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    first_name  VARCHAR(30),
-    last_name   VARCHAR(30)
-);
-
-CREATE TABLE visits (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    pet_id      INTEGER NOT NULL,
-    vet_id      INTEGER NOT NULL,
-    visit_date  DATE NOT NULL,
-    visit_time  TIME NOT NULL,
-    description VARCHAR(255),
-    CONSTRAINT fk_visits_pet FOREIGN KEY (pet_id) REFERENCES pets(id),
-    CONSTRAINT fk_visits_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
-    CONSTRAINT uk_vet_date_time UNIQUE (vet_id, visit_date, visit_time)
-);`,
-  },
-};
+const MY_EDITOR_TABS = [];
+const MY_EDITOR_TAB_CONTENTS = {};
 
 const PLAN_CODE_DIFF_PRESETS = {
   0: {
@@ -600,7 +398,7 @@ const MY_PROJECT_TREE = [
   },
 ];
 
-const PROJECT_ROOT_PATH = '~/projects/payment-service';
+const PROJECT_ROOT_PATH = '~/projects/spring-petclinic';
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
@@ -621,7 +419,7 @@ const TERMINAL_PERMISSION_OPTIONS = [
   { id: 'reject', label: 'Reject' },
 ];
 const AC_WARNING_TARGET_ORIGINAL_INDEX = 0;
-const AC_WARNING_PROMPT = 'AC #1 partially met. Pre-filtering works on POST re-renders (booked vets excluded via findByDateAndTime). But on initial page load, no date/time is selected — @RequestParam values are null — so all vets are shown. AC says "available vets for the selected date/time", implying always-filtered. Full filtering on date selection would require AJAX (out of scope). Suggest rewording AC.';
+const AC_WARNING_PROMPT = 'AC #1 partially met. Pre-filtering works on POST re-renders (booked vets excluded via findByDateAndTime). But on initial page load, no date/time is selected — `RequestParam` values are null — so all vets are shown. AC says "available vets for the selected date/time", implying always-filtered. Full filtering on date selection would require AJAX (out of scope). Suggest rewording AC.';
 
 function buildTerminalBlocks(lines = []) {
   return lines.length > 0
@@ -1047,24 +845,44 @@ const AC_RUN_STATUSES = [
       { status: 'failed', text: 'On initial load no date is selected, all vets shown — live filtering on date pick needs AJAX (out of scope)', chip: null },
     ],
   },
+  null,
   {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: 'Time slot picker with hourly slots 09:00-16:00', chip: 'createOrUpdateVisitForm.html' },
-      { status: 'passed', text: 'populateTimeSlots() generates hourly intervals', chip: 'VisitController.java' },
+    status: 'failed',
+    checkboxStatus: null,
+    highlight: {
+      match: 'A vet cannot be booked for the same date+time twice.',
+      className: 'spec-inline-warning-highlight',
+      tooltip: {
+        title: 'Behavior not specified',
+        hint: 'Specify what the user sees when a booking is blocked.',
+      },
+    },
+    issue: {
+      severity: 'warning',
+      label: 'Behavior not specified',
+      secondaryText: 'Line 8',
+    },
+    proposalOptions: [
+      {
+        label: 'Inline field error on form re-render',
+        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
+      },
+      {
+        label: 'Modal with conflict details',
+        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
+      },
+      {
+        label: 'Let the agent decide',
+        replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
+      },
+      { type: 'text' },
     ],
+    checks: [],
   },
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'UNIQUE constraint in all 3 schema files', chip: 'schema.sql' },
-      { status: 'passed', text: 'existsByVetIdAndDateAndTime check before save', chip: 'VisitController.java' },
-    ],
-  },
-  {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: '@ManyToOne vet persisted', chip: 'Visit.java' },
+      { status: 'passed', text: '`ManyToOne` vet persisted', chip: 'Visit.java' },
       { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' },
     ],
   },
@@ -1138,8 +956,8 @@ const ISSUE_QUICK_FIX_CONFIG = {
       },
     },
     1: {
-      actionLabel: 'Specify 09:00–16:00, configurable via application.properties',
-      replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable via application.properties.',
+      actionLabel: 'Specify 09:00–16:00, configurable',
+      replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.',
       resolvedStatus: {
         status: 'passed',
         checks: [],
@@ -1147,7 +965,7 @@ const ISSUE_QUICK_FIX_CONFIG = {
     },
     2: {
       actionLabel: 'Show inline field error on booking conflict',
-      replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field (server-side validation).',
+      replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
       resolvedStatus: {
         status: 'passed',
         checks: [],
@@ -1219,7 +1037,7 @@ function buildResolvedRunStatuses(baseStatuses, kind, appliedIssueFixes, removed
   return baseStatuses.reduce((nextStatuses, status, originalIndex) => {
     if (removedMap[originalIndex]) return nextStatuses;
 
-    if (!appliedIssueFixes?.[kind]?.[originalIndex]) {
+    if (!getAppliedIssueFixValue(appliedIssueFixes, kind, originalIndex)) {
       nextStatuses.push(status);
       return nextStatuses;
     }
@@ -1279,6 +1097,23 @@ function cloneIssueStateMap(issueState = null) {
     ac: { ...(issueState?.ac ?? {}) },
     plan: { ...(issueState?.plan ?? {}) },
   };
+}
+
+function getAppliedIssueFixValue(appliedIssueFixes, kind, index) {
+  return appliedIssueFixes?.[kind]?.[index] ?? null;
+}
+
+function getAppliedIssueFixReplacementText(appliedIssueFixes, kind, index) {
+  const appliedFix = getAppliedIssueFixValue(appliedIssueFixes, kind, index);
+  return appliedFix && typeof appliedFix === 'object' && typeof appliedFix.replacementText === 'string'
+    ? appliedFix.replacementText
+    : null;
+}
+
+function createAppliedIssueFixValue(replacementText = null) {
+  return typeof replacementText === 'string' && replacementText.trim().length > 0
+    ? { applied: true, replacementText }
+    : true;
 }
 
 function parseProblemRawIndexFromSecondaryText(secondaryText) {
@@ -1942,6 +1777,43 @@ function applyIssueQuickFixToDocumentSections(documentSections, { kind, index, r
   });
 }
 
+function applyPendingIssueFixesToSpec({ code, documentSections, appliedIssueFixes, removedIssueIndices }) {
+  let nextCode = typeof code === 'string' ? code : '';
+  let nextDocument = Array.isArray(documentSections) ? documentSections : [];
+
+  ['ac', 'plan'].forEach((kind) => {
+    const fixesForKind = appliedIssueFixes?.[kind] ?? {};
+    Object.keys(fixesForKind).forEach((rawOriginalIndex) => {
+      const originalIndex = Number(rawOriginalIndex);
+      if (!Number.isInteger(originalIndex) || !fixesForKind[originalIndex]) return;
+
+      const fixConfig = getIssueQuickFixConfig(kind, originalIndex);
+      const replacementText = getAppliedIssueFixReplacementText(appliedIssueFixes, kind, originalIndex)
+        ?? fixConfig?.replacementText;
+      if (!replacementText) return;
+
+      const visibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, removedIssueIndices);
+      if (!Number.isInteger(visibleIndex) || visibleIndex < 0) return;
+
+      nextCode = applyIssueQuickFixToCode(nextCode, {
+        kind,
+        index: visibleIndex,
+        replacementText,
+      });
+      nextDocument = applyIssueQuickFixToDocumentSections(nextDocument, {
+        kind,
+        index: visibleIndex,
+        replacementText,
+      });
+    });
+  });
+
+  return {
+    code: nextCode,
+    documentSections: nextDocument,
+  };
+}
+
 function normalizeSpecSectionTitle(title = '') {
   return String(title).trim().toLowerCase();
 }
@@ -2025,11 +1897,32 @@ function buildSerializedDocumentLines(documentSections) {
       });
 
       (item.children ?? []).forEach((childItem, childIndex) => {
-        if (childItem?.type !== 'check') return;
-        pushCheckLine(childItem, itemIndex, {
-          nestingLevel: nestingLevel + 1,
-          childPath: [...normalizedChildPath, childIndex],
-        });
+        const nextChildPath = [...normalizedChildPath, childIndex];
+        if (childItem?.type === 'check') {
+          pushCheckLine(childItem, itemIndex, {
+            nestingLevel: nestingLevel + 1,
+            childPath: nextChildPath,
+          });
+          return;
+        }
+
+        if (childItem?.type === 'bullet') {
+          const childStableId = childItem?.id ?? `${itemStableId}:child-${childIndex + 1}`;
+          lines.push(`${'  '.repeat(nestingLevel + 1)}- ${childItem.text}`);
+          lineMap.push({
+            type: 'item',
+            sectionIndex,
+            itemIndex,
+            itemType: childItem.type,
+            sectionId: sectionStableId,
+            itemId: childStableId,
+            parentItemId: itemStableId,
+            childIndex,
+            childPath: nextChildPath,
+            nestingLevel: nestingLevel + 1,
+            stableKey: `section-item:${childStableId}`,
+          });
+        }
       });
     };
 
@@ -2481,7 +2374,7 @@ function applyCommentCommandsToSpec({
       index: visibleIndex,
       replacementText: fixConfig.replacementText,
     });
-    nextAppliedIssueFixes[kind][index] = true;
+    nextAppliedIssueFixes[kind][index] = createAppliedIssueFixValue(fixConfig.replacementText);
   });
 
   let hasEnhancedComments = false;
@@ -2527,9 +2420,31 @@ const DEFAULT_PROBLEMS_ISSUES = [
 ];
 
 const AGENT_TASK_PROBLEMS_ISSUES = [
-  { severity: 'warning', label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets', secondaryText: 'Line 6' },
-  { severity: 'warning', label: 'Ambiguous AC. "e.g." in acceptance criteria.', secondaryText: 'Line 7' },
   { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
+];
+
+const VISIT_BOOKING_CONFLICT_PROBLEM_TARGET = { kind: 'ac', index: 2 };
+const VISIT_BOOKING_CONFLICT_PROBLEM_TITLE = 'Behavior not specified';
+const VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION = 'Prevention is defined, but the blocked-booking response is missing. How would you like to handle it?';
+const VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS = [
+  {
+    label: 'Inline error on vet field',
+    replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
+  },
+  {
+    label: 'Conflict modal',
+    replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
+  },
+  {
+    label: 'Let the agent decide',
+    isSoftOption: true,
+    replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
+  },
+  {
+    label: 'Describe a different fix',
+    isCustomInput: true,
+    replacementText: 'A vet cannot be booked for the same date+time twice. The conflict UX follows the custom instruction provided for this inspection.',
+  },
 ];
 
 const EDITOR_PROBLEMS_BY_LABEL = {
@@ -2537,7 +2452,7 @@ const EDITOR_PROBLEMS_BY_LABEL = {
     path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`,
     issues: [
       { severity: 'warning', label: 'populateTimeSlots() rebuilds list on every request', secondaryText: 'Line 121' },
-      { severity: 'warning', label: '@ModelAttribute("vets") loads all vets on GET — no pre-filtering', secondaryText: 'Line 95' },
+      { severity: 'warning', label: '`ModelAttribute("vets")` loads all vets on GET — no pre-filtering', secondaryText: 'Line 95' },
       { severity: 'error', label: 'DataIntegrityViolationException not caught — 500 on concurrent booking', secondaryText: 'Line 142' },
       { severity: 'error', label: 'Missing VetFormatter — form binding will fail at runtime', secondaryText: 'Line 108' },
     ],
@@ -2547,6 +2462,8 @@ const EDITOR_PROBLEMS_BY_LABEL = {
 const MY_LEFT_STRIPE = DEFAULT_LEFT_STRIPE_ITEMS.filter(i =>
   ['project', 'commit', 'structure'].includes(i.id)
 );
+const DECORATIVE_LEFT_STRIPE_ITEMS = MY_LEFT_STRIPE.map(({ panel, ...item }) => item);
+const DECORATIVE_RIGHT_STRIPE_ITEMS = DEFAULT_RIGHT_STRIPE_ITEMS.map(({ panel, ...item }) => item);
 
 const AGENT_TASKS_ICON = (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2597,7 +2514,7 @@ const COMPLETION_PREVIEW_LIBRARY = {
   'Configuration.md': {
     previewLines: [
       '## Context',
-      '- VetRepository.findAll() is @Cacheable("vets").',
+      '- `VetRepository.findAll()` is `Cacheable("vets")`.',
       '- Formatter<T> is required for entity-backed form selects.',
       '## Constraints',
       '- Keep H2, MySQL, and PostgreSQL schema updates aligned.',
@@ -2827,6 +2744,56 @@ function ProblemsCommentNodeIcon() {
     <span className="problems-comment-node-icon" aria-hidden="true">
       <DoneCommentCountIcon />
     </span>
+  );
+}
+
+function VisitBookingProblemDiagnosticLabel({ rawIndex = null, onExpand = null }) {
+  return (
+    <div
+      className="visit-problem-diagnostic-label"
+      data-problem-raw-index={Number.isInteger(rawIndex) ? rawIndex : undefined}
+      onClick={() => onExpand?.(rawIndex)}
+    >
+      <span className="visit-problem-diagnostic-title">{VISIT_BOOKING_CONFLICT_PROBLEM_TITLE}</span>
+      <span className="visit-problem-diagnostic-description">{VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION}</span>
+    </div>
+  );
+}
+
+function VisitBookingProblemOptionLabel({ option, optionIndex = 0, onSelect }) {
+  const optionClassName = [
+    'visit-problem-option',
+    option?.isSoftOption ? 'visit-problem-option-soft' : '',
+    option?.isCustomInput ? 'visit-problem-option-custom' : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <button
+      type="button"
+      className={optionClassName}
+      data-visit-problem-option-index={optionIndex}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.(option);
+      }}
+    >
+      <span className="visit-problem-option-caret" aria-hidden="true">
+        <DoneCommentCountIcon />
+      </span>
+      <span className="visit-problem-option-label">{option.label}</span>
+    </button>
+  );
+}
+
+function VisitBookingProblemCommentLabel({ comment }) {
+  return (
+    <div className="visit-problem-comment-label">
+      <span className="visit-problem-comment-marker" aria-hidden="true">
+        <DoneCommentCountIcon />
+      </span>
+      <span className="visit-problem-comment-text">{comment}</span>
+    </div>
   );
 }
 
@@ -3139,6 +3106,36 @@ function getCommentEntryStorageKey(entry) {
   return `row:${rowIndex}:${sectionTitle}:${line}`;
 }
 
+function getCommentEntryStorageCandidates(entry) {
+  const candidates = [];
+
+  if (typeof entry?.rowStableKey === 'string' && entry.rowStableKey) {
+    candidates.push(`row-key:${entry.rowStableKey}`);
+  }
+
+  const targetKey = getCommentTargetStorageKey(entry);
+  if (targetKey && !candidates.includes(targetKey)) {
+    candidates.push(targetKey);
+  }
+
+  if (Number.isInteger(entry?.rawIndex)) {
+    const rawKey = `raw:${entry.rawIndex}:${entry?.line ?? ''}`;
+    if (!candidates.includes(rawKey)) {
+      candidates.push(rawKey);
+    }
+  }
+
+  const rowIndex = Number.isInteger(entry?.rowIndex) ? entry.rowIndex : 'unknown';
+  const sectionTitle = entry?.sectionTitle ?? '';
+  const line = entry?.line ?? '';
+  const fallbackKey = `row:${rowIndex}:${sectionTitle}:${line}`;
+  if (!candidates.includes(fallbackKey)) {
+    candidates.push(fallbackKey);
+  }
+
+  return candidates;
+}
+
 function getRowMetaCommentStorageKey(rowMeta) {
   if (typeof rowMeta?.stableKey === 'string' && rowMeta.stableKey) {
     return `row-key:${rowMeta.stableKey}`;
@@ -3207,8 +3204,9 @@ function buildRowCommentsStateFromEntries(rowMetaList = [], commentEntries = [])
       : [];
     if (comments.length === 0) return;
 
-    const storageKey = getCommentEntryStorageKey(entry);
-    const canonicalKey = canonicalKeysByCandidate.get(storageKey);
+    const canonicalKey = getCommentEntryStorageCandidates(entry)
+      .map((candidateKey) => canonicalKeysByCandidate.get(candidateKey))
+      .find(Boolean);
     if (!canonicalKey) return;
 
     nextState[canonicalKey] = [
@@ -3408,6 +3406,7 @@ function buildSmoothInlineTransitionFrames(sourceText = '', targetText = '') {
 
 function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEntries = []) {
   const meta = getProblemsMetaForTab(tab, agentTaskIssuesOverride);
+  const isAgentTaskProblemsTab = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md');
   const commentIssues = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
     ? buildCommentIssuesFromEntries(commentEntries)
     : [];
@@ -3430,7 +3429,9 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
       id: 'active-problems-file',
       label: meta.label,
       icon: fileIcon,
-      secondaryText: `${meta.path}${secondarySuffix}`,
+      secondaryText: isAgentTaskProblemsTab
+        ? secondarySuffixParts.join(PROBLEMS_SECONDARY_GAP)
+        : `${meta.path}${secondarySuffix}`,
       isExpanded: treeIssues.length > 0,
       children: treeIssues.map((issue, index) => {
         const normalizedIssue = {
@@ -3449,7 +3450,7 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
               : normalizedIssue.severity === 'comment'
                 ? <ProblemsCommentNodeIcon />
                 : <ProblemsWarningNodeIcon />,
-          secondaryText: normalizedIssue.secondaryText,
+          secondaryText: isAgentTaskProblemsTab ? '' : normalizedIssue.secondaryText,
         };
       }),
     },
@@ -3457,9 +3458,24 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
 }
 
 function extractRuntimeInspectionIssues(results = [], kind, documentSections = null) {
+  const serialized = buildSerializedDocumentLines(documentSections ?? []);
+  const lines = serialized?.lines ?? [];
+
   return results.reduce((issues, item, visibleIndex) => {
-    if (item?.issue) {
+    if (item?.issue && item?.highlight) {
       const rawIndex = getDocumentCheckRawIndex(documentSections, kind, visibleIndex);
+      const matchText = item.highlight?.match;
+      if (
+        typeof matchText === 'string'
+        && matchText.length > 0
+        && Number.isInteger(rawIndex)
+        && rawIndex >= 0
+        && typeof lines[rawIndex] === 'string'
+        && !lines[rawIndex].includes(matchText)
+      ) {
+        return issues;
+      }
+
       issues.push({
         ...item.issue,
         id: `${kind}-issue-${visibleIndex}`,
@@ -3806,27 +3822,27 @@ const SPEC_LINES = [
   { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Acceptance Criteria',                                                                             type: 'heading' },
-  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
-  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation).',            type: 'check'   },
+  { text: '\u2610 Visit form shows a dropdown of available vets for the selected date/time.',                type: 'check'   },
+  { text: '\u2610 Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.', type: 'check' },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice.',                                    type: 'check'   },
   { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
-  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
+  { text: '\u2610 Existing visit display (owner details page, visit history table) shows the assigned vet and time.', type: 'check' },
   { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Plan',                                                                                            type: 'heading' },
-  { text: '\u2610 Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table',              type: 'check'   },
-  { text: '\u2610 Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull',                  type: 'check'   },
+  { text: '\u2610 Schema changes',                                                                           type: 'check'   },
+  { text: '\u2610 Visit entity \u2014 src/main/java/org/springframework/samples/petclinic/owner/Visit.java', type: 'check'   },
   { text: '\u2610 VisitRepository \u2014 add existsByVetIdAndDateAndTime for double-booking check',           type: 'check'   },
-  { text: '\u2610 VisitController \u2014 inject VetRepository, add @ModelAttribute("vets") with findAll()',   type: 'check'   },
-  { text: '\u2610 Form template \u2014 add <select> for vet and <select> for time slot',                      type: 'check'   },
-  { text: '\u2610 Owner details \u2014 add Vet and Time columns to visit history table',                      type: 'check'   },
-  { text: '\u2610 Tests \u2014 vet list in model, successful booking, double-booking rejected',               type: 'check'   },
+  { text: '\u2610 VisitController updates \u2014 src/main/java/org/springframework/samples/petclinic/owner/VisitController.java', type: 'check' },
+  { text: '\u2610 Form template update \u2014 src/main/resources/templates/pets/createOrUpdateVisitForm.html', type: 'check' },
+  { text: '\u2610 Owner details / visit history display \u2014 src/main/resources/templates/owners/ownerDetails.html', type: 'check' },
+  { text: '\u2610 Tests',                                                                                    type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Implementation Notes',                                                                            type: 'heading' },
-  { text: '\u2022 Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.', type: 'note' },
-  { text: '\u2022 Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.',  type: 'note'    },
-  { text: '\u2022 VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.',                  type: 'note'    },
-  { text: '\u2022 Project uses Formatter<T> for form selects (see PetTypeFormatter).',                        type: 'note'    },
+  { text: '\u2022 Current Visit entity (Visit.java): Only has date (LocalDate) and description (String). Extends BaseEntity. No relationship to Vet.', type: 'note' },
+  { text: '\u2022 Current visits table: Columns are id, pet_id, visit_date, description. No vet or time columns.', type: 'note' },
+  { text: '\u2022 Vet entity (vet/Vet.java): Extends Person (firstName, lastName). Has ManyToMany specialties.', type: 'note' },
+  { text: '\u2022 No existing VisitRepository: Visits are currently persisted entirely through cascade (Owner \u2192 Pet \u2192 Visit via CascadeType.ALL).', type: 'note' },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Decisions',                                                                                       type: 'heading' },
   { text: '',                                                                                                 type: 'empty'   },
@@ -3836,19 +3852,83 @@ const SPEC_LINES = [
 ];
 
 const VISIT_BOOKING_PLAN_ITEMS = [
-  { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes — add vet_id (FK) and visit_time (TIME) to visits table' },
-  { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity — add @ManyToOne vet and LocalTime time with @NotNull' },
-  { id: 'plan-3', type: 'check', checked: false, text: 'VisitRepository — add existsByVetIdAndDateAndTime for double-booking check' },
-  { id: 'plan-4', type: 'check', checked: false, text: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()' },
-  { id: 'plan-5', type: 'check', checked: false, text: 'Form template — add <select> for vet and <select> for time slot' },
-  { id: 'plan-6', type: 'check', checked: false, text: 'Owner details — add Vet and Time columns to visit history table' },
-  { id: 'plan-7', type: 'check', checked: false, text: 'Tests — vet list in model, successful booking, double-booking rejected' },
+  {
+    id: 'plan-1',
+    type: 'check',
+    checked: false,
+    text: '**1. Schema** - `db/h2/schema.sql`, `db/mysql/schema.sql`, `db/postgres/schema.sql`',
+    children: [
+      { id: 'plan-1-1', type: 'check', checked: false, text: 'Add `vet_id` (FK -> vets) and `visit_time` (TIME) columns to `visits`.' },
+      { id: 'plan-1-2', type: 'check', checked: false, text: 'Update seed data in each `data.sql` with vet and time for existing visits.' },
+    ],
+  },
+  {
+    id: 'plan-2',
+    type: 'check',
+    checked: false,
+    text: '**2. Visit entity** - `owner/Visit.java`',
+    children: [
+      { id: 'plan-2-1', type: 'check', checked: false, text: 'Add `@ManyToOne vet` with `@JoinColumn(name = "vet_id")`.' },
+      { id: 'plan-2-2', type: 'check', checked: false, text: 'Add `LocalTime time` with `@Column(name = "visit_time")` + `@DateTimeFormat(pattern = "HH:mm")`.' },
+      { id: 'plan-2-3', type: 'check', checked: false, text: 'Add `@NotNull` on both new fields.' },
+    ],
+  },
+  {
+    id: 'plan-3',
+    type: 'check',
+    checked: false,
+    text: '**3. VisitRepository** - `owner/VisitRepository.java`',
+    children: [
+      { id: 'plan-3-1', type: 'check', checked: false, text: 'New Spring Data interface extending `Repository<Visit, Integer>`.' },
+      { id: 'plan-3-2', type: 'check', checked: false, text: '`boolean existsByVetIdAndDateAndTime(Integer vetId, LocalDate date, LocalTime time)` - double-booking check (`VetId` resolves to the `vet.id` path).' },
+    ],
+  },
+  {
+    id: 'plan-4',
+    type: 'check',
+    checked: false,
+    text: '**4. VisitController** - `owner/VisitController.java`',
+    children: [
+      { id: 'plan-4-1', type: 'check', checked: false, text: 'Inject `VetRepository` and `VisitRepository`.' },
+      { id: 'plan-4-2', type: 'check', checked: false, text: '`@ModelAttribute("vets")` -> `vetRepository.findAll()`.' },
+      { id: 'plan-4-3', type: 'check', checked: false, text: 'In `processNewVisitForm` (already takes `@Valid Visit visit, BindingResult result`): run the double-booking check before save; on conflict, `result.rejectValue("vet", ...)` and return `"pets/createOrUpdateVisitForm"`.' },
+      { id: 'plan-4-4', type: 'check', checked: false, text: '`setAllowedFields` (`@InitBinder`) today disallows `id`, `*.id` - no change needed unless binding the vet select requires it.' },
+    ],
+  },
+  {
+    id: 'plan-5',
+    type: 'check',
+    checked: false,
+    text: '**5. Form template** - `pets/createOrUpdateVisitForm.html`',
+    children: [
+      { id: 'plan-5-1', type: 'check', checked: false, text: 'Add a time slot control for the visit (bound to `visit.time`): `<select>` or `<input type="time">`, TBD at refinement.' },
+      { id: 'plan-5-2', type: 'check', checked: false, text: 'Show validation errors for the new fields.' },
+      { id: 'plan-5-3', type: 'check', checked: false, text: 'Vet selection is added once the binding approach is settled (see refinement).' },
+    ],
+  },
+  {
+    id: 'plan-6',
+    type: 'check',
+    checked: false,
+    text: '**6. Visit history display** - `owners/ownerDetails.html`',
+    children: [
+      { id: 'plan-6-1', type: 'check', checked: false, text: 'Add Vet and Time columns to the per-pet visits table.' },
+    ],
+  },
+  {
+    id: 'plan-7',
+    type: 'check',
+    checked: false,
+    text: '**7. Tests** - `owner/VisitControllerTests.java`',
+    children: [
+      { id: 'plan-7-1', type: 'check', checked: false, text: '`processNewVisitFormSuccess` - booking with vet+time succeeds, redirects to owner page.' },
+      { id: 'plan-7-2', type: 'check', checked: false, text: '`processNewVisitFormDoubleBookingRejected` - conflicting slot re-renders the form with a field error on `vet`.' },
+      { id: 'plan-7-3', type: 'check', checked: false, text: 'Vets and time slots populated in the model.' },
+    ],
+  },
 ];
 
-const VISIT_BOOKING_DECISION_ITEMS = [
-  { id: 'dec-1', type: 'bullet', text: 'AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred' },
-  { id: 'dec-2', type: 'bullet', text: 'Conflict UX — inline field error on re-render for duplicate vet/date/time bookings' },
-];
+const VISIT_BOOKING_DECISION_ITEMS = [];
 
 function cloneDocumentItem(item) {
   if (!item || typeof item !== 'object') return item;
@@ -3880,8 +3960,8 @@ function createVisitBookingPlanItems() {
   }).items;
 }
 
-const VISIT_BOOKING_GOAL_LINE_ONE = 'Add vet assignment and time slot selection to the visit creation flow.';
-const VISIT_BOOKING_GOAL_LINE_TWO = 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).';
+const VISIT_BOOKING_GOAL_LINE_ONE = 'Today a visit records only a date and a free-text description, with no vet and nothing stopping two visits from landing on the same vet at the same time.';
+const VISIT_BOOKING_GOAL_LINE_TWO = 'This adds vet and time-slot selection to the existing visit form, and enforces one visit per vet per slot.';
 const LEGACY_VISIT_BOOKING_GOAL_TEXT = `${VISIT_BOOKING_GOAL_LINE_ONE} ${VISIT_BOOKING_GOAL_LINE_TWO}`;
 
 function isLegacyVisitBookingGoalText(text = '') {
@@ -4066,39 +4146,46 @@ function createSpecDocument() {
       id: 'acceptance',
       title: 'Acceptance Criteria',
       items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation).' },
+        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown of available vets for the selected date/time.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice.' },
         { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
-        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
+        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page, visit history table) shows the assigned vet and time.' },
         { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
       ],
     },
     {
       id: 'plan',
       title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
-      items: [],
+      items: VISIT_BOOKING_PLAN_ITEMS.map((item) => cloneDocumentItem(item)),
     },
     {
       id: 'implementation',
       title: 'Implementation Notes',
       items: [
-        { id: 'impl-3', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.' },
-        { id: 'impl-4', type: 'bullet', text: 'Project uses Formatter<T> for form selects (see PetTypeFormatter).' },
+        { id: 'impl-1', type: 'bullet', text: '**Visit entity** (`Visit.java`): today only `date` (LocalDate, `@Column("visit_date")` + `@DateTimeFormat("yyyy-MM-dd")`) + `description` (String, `@NotBlank`), extends `BaseEntity`, no link to Vet.' },
+        { id: 'impl-2', type: 'bullet', text: '**visits table**: today `id`, `pet_id`, `visit_date`, `description` - no vet or time.' },
+        { id: 'impl-3', type: 'bullet', text: '**Vet entity** (`vet/Vet.java`): extends `Person`, `ManyToMany` specialties. Lives in the `vet` package - `owner.Visit` needs a cross-package import.' },
+        { id: 'impl-4', type: 'bullet', text: '**VetRepository** (`vet/VetRepository.java`): cached `findAll()`, returns `Collection<Vet>` / `Page<Vet>`.' },
+        { id: 'impl-5', type: 'bullet', text: '**No VisitRepository yet**: visits persist via cascade (`Owner -> Pet -> Visit`, `CascadeType.ALL`). A new repo is needed for the double-booking query.' },
+        { id: 'impl-6', type: 'bullet', text: '**VisitController** (`owner/VisitController.java`): package-private `class VisitController`. Builds the Visit in `@ModelAttribute("visit")` (`loadPetWithVisit`), and in `processNewVisitForm(@ModelAttribute Owner owner, @PathVariable int petId, @Valid Visit visit, BindingResult result, ...)` saves via `owner.addVisit(petId, visit)` + `this.owners.save(owner)` (cascade). Injects only `OwnerRepository` (field named `owners`) today. Already has a `@ModelAttribute("minVisitDate")` method.' },
+        { id: 'impl-7', type: 'bullet', text: '**Form template** (`createOrUpdateVisitForm.html`): Thymeleaf form using the `fragments/inputField` fragment for date + description, plus a previous-visits table. A `fragments/selectField` fragment already exists (used by `createOrUpdatePetForm` for pet type) - the new vet/time selects reuse it.' },
       ],
-    },
-    {
-      id: 'tradeoffs',
-      title: 'Decisions',
-      items: [],
     },
     {
       id: 'other',
       title: 'Other',
+      items: [],
+    },
+    {
+      id: 'out-of-scope',
+      title: 'Out of scope',
       items: [
-        { id: 'other-1', type: 'comment', text: 'Dynamic availability (AJAX) \u2014 not in prompt, out of scope' },
-        { id: 'other-2', type: 'comment', text: 'Vet specialties matching \u2014 not in prompt, out of scope' },
+        { id: 'other-1', type: 'bullet', text: '**Vet specialties matching** - no filtering by pet type or specialty; all vets shown.' },
+        { id: 'other-2', type: 'bullet', text: '**Dynamic availability (AJAX)** - dropdown static on load, no refresh on date change. Possible follow-up.' },
+        { id: 'other-3', type: 'bullet', text: '**Multi-slot / duration booking** - one slot per visit, no duration.' },
+        { id: 'other-4', type: 'bullet', text: '**Vet calendar view** - no schedule UI for vets.' },
+        { id: 'other-5', type: 'bullet', text: '**VetRepository cache invalidation** - `findAll()` is `@Cacheable("vets")`; adding a vet won\'t auto-refresh the dropdown. Existing behavior, not introduced here.' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
@@ -4677,13 +4764,17 @@ function extractGoalTitleFromMarkdown(code) {
 }
 
 function renderDoneInlineText(text, keyPrefix = 'inline') {
-  const parts = text.split(/(@\w+)/g);
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   if (parts.length === 1) return text;
-  return parts.map((part, index) =>
-    /^@\w+$/.test(part)
-      ? <span key={`${keyPrefix}-${index}`} className="spec-ref">{part}</span>
-      : part
-  );
+  return parts.map((part, index) => {
+    if (/^`[^`]+`$/.test(part)) {
+      return <span key={`${keyPrefix}-${index}`} className="spec-ref">{part.slice(1, -1)}</span>;
+    }
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
 
 const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
@@ -4778,91 +4869,10 @@ function InlineInspectionHoverTooltip({ rect, tooltip, onMouseEnter, onMouseLeav
 }
 
 function InlineInspectionHighlight({ className, tooltip = null, onAccept = null, onReject = null, children }) {
-  const anchorRef = useRef(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [rect, setRect] = useState(null);
-  const closeTimerRef = useRef(null);
-  const hasTooltip = Boolean(tooltip?.title);
-
-  const updateRect = useCallback(() => {
-    const anchor = anchorRef.current;
-    if (!(anchor instanceof HTMLElement)) return;
-
-    const nextRect = anchor.getBoundingClientRect();
-    setRect({
-      top: nextRect.top,
-      left: nextRect.left,
-      width: nextRect.width,
-      height: nextRect.height,
-    });
-  }, []);
-
-  const scheduleClose = useCallback(() => {
-    closeTimerRef.current = setTimeout(() => setIsOpen(false), 120);
-  }, []);
-
-  const cancelClose = useCallback(() => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-  }, []);
-
-  const closeTooltip = useCallback(() => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    setIsOpen(false);
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen || !hasTooltip) return undefined;
-
-    updateRect();
-    window.addEventListener('resize', updateRect);
-    window.addEventListener('scroll', updateRect, true);
-
-    return () => {
-      window.removeEventListener('resize', updateRect);
-      window.removeEventListener('scroll', updateRect, true);
-    };
-  }, [hasTooltip, isOpen, updateRect]);
-
-  useEffect(() => () => {
-    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener(ISSUE_INTENTION_POPUP_OPEN_EVENT, closeTooltip);
-    return () => window.removeEventListener(ISSUE_INTENTION_POPUP_OPEN_EVENT, closeTooltip);
-  }, [closeTooltip]);
-
   return (
-    <>
-      <span
-        ref={anchorRef}
-        className={`${className}${hasTooltip ? ' spec-inline-hover-trigger' : ''}`}
-        onMouseEnter={hasTooltip ? () => {
-          if (document.querySelector('.spec-done-intention-popup-singleton')) {
-            return;
-          }
-          cancelClose();
-          updateRect();
-          setIsOpen(true);
-        } : undefined}
-        onMouseLeave={hasTooltip ? scheduleClose : undefined}
-      >
-        {children}
-      </span>
-      {hasTooltip && isOpen && rect ? (
-        <InlineInspectionHoverTooltip
-          rect={rect}
-          tooltip={tooltip}
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
-          onAccept={() => { setIsOpen(false); onAccept?.(); }}
-          onReject={() => { setIsOpen(false); onReject?.(); }}
-        />
-      ) : null}
-    </>
+    <span className={className}>
+      {children}
+    </span>
   );
 }
 
@@ -5373,9 +5383,9 @@ function AcCheckRow({
 
 const PLAN_DIFF_PREVIEW_REPLACEMENTS = {
   0: 'Schema changes — add vet_id (FK), visit_time (TIME), and UNIQUE(vet_id, visit_date, visit_time) constraint',
-  1: 'Visit entity — add @ManyToOne vet and LocalTime time with @NotNull',
+  1: 'Visit entity — add `ManyToOne` vet and `LocalTime` time with `NotNull`',
   2: 'VisitRepository — add double-booking query + UNIQUE(vet_id, visit_date, visit_time) constraint',
-  3: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()',
+  3: 'VisitController — inject `VetRepository`, add `ModelAttribute("vets")` with `findAll()`',
   4: 'Form template — add <select> for vet with VetFormatter (per PetTypeFormatter pattern) and time slot',
   5: 'Owner details — add Vet and Time columns to visit history table',
   6: 'Tests — vet list in model, successful booking, double-booking rejected',
@@ -5477,20 +5487,7 @@ function normalizeDoneFileEntries(files = []) {
 }
 
 function getDonePlanHeadingFiles(sectionMeta = null, attachedFiles = []) {
-  const initialFiles = [];
-
-  if (sectionMeta?.kind === 'chip' && typeof sectionMeta.text === 'string' && sectionMeta.text.trim().length > 0) {
-    initialFiles.push(sectionMeta.text);
-  }
-
-  (attachedFiles ?? []).forEach((file) => {
-    const label = typeof file === 'string' ? file : file?.label;
-    if (label === 'Configuration.md') {
-      initialFiles.push(label);
-    }
-  });
-
-  return normalizeDoneFileEntries(initialFiles);
+  return [];
 }
 
 function getDoneAcceptanceHeadingFiles(sectionMeta = null, attachedFiles = []) {
@@ -6404,7 +6401,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
       </div>
     );
   }
-  const bulletMatch = line.match(/^-\s+(.*)$/);
+  const bulletMatch = line.match(/^\s*-\s+(.*)$/);
   if (bulletMatch) {
     return (
       <div key={key} className="spec-done-line spec-done-line-bullet">
@@ -7446,7 +7443,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const line = row.line;
       const headingTitle = getDoneHeadingTitle(line);
       const sectionMeta = headingTitle ? sectionMetaByTitle.get(headingTitle.toLowerCase()) ?? null : null;
-      const showRunIcon = shouldShowDoneRunIcon(line, { hidePlanRun: false });
+      const showRunIcon = shouldShowDoneRunIcon(line, { hidePlanRun: false, hideAcRun: false });
       const serializedLineMeta = matchedSerializedLineMetaByRow[rowIndex] ?? null;
 
       if (headingTitle !== null) {
@@ -8232,8 +8229,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [onCommentCountChange, totalCommentCount]);
 
   useEffect(() => {
+    if (commentEntries.length === 0 && totalCommentCount === 0 && persistedCommentEntries.length > 0) {
+      return;
+    }
     onCommentsChange?.(commentEntries);
-  }, [commentEntries, onCommentsChange]);
+  }, [commentEntries, onCommentsChange, persistedCommentEntries.length, totalCommentCount]);
 
   useEffect(() => {
     let frameId = requestAnimationFrame(() => {
@@ -8341,16 +8341,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     if (!Number.isInteger(highlightedProblemRowIndex)) return undefined;
 
-    let frameId = 0;
+    const matchingRow = rowMetaList.find((rowMeta) => rowMeta.rowIndex === highlightedProblemRowIndex);
+    if (matchingRow?.stableKey) {
+      setActiveIssueRowKey(matchingRow.stableKey);
+      setNavigatedIssueRowKey(matchingRow.stableKey);
+    }
 
-    frameId = requestAnimationFrame(() => {
-      scrollDoneRowIntoView(highlightedProblemRowIndex);
-    });
-
-    return () => {
-      if (frameId) cancelAnimationFrame(frameId);
-    };
-  }, [highlightedProblemRowIndex, highlightedProblemLocation?.requestKey, scrollDoneRowIntoView]);
+    return undefined;
+  }, [highlightedProblemRowIndex, highlightedProblemLocation?.requestKey, rowMetaList]);
 
   return (
     <>
@@ -8421,11 +8419,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
-            const showIssueBulb = hasIssueBulb
-              && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
-            const hasRunnableGutterAction = showRunIcon || Boolean(effectiveCheckTarget);
-            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
-            const commentsForRow = rowComments[rowCommentKey] ?? [];
+            const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
+            const showIssueBulb = hasIssueBulb && isProblemHighlightedRow;
+            const hasRunnableGutterAction = showRunIcon;
+            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen || isProblemHighlightedRow);
+            const commentsForRow = rowComments[rowCommentKey] ?? getCommentsForCommentTarget(
+              persistedCommentEntries,
+              rowMeta.checkTarget ?? rowMeta.issueTarget,
+            );
             const commentCount = commentsForRow.length;
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
@@ -8435,12 +8436,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               && !hasPlanComment;
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
-            const showCommentAdornment = commentCount > 0 || focusedCommentRowKey === stableKey || isCommentPopupOpen
-              || (isEmptyLine && hoveredRowKey === stableKey)
-              || activeIssueRowKey === stableKey
-              || isNavigatedIssueRow;
-            const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
-            const commentAdornment = showCommentAdornment ? (
+            const renderCommentAdornment = () => (
               <DoneCommentAdornment
                 comments={commentsForRow}
                 isOpen={isCommentPopupOpen}
@@ -8460,7 +8456,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   ));
                 }}
               />
-            ) : null;
+            );
+            const showGutterCommentAdornment = commentCount > 0;
+            const showInlineCommentAdornment = !showGutterCommentAdornment && !isProblemHighlightedRow && (focusedCommentRowKey === stableKey || isCommentPopupOpen
+              || (isEmptyLine && hoveredRowKey === stableKey)
+              || activeIssueRowKey === stableKey
+              || isNavigatedIssueRow);
+            const commentAdornment = showInlineCommentAdornment ? renderCommentAdornment() : null;
             return (
             <Fragment key={stableKey}>
             <div
@@ -8504,23 +8506,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               }}
             >
               <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-section-run' : ''}`}>
-                <button
-                  type="button"
-                  className={`spec-done-gutter-breakpoint-btn${breakpoints.has(stableKey) ? ' is-active' : ''}`}
-                  aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    toggleBreakpoint(stableKey);
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
-                >
-                  <span className="editor-breakpoint-dot" />
-                </button>
                 {hasRunnableGutterAction ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
@@ -8535,43 +8520,22 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           checkTarget: effectiveCheckTarget,
                         })}
                   />
-                ) : (
-                  <span className="spec-done-gutter-slot" aria-hidden="true" />
-                )}
-                {showIssueBulb ? (
-                  <button
-                    type="button"
-                    className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
-                    aria-label="Open issue actions"
+                ) : showIssueBulb ? (
+                  <span
+                    className="spec-done-gutter-intention-btn spec-done-gutter-intention-indicator"
+                    aria-label="Selected problem"
                     data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
-                    aria-haspopup="menu"
-                    aria-expanded={isIssuePopupOpen}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      setActiveIssueRowKey(stableKey);
-                      setNavigatedIssueRowKey(stableKey);
-                      scheduleIntentionPopupOpen({
-                        rowKey: stableKey,
-                        rowIndex,
-                        rect,
-                        severity: issueSeverity,
-                        sectionTitle: currentSectionTitle,
-                        issueTarget,
-                        proposalOptions: proposalOptions,
-                      });
-                    }}
                   >
                     <Icon name="codeInsight/intentionBulb" size={16} />
-                  </button>
+                  </span>
+                ) : showGutterCommentAdornment ? (
+                  <span className="spec-done-gutter-comment-slot">
+                    {renderCommentAdornment()}
+                  </span>
                 ) : (
                   <span className="spec-done-gutter-slot" aria-hidden="true" />
                 )}
+                <span className="spec-done-gutter-slot" aria-hidden="true" />
               </div>
               <div
                 className="spec-done-row-content"
@@ -9017,10 +8981,10 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   useEffect(() => {
     if (genState !== 'done' || doneTitleHydratedRef.current) return;
     doneTitleHydratedRef.current = true;
-    if (!value.trim() && goalTitle !== toolbarPlaceholder) {
-      setValue(goalTitle);
+    if (!value.trim()) {
+      setValue(VISIT_BOOKING_PROMPT_TEXT);
     }
-  }, [genState, goalTitle, toolbarPlaceholder, value]);
+  }, [genState, value]);
 
   useEffect(() => {
     if (completion && toolbarRef.current) {
@@ -9521,7 +9485,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="loading">
-          {renderBusyToolbar('Analizing...')}
+          {renderBusyToolbar('Updating spec...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
@@ -9611,9 +9575,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     className={`at-send-btn at-send-btn-enhance${shouldShowDoneEnhanceHint ? ' has-attention' : ''}`}
                     ref={doneEnhanceBtnRef}
                     data-demo-id="agent-task-enhance"
-                    onClick={handleDoneEnhance}
-                    disabled={!isDoneEnhanceEnabled}
-                    aria-disabled={!isDoneEnhanceEnabled}
+                    onClick={() => {
+                      if (isDoneEnhanceEnabled) handleDoneEnhance();
+                    }}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
@@ -9651,15 +9615,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               />
             </>,
             document.body
-          )}
-          {doneEnhanceHintRect && shouldShowDoneEnhanceHint && (
-            <PositionedPopup triggerRect={doneEnhanceHintRect} onDismiss={() => setDoneEnhanceHintRect(null)} gap={20}>
-              <DoneEnhanceGuidePopup
-                arrowPosition={doneEnhanceHintArrowPosition}
-                dismissing={isDoneEnhanceHintDismissing}
-                onDismiss={() => setDoneEnhanceHintRect(null)}
-              />
-            </PositionedPopup>
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
@@ -9909,39 +9864,9 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
       documentSections,
       genState: isVisitBookingPreset ? 'done' : 'idle',
       planBaseStatuses: null,
-      acBaseStatuses: isVisitBookingPreset ? [
-        { ...AC_RUN_STATUSES[0], checkboxStatus: null, checks: [], problemCount: 1 },
-        {
-          checkboxStatus: null,
-          checks: [],
-          problemCount: 1,
-          highlight: { match: 'e.g. hourly slots 09:00–16:00', className: 'spec-inline-warning-highlight' },
-          issue: { severity: 'warning', label: 'Ambiguous AC. "e.g." in acceptance criteria.', secondaryText: 'Line 7' },
-          proposal: 'Specify 09:00–16:00, configurable via application.properties',
-        },
-        {
-          checkboxStatus: null,
-          checks: [],
-          problemCount: 1,
-          highlight: { match: '(server-side validation)', className: 'spec-inline-warning-highlight' },
-          issue: { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
-          proposalOptions: [
-            {
-              label: 'Inline field error on re-render',
-              replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field (server-side validation).',
-            },
-            {
-              label: 'Modal with conflict details',
-              replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
-            },
-            {
-              label: 'Agent decides',
-              replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX and implements server-side validation.',
-            },
-            { type: 'text' },
-          ],
-        },
-      ] : null,
+      acBaseStatuses: isVisitBookingPreset
+        ? [null, AC_RUN_STATUSES[1], AC_RUN_STATUSES[2], null, null, null]
+        : null,
       seedRunResults: isVisitBookingPreset,
     }),
   };
@@ -9986,44 +9911,31 @@ function getAgentTaskTabId(taskId) {
 }
 
 function buildInitialEditorTabs() {
-  const presetTabs = ['t1', 't2']
-    .map((taskId) => getPresetAgentTaskDefinition(taskId)?.tab)
-    .filter(Boolean);
-
-  return [
-    { id: 'agent-task-new-0', label: 'New Task.md', icon: 'fileTypes/markdown', closable: true },
-    ...presetTabs,
-    ...MY_EDITOR_TABS,
-  ];
+  const visitBookingTab = getPresetAgentTaskDefinition('t1')?.tab;
+  return visitBookingTab ? [visitBookingTab] : [];
 }
 
 function buildInitialEditorTabContents() {
-  const newTaskScenario = getAgentTaskScenario({ tabId: 'agent-task-new-0', label: 'New Task.md' });
-  return ['t1', 't2'].reduce((contents, taskId) => {
-    const preset = getPresetAgentTaskDefinition(taskId);
-    if (!preset?.tab?.id || !preset?.content) return contents;
+  const preset = getPresetAgentTaskDefinition('t1');
+  if (!preset?.tab?.id || !preset?.content) {
+    return {};
+  }
 
-    return {
-      ...contents,
-      [preset.tab.id]: preset.content,
-    };
-  }, {
-    'agent-task-new-0': { language: 'markdown', code: newTaskScenario.initialCode },
+  return {
+    [preset.tab.id]: preset.content,
     ...MY_EDITOR_TAB_CONTENTS,
-  });
+  };
 }
 
 function buildInitialInteractiveTaskStates() {
-  const newTaskScenario = getAgentTaskScenario({ tabId: 'agent-task-new-0', label: 'New Task.md' });
-  return ['t1', 't2'].reduce((states, taskId) => {
-    const preset = getPresetAgentTaskDefinition(taskId);
-    if (!preset?.tab?.id || !preset?.interactiveState) return states;
+  const preset = getPresetAgentTaskDefinition('t1');
+  if (!preset?.tab?.id || !preset?.interactiveState) {
+    return {};
+  }
 
-    return {
-      ...states,
-      [preset.tab.id]: preset.interactiveState,
-    };
-  }, { 'agent-task-new-0': newTaskScenario.initialTaskState });
+  return {
+    [preset.tab.id]: preset.interactiveState,
+  };
 }
 
 function createAgentTaskExecutionTiming() {
@@ -10465,14 +10377,14 @@ export default function App() {
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
-  const [activeEditorTab, setActiveEditorTab] = useState(1); // index 1 = visit-booking.md (after New Task.md at 0)
+  const [activeEditorTab, setActiveEditorTab] = useState(0);
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -10513,6 +10425,7 @@ export default function App() {
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
   const [problemsFixMenu, setProblemsFixMenu] = useState(null);
+  const [visitBookingProblemExpanded, setVisitBookingProblemExpanded] = useState(false);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
   const doneEnhanceFlowRef = useRef(null);
   const seededPresetTaskRef = useRef(false);
@@ -11287,9 +11200,6 @@ export default function App() {
 
     setSelectedTask(taskId);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
     const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
@@ -11432,6 +11342,10 @@ export default function App() {
 
   const handleProblemsNodeSelect = useCallback((nodeId, selected) => {
     if (!selected) return;
+
+    if (typeof nodeId === 'string' && nodeId.includes('visit-conflict-diagnostic')) {
+      setVisitBookingProblemExpanded(true);
+    }
 
     const rawIndex = getProblemRawIndexFromTreeNodeId(nodeId);
     if (!Number.isInteger(rawIndex)) return;
@@ -11576,6 +11490,15 @@ export default function App() {
         restoredPlanItemsFromEmptyPlan = true;
       }
     }
+
+    const documentWithPendingFixes = applyPendingIssueFixesToSpec({
+      code: targetCode,
+      documentSections: nextDocument,
+      appliedIssueFixes: nextPendingAppliedIssueFixes,
+      removedIssueIndices: nextRemovedIssueIndices,
+    });
+    targetCode = documentWithPendingFixes.code;
+    nextDocument = documentWithPendingFixes.documentSections;
 
     const documentWithQuickFixDecisions = addVisitBookingDecisionsAfterQuickFixes(
       nextDocument,
@@ -11793,9 +11716,6 @@ export default function App() {
       }
     }
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
     setActiveEditorTab(nextActiveTabIndex);
   }, [
     activeEditorTab,
@@ -12593,6 +12513,8 @@ export default function App() {
   };
 
   const openAndFocusIdeProblemsToolWindow = () => {
+    setVisitBookingProblemExpanded(false);
+    setHighlightedProblemLocation(null);
     openIdeBottomToolWindow('problems');
     focusIdeProblemsPanel();
   };
@@ -12655,7 +12577,6 @@ export default function App() {
     if (!isTerminalAlreadyOpen) {
       bumpTerminalViewKeyForTab(nextTerminalTabId);
     }
-    openIdeBottomToolWindow('terminal');
     if (nextRunRequest?.mode === 'update-spec') {
       requestAnimationFrame(() => {
         startTerminalRunAnimation(nextRunRequest);
@@ -12782,6 +12703,10 @@ export default function App() {
     } = pendingDoneSpecState;
     const effectiveRerunAcOriginalIndices = [];
     const effectiveHasPendingReruns = rerunPlanOriginalIndices.length > 0;
+    const shouldClearDoneCommentsAfterUpdate =
+      hasPendingComments ||
+      (Array.isArray(commentEntries) && commentEntries.length > 0) ||
+      pendingAcQuickFixCount > 0;
     if (!hasSpecChanges && !hasPendingComments && !effectiveHasPendingReruns) {
       return;
     }
@@ -12795,9 +12720,6 @@ export default function App() {
       clearStatusReveal('plan');
       clearStatusReveal('ac');
       resetRunUiForTab(currentTabId);
-      if (hasPendingComments) {
-        clearTaskCommentsForTab(currentTabId);
-      }
       terminalDrivenGenerationRef.current = false;
       doneEnhanceFlowRef.current = {
         mode: 'restore-plan-progressive',
@@ -12819,7 +12741,7 @@ export default function App() {
           documentSections: nextDocument,
           planRunResult: [{ status: 'pending' }],
         }],
-        commentsAlreadyCleared: hasPendingComments,
+        commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
         versionCommit: hasSpecChanges
           ? {
               sourceTabId: currentTabId,
@@ -12852,18 +12774,17 @@ export default function App() {
       return;
     }
 
-    // Compute authoritative next plan statuses from scenario base (same source as a
-    // normal Run), so that plan items always generate from fresh state after Specify —
-    // even if planRunResult was null (no prior run) or had nulls from quick fixes.
-    // This mirrors what finishTerminalRun does when advanceGeneration is false.
-    const currentScenario = getCurrentAgentTaskScenario(currentTabId);
-    const resolvedNextPlanRunResult = buildResolvedRunStatuses(
-      currentScenario.planBaseStatuses,
-      'plan',
-      nextAppliedIssueFixes,
-      nextRemovedIssueIndices,
-      { runComplete: true },
-    );
+    const resolveVisibleRunResults = (currentResults, fallbackResults) => {
+      const sourceResults = Array.isArray(currentResults)
+        ? currentResults
+        : (Array.isArray(fallbackResults) ? fallbackResults : null);
+
+      return Array.isArray(sourceResults)
+        ? sourceResults.map((statusItem) => resolveRuntimeInspectionItem(statusItem))
+        : sourceResults;
+    };
+    const resolvedNextAcRunResult = resolveVisibleRunResults(currentAcRunResult, nextAcRunResult);
+    const resolvedNextPlanRunResult = resolveVisibleRunResults(currentPlanRunResult, nextPlanRunResult);
 
     clearChainedRunTimeout();
     clearStatusReveal('plan');
@@ -12877,14 +12798,14 @@ export default function App() {
       nextDocument,
       nextAppliedIssueFixes,
       nextRemovedIssueIndices,
-      nextAcRunResult,
+      nextAcRunResult: resolvedNextAcRunResult,
       nextPlanRunResult: resolvedNextPlanRunResult,
       currentAcRunResult,
       currentPlanRunResult,
       currentRemovedIssueIndices,
       rerunAcOriginalIndices: effectiveRerunAcOriginalIndices,
       rerunPlanOriginalIndices,
-      commentsAlreadyCleared: hasPendingComments,
+      commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
       versionCommit: (hasSpecChanges || effectiveHasPendingReruns)
         ? {
             sourceTabId: currentTabId,
@@ -12906,37 +12827,23 @@ export default function App() {
 
     setGenerationTabId(currentTabId);
     setGenProgress(0);
-    terminalDrivenGenerationRef.current = true;
-    if (hasPendingComments) {
-      clearTaskCommentsForTab(currentTabId);
-    }
-    queueTerminalRun({
-      mode: 'generate',
-      sectionTitle: 'Plan',
-      sourceTabId: currentTabId,
-      taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
-      question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
-      permissionChoice: 'allow-once',
-    }, {
-      preserveAcRunResult: true,
-      preservePlanRunResult: true,
-      preserveWarningBanner: true,
-    });
+    terminalDrivenGenerationRef.current = false;
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
   };
 
-  const handleDoneIssueFix = useCallback(({ kind, index, replacementText: replacementTextOverride = null }) => {
+  const handleDoneIssueFix = useCallback(({ kind, index, replacementText: replacementTextOverride = null, commentText: commentTextOverride = null }) => {
     if (!Number.isInteger(index) || index < 0) return;
     const fixConfig = getIssueQuickFixConfig(kind, index);
     if (!fixConfig) return;
-    const replacementText = typeof replacementTextOverride === 'string' && replacementTextOverride.trim().length > 0
-      ? replacementTextOverride.trim()
-      : fixConfig.replacementText;
 
     const currentTabId = generationTabId ?? ideTabs[activeEditorTab ?? 0]?.id;
     const terminalTabId = currentTabId ? buildTerminalSessionTabId(currentTabId) : null;
     const visibleIndex = mapOriginalIssueIndexToVisible(kind, index, removedIssueIndices);
     if (!Number.isInteger(visibleIndex) || visibleIndex < 0) return;
+    const selectedReplacementText =
+      typeof replacementTextOverride === 'string' && replacementTextOverride.trim().length > 0
+        ? replacementTextOverride
+        : fixConfig.replacementText;
 
     // A quick fix invalidates any in-flight run/reveal state for this spec.
     clearChainedRunTimeout();
@@ -12958,79 +12865,73 @@ export default function App() {
       setTerminalPermissionPromptForTab(null, terminalTabId);
     }
 
-    if (currentTabId) {
-      setIdeTabContents((prev) => {
-        const currentEntry = prev[currentTabId] ?? { language: 'markdown', code: '' };
-        return {
-          ...prev,
-          [currentTabId]: {
-            ...currentEntry,
-            language: 'markdown',
-            code: applyIssueQuickFixToCode(currentEntry.code ?? '', {
-              kind,
-              index: visibleIndex,
-              replacementText,
-            }),
-          },
-        };
-      });
-    }
-
-    setGeneratedDocument((prev) => applyIssueQuickFixToDocumentSections(prev, {
-      kind,
-      index: visibleIndex,
-      replacementText,
-    }));
-
     setAppliedIssueFixes((prev) => ({
       ...prev,
       [kind]: {
         ...(prev[kind] ?? {}),
-        [index]: true,
+        [index]: createAppliedIssueFixValue(selectedReplacementText),
       },
     }));
 
-    // Quick fixes are applied immediately — null out the result so the issue
-    // disappears from the Problems panel right away.
-    // Plan fixes are later confirmed by a run; AC fixes take effect directly.
-    if (kind === 'plan') {
-      setPlanRunResult((prev) => {
-        if (!Array.isArray(prev)) return prev;
-        const next = [...prev];
-        next[visibleIndex] = null;
-        return next;
-      });
-    }
-
     if (kind === 'ac') {
-      setAcRunResult((prev) => {
-        if (!Array.isArray(prev)) return prev;
-        const next = [...prev];
-        next[visibleIndex] = null;
-        return next;
-      });
       setPendingAcQuickFixCount((c) => c + 1);
     }
 
+    setHighlightedProblemLocation(null);
+
     if (currentTabId) {
+      const targetMetadata = buildCommentTargetEntryMetadata(
+        generatedDocument,
+        { kind, index },
+        removedIssueIndices,
+      );
+      const quickFixComment = (
+        typeof commentTextOverride === 'string' && commentTextOverride.trim().length > 0
+          ? commentTextOverride.trim()
+          : fixConfig.actionLabel
+      );
+      const commentMetadata = {
+        sectionTitle: kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+        line: targetMetadata.line ?? '',
+        rawIndex: targetMetadata.rawIndex,
+        rowStableKey: targetMetadata.rowStableKey,
+      };
+      const nextAcRunResult = kind === 'ac' && Array.isArray(acRunResult)
+        ? acRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
+        : acRunResult;
+      const nextPlanRunResult = kind === 'plan' && Array.isArray(planRunResult)
+        ? planRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
+        : planRunResult;
+
+      setAgentTaskCommentEntries((prev) => replaceCommentEntriesForTarget(
+        prev,
+        { kind, index },
+        quickFixComment ? [quickFixComment] : [],
+        commentMetadata,
+      ));
+      if (kind === 'ac' && Array.isArray(nextAcRunResult)) {
+        setAcRunResult(nextAcRunResult);
+      }
+      if (kind === 'plan' && Array.isArray(nextPlanRunResult)) {
+        setPlanRunResult(nextPlanRunResult);
+      }
+
       setInteractiveTaskStates((prev) => {
         const previousTaskState = prev[currentTabId] ?? {};
         const baseAcRunResult = previousTaskState.acRunResult ?? acRunResult;
         const basePlanRunResult = previousTaskState.planRunResult ?? planRunResult;
-        const nextAcRunResult = kind === 'ac' && Array.isArray(baseAcRunResult)
-          ? [...baseAcRunResult]
+        const storedAcRunResult = kind === 'ac' && Array.isArray(baseAcRunResult)
+          ? baseAcRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
           : baseAcRunResult;
-        const nextPlanRunResult = kind === 'plan' && Array.isArray(basePlanRunResult)
-          ? [...basePlanRunResult]
+        const storedPlanRunResult = kind === 'plan' && Array.isArray(basePlanRunResult)
+          ? basePlanRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
           : basePlanRunResult;
-
-        if (kind === 'ac' && Array.isArray(nextAcRunResult)) {
-          nextAcRunResult[visibleIndex] = null;
-        }
-
-        if (kind === 'plan' && Array.isArray(nextPlanRunResult)) {
-          nextPlanRunResult[visibleIndex] = null;
-        }
+        const storedCommentEntries = replaceCommentEntriesForTarget(
+          previousTaskState.commentEntries ?? agentTaskCommentEntries,
+          { kind, index },
+          quickFixComment ? [quickFixComment] : [],
+          commentMetadata,
+        );
 
         return {
           ...prev,
@@ -13038,33 +12939,25 @@ export default function App() {
             ...previousTaskState,
             genState,
             genProgress,
-            documentSections: applyIssueQuickFixToDocumentSections(
-              previousTaskState.documentSections ?? generatedDocument,
-              {
-                kind,
-                index: visibleIndex,
-                replacementText,
-              },
-            ),
+            documentSections: previousTaskState.documentSections ?? generatedDocument,
             appliedIssueFixes: {
               ...cloneIssueStateMap(previousTaskState.appliedIssueFixes ?? appliedIssueFixes),
               [kind]: {
                 ...(previousTaskState.appliedIssueFixes?.[kind] ?? appliedIssueFixes?.[kind] ?? {}),
-                [index]: true,
+                [index]: createAppliedIssueFixValue(selectedReplacementText),
               },
             },
             removedIssueIndices: previousTaskState.removedIssueIndices ?? removedIssueIndices,
-            acRunResult: nextAcRunResult,
-            planRunResult: nextPlanRunResult,
-            commentEntries: previousTaskState.commentEntries ?? agentTaskCommentEntries,
+            acRunResult: storedAcRunResult,
+            planRunResult: storedPlanRunResult,
+            commentEntries: storedCommentEntries,
           },
         };
       });
-      clearTaskCommentTargetForTab(currentTabId, { kind, index });
     }
 
-    // The fixed item disappears from the Problems panel — reset the tracked
-    // leaf index so the next arrow key starts from the first row.
+    // Keep the existing Problems list visible until Specify regenerates the spec.
+    // Reset only keyboard tracking so navigation starts from the first row.
     problemsSelectedLeafIdxRef.current = -1;
 
   }, [
@@ -13085,6 +12978,7 @@ export default function App() {
     planRunResult,
     removedIssueIndices,
     setAcRunResult,
+    setAgentTaskCommentEntries,
     setPendingAcQuickFixCount,
     setPendingTerminalRunForTab,
     setPlanRunResult,
@@ -13160,8 +13054,49 @@ export default function App() {
     let resolvedIssueTarget = null;
     let resolvedProposals = null;
     let resolvedStatusItem = null;
+    const hasPendingFixForIssue = (target) => (
+      Boolean(target?.kind)
+      && Number.isInteger(target?.index)
+      && Boolean(appliedIssueFixes?.[target.kind]?.[target.index])
+    );
 
-    if (highlightedProblemLocation?.kind) {
+    const currentIssues = buildInspectionSummary({
+      planRunResult,
+      acRunResult,
+      documentSections: generatedDocument,
+    }).issues;
+    const selectedProblemNode = typeof document !== 'undefined'
+      ? document.querySelector('.problems-window .tree-node-children .tree-node-selected')
+      : null;
+    const selectedProblemLabel = selectedProblemNode instanceof HTMLElement
+      ? (selectedProblemNode.textContent ?? '').replace(/\s+/g, ' ').trim()
+      : '';
+    const selectedIssue = selectedProblemLabel
+      ? (currentIssues.find((issue) => selectedProblemLabel.includes(issue?.label ?? '')) ?? null)
+      : null;
+
+    if (selectedIssue) {
+      const issueTarget = getDocumentCheckTargetAtRawIndex(
+        generatedDocument,
+        selectedIssue.rawIndex,
+        removedIssueIndices,
+      );
+      if (issueTarget && !hasPendingFixForIssue(issueTarget)) {
+        const visibleIndex = mapOriginalIssueIndexToVisible(issueTarget.kind, issueTarget.index, removedIssueIndices);
+        if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
+          const statusItem = issueTarget.kind === 'ac'
+            ? acRunResult?.[visibleIndex]
+            : planRunResult?.[visibleIndex];
+          resolvedStatusItem = statusItem ?? null;
+          resolvedIssueTarget = issueTarget;
+          if (Array.isArray(statusItem?.proposalOptions)) {
+            resolvedProposals = statusItem.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
+          } else if (typeof statusItem?.proposal === 'string' && statusItem.proposal) {
+            resolvedProposals = [{ label: statusItem.proposal }];
+          }
+        }
+      }
+    } else if (highlightedProblemLocation?.kind) {
       // A specific problem is selected — resolve proposals only for that problem.
       const rawIndex = highlightedProblemLocation.rawIndex;
       const issueTarget = normalizeCommentTarget({
@@ -13169,7 +13104,7 @@ export default function App() {
         index: highlightedProblemLocation.index,
       }) ?? getDocumentCheckTargetAtRawIndex(generatedDocument, rawIndex, removedIssueIndices);
 
-      if (issueTarget) {
+      if (issueTarget && !hasPendingFixForIssue(issueTarget)) {
         const visibleIndex = mapOriginalIssueIndexToVisible(issueTarget.kind, issueTarget.index, removedIssueIndices);
         if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
           const statusItem = issueTarget.kind === 'ac'
@@ -13194,6 +13129,9 @@ export default function App() {
       ];
       for (const { item, kind, index } of sources) {
         let proposals = null;
+        if (appliedIssueFixes?.[kind]?.[index]) {
+          continue;
+        }
         if (Array.isArray(item?.proposalOptions)) {
           proposals = item.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
         } else if (typeof item?.proposal === 'string' && item.proposal) {
@@ -13216,7 +13154,7 @@ export default function App() {
       severity: resolvedStatusItem?.issue?.severity ?? 'warning',
       canFixIssue: resolvedIssueTarget ? Boolean(getIssueQuickFixConfig(resolvedIssueTarget.kind, resolvedIssueTarget.index)) : false,
     });
-  }, [acRunResult, generatedDocument, highlightedProblemLocation, planRunResult, removedIssueIndices]);
+  }, [acRunResult, appliedIssueFixes, generatedDocument, highlightedProblemLocation, planRunResult, removedIssueIndices]);
 
   useEffect(() => {
     if (screen !== 'ide' || seededPresetTaskRef.current) return;
@@ -13635,13 +13573,41 @@ export default function App() {
 
       const treeNode = target.closest('.tree-node');
       if (!(treeNode instanceof HTMLElement)) return;
+      if (!treeNode.closest('.problems-window')) return;
+      const isVisitConflictDiagnosticNode =
+        (typeof treeNode.id === 'string' && treeNode.id.includes('visit-conflict-diagnostic'))
+        || (treeNode.textContent ?? '').includes(VISIT_BOOKING_CONFLICT_PROBLEM_TITLE);
+
+      const rawIndexMarker = target.closest('[data-problem-raw-index]');
+      let rawIndex = rawIndexMarker instanceof HTMLElement
+        ? Number(rawIndexMarker.dataset.problemRawIndex)
+        : null;
 
       const secondary = treeNode.querySelector('.tree-node-secondary');
-      if (!(secondary instanceof HTMLElement)) return;
-
-      const rawIndex = parseProblemRawIndexFromSecondaryText(secondary.textContent ?? '');
+      rawIndex = Number.isInteger(rawIndex)
+        ? rawIndex
+        : secondary instanceof HTMLElement
+        ? parseProblemRawIndexFromSecondaryText(secondary.textContent ?? '')
+        : null;
+      if (!Number.isInteger(rawIndex)) {
+        const leafNodes = Array.from(document.querySelectorAll('.problems-window .tree-node-children .tree-node'));
+        const leafIndex = leafNodes.indexOf(treeNode);
+        const currentIssues = buildInspectionSummary({
+          planRunResult,
+          acRunResult,
+          documentSections: generatedDocument,
+        }).issues;
+        const issue = leafIndex >= 0 ? currentIssues[leafIndex] : null;
+        rawIndex = Number.isInteger(issue?.rawIndex) ? issue.rawIndex : null;
+      }
+      if (!Number.isInteger(rawIndex) && isVisitConflictDiagnosticNode) {
+        rawIndex = getDocumentCheckRawIndex(generatedDocument, 'ac', VISIT_BOOKING_CONFLICT_PROBLEM_TARGET.index);
+      }
       if (!Number.isInteger(rawIndex)) return;
 
+      if (isVisitConflictDiagnosticNode) {
+        setVisitBookingProblemExpanded(true);
+      }
       requestProblemHighlight(rawIndex);
     };
 
@@ -13650,7 +13616,7 @@ export default function App() {
     return () => {
       document.removeEventListener('click', handleProblemsNodeClick, true);
     };
-  }, [requestProblemHighlight]);
+  }, [acRunResult, generatedDocument, planRunResult, requestProblemHighlight]);
 
   useEffect(() => {
     if (screen !== 'ide') return;
@@ -13760,9 +13726,6 @@ export default function App() {
     setAgentTasks((tasks) => [newTask, ...tasks]);
     setSelectedTask(id);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
     setIdeTabs((prev) => (
       prev.some((tab) => tab.id === id) ? prev : [nextTab, ...prev]
     ));
@@ -13932,6 +13895,12 @@ export default function App() {
           if (commentsCleared) return;
           commentsCleared = true;
           resetDoneComments();
+          if (doneEnhanceFlowRef.current) {
+            doneEnhanceFlowRef.current = {
+              ...doneEnhanceFlowRef.current,
+              commentsAlreadyCleared: true,
+            };
+          }
         };
         const persistDoneEnhanceTaskState = () => {
           if (!sourceTabId) return;
@@ -14844,7 +14813,7 @@ export default function App() {
     if (id === 'problems') {
       const isAgentTaskProblemsTab =
         currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md');
-      const problemsTreeData = buildProblemsTreeForTab(
+      const baseProblemsTreeData = buildProblemsTreeForTab(
         currentProblemsTab,
         isAgentTaskProblemsTab
           ? agentTaskInspectionSummary.issues
@@ -14853,7 +14822,74 @@ export default function App() {
           ? agentTaskCommentEntries
           : []
       );
-      const visibleProblemsCount = problemsTreeData.reduce(
+      const visitConflictIssue = isAgentTaskProblemsTab
+        ? agentTaskInspectionSummary.issues.find((issue) => issue?.label === VISIT_BOOKING_CONFLICT_PROBLEM_TITLE)
+        : null;
+      const visitConflictComments = isAgentTaskProblemsTab
+        ? getCommentsForCommentTarget(agentTaskCommentEntries, VISIT_BOOKING_CONFLICT_PROBLEM_TARGET)
+        : [];
+      const shouldUseVisitBookingProblemsView =
+        isAgentTaskProblemsTab && (Boolean(visitConflictIssue) || visitConflictComments.length > 0);
+      const visitConflictRawIndex = Number.isInteger(visitConflictIssue?.rawIndex)
+        ? visitConflictIssue.rawIndex
+        : getDocumentCheckRawIndex(activeAgentTaskDocumentSections, 'ac', VISIT_BOOKING_CONFLICT_PROBLEM_TARGET.index);
+      const visitConflictCommentText = visitConflictComments[0] ?? null;
+      const visitConflictChildren = shouldUseVisitBookingProblemsView
+        ? (
+          visitConflictCommentText
+            ? [{
+                id: Number.isInteger(visitConflictRawIndex)
+                  ? `problem-line-${visitConflictRawIndex}-visit-conflict-comment`
+                  : 'visit-conflict-comment',
+                label: <VisitBookingProblemCommentLabel comment={visitConflictCommentText} />,
+                icon: null,
+                secondaryText: '',
+              }]
+              : VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS.map((option, optionIndex) => ({
+                id: `visit-conflict-option-${optionIndex}`,
+                label: (
+                  <VisitBookingProblemOptionLabel
+                    option={option}
+                    optionIndex={optionIndex}
+                    onSelect={(selectedOption) => {
+                      handleDoneIssueFix({
+                        ...VISIT_BOOKING_CONFLICT_PROBLEM_TARGET,
+                        replacementText: selectedOption.replacementText,
+                        commentText: selectedOption.label,
+                      });
+                    }}
+                  />
+                ),
+                icon: null,
+                secondaryText: '',
+              }))
+        )
+        : [];
+      const problemsTreeData = shouldUseVisitBookingProblemsView
+        ? [
+            {
+              id: Number.isInteger(visitConflictRawIndex)
+                ? `problem-line-${visitConflictRawIndex}-visit-conflict-diagnostic`
+                : 'visit-conflict-diagnostic',
+              label: (
+                <VisitBookingProblemDiagnosticLabel
+                  rawIndex={visitConflictRawIndex}
+                  onExpand={(rawIndex) => {
+                    setVisitBookingProblemExpanded(true);
+                    requestProblemHighlight(rawIndex);
+                  }}
+                />
+              ),
+              icon: <ProblemsWarningNodeIcon />,
+              secondaryText: '',
+              isExpanded: Boolean(visitConflictCommentText) || visitBookingProblemExpanded,
+              children: visitConflictChildren,
+            },
+          ]
+        : baseProblemsTreeData;
+      const visibleProblemsCount = shouldUseVisitBookingProblemsView
+        ? 1
+        : problemsTreeData.reduce(
         (count, node) => count + (Array.isArray(node?.children) ? node.children.length : 0),
         0
       );
@@ -14868,9 +14904,11 @@ export default function App() {
         { label: 'Project Errors' },
         { label: 'Vulnerable Dependencies' },
         { label: 'Qodana' },
-        { label: 'AI Self-Review' },
       ];
       const patchedPanel = cloneElement(panel, {
+        key: shouldUseVisitBookingProblemsView
+          ? `visit-booking-problems-${visitConflictCommentText ?? 'options'}-${visitBookingProblemExpanded ? 'expanded' : 'collapsed'}`
+          : panel.key,
         tabs: problemsTabs,
         treeData: shouldShowEmptyProblemsState ? [] : problemsTreeData,
         empty: shouldShowEmptyProblemsState,
@@ -14878,6 +14916,7 @@ export default function App() {
         className: [
           panel.props.className,
           shouldShowEmptyProblemsState ? 'problems-window-empty-state' : '',
+          shouldUseVisitBookingProblemsView ? 'visit-booking-problems-window' : '',
         ].filter(Boolean).join(' ') || undefined,
         onNodeSelect: handleProblemsNodeSelect,
         toolbarButtons: [
@@ -15111,9 +15150,6 @@ export default function App() {
 
     if (taskId) {
       setSelectedTask(taskId);
-      setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-      ));
 
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
@@ -15249,7 +15285,6 @@ export default function App() {
             ...MY_LEFT_STRIPE,
             { id: '_sep',        separator: true,                                                   section: 'top'    },
             { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
-            { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
@@ -15428,14 +15463,13 @@ export default function App() {
         projectTreeData={projectTreeData}
 
         leftStripeItems={[
-          ...MY_LEFT_STRIPE,
+          ...DECORATIVE_LEFT_STRIPE_ITEMS,
           { id: '_sep',        separator: true,                                                    section: 'top' },
           { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
-          { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
-          { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
-          { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
+          { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        section: 'bottom' },
+          { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   section: 'bottom' },
         ]}
-        rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
+        rightStripeItems={DECORATIVE_RIGHT_STRIPE_ITEMS}
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
@@ -15484,6 +15518,7 @@ export default function App() {
                 handleDoneIssueFix({
                   ...problemsFixMenu.issueTarget,
                   replacementText: selectedOption?.replacementText,
+                  commentText: selectedOption?.label,
                 });
               }
               setProblemsFixMenu(null);
