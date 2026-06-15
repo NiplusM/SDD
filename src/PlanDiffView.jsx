@@ -1,4 +1,4 @@
-import { Fragment, cloneElement, isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Button, PositionedPopup, Popup, PopupCell, ToolbarButton, Badge } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
@@ -116,6 +116,156 @@ export function PlanDiffCommentBadge({ count }) {
       <Icon name="general/balloon" size={16} />
       <span className="plan-diff-comment-count">{count}</span>
     </span>
+  );
+}
+
+const PLAN_DIFF_GUTTER_CONTEXT_MENU_ITEMS = [
+  { label: 'Add Bookmark', shortcut: 'F3' },
+  { label: 'Add Mnemonic Bookmark...', shortcut: '⌥F3' },
+  { type: 'separator' },
+  { label: 'Soft-Wrap' },
+  { label: 'Configure Soft Wraps...' },
+  { type: 'separator' },
+  { label: 'Appearance', submenu: true },
+  { label: 'Configure Gutter Icons...' },
+];
+
+function getPlanDiffGutterContextMenuPosition(point = null, commentToggleCount = 1) {
+  if (!point || typeof window === 'undefined') return null;
+
+  const width = 286;
+  const itemHeight = 31;
+  const separatorHeight = 1;
+  const verticalPadding = 14;
+  const baseHeight = PLAN_DIFF_GUTTER_CONTEXT_MENU_ITEMS.reduce((sum, item) => (
+    sum + (item.type === 'separator' ? separatorHeight : itemHeight)
+  ), verticalPadding);
+  const height = baseHeight + separatorHeight + (itemHeight * Math.max(0, commentToggleCount)) + 14;
+  const viewportPadding = 8;
+
+  return {
+    left: Math.max(
+      viewportPadding,
+      Math.min(point.x, window.innerWidth - width - viewportPadding),
+    ),
+    top: Math.max(
+      viewportPadding,
+      Math.min(point.y, window.innerHeight - height - viewportPadding),
+    ),
+    width,
+  };
+}
+
+function PlanDiffGutterContextMenu({
+  point = null,
+  onClose = null,
+  plainFileGutterCommentsEnabled = true,
+  onPlainFileGutterCommentsEnabledChange = null,
+  diffGutterCommentsEnabled = true,
+  onDiffGutterCommentsEnabledChange = null,
+  commentSettingsKind = 'diff',
+}) {
+  const menuRef = useRef(null);
+  const commentToggleItems = [
+    {
+      kind: 'file',
+      label: 'Enable File Comments',
+      checked: plainFileGutterCommentsEnabled,
+      onToggle: onPlainFileGutterCommentsEnabledChange,
+    },
+    {
+      kind: 'diff',
+      label: 'Enable Diff Comments',
+      checked: diffGutterCommentsEnabled,
+      onToggle: onDiffGutterCommentsEnabledChange,
+    },
+  ].filter((item) => item.kind === commentSettingsKind);
+  const menuPosition = getPlanDiffGutterContextMenuPosition(point, commentToggleItems.length);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) {
+        return;
+      }
+      onClose?.();
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    const handleViewportChange = () => onClose?.();
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('contextmenu', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('contextmenu', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [onClose]);
+
+  if (!menuPosition || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className="theme-dark">
+      <div
+        ref={menuRef}
+        className="plan-diff-gutter-context-menu"
+        style={menuPosition}
+        role="menu"
+        aria-label="Gutter context menu"
+      >
+        {PLAN_DIFF_GUTTER_CONTEXT_MENU_ITEMS.map((item, index) => (
+          item.type === 'separator'
+            ? <div key={`separator-${index}`} className="plan-diff-gutter-context-menu-separator" role="separator" />
+            : (
+              <button
+                key={item.label}
+                type="button"
+                className="plan-diff-gutter-context-menu-item"
+                role="menuitem"
+                onClick={() => onClose?.()}
+              >
+                <span className="plan-diff-gutter-context-menu-check" aria-hidden="true" />
+                <span className="plan-diff-gutter-context-menu-label">{item.label}</span>
+                {item.shortcut && <span className="plan-diff-gutter-context-menu-shortcut">{item.shortcut}</span>}
+                {item.submenu && <Icon name="general/chevronRight" size={16} className="plan-diff-gutter-context-menu-chevron" />}
+              </button>
+            )
+        ))}
+        <div className="plan-diff-gutter-context-menu-separator" role="separator" />
+        {commentToggleItems.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            className="plan-diff-gutter-context-menu-item plan-diff-gutter-context-menu-item-toggle"
+            role="menuitemcheckbox"
+            aria-checked={item.checked}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              item.onToggle?.((prev) => !prev);
+            }}
+          >
+            <span className="plan-diff-gutter-context-menu-check" aria-hidden="true">
+              {item.checked && <Icon name="general/checkmark" size={16} />}
+            </span>
+            <span className="plan-diff-gutter-context-menu-label">{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -237,6 +387,11 @@ export function DiffInlineCommentPopup({
   defaultSubmitAttachMode = 'current',
   submitAttachModes = ['current', 'new', 'document'],
   submitButtonLabel = '',
+  defaultSubmitTargetLabel = '',
+  defaultSubmitTargetIcon = '',
+  defaultSubmitTargetKey = '',
+  showSubmitTargetLabel = true,
+  renderSubmitTargetPicker = null,
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
@@ -249,9 +404,10 @@ export function DiffInlineCommentPopup({
 }) {
   const ref = useRef(null);
   const textareaRef = useRef(null);
-  const splitButtonRef = useRef(null);
+  const submitTargetRef = useRef(null);
   const [submitOptionsRect, setSubmitOptionsRect] = useState(null);
   const [actionMenu, setActionMenu] = useState(null);
+  const [submitAttachTarget, setSubmitAttachTarget] = useState(null);
   const normalizedSubmitAttachModes = useMemo(() => {
     const nextModes = Array.isArray(submitAttachModes)
       ? submitAttachModes.filter((mode) => mode === 'current' || mode === 'new' || mode === 'document')
@@ -263,6 +419,9 @@ export function DiffInlineCommentPopup({
     ? defaultSubmitAttachMode
     : normalizedSubmitAttachModes[0];
   const [submitAttachMode, setSubmitAttachMode] = useState(normalizedDefaultSubmitAttachMode);
+  const normalizedDefaultSubmitTargetKey = typeof defaultSubmitTargetKey === 'string'
+    ? defaultSubmitTargetKey.trim()
+    : '';
   const isEditing = Number.isInteger(editingIndex);
   const normalizedCommentGroups = Array.isArray(commentGroups) ? commentGroups : null;
   const hasGroupedComments = Boolean(normalizedCommentGroups?.length);
@@ -273,28 +432,55 @@ export function DiffInlineCommentPopup({
     if (attachMode === 'document') return 'Add to Current Agent MD';
     return 'Add to Current Chat Session';
   };
-  const submitOptionLabel = getSubmitAttachModeLabel(submitAttachMode);
-  const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
-  const effectiveSubmitButtonLabel = isEditing
-    ? 'Save Comment'
-    : (normalizedSubmitButtonLabel || submitOptionLabel);
   const normalizedCommentContextLabel = typeof commentContextLabel === 'string'
     ? commentContextLabel.trim()
     : '';
-  const normalizedCommentContextSessionLabel = typeof commentContextSessionLabel === 'string'
-    ? commentContextSessionLabel.trim()
+  const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
+  const primarySubmitButtonLabel = isEditing ? 'Save Comment' : (normalizedSubmitButtonLabel || 'Add a Comment');
+  const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
+    ? defaultSubmitTargetLabel.trim()
     : '';
+  const selectedSubmitTargetLabel = (() => {
+    const explicitLabel = typeof submitAttachTarget?.label === 'string' ? submitAttachTarget.label.trim() : '';
+    if (explicitLabel.length > 0) return explicitLabel;
+    if (submitAttachMode === 'document') return normalizedDefaultSubmitTargetLabel;
+    if (submitAttachMode === 'current') return normalizedCommentContextLabel;
+    if (submitAttachMode === 'new') return 'New Chat Session';
+    return '';
+  })();
+  const selectedSubmitTargetIcon = (() => {
+    const explicitIcon = typeof submitAttachTarget?.icon === 'string' ? submitAttachTarget.icon.trim() : '';
+    if (explicitIcon.length > 0) return explicitIcon;
+    if (submitAttachMode === 'document') return defaultSubmitTargetIcon || 'fileTypes/markdown';
+    if (submitAttachMode === 'current') return commentContextIcon || 'claude';
+    if (submitAttachMode === 'new') return 'claude';
+    return '';
+  })();
+  const renderSelectedSubmitTargetIcon = () => {
+    if (!selectedSubmitTargetIcon) return null;
+    if (selectedSubmitTargetIcon === 'fileTypes/markdown') {
+      return <AiChatAgentIcon icon={selectedSubmitTargetIcon} title={selectedSubmitTargetLabel} />;
+    }
+    if (selectedSubmitTargetIcon.includes('/')) {
+      return <Icon name={selectedSubmitTargetIcon} size={16} />;
+    }
+    return <AiChatAgentIcon icon={selectedSubmitTargetIcon} />;
+  };
   const renderCommentContextHeader = ({
     label = normalizedCommentContextLabel,
     icon = commentContextIcon,
-    sessionLabel = normalizedCommentContextSessionLabel,
+    sessionLabel = commentContextSessionLabel,
     messageId = null,
     chatId = null,
     sourceTabId = null,
     contextType = 'chat',
   } = {}) => {
     const normalizedSessionLabel = typeof sessionLabel === 'string' ? sessionLabel.trim() : '';
-    const isActiveSessionLabel = normalizedSessionLabel === 'Active' || normalizedSessionLabel === 'Related chats';
+    const isActiveSessionLabel = normalizedSessionLabel === 'Active';
+    const visibleSessionLabel = isActiveSessionLabel ? 'Current Chat Session' : normalizedSessionLabel;
+    const shouldShowSessionLabel = visibleSessionLabel.length > 0
+      && visibleSessionLabel !== 'Related Chats'
+      && visibleSessionLabel !== 'Inactive';
 
     return label.length > 0
       ? (
@@ -306,10 +492,10 @@ export function DiffInlineCommentPopup({
                 <span className="spec-done-comment-popup-context-title">
                   {label}
                 </span>
-                {normalizedSessionLabel.length > 0 && (
+                {shouldShowSessionLabel && (
                   <Badge
                     className="spec-done-comment-popup-context-session"
-                    text={normalizedSessionLabel}
+                    text={visibleSessionLabel}
                     color={isActiveSessionLabel ? 'blue-secondary' : 'gray-secondary'}
                   />
                 )}
@@ -348,13 +534,40 @@ export function DiffInlineCommentPopup({
     }
   }, [normalizedDefaultSubmitAttachMode, normalizedSubmitAttachModes, submitAttachMode]);
 
+  useEffect(() => {
+    if (!submitAttachTarget) return;
+    if (normalizedSubmitAttachModes.includes(submitAttachTarget.attachMode)) return;
+    setSubmitAttachTarget(null);
+  }, [normalizedSubmitAttachModes, submitAttachTarget]);
+
+  useEffect(() => {
+    if (!normalizedDefaultSubmitTargetKey) return;
+    setSubmitAttachMode(normalizedDefaultSubmitAttachMode);
+    setSubmitAttachTarget(null);
+  }, [normalizedDefaultSubmitAttachMode, normalizedDefaultSubmitTargetKey]);
+
   const handleSubmit = (attachMode = submitAttachMode) => {
     setSubmitOptionsRect(null);
-    onSubmit?.({ attachMode });
+    onSubmit?.({
+      attachMode,
+      targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
+      targetDocumentTabId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetDocumentTabId : null,
+    });
   };
 
   const handleSubmitOptionSelect = (attachMode) => {
     setSubmitAttachMode(attachMode);
+    setSubmitAttachTarget(null);
+    setSubmitOptionsRect(null);
+    textareaRef.current?.focus({ preventScroll: true });
+  };
+
+  const handleSubmitTargetSelect = (target) => {
+    if (!target || !normalizedSubmitAttachModes.includes(target.attachMode)) {
+      return;
+    }
+    setSubmitAttachMode(target.attachMode);
+    setSubmitAttachTarget(target);
     setSubmitOptionsRect(null);
     textareaRef.current?.focus({ preventScroll: true });
   };
@@ -363,7 +576,7 @@ export function DiffInlineCommentPopup({
     event.preventDefault();
     event.stopPropagation();
     if (!canChooseSubmitAttachMode) return;
-    const rect = splitButtonRef.current?.getBoundingClientRect();
+    const rect = submitTargetRef.current?.getBoundingClientRect();
     setSubmitOptionsRect((prev) => (prev ? null : rect));
   };
 
@@ -490,6 +703,29 @@ export function DiffInlineCommentPopup({
             />
           </div>
           <div className="spec-done-comment-popup-footer">
+            {showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
+              <button
+                type="button"
+                ref={submitTargetRef}
+                className="diff-comment-submit-target-label text-ui-small"
+                title={selectedSubmitTargetLabel}
+                aria-label={`Choose comment attachment target: ${selectedSubmitTargetLabel}`}
+                aria-haspopup="menu"
+                aria-expanded={Boolean(submitOptionsRect)}
+                onClick={canChooseSubmitAttachMode ? toggleSubmitOptions : undefined}
+                disabled={!canChooseSubmitAttachMode}
+              >
+                <span className="diff-comment-submit-target-icon" aria-hidden="true">
+                  {renderSelectedSubmitTargetIcon()}
+                </span>
+                <span className="diff-comment-submit-target-text">
+                  {selectedSubmitTargetLabel}
+                </span>
+                {canChooseSubmitAttachMode && (
+                  <Icon name="general/chevronDown" size={16} className="diff-comment-submit-target-chevron" />
+                )}
+              </button>
+            )}
             <div className="spec-done-comment-popup-actions">
               <Button
                 type="secondary"
@@ -501,48 +737,42 @@ export function DiffInlineCommentPopup({
               >
                 Cancel
               </Button>
-              <div className="diff-comment-submit-split" ref={splitButtonRef}>
-                <Button
-                  type="primary"
-                  data-demo-id="diff-comment-submit"
-                  title={effectiveSubmitButtonLabel}
-                  aria-label={effectiveSubmitButtonLabel}
-                  onClick={() => handleSubmit()}
-                >
-                  {effectiveSubmitButtonLabel}
-                </Button>
-                {canChooseSubmitAttachMode && (
-                  <Button
-                    type="primary"
-                    className="diff-comment-submit-menu-button"
-                    data-demo-id="diff-comment-submit-menu"
-                    aria-label="Choose comment attachment target"
-                    aria-haspopup="menu"
-                    aria-expanded={Boolean(submitOptionsRect)}
-                    onClick={toggleSubmitOptions}
-                  >
-                    <Icon name="general/chevronDown" size={16} />
-                  </Button>
-                )}
-              </div>
+              <Button
+                type="primary"
+                data-demo-id="diff-comment-submit"
+                title={primarySubmitButtonLabel}
+                aria-label={primarySubmitButtonLabel}
+                onClick={() => handleSubmit()}
+              >
+                {primarySubmitButtonLabel}
+              </Button>
             </div>
           </div>
           {canChooseSubmitAttachMode && submitOptionsRect && createPortal(
-            <div className="theme-dark">
-              <PositionedPopup triggerRect={submitOptionsRect} onDismiss={() => setSubmitOptionsRect(null)} gap={4}>
-                <Popup visible className="diff-comment-submit-options-popup" onClose={() => setSubmitOptionsRect(null)}>
-                  {normalizedSubmitAttachModes.map((attachMode) => (
-                    <PopupCell
-                      key={attachMode}
-                      selected={submitAttachMode === attachMode}
-                      onClick={() => handleSubmitOptionSelect(attachMode)}
-                    >
-                      {getSubmitAttachModeLabel(attachMode)}
-                    </PopupCell>
-                  ))}
-                </Popup>
-              </PositionedPopup>
-            </div>,
+            typeof renderSubmitTargetPicker === 'function'
+              ? renderSubmitTargetPicker({
+                  triggerRect: submitOptionsRect,
+                  selectedTarget: submitAttachTarget ?? { attachMode: submitAttachMode },
+                  onSelectTarget: handleSubmitTargetSelect,
+                  onDismiss: () => setSubmitOptionsRect(null),
+                })
+              : (
+                <div className="theme-dark">
+                  <PositionedPopup triggerRect={submitOptionsRect} onDismiss={() => setSubmitOptionsRect(null)} gap={4}>
+                    <Popup visible className="diff-comment-submit-options-popup" onClose={() => setSubmitOptionsRect(null)}>
+                      {normalizedSubmitAttachModes.map((attachMode) => (
+                        <PopupCell
+                          key={attachMode}
+                          selected={submitAttachMode === attachMode}
+                          onClick={() => handleSubmitOptionSelect(attachMode)}
+                        >
+                          {getSubmitAttachModeLabel(attachMode)}
+                        </PopupCell>
+                      ))}
+                    </Popup>
+                  </PositionedPopup>
+                </div>
+              ),
             document.body,
           )}
         </div>
@@ -728,8 +958,11 @@ export function PlanDiffOverlay({
   documentDiffComments = {},
   documentContextLabel = '',
   documentContextIcon = 'fileTypes/markdown',
-  documentContextSessionLabel = 'Related chats',
+  documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
+  defaultSubmitTargetLabel = '',
+  defaultSubmitTargetIcon = '',
+  defaultSubmitTargetKey = '',
   commentSessions = [],
   commentSessionActiveChatId = '',
   commentsReadOnly = false,
@@ -738,6 +971,7 @@ export function PlanDiffOverlay({
   commentContextSessionLabel = '',
   onDiffCommentsChange = null,
   onDiffCommentSubmit = null,
+  onGutterCommentToggle = null,
   onRowDelete = null,
   onRowFix = null,
   onPlanMarkerClick = null,
@@ -745,10 +979,14 @@ export function PlanDiffOverlay({
   uiState = null,
   onUiStateChange = null,
   singleLineNumbers = false,
+  showGutterComments = true,
+  plainFileGutterCommentsEnabled = true,
+  onPlainFileGutterCommentsEnabledChange = null,
+  diffGutterCommentsEnabled = true,
+  onDiffGutterCommentsEnabledChange = null,
   inspectionWidget = null,
+  renderSubmitTargetPicker = null,
 }) {
-  const hasInspectionWidget = Boolean(inspectionWidget);
-  const [commentsEnabled, setCommentsEnabled] = useState(!singleLineNumbers);
   const scrollRef = useRef(null);
   const onDiffCommentsChangeRef = useRef(onDiffCommentsChange);
   const onUiStateChangeRef = useRef(onUiStateChange);
@@ -791,6 +1029,7 @@ export function PlanDiffOverlay({
     left: normalizedUiState.caretState.left,
   });
   const [caretKey, setCaretKey] = useState(0);
+  const [gutterContextMenu, setGutterContextMenu] = useState(null);
   const diffResetKey = JSON.stringify({
     title: diffData?.title ?? '',
     focusRowId: diffData?.focusRowId ?? null,
@@ -826,13 +1065,6 @@ export function PlanDiffOverlay({
   useEffect(() => {
     onUiStateChangeRef.current = onUiStateChange;
   }, [onUiStateChange]);
-
-  const resolvedInspectionWidget = isValidElement(inspectionWidget)
-    ? cloneElement(inspectionWidget, {
-        commentsEnabled,
-        onToggleComments: () => setCommentsEnabled((prev) => !prev),
-      })
-    : inspectionWidget;
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -882,6 +1114,7 @@ export function PlanDiffOverlay({
   };
 
   const toggleCommentForRow = (rowId) => {
+    onGutterCommentToggle?.({ rowId });
     activateRow(rowId);
     if (commentsReadOnly) {
       return;
@@ -894,6 +1127,19 @@ export function PlanDiffOverlay({
     setCommentValue('');
     setCommentEditingIndex(null);
     setCommentEditingSource('diff');
+  };
+
+  const openGutterContextMenu = (event, rowId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    activateRow(rowId);
+    setGutterContextMenu({
+      rowId,
+      point: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    });
   };
 
   useEffect(() => {
@@ -915,6 +1161,10 @@ export function PlanDiffOverlay({
       left: normalizedUiState.caretState.left,
     });
   }, [diffData?.focusRowId, diffResetKey, normalizedInitialDiffComments, normalizedUiState]);
+
+  useEffect(() => {
+    setGutterContextMenu(null);
+  }, [diffResetKey]);
 
   useEffect(() => {
     setDiffComments((prev) => (
@@ -1041,51 +1291,11 @@ export function PlanDiffOverlay({
   }, [activeRowId, commentsReadOnly]);
 
   return (
-    <div className={`plan-diff-overlay${singleLineNumbers ? ' plan-diff-overlay--single' : ''}${singleLineNumbers && !commentsEnabled ? ' plan-diff-overlay--comments-off' : ''}`}>
-      {resolvedInspectionWidget}
-      {singleLineNumbers && !hasInspectionWidget && (
-        <div className="plan-diff-comment-toggle-widget">
-          <button
-            type="button"
-            className={`plan-diff-comment-toggle-btn${commentsEnabled ? ' is-active' : ''}`}
-            aria-label={commentsEnabled ? 'Disable comments' : 'Enable comments'}
-            onClick={() => setCommentsEnabled((prev) => !prev)}
-          >
-            <Icon name="general/balloon" size={16} />
-            {totalCommentCount > 0 && (
-              <span className="plan-diff-comment-toggle-count">{totalCommentCount}</span>
-            )}
-          </button>
-          {totalCommentCount > 0 && (
-            <div className="plan-diff-comment-toggle-nav">
-              <button
-                type="button"
-                className="plan-diff-comment-nav-btn"
-                aria-label="Previous comment"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => navigateComment(-1)}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M4.5 9.75L8 6.25L11.5 9.75" stroke="currentColor" strokeLinecap="round" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="plan-diff-comment-nav-btn"
-                aria-label="Next comment"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => navigateComment(1)}
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="currentColor" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
-        <div className="plan-diff-code">
+    <>
+      <div className={`plan-diff-overlay${singleLineNumbers ? ' plan-diff-overlay--single' : ''}${!showGutterComments ? ' plan-diff-overlay--gutter-comments-off' : ''}`}>
+        {inspectionWidget}
+        <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
+          <div className="plan-diff-code">
           {displayRows.map((row) => {
             const hasInlineHighlight = row.kind === 'added' || row.kind === 'removed';
             const rowComments = diffComments[row.id] ?? [];
@@ -1180,7 +1390,7 @@ export function PlanDiffOverlay({
                   activateRow(row.id);
                 }}
               >
-                <div className="plan-diff-row-gutter">
+                <div className="plan-diff-row-gutter" onContextMenu={(event) => openGutterContextMenu(event, row.id)}>
                   <span className="plan-diff-line-number">{row.oldNumber ?? ''}</span>
                   {!singleLineNumbers && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
                   <span
@@ -1245,7 +1455,7 @@ export function PlanDiffOverlay({
               </div>
               {(hasVisibleRowComments || commentRowId === row.id) && (
                 <div className="plan-diff-row plan-diff-row-comment">
-                  <div className="plan-diff-row-gutter">
+                  <div className="plan-diff-row-gutter" onContextMenu={(event) => openGutterContextMenu(event, row.id)}>
                     <span className="plan-diff-line-number" />
                     {!singleLineNumbers && <span className="plan-diff-line-number" />}
                     <span className="plan-diff-gutter-icon-slot" />
@@ -1258,9 +1468,14 @@ export function PlanDiffOverlay({
                       editingIndex={commentRowId === row.id ? commentEditingIndex : null}
                       showCompose={!commentsReadOnly && commentRowId === row.id}
                       commentsReadOnly={commentsReadOnly}
+                      defaultSubmitAttachMode="current"
                       commentContextLabel={commentContextLabel}
                       commentContextIcon={commentContextIcon}
                       commentContextSessionLabel={commentContextSessionLabel}
+                      defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
+                      defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
+                      defaultSubmitTargetKey={defaultSubmitTargetKey}
+                      renderSubmitTargetPicker={renderSubmitTargetPicker}
                       onChange={setCommentValue}
                       onStartEdit={(idx, source = 'diff') => {
                         if (commentsReadOnly) return;
@@ -1295,7 +1510,7 @@ export function PlanDiffOverlay({
                         });
                       }}
                       onCancel={() => clearCommentComposeState()}
-                      onSubmit={({ attachMode = 'current' } = {}) => {
+                      onSubmit={({ attachMode = 'current', targetChatId = null, targetDocumentTabId = null } = {}) => {
                         if (commentsReadOnly) return;
                         const trimmed = (commentRowId === row.id ? commentValue : '').trim();
                         if (!trimmed) return;
@@ -1324,7 +1539,7 @@ export function PlanDiffOverlay({
                           : (diffComments[row.id] ?? []);
                         const nextRowComments = Number.isInteger(commentEditingIndex)
                           ? existing.map((comment, index) => (index === commentEditingIndex ? trimmed : comment))
-                          : [...existing, trimmed];
+                          : [trimmed];
                         const nextSubmittedComments = isDocumentAttachMode
                           ? {
                               ...normalizedDocumentDiffComments,
@@ -1338,11 +1553,21 @@ export function PlanDiffOverlay({
                             };
                         const submitMetadata = {
                           attachMode: isDocumentAttachMode ? 'document' : attachMode,
+                          targetChatId,
+                          targetDocumentTabId,
                           rowId: row.id,
                           comment: trimmed,
                           isEditing: Number.isInteger(commentEditingIndex),
                         };
+                        const isExplicitChatTarget = !isDocumentAttachMode
+                          && typeof targetChatId === 'string'
+                          && targetChatId.trim().length > 0;
                         const nextDiffComments = isDocumentAttachMode
+                          ? (
+                              onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
+                              normalizeDiffCommentsState(nextSubmittedComments)
+                            )
+                          : isExplicitChatTarget
                           ? (
                               onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
                               normalizeDiffCommentsState(nextSubmittedComments)
@@ -1353,6 +1578,8 @@ export function PlanDiffOverlay({
                             );
                         onDiffCommentSubmit?.({
                           attachMode: isDocumentAttachMode ? 'document' : attachMode,
+                          targetChatId,
+                          targetDocumentTabId,
                           rowId: row.id,
                           comment: trimmed,
                           comments: nextDiffComments,
@@ -1367,9 +1594,21 @@ export function PlanDiffOverlay({
               )}
             </Fragment>);
           })}
+          </div>
         </div>
       </div>
-    </div>
+      {gutterContextMenu && (
+        <PlanDiffGutterContextMenu
+          point={gutterContextMenu.point}
+          onClose={() => setGutterContextMenu(null)}
+          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
+          diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+          onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
+          commentSettingsKind={singleLineNumbers ? 'file' : 'diff'}
+        />
+      )}
+    </>
   );
 }
 
@@ -1417,8 +1656,11 @@ export function PlanDiffEditorArea({
   documentDiffComments = {},
   documentContextLabel = '',
   documentContextIcon = 'fileTypes/markdown',
-  documentContextSessionLabel = 'Related chats',
+  documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
+  defaultSubmitTargetLabel = '',
+  defaultSubmitTargetIcon = '',
+  defaultSubmitTargetKey = '',
   commentSessions = [],
   commentSessionActiveChatId = '',
   commentsReadOnly = false,
@@ -1427,6 +1669,7 @@ export function PlanDiffEditorArea({
   commentContextSessionLabel = '',
   onDiffCommentsChange = null,
   onDiffCommentSubmit = null,
+  onGutterCommentToggle = null,
   onRowDelete = null,
   onRowFix = null,
   onPlanMarkerClick = null,
@@ -1436,7 +1679,13 @@ export function PlanDiffEditorArea({
   uiState = null,
   onUiStateChange = null,
   singleLineNumbers = false,
+  showGutterComments = true,
+  plainFileGutterCommentsEnabled = true,
+  onPlainFileGutterCommentsEnabledChange = null,
+  diffGutterCommentsEnabled = true,
+  onDiffGutterCommentsEnabledChange = null,
   inspectionWidget = null,
+  renderSubmitTargetPicker = null,
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
@@ -1517,6 +1766,9 @@ export function PlanDiffEditorArea({
           documentContextIcon={documentContextIcon}
           documentContextSessionLabel={documentContextSessionLabel}
           documentContextSourceTabId={documentContextSourceTabId}
+          defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
+          defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
+          defaultSubmitTargetKey={defaultSubmitTargetKey}
           commentSessions={commentSessions}
           commentSessionActiveChatId={commentSessionActiveChatId}
           commentsReadOnly={commentsReadOnly}
@@ -1525,6 +1777,7 @@ export function PlanDiffEditorArea({
           commentContextSessionLabel={commentContextSessionLabel}
           onDiffCommentsChange={onDiffCommentsChange}
           onDiffCommentSubmit={onDiffCommentSubmit}
+          onGutterCommentToggle={onGutterCommentToggle}
           onRowDelete={onRowDelete}
           onRowFix={onRowFix}
           onPlanMarkerClick={onPlanMarkerClick}
@@ -1532,7 +1785,13 @@ export function PlanDiffEditorArea({
           uiState={uiState}
           onUiStateChange={onUiStateChange}
           singleLineNumbers={singleLineNumbers}
+          showGutterComments={showGutterComments}
+          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
+          diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+          onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
           inspectionWidget={inspectionWidget}
+          renderSubmitTargetPicker={renderSubmitTargetPicker}
         />,
         overlayHost
       )}
