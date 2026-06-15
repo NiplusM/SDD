@@ -2786,9 +2786,9 @@ function VisitBookingProblemOptionLabel({ option, optionIndex = 0, onSelect }) {
   );
 }
 
-function VisitBookingProblemCommentLabel({ comment }) {
+function VisitBookingProblemCommentLabel({ comment, isFading = false }) {
   return (
-    <div className="visit-problem-comment-label">
+    <div className={`visit-problem-comment-label${isFading ? ' visit-problem-comment-label-fading' : ''}`}>
       <span className="visit-problem-comment-marker" aria-hidden="true">
         <DoneCommentCountIcon />
       </span>
@@ -7163,7 +7163,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '' }) {
   const effectiveDocumentSections = useMemo(
     () => orderAcceptanceBeforePlanSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -8431,6 +8431,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
+            const isUpdatedSpecRow = Boolean(
+              updatedRowTarget?.kind
+              && effectiveCheckTarget?.kind === updatedRowTarget.kind
+              && effectiveCheckTarget?.index === updatedRowTarget.index
+            );
             const isRestoringPlanRow = effectiveCheckTarget?.kind === 'plan'
               && effectivePlanStatus?.status === 'pending'
               && !hasPlanComment;
@@ -8466,7 +8471,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'fixing' ? ' spec-done-row-fixing' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase !== 'fixing' ? ' spec-done-row-updated' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -8805,7 +8810,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0 }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0 }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -9489,7 +9494,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9504,7 +9509,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -9618,7 +9623,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} />,
           doneOverlayHost
         )}
       </>
@@ -10424,6 +10429,8 @@ export default function App() {
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
+  const [updatedSpecRowTarget, setUpdatedSpecRowTarget] = useState(null);
+  const [isVisitBookingProblemCommentFading, setIsVisitBookingProblemCommentFading] = useState(false);
   const [problemsFixMenu, setProblemsFixMenu] = useState(null);
   const [visitBookingProblemExpanded, setVisitBookingProblemExpanded] = useState(false);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
@@ -10432,6 +10439,10 @@ export default function App() {
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
+  const updatedSpecRowTimeoutRef = useRef(null);
+  const visitBookingProblemCommentFadeTimeoutRef = useRef(null);
+  const suppressDoneCommentsSyncRef = useRef(false);
+  const suppressDoneCommentsSyncTimeoutRef = useRef(null);
   const specDoneScrollSnapshotsRef = useRef({});
 
   // Editor completion state
@@ -10854,9 +10865,59 @@ export default function App() {
   ]);
 
   const resetDoneComments = useCallback(() => {
+    if (visitBookingProblemCommentFadeTimeoutRef.current) {
+      window.clearTimeout(visitBookingProblemCommentFadeTimeoutRef.current);
+      visitBookingProblemCommentFadeTimeoutRef.current = null;
+    }
+    if (suppressDoneCommentsSyncTimeoutRef.current) {
+      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
+      suppressDoneCommentsSyncTimeoutRef.current = null;
+    }
+    suppressDoneCommentsSyncRef.current = false;
+    setIsVisitBookingProblemCommentFading(false);
     setAgentTaskCommentEntries([]);
     setDoneCommentResetToken((prev) => prev + 1);
   }, []);
+
+  const fadeOutDoneComments = useCallback(() => {
+    if (visitBookingProblemCommentFadeTimeoutRef.current) {
+      return;
+    }
+
+    const tabIdToClear = generationTabId ?? activeSourceEditorTabId ?? activeEditorTabId;
+    suppressDoneCommentsSyncRef.current = true;
+    if (suppressDoneCommentsSyncTimeoutRef.current) {
+      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
+      suppressDoneCommentsSyncTimeoutRef.current = null;
+    }
+    setIsVisitBookingProblemCommentFading(true);
+    visitBookingProblemCommentFadeTimeoutRef.current = window.setTimeout(() => {
+      visitBookingProblemCommentFadeTimeoutRef.current = null;
+      setIsVisitBookingProblemCommentFading(false);
+      setAgentTaskCommentEntries([]);
+      if (tabIdToClear) {
+        setInteractiveTaskStates((prev) => {
+          const currentTaskState = prev[tabIdToClear];
+          if (!currentTaskState || !Array.isArray(currentTaskState.commentEntries) || currentTaskState.commentEntries.length === 0) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            [tabIdToClear]: {
+              ...currentTaskState,
+              commentEntries: [],
+            },
+          };
+        });
+      }
+      setDoneCommentResetToken((prev) => prev + 1);
+      suppressDoneCommentsSyncTimeoutRef.current = window.setTimeout(() => {
+        suppressDoneCommentsSyncRef.current = false;
+        suppressDoneCommentsSyncTimeoutRef.current = null;
+      }, 900);
+    }, 520);
+  }, [activeEditorTabId, activeSourceEditorTabId, generationTabId]);
 
   const clearAgentTaskRuntime = useCallback(() => {
     if (genTimerRef.current) {
@@ -11292,6 +11353,26 @@ export default function App() {
       requestKey: (prev?.requestKey ?? 0) + 1,
     }));
   }, [activeEditorTabId, generatedDocument, removedIssueIndices]);
+
+  const triggerUpdatedSpecRowAnimation = useCallback((target) => {
+    const normalizedTarget = normalizeCommentTarget(target);
+    if (!normalizedTarget) return;
+
+    if (updatedSpecRowTimeoutRef.current) {
+      window.clearTimeout(updatedSpecRowTimeoutRef.current);
+      updatedSpecRowTimeoutRef.current = null;
+    }
+
+    setUpdatedSpecRowTarget({
+      ...normalizedTarget,
+      phase: 'updated',
+      requestKey: Date.now(),
+    });
+    updatedSpecRowTimeoutRef.current = window.setTimeout(() => {
+      setUpdatedSpecRowTarget(null);
+      updatedSpecRowTimeoutRef.current = null;
+    }, 950);
+  }, []);
 
   useEffect(() => {
     if (!activeEditorTabId?.startsWith('agent-task-')) return;
@@ -12707,8 +12788,21 @@ export default function App() {
       hasPendingComments ||
       (Array.isArray(commentEntries) && commentEntries.length > 0) ||
       pendingAcQuickFixCount > 0;
+    const updatedRowTargetForSpecRegeneration =
+      pendingAcQuickFixCount > 0 ? VISIT_BOOKING_CONFLICT_PROBLEM_TARGET : null;
     if (!hasSpecChanges && !hasPendingComments && !effectiveHasPendingReruns) {
       return;
+    }
+    if (updatedRowTargetForSpecRegeneration) {
+      if (updatedSpecRowTimeoutRef.current) {
+        window.clearTimeout(updatedSpecRowTimeoutRef.current);
+        updatedSpecRowTimeoutRef.current = null;
+      }
+      setUpdatedSpecRowTarget({
+        ...updatedRowTargetForSpecRegeneration,
+        phase: 'fixing',
+        requestKey: Date.now(),
+      });
     }
 
     // Confirm any pending AC quick fixes — counter reset deactivates the Specify
@@ -12741,6 +12835,7 @@ export default function App() {
           documentSections: nextDocument,
           planRunResult: [{ status: 'pending' }],
         }],
+        updatedRowTarget: updatedRowTargetForSpecRegeneration,
         commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
         versionCommit: hasSpecChanges
           ? {
@@ -12805,6 +12900,7 @@ export default function App() {
       currentRemovedIssueIndices,
       rerunAcOriginalIndices: effectiveRerunAcOriginalIndices,
       rerunPlanOriginalIndices,
+      updatedRowTarget: updatedRowTargetForSpecRegeneration,
       commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
       versionCommit: (hasSpecChanges || effectiveHasPendingReruns)
         ? {
@@ -12995,6 +13091,18 @@ export default function App() {
     if (chainedRunTimeoutRef.current) {
       window.clearTimeout(chainedRunTimeoutRef.current);
       chainedRunTimeoutRef.current = null;
+    }
+    if (updatedSpecRowTimeoutRef.current) {
+      window.clearTimeout(updatedSpecRowTimeoutRef.current);
+      updatedSpecRowTimeoutRef.current = null;
+    }
+    if (visitBookingProblemCommentFadeTimeoutRef.current) {
+      window.clearTimeout(visitBookingProblemCommentFadeTimeoutRef.current);
+      visitBookingProblemCommentFadeTimeoutRef.current = null;
+    }
+    if (suppressDoneCommentsSyncTimeoutRef.current) {
+      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
+      suppressDoneCommentsSyncTimeoutRef.current = null;
     }
     acWarningFlowRef.current = null;
   }, []);
@@ -13862,6 +13970,7 @@ export default function App() {
           currentRemovedIssueIndices,
           rerunAcOriginalIndices,
           rerunPlanOriginalIndices,
+          updatedRowTarget,
           commentsAlreadyCleared = false,
           usesDirectSwap = false,
           restorePlanFrames = null,
@@ -13894,7 +14003,7 @@ export default function App() {
         const clearDoneCommentsOnce = () => {
           if (commentsCleared) return;
           commentsCleared = true;
-          resetDoneComments();
+          fadeOutDoneComments();
           if (doneEnhanceFlowRef.current) {
             doneEnhanceFlowRef.current = {
               ...doneEnhanceFlowRef.current,
@@ -13948,6 +14057,7 @@ export default function App() {
               },
             }));
             setGeneratedDocument(nextDocument);
+            triggerUpdatedSpecRowAnimation(updatedRowTarget);
             setAppliedIssueFixes(nextAppliedIssueFixes);
             setRemovedIssueIndices(nextRemovedIssueIndices);
             setAcRunResult(nextAcRunResult);
@@ -13964,7 +14074,6 @@ export default function App() {
               return;
             }
 
-            clearDoneCommentsOnce();
             const frame = frames[frameIndex];
             frameIndex += 1;
             setIdeTabContents((prev) => ({
@@ -14011,6 +14120,7 @@ export default function App() {
           }
           doneEnhanceFlowRef.current = null;
           setGeneratedDocument(nextDocument);
+          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -14042,6 +14152,7 @@ export default function App() {
           persistDoneEnhanceTaskState();
           clearDoneCommentsOnce();
           setGeneratedDocument(nextDocument);
+          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -14065,7 +14176,6 @@ export default function App() {
           if (cancelled) return;
 
           if (frameIndex < frames.length) {
-            clearDoneCommentsOnce();
             const nextFrame = frames[frameIndex];
             frameIndex += 1;
 
@@ -14096,6 +14206,7 @@ export default function App() {
             }), versionCommit.sourceTabId);
           }
           setGeneratedDocument(nextDocument);
+          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -14176,6 +14287,7 @@ export default function App() {
     }
   }, [
     activeTabIdForGen,
+    fadeOutDoneComments,
     genState,
     generationTabId,
     isTerminalStreaming,
@@ -14184,6 +14296,7 @@ export default function App() {
     resetRunUiForTab,
     startDoneEnhanceStatusReveal,
     terminalPermissionPrompt,
+    triggerUpdatedSpecRowAnimation,
     updateSpecVersionsForTab,
   ]);
 
@@ -14222,7 +14335,11 @@ export default function App() {
     updateDoneOverlayUiStateForTab(uiState, visibleEditorStateTabId);
   }, [updateDoneOverlayUiStateForTab, visibleEditorStateTabId]);
   const handleDoneCommentsChange = useCallback((nextEntries) => {
-    if (doneEnhanceFlowRef.current?.commentsAlreadyCleared) {
+    if (
+      doneEnhanceFlowRef.current?.commentsAlreadyCleared
+      || isVisitBookingProblemCommentFading
+      || suppressDoneCommentsSyncRef.current
+    ) {
       return;
     }
 
@@ -14236,7 +14353,7 @@ export default function App() {
         ? prev
         : mergedNextEntries;
     });
-  }, []);
+  }, [isVisitBookingProblemCommentFading]);
   const activeAgentTaskViewState = useMemo(
     () => (
       activeEditorTabId?.startsWith('agent-task-') && (genState === 'done' || Boolean(doneEnhanceFlowRef.current))
@@ -14841,7 +14958,12 @@ export default function App() {
                 id: Number.isInteger(visitConflictRawIndex)
                   ? `problem-line-${visitConflictRawIndex}-visit-conflict-comment`
                   : 'visit-conflict-comment',
-                label: <VisitBookingProblemCommentLabel comment={visitConflictCommentText} />,
+                label: (
+                  <VisitBookingProblemCommentLabel
+                    comment={visitConflictCommentText}
+                    isFading={isVisitBookingProblemCommentFading}
+                  />
+                ),
                 icon: null,
                 secondaryText: '',
               }]
@@ -15440,7 +15562,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={openAndFocusIdeProblemsToolWindow} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} specTabLabel={activeEditorTabMeta?.label ?? ''} pendingAcQuickFixCount={pendingAcQuickFixCount} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={openAndFocusIdeProblemsToolWindow} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} updatedRowTarget={updatedSpecRowTarget} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} specTabLabel={activeEditorTabMeta?.label ?? ''} pendingAcQuickFixCount={pendingAcQuickFixCount} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
