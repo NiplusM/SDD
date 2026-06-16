@@ -4116,19 +4116,53 @@ body {
 
 .at-send-btn {
   all: unset;
-  display: flex;
+  position: relative;
+  box-sizing: border-box;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  padding: 3px 4px 3px 6px;
-  border-radius: 3px;
+  min-height: 26px;
+  padding: 0 6px;
+  border-radius: 4px;
   cursor: pointer;
 }
-.at-send-btn:hover { background: rgba(255,255,255,0.08); }
+
+.at-send-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  transition: background var(--motion-duration-fast) var(--motion-ease-soft);
+  pointer-events: none;
+}
+
+.at-send-btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+.at-send-btn:hover::before,
+.at-send-btn:focus-visible::before {
+  background: var(--icon-button-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.at-send-btn:active::before {
+  background: var(--icon-button-pressed-bg, rgba(255, 255, 255, 0.12));
+}
+
+.at-send-btn:focus-visible {
+  outline: 2px solid var(--control-focus-border-brand);
+}
+
 .at-send-btn:disabled {
   cursor: default;
   opacity: 0.46;
 }
-.at-send-btn:disabled:hover {
+.at-send-btn:disabled:hover::before,
+.at-send-btn:disabled:focus-visible::before,
+.at-send-btn:disabled:active::before {
   background: transparent;
 }
 .at-send-btn .icon path,
@@ -4718,6 +4752,9 @@ body {
   border-radius: 3px;
   padding: 0 3px;
   cursor: pointer;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .spec-line-comment {

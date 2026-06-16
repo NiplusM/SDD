@@ -4360,6 +4360,33 @@ function normalizeDoneEditableText(text = '') {
     .trim();
 }
 
+function serializeDoneEditableMarkdownText(editableEl, fallbackText = '') {
+  if (!(editableEl instanceof HTMLElement)) {
+    return normalizeDoneEditableText(fallbackText);
+  }
+
+  const serializeNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent ?? '';
+    }
+
+    if (!(node instanceof HTMLElement)) {
+      return '';
+    }
+
+    if (node.classList.contains('spec-ref')) {
+      const refText = node.textContent ?? '';
+      return refText ? `\`${refText}\`` : '';
+    }
+
+    return Array.from(node.childNodes).map(serializeNode).join('');
+  };
+
+  return normalizeDoneEditableText(
+    Array.from(editableEl.childNodes).map(serializeNode).join('')
+  );
+}
+
 function normalizeSpecCodeForComparison(code = '') {
   return String(code)
     .replace(/\u200B/g, '')
@@ -4397,7 +4424,7 @@ function extractSnapshotLineFromDoneRow(rowEl, originalLine = '') {
 
   if (headingTitle !== null) {
     const headingEl = rowEl?.querySelector('.spec-done-heading[contenteditable]');
-    const nextHeading = normalizeDoneEditableText(headingEl?.textContent ?? headingTitle);
+    const nextHeading = serializeDoneEditableMarkdownText(headingEl, headingTitle);
     return `## ${nextHeading}`;
   }
 
@@ -4418,7 +4445,7 @@ function extractSnapshotLineFromDoneRow(rowEl, originalLine = '') {
     return sourceLine;
   }
 
-  const nextText = normalizeDoneEditableText(editableEl.textContent ?? sourceLine);
+  const nextText = serializeDoneEditableMarkdownText(editableEl, sourceLine);
   const checkMatch = sourceLine.match(/^(\s*-\s+\[[ x]\]\s+)(.*)$/i);
   if (checkMatch) {
     return `${checkMatch[1]}${nextText}`;
