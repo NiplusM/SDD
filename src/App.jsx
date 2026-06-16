@@ -413,6 +413,28 @@ const RESTORE_PLAN_FRAME_INITIAL_DELAY_MS = TERMINAL_RUN_VISIBLE_DELAY_MS + TERM
 const RESTORE_PLAN_FRAME_STEP_DELAY_MS = TERMINAL_UPDATE_SPEC_STEP_DELAY_MS;
 const RUN_STATUS_REVEAL_STEP_DELAY_MS = 120;
 const CHAINED_SECTION_START_DELAY_MS = 220;
+const PLAN_BUILD_CLIP_INITIAL_BUILDING_DELAY_MS = 1100;
+const PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS = 3200;
+const PLAN_BUILD_CLIP_SCHEMA_CHILD_STEP_DELAYS_MS = [3100, 2300, 3200];
+const PLAN_BUILD_CLIP_SCHEMA_CHILD_TRANSITION_DELAY_MS = 450;
+const PLAN_BUILD_CLIP_PARENT_DONE_DELAY_MS = 450;
+const PLAN_BUILD_CLIP_GROUP_TRANSITION_DELAY_MS = 900;
+const PLAN_BUILD_CLIP_VISIT_ENTITY_CHILD_STEP_DELAYS_MS = [15000, 3200];
+const PLAN_BUILD_CLIP_FINISH_DELAY_MS = 520;
+const PLAN_BUILD_CLIP_SUMMARIES = [
+  'Working on the schema: `vet`/`time` columns, unique constraint, and seed data across `h2`, `mysql`, `postgres`...',
+  'Working on `Visit.java`: mapping the vet relation and the visit time field...',
+  'Working on `VetFormatter`: converting the form\'s vet selection into a `Vet` on submit...',
+  'Working on `VisitRepository`: double-booking lookup and slot-availability queries...',
+  'Working on `VisitController`: vet dropdown, time slots, and the double-booking guard...',
+  'Working on `application.properties`: configurable visit start and end hours...',
+  'Working on `createOrUpdateVisitForm.html`: vet and time-slot selects with field errors...',
+  'Working on `ownerDetails.html`: vet and time columns in the visits table...',
+  'Working on `VisitControllerTests`: success, double-booking, and model-population tests...',
+  'Working on `Vet.toString()`: full name so the dropdown renders each vet...',
+  'Working on `messages.properties`: vet and time labels across all locales...',
+  'Working on test fixes: formatter filter, mock beans, and the `@NotNull` fixture...',
+];
 const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
 const TERMINAL_PERMISSION_OPTIONS = [
   { id: 'allow-once', label: 'Allow once' },
@@ -2870,9 +2892,8 @@ function renderProblemsFileIcon(tab) {
 
 function EditorTabRunningIcon({ icon, tone = 'green' }) {
   return (
-    <span className="editor-tab-running-icon" aria-hidden="true">
+    <span className={`editor-tab-running-icon editor-tab-running-icon-${tone}`} aria-hidden="true">
       {typeof icon === 'string' ? <Icon name={icon} size={16} /> : icon}
-      <span className={`editor-tab-running-dot editor-tab-running-dot-${tone}`} />
     </span>
   );
 }
@@ -2972,7 +2993,14 @@ function normalizeCommentTarget(target) {
   const index = target?.index;
 
   if ((kind === 'ac' || kind === 'plan') && Number.isInteger(index) && index >= 0) {
-    return { kind, index };
+    const normalizedTarget = { kind, index };
+    if (kind === 'plan' && Number.isInteger(target?.lineIndex) && target.lineIndex >= 0) {
+      normalizedTarget.lineIndex = target.lineIndex;
+    }
+    if (kind === 'plan' && Number.isInteger(target?.parentIndex) && target.parentIndex >= 0) {
+      normalizedTarget.parentIndex = target.parentIndex;
+    }
+    return normalizedTarget;
   }
 
   return null;
@@ -4168,31 +4196,24 @@ function createSpecDocument() {
   ].map((section) => withDerivedPlanChildren(section));
 }
 
-function setPlanWorkflowMeta(documentSections = [], workflow = null) {
+const PLAN_WORKFLOW_CHIP_LABEL = 'Autonomous';
+
+function addPlanAutonomousChip(documentSections = []) {
   if (!Array.isArray(documentSections)) {
     return [];
   }
 
-  return documentSections.map((section) => {
-    if (normalizeSpecSectionTitle(section?.title) !== 'plan') {
-      return section;
-    }
-
-    const workflowLabel = typeof workflow?.label === 'string' ? workflow.label.trim() : '';
-
-    if (!workflowLabel || workflow?.id === 'new-workflow') {
-      const { meta: _removedMeta, ...restSection } = section;
-      return restSection;
-    }
-
-    return {
-      ...section,
-      meta: {
-        kind: 'chip',
-        text: workflowLabel,
-      },
-    };
-  });
+  return documentSections.map((section) => (
+    normalizeSpecSectionTitle(section?.title) === 'plan'
+      ? {
+          ...section,
+          meta: {
+            kind: 'chip',
+            text: PLAN_WORKFLOW_CHIP_LABEL,
+          },
+        }
+      : section
+  ));
 }
 
 function serializeSpecDocument(documentSections) {
@@ -4781,6 +4802,27 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
   });
 }
 
+function stripTrailingEllipsis(text = '') {
+  return String(text).replace(/(?:\.{3}|…)\s*$/, '');
+}
+
+function stripInlineCodeMarkers(text = '') {
+  return String(text).replace(/`([^`]+)`/g, '$1');
+}
+
+function formatRunningToolbarText(text = '') {
+  const normalizedText = stripInlineCodeMarkers(stripTrailingEllipsis(text)).trim();
+  return normalizedText ? `${normalizedText}...` : '';
+}
+
+function RunningToolbarLabel({ text }) {
+  return (
+    <span className="at-generating-label">
+      {formatRunningToolbarText(text)}
+    </span>
+  );
+}
+
 const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
 
 function getInlineInspectionTooltipData(highlight = null, issue = null) {
@@ -4919,7 +4961,7 @@ function renderDoneMarkdownInline(text, highlight = null, issue = null, onAccept
   });
 }
 
-function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', menuMode = 'files', onWorkflowSelect = null, onChipClick = null, onChipRemove = null, showAddButton = true, disableAddButton = false }) {
+function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', menuMode = 'files', onWorkflowSelect = null, onChipClick = null, onChipRemove = null, showAddButton = true, disableAddButton = false, removable = true }) {
   const normalizedInitialFiles = useMemo(
     () => normalizeDoneFileEntries(initialFiles),
     [initialFiles]
@@ -4972,7 +5014,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
               event.stopPropagation();
               onChipClick(file);
             }) : undefined}
-            onRemove={(onChipClick && onChipRemove) ? ((event) => {
+            onRemove={!removable ? null : ((onChipClick && onChipRemove) ? ((event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 removeFile(file.label);
@@ -4981,7 +5023,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
                 event.preventDefault();
                 event.stopPropagation();
                 removeFile(file.label);
-              }))}
+              })))}
           />
         ))}
         {showAddButton && (
@@ -5280,7 +5322,7 @@ function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }
   );
 }
 
-function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, menuMode = 'files', onWorkflowSelect = null, onWorkflowOpen = null, onWorkflowRemove = null, showAddButton = true, disableAddButton = false }) {
+function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, menuMode = 'files', onWorkflowSelect = null, onWorkflowOpen = null, onWorkflowRemove = null, showAddButton = true, disableAddButton = false, removable = true }) {
   return (
     <div className="spec-done-heading-row">
       <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
@@ -5297,6 +5339,7 @@ function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, comment
         onChipRemove={onWorkflowRemove}
         showAddButton={showAddButton}
         disableAddButton={disableAddButton}
+        removable={removable}
       />
       {commentAdornment}
     </div>
@@ -5319,31 +5362,23 @@ function shouldShowDoneRunIcon(line, { hidePlanRun = false, hideAcRun = false } 
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
-function CheckStatus({ status, outdated = false, isLoading = false }) {
+function CheckStatus({ status, outdated = false, isLoading = false, variant = null }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
+  const statusIcon = (() => {
+    if (variant === 'empty') return <IconStatusEmpty />;
+    if (isLoading) return <IconStatusExecuting />;
+    if (normalizedStatus === 'passed') return <IconDone />;
+    if (normalizedStatus === 'pending' || normalizedStatus === 'stale' || normalizedStatus === 'skipped') return <IconStatusMinus />;
+    return <IconStatusIssue />;
+  })();
 
   return (
     <span
-      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}`}
+      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}${isLoading ? ' is-loading' : ''}${variant ? ` spec-check-status-${variant}` : ''}`}
       aria-label={normalizedStatus}
       title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
     >
-      {isLoading ? (
-        <IconLoaderSpinner />
-      ) : (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          {normalizedStatus === 'pending'
-            ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
-            : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
-          }
-          {normalizedStatus === 'passed'
-            ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            : normalizedStatus === 'pending'
-              ? null
-              : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
-          }
-        </svg>
-      )}
+      {statusIcon}
     </span>
   );
 }
@@ -5379,8 +5414,8 @@ function AcCheckRow({
   const checks = checkItem.checks || [];
   const problemCount = checks.filter(c => c.status === 'failed').length || checkItem.problemCount || 0;
   const hasChecks = checks.length > 0;
-  const hasToggle = hasChecks || problemCount > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
+  const hasToggle = !isOutdated && (hasChecks || problemCount > 0);
 
   const handleProposalAccept = () => {
     setProposalAccepted(true);
@@ -5415,12 +5450,14 @@ function AcCheckRow({
                     : checkItem.status))));
 
   return (
-    <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
-      <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
-        {useCheckbox
+    <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
+      <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
+        {isOutdated
+          ? <CheckStatus status="stale" outdated />
+          : useCheckbox
           ? <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
           : <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />}
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
+        <span>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasToggle && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {hasChecks ? `${checks.length} checks` : ''}{!proposalAccepted && problemCount > 0 ? `${hasChecks ? '/' : ''}${problemCount} problem` : ''}
@@ -6373,27 +6410,28 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, isInRunningScope = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
   const canShowDiff = Boolean(statusItem) && statusItem?.status !== 'pending';
   const isNested = nestingLevel > 0;
+  const isParentScopePending = isInRunningScope && !isRunning && statusItem?.status === 'pending';
   const planLineStyle = isNested
     ? { '--spec-plan-nesting-level': nestingLevel }
     : undefined;
 
   return (
     <div
-      className={`spec-done-line spec-done-line-check spec-done-plan-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isNested ? ' spec-done-plan-child-line' : ''}`}
+      className={`spec-done-line spec-done-line-check spec-done-plan-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isNested ? ' spec-done-plan-child-line' : ''}${isRunning ? ' is-running-exact' : ''}${isParentScopePending ? ' is-running-scope' : ''}`}
       data-plan-nesting-level={isNested ? nestingLevel : undefined}
       style={planLineStyle}
     >
       {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={!hasPlanComment && statusItem.status === 'pending'} />
+        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} variant={isParentScopePending ? 'empty' : null} />
         : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
       }
-      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
+      <span className="spec-done-plan-text">{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
       {canShowDiff && !isNested && (
         <button
@@ -6424,9 +6462,6 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
           menuMode="workflow"
-          onWorkflowSelect={onPlanWorkflowSelect}
-          onWorkflowOpen={onPlanWorkflowOpen}
-          onWorkflowRemove={onPlanWorkflowRemove}
         />
       );
     }
@@ -6468,12 +6503,27 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
       (normalizedRunTarget
         && checkTarget
         && normalizedRunTarget.kind === checkTarget.kind
-        && normalizedRunTarget.index === checkTarget.index)
+        && normalizedRunTarget.index === checkTarget.index
+        && (
+          !Number.isInteger(normalizedRunTarget.lineIndex)
+          || normalizedRunTarget.lineIndex === checkTarget.lineIndex
+        ))
       || (!normalizedRunTarget
         && (normalizedActiveRunSectionTitle.length > 0
           ? normalizedActiveRunSectionTitle === normalizedSectionTitle
           : ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
             || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan'))))
+    );
+    const isRunningPlanParent = Boolean(
+      activeRunRequest
+      && normalizedRunTarget
+      && checkTarget?.kind === 'plan'
+      && normalizedRunTarget.kind === 'plan'
+      && nestingLevel === 0
+      && Number.isInteger(normalizedRunTarget.parentIndex)
+      && Number.isInteger(checkTarget.parentIndex)
+      && normalizedRunTarget.parentIndex === checkTarget.parentIndex
+      && normalizedRunTarget.lineIndex !== checkTarget.lineIndex
     );
     if (checkStatus != null) {
       if ('checkboxStatus' in checkStatus && checkStatus.checkboxStatus === null) {
@@ -6498,6 +6548,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
           isRunning={isRunning}
+          isInRunningScope={isRunning || isRunningPlanParent}
         />
       );
     }
@@ -7468,6 +7519,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           kind: 'plan',
           visibleIndex: statusVisibleIndex,
           originalIndex,
+          lineIndex: statusVisibleIndex,
+          parentIndex: currentPlanParentVisibleIndex,
           statusItem: planRunResult?.[statusVisibleIndex] ?? null,
         });
       }
@@ -7643,7 +7696,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
         const originalIndex = statusMeta.originalIndex;
         if (Number.isInteger(originalIndex)) {
-          checkTarget = { kind: 'plan', index: originalIndex };
+          checkTarget = {
+            kind: 'plan',
+            index: originalIndex,
+            lineIndex: statusMeta.lineIndex,
+            parentIndex: statusMeta.parentIndex,
+          };
         }
         planStatus = displayStatusItem;
         if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(originalIndex)) {
@@ -8927,11 +8985,11 @@ function AttachedFileChip({ label, onRemove, onClick = null, className = '' }) {
   );
 }
 
-function AgentTaskTopBarIcon({ style }) {
+function AgentTaskTopBarIcon({ style, animated = false }) {
   const gradientId = useId();
 
   return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
+    <svg className={animated ? 'agent-task-topbar-icon is-animated' : 'agent-task-topbar-icon'} width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
       <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill={`url(#${gradientId})`} />
       <path d="M10.4202 17.71C6.0202 17.71 2.4502 14.26 2.4502 10C2.4502 5.74004 6.0202 2.29004 10.4202 2.29004" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
       <path d="M17.34 7.87004C17.34 10.86 14.35 13.45 10.43 13.45C6.51002 13.45 3.52002 10.86 3.52002 7.87004C3.52002 4.88004 6.51002 2.29004 10.43 2.29004C14.35 2.29004 17.34 4.88004 17.34 7.87004Z" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
@@ -8987,12 +9045,16 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
+  const isTaskRunRunning = runState === 'running' || Boolean(activeRunRequest);
+  const runningToolbarSummary = typeof activeRunRequest?.summary === 'string' && activeRunRequest.summary.trim().length > 0
+    ? activeRunRequest.summary
+    : 'Building...';
   const hasPendingQuickFixRerun =
     (Array.isArray(planRunResult) && planRunResult.some((status) => status === null)) ||
     (pendingAcQuickFixCount > 0);
   const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || hasPendingQuickFixRerun;
   const shouldShowDoneEnhanceHint = genState === 'done'
-    && runState !== 'running'
+    && !isTaskRunRunning
     && hasPendingSpecifyChanges
     && !isDoneEnhanceLocked;
   const isDoneEnhanceEnabled = genState === 'done'
@@ -9660,9 +9722,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
-                {runState === 'running' ? (<>
-                  <IconLoaderSpinner />
-                  <span className="at-generating-label">Building...</span>
+                {isTaskRunRunning ? (<>
+                  <AgentTaskTopBarIcon style={{ flexShrink: 0 }} animated />
+                  <RunningToolbarLabel text={runningToolbarSummary} />
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
                   {renderToolbarInput({ collapsibleInDone: true })}
@@ -9671,7 +9733,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               {/* Default state — right */}
               <div className="agent-task-toolbar-right">
-                {runState === 'running' ? (
+                {isTaskRunRunning ? (
                   <button className="at-send-btn" onClick={() => onStop()}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
@@ -9992,7 +10054,7 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
     };
   }
 
-  const documentSections = createSpecDocument();
+  const documentSections = addPlanAutonomousChip(createSpecDocument());
   const isVisitBookingPreset = normalizedTabId === 'agent-task-t1' || normalizedLabel === 'visit-booking.md';
 
   return {
@@ -10495,7 +10557,7 @@ function AutonomousMarkdownEditor() {
 
 function buildInitialEditorTabs() {
   const visitBookingTab = getPresetAgentTaskDefinition('t1')?.tab;
-  return visitBookingTab ? [visitBookingTab] : [];
+  return visitBookingTab ? [visitBookingTab, AUTONOMOUS_WORKFLOW_TAB] : [AUTONOMOUS_WORKFLOW_TAB];
 }
 
 function buildInitialEditorTabContents() {
@@ -10506,6 +10568,10 @@ function buildInitialEditorTabContents() {
 
   return {
     [preset.tab.id]: preset.content,
+    [AUTONOMOUS_WORKFLOW_TAB.id]: {
+      language: 'markdown',
+      code: AUTONOMOUS_WORKFLOW_CONTENT,
+    },
     ...MY_EDITOR_TAB_CONTENTS,
   };
 }
@@ -10639,8 +10705,44 @@ function IconWarning() {
 
 function IconDone() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2.5 8.25L6 11.75L13.5 4.25" stroke="#868A91" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className="spec-status-glyph spec-status-glyph-done" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2" y="2" width="12" height="12" rx="3" fill="currentColor" />
+      <path d="M5.2 8.2L7.15 10.1L10.95 5.9" stroke="#fff" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconStatusMinus() {
+  return (
+    <svg className="spec-status-glyph spec-status-glyph-minus" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.14)" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M5.25 8H10.75" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconStatusEmpty() {
+  return (
+    <svg className="spec-status-glyph spec-status-glyph-empty" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.08)" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
+}
+
+function IconStatusExecuting() {
+  return (
+    <svg className="spec-status-glyph spec-status-glyph-executing" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.14)" stroke="currentColor" strokeWidth="1.25" />
+      <path className="spec-status-executing-dash" d="M5.25 8H10.75" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconStatusIssue() {
+  return (
+    <svg className="spec-status-glyph spec-status-glyph-issue" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <rect x="2" y="2" width="12" height="12" rx="3" fill="currentColor" />
+      <path d="M5.2 5.2L10.8 10.8M10.8 5.2L5.2 10.8" stroke="#fff" strokeWidth="1.45" strokeLinecap="round" />
     </svg>
   );
 }
@@ -10997,8 +11099,10 @@ export default function App() {
   const currentTerminalRunTabIdRef = useRef(null);
   const currentRunSourceTabIdRef = useRef(null);
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
+  const planBuildClipTimeoutsRef = useRef([]);
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
+  const [planBuildClipRequestsByTab, setPlanBuildClipRequestsByTab] = useState({});
   const [genState, setGenState] = useState(() => initialVisitBookingTaskState.genState ?? 'done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
   const [genProgress, setGenProgress] = useState(() => initialVisitBookingTaskState.genProgress ?? 1);
   const [generatedDocument, setGeneratedDocument] = useState(() => initialVisitBookingTaskState.documentSections ?? createSpecDocument());
@@ -11414,6 +11518,21 @@ export default function App() {
     statusRevealTimeoutsRef.current[kind] = [];
   }, []);
 
+  const clearPlanBuildClip = useCallback((sourceTabId = null) => {
+    planBuildClipTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    planBuildClipTimeoutsRef.current = [];
+
+    setPlanBuildClipRequestsByTab((prev) => {
+      if (sourceTabId) {
+        if (!(sourceTabId in prev)) return prev;
+        const { [sourceTabId]: _removedRequest, ...rest } = prev;
+        return rest;
+      }
+
+      return Object.keys(prev).length > 0 ? {} : prev;
+    });
+  }, []);
+
   const clearChainedRunTimeout = useCallback(() => {
     if (!chainedRunTimeoutRef.current) return;
     window.clearTimeout(chainedRunTimeoutRef.current);
@@ -11428,6 +11547,7 @@ export default function App() {
   const resetRunUiForTab = useCallback((sourceTabId) => {
     if (!sourceTabId) return;
     const terminalTabId = buildTerminalSessionTabId(sourceTabId);
+    clearPlanBuildClip(sourceTabId);
     setRunStateForTab('default', sourceTabId);
     setPendingTerminalRunForTab(null, terminalTabId);
     setTerminalPermissionPromptForTab(null, terminalTabId);
@@ -11436,6 +11556,7 @@ export default function App() {
       currentRunSourceTabIdRef.current = null;
     }
   }, [
+    clearPlanBuildClip,
     setAcWarningBannerForTab,
     setPendingTerminalRunForTab,
     setRunStateForTab,
@@ -11508,6 +11629,7 @@ export default function App() {
     clearChainedRunTimeout();
     clearStatusReveal('plan');
     clearStatusReveal('ac');
+    clearPlanBuildClip();
     clearAcWarningFlow();
     clearTerminalRunAnimation();
     setPendingTerminalRunForTab(null);
@@ -11524,6 +11646,7 @@ export default function App() {
   }, [
     clearAcWarningFlow,
     clearChainedRunTimeout,
+    clearPlanBuildClip,
     clearStatusReveal,
     clearTerminalRunAnimation,
     resetDoneComments,
@@ -11563,6 +11686,297 @@ export default function App() {
       label: resolvedTab?.label ?? '',
     });
   }, [activeEditorTab, generationTabId, ideTabs]);
+
+  const startPlanBuildClip = useCallback((sourceTabId, initialPlanStatuses = null) => {
+    if (!sourceTabId) return;
+
+    clearPlanBuildClip();
+    clearStatusReveal('plan');
+
+    const scenario = getCurrentAgentTaskScenario(sourceTabId);
+    const planSection = (generatedDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'plan')
+      ?? (scenario?.defaultDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'plan')
+      ?? null;
+    const acceptanceSection = (generatedDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria')
+      ?? (scenario?.defaultDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria')
+      ?? null;
+    const planItems = Array.isArray(planSection?.items) ? planSection.items.filter((item) => item?.type === 'check') : [];
+    const acceptanceItemCount = Array.isArray(acceptanceSection?.items)
+      ? acceptanceSection.items.filter((item) => item?.type === 'check').length
+      : 0;
+    const planGroups = [];
+    let lineIndex = 0;
+
+    planItems.forEach((item, parentIndex) => {
+      const parentLineIndex = lineIndex;
+      lineIndex += 1;
+      const children = Array.isArray(item.children)
+        ? item.children.filter((child) => child?.type === 'check').map((child) => {
+            const childLineIndex = lineIndex;
+            lineIndex += 1;
+            return childLineIndex;
+          })
+        : [];
+
+      planGroups.push({
+        parentIndex,
+        parentLineIndex,
+        executableLineIndices: children.length > 0 ? children : [parentLineIndex],
+      });
+    });
+
+    const totalPlanLineCount = Math.max(lineIndex, planItems.length);
+    const completedStatuses = Array.from({ length: totalPlanLineCount }, () => ({ status: 'passed' }));
+    const seedStatuses = Array.from({ length: totalPlanLineCount }, (_, index) => (
+      Array.isArray(initialPlanStatuses) && initialPlanStatuses[index] ? initialPlanStatuses[index] : null
+    ));
+    const resolvedAcStatuses = buildResolvedRunStatuses(
+      scenario.acBaseStatuses,
+      'ac',
+      appliedIssueFixes,
+      removedIssueIndices,
+    );
+    const nextAcStatuses = Array.from({ length: acceptanceItemCount }, (_, index) => {
+      const existingStatus = resolvedAcStatuses[index];
+      return withRunStatusOutdated(existingStatus ?? {
+        status: 'pending',
+        checkboxStatus: null,
+        checks: [],
+      });
+    });
+
+    currentRunSourceTabIdRef.current = sourceTabId;
+    setRunStateForTab('running', sourceTabId);
+    setPlanRunResult(seedStatuses);
+    setAcRunResult(nextAcStatuses);
+    setInteractiveTaskStates((prev) => ({
+      ...prev,
+      [sourceTabId]: {
+        ...(prev[sourceTabId] ?? {}),
+        acRunResult: nextAcStatuses,
+        planRunResult: seedStatuses,
+      },
+    }));
+
+    const setClipRequest = (parentIndex, currentLineIndex) => {
+      setPlanBuildClipRequestsByTab((prev) => ({
+        ...prev,
+        [sourceTabId]: {
+          mode: 'section',
+          sourceTabId,
+          sectionTitle: 'Plan',
+          checkTarget: {
+            kind: 'plan',
+            index: parentIndex,
+            parentIndex,
+            lineIndex: currentLineIndex,
+          },
+          summary: PLAN_BUILD_CLIP_SUMMARIES[parentIndex] ?? `Building plan step ${parentIndex + 1}`,
+        },
+      }));
+    };
+
+    const setStepStatuses = (parentLineIndex, currentLineIndex, currentStatus) => {
+      const buildNextPlanStatuses = (prev) => {
+        const next = Array.isArray(prev) ? [...prev] : [];
+        if (currentLineIndex !== parentLineIndex) {
+          next[parentLineIndex] = { status: 'pending' };
+        }
+        if (currentLineIndex < completedStatuses.length) {
+          next[currentLineIndex] = currentStatus;
+        }
+        return next;
+      };
+
+      setPlanRunResult(buildNextPlanStatuses);
+      setInteractiveTaskStates((prev) => {
+        const previousTaskState = prev[sourceTabId] ?? {};
+        return {
+          ...prev,
+          [sourceTabId]: {
+            ...previousTaskState,
+            acRunResult: nextAcStatuses,
+            planRunResult: buildNextPlanStatuses(previousTaskState.planRunResult ?? seedStatuses),
+          },
+        };
+      });
+    };
+
+    const finishClip = () => {
+      setPlanRunResult(completedStatuses);
+      setInteractiveTaskStates((prev) => {
+        const previousTaskState = prev[sourceTabId] ?? {};
+        return {
+          ...prev,
+          [sourceTabId]: {
+            ...previousTaskState,
+            acRunResult: nextAcStatuses,
+            planRunResult: completedStatuses,
+          },
+        };
+      });
+      setPlanBuildClipRequestsByTab((prev) => {
+        if (!(sourceTabId in prev)) return prev;
+        const { [sourceTabId]: _removedRequest, ...rest } = prev;
+        return rest;
+      });
+      setRunStateForTab('default', sourceTabId);
+      if (currentRunSourceTabIdRef.current === sourceTabId) {
+        currentRunSourceTabIdRef.current = null;
+      }
+      planBuildClipTimeoutsRef.current = [];
+    };
+
+    const schedulePlanBuildClipTimeout = (callback, delay) => {
+      const timeoutId = window.setTimeout(() => {
+        planBuildClipTimeoutsRef.current = planBuildClipTimeoutsRef.current.filter((id) => id !== timeoutId);
+        callback();
+      }, delay);
+      planBuildClipTimeoutsRef.current.push(timeoutId);
+      return timeoutId;
+    };
+
+    const getChildWorkDelay = (groupIndex, childIndex) => {
+      if (groupIndex === 0) {
+        return PLAN_BUILD_CLIP_SCHEMA_CHILD_STEP_DELAYS_MS[childIndex] ?? PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
+      }
+      if (groupIndex === 1) {
+        return PLAN_BUILD_CLIP_VISIT_ENTITY_CHILD_STEP_DELAYS_MS[childIndex] ?? PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
+      }
+      return PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
+    };
+
+    const getChildTransitionDelay = (groupIndex, childIndex, isLastChild) => {
+      if (!isLastChild) {
+        return groupIndex === 0 ? PLAN_BUILD_CLIP_SCHEMA_CHILD_TRANSITION_DELAY_MS : 0;
+      }
+      if (groupIndex === 0) {
+        return PLAN_BUILD_CLIP_PARENT_DONE_DELAY_MS;
+      }
+      return 0;
+    };
+
+    const getGroupTransitionDelay = (groupIndex) => (
+      groupIndex === 0 ? PLAN_BUILD_CLIP_GROUP_TRANSITION_DELAY_MS : 0
+    );
+
+    setPlanBuildClipRequestsByTab((prev) => ({
+      ...prev,
+      [sourceTabId]: {
+        mode: 'section',
+        sourceTabId,
+        sectionTitle: '__building__',
+        checkTarget: null,
+        summary: 'Building',
+      },
+    }));
+
+    const runGroup = (groupIndex) => {
+      if (groupIndex >= planGroups.length) {
+        schedulePlanBuildClipTimeout(finishClip, PLAN_BUILD_CLIP_FINISH_DELAY_MS);
+        return;
+      }
+
+      const group = planGroups[groupIndex];
+      let childIndex = 0;
+
+      const runChild = () => {
+        const currentLineIndex = group.executableLineIndices[childIndex] ?? group.parentLineIndex;
+        const childDelay = getChildWorkDelay(groupIndex, childIndex);
+        setClipRequest(group.parentIndex, currentLineIndex);
+        setStepStatuses(group.parentLineIndex, currentLineIndex, { status: 'pending' });
+
+        schedulePlanBuildClipTimeout(() => {
+          const isLastChild = childIndex >= group.executableLineIndices.length - 1;
+
+          const buildNextPlanStatuses = (prev) => {
+            const next = Array.isArray(prev) ? [...prev] : [];
+            next[currentLineIndex] = completedStatuses[currentLineIndex];
+
+            if (isLastChild && currentLineIndex === group.parentLineIndex) {
+              next[group.parentLineIndex] = completedStatuses[group.parentLineIndex];
+            }
+
+            return next;
+          };
+
+          setPlanRunResult(buildNextPlanStatuses);
+          setInteractiveTaskStates((prev) => {
+            const previousTaskState = prev[sourceTabId] ?? {};
+            return {
+              ...prev,
+              [sourceTabId]: {
+                ...previousTaskState,
+                acRunResult: nextAcStatuses,
+                planRunResult: buildNextPlanStatuses(previousTaskState.planRunResult ?? seedStatuses),
+              },
+            };
+          });
+
+          const childTransitionDelay = getChildTransitionDelay(groupIndex, childIndex, isLastChild);
+
+          if (isLastChild) {
+            const completeParentAndAdvance = () => {
+              if (currentLineIndex !== group.parentLineIndex) {
+                const markParentDone = (prev) => {
+                  const next = Array.isArray(prev) ? [...prev] : [];
+                  next[group.parentLineIndex] = completedStatuses[group.parentLineIndex];
+                  return next;
+                };
+
+                setPlanRunResult(markParentDone);
+                setInteractiveTaskStates((prev) => {
+                  const previousTaskState = prev[sourceTabId] ?? {};
+                  return {
+                    ...prev,
+                    [sourceTabId]: {
+                      ...previousTaskState,
+                      acRunResult: nextAcStatuses,
+                      planRunResult: markParentDone(previousTaskState.planRunResult ?? seedStatuses),
+                    },
+                  };
+                });
+              }
+
+              schedulePlanBuildClipTimeout(() => runGroup(groupIndex + 1), getGroupTransitionDelay(groupIndex));
+            };
+
+            if (childTransitionDelay > 0) {
+              schedulePlanBuildClipTimeout(completeParentAndAdvance, childTransitionDelay);
+              return;
+            }
+
+            completeParentAndAdvance();
+            return;
+          }
+
+          const advanceChild = () => {
+            childIndex += 1;
+            runChild();
+          };
+
+          if (childTransitionDelay > 0) {
+            schedulePlanBuildClipTimeout(advanceChild, childTransitionDelay);
+            return;
+          }
+
+          advanceChild();
+        }, childDelay);
+      };
+
+      runChild();
+    };
+
+    schedulePlanBuildClipTimeout(() => runGroup(0), PLAN_BUILD_CLIP_INITIAL_BUILDING_DELAY_MS);
+  }, [
+    appliedIssueFixes,
+    clearPlanBuildClip,
+    clearStatusReveal,
+    generatedDocument,
+    getCurrentAgentTaskScenario,
+    removedIssueIndices,
+    setRunStateForTab,
+  ]);
 
   const getTaskRuntimeState = useCallback((tabId) => {
     if (!tabId) return null;
@@ -15171,6 +15585,10 @@ export default function App() {
   const visiblePendingTerminalRun = hasLocalTerminalTabs ? (activeTerminalSession?.pendingRun ?? null) : pendingTerminalRun;
   const visibleTerminalPermissionPrompt = hasLocalTerminalTabs ? (activeTerminalSession?.permissionPrompt ?? null) : terminalPermissionPrompt;
   const visibleAcWarningBanner = hasLocalTerminalTabs ? (activeTerminalSession?.acWarningBanner ?? null) : acWarningBanner;
+  const activePlanBuildClipRequest = activeEditorTabId ? (planBuildClipRequestsByTab[activeEditorTabId] ?? null) : null;
+  const activeEditorRunRequest = activePlanBuildClipRequest ?? (
+    runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null
+  );
   const handleTerminalTabChange = useCallback((nextIndex) => {
     const nextTab = terminalTabsState[nextIndex];
     if (!nextTab) return;
@@ -15443,6 +15861,7 @@ export default function App() {
     if (terminalTabId) {
       setAcWarningBannerForTab(null, terminalTabId);
     }
+    const shouldRunPlanBuildClip = resolvedRunSectionTitle.toLowerCase() === 'plan' && !runTarget;
 
     if (sourceTabId && (taskState?.pendingRerunAcOriginalIndices || taskState?.pendingRerunPlanOriginalIndices)) {
       setInteractiveTaskStates((prev) => ({
@@ -15453,6 +15872,11 @@ export default function App() {
           pendingRerunPlanOriginalIndices: undefined,
         },
       }));
+    }
+
+    if (shouldRunPlanBuildClip) {
+      startPlanBuildClip(sourceTabId, initialPlanRunResult);
+      return;
     }
 
     queueTerminalRun({
@@ -15710,7 +16134,6 @@ export default function App() {
   const activeTabId = activeEditorTabMeta?.id ?? null;
   const activeTabContent = activeEditorTabContentEntry;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
-  const isAutonomousWorkflowTab = activeTabId === AUTONOMOUS_WORKFLOW_TAB.id;
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
   const currentPersistedSpecCode = visibleEditorStateTabId
@@ -15855,85 +16278,12 @@ export default function App() {
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
   }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs, restoreSpecDoneScrollForTab]);
-  const handlePlanWorkflowSelect = useCallback((workflow) => {
-    if (!activeSourceEditorTabId) return;
-
-    setGeneratedDocument((prevDocument) => {
-      const nextDocument = setPlanWorkflowMeta(prevDocument, workflow);
-      const nextCode = serializeSpecDocument(nextDocument);
-
-      setIdeTabContents((prev) => ({
-        ...prev,
-        [activeSourceEditorTabId]: {
-          ...(prev[activeSourceEditorTabId] ?? {}),
-          language: 'markdown',
-          code: nextCode,
-        },
-      }));
-
-      setInteractiveTaskStates((prev) => ({
-        ...prev,
-        [activeSourceEditorTabId]: {
-          ...(prev[activeSourceEditorTabId] ?? {}),
-          documentSections: nextDocument,
-        },
-      }));
-
-      return nextDocument;
-    });
-  }, [activeSourceEditorTabId]);
-  const handlePlanWorkflowOpen = useCallback((file) => {
-    if ((file?.label ?? '') !== 'Autonomous') return;
-
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [AUTONOMOUS_WORKFLOW_TAB.id]: {
-        language: 'markdown',
-        code: AUTONOMOUS_WORKFLOW_CONTENT,
-      },
-    }));
-
-    setIdeTabs((prev) => {
-      const existingIndex = prev.findIndex((tab) => tab.id === AUTONOMOUS_WORKFLOW_TAB.id);
-      if (existingIndex >= 0) {
-        setActiveEditorTab(existingIndex);
-        return prev;
-      }
-
-      setActiveEditorTab(prev.length);
-      return [...prev, AUTONOMOUS_WORKFLOW_TAB];
-    });
-  }, []);
-  const handlePlanWorkflowRemove = useCallback(() => {
-    handlePlanWorkflowSelect(null);
-  }, [handlePlanWorkflowSelect]);
-  const getEditorTabRunningTone = useCallback((tab) => {
-    if (!tab?.id?.startsWith('agent-task-')) return null;
-
-    const taskState = getTaskRuntimeState(tab.id)?.taskState ?? null;
-    const taskRunState = runStatesByTab[tab.id] ?? 'default';
-
-    if (taskRunState === 'running' || taskState?.genState === 'loading' || taskState?.genState === 'generating') {
-      return 'green';
-    }
-
-    return null;
-  }, [getTaskRuntimeState, runStatesByTab]);
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
         Boolean(ideTabContents[tab.id]?.diffData) ||
         tab.id?.startsWith('plan-diff-') ||
         tab.id?.startsWith('spec-version-diff-');
-      const runningTone = getEditorTabRunningTone(tab);
-
-      if (runningTone) {
-        const baseIcon = shouldUseDiffIcon ? DIFF_TAB_ICON_NAME : tab.icon;
-        return {
-          ...tab,
-          icon: <EditorTabRunningIcon icon={baseIcon} tone={runningTone} />,
-        };
-      }
 
       if (shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME) {
         return { ...tab, icon: DIFF_TAB_ICON_NAME };
@@ -15941,7 +16291,7 @@ export default function App() {
 
       return tab;
     })
-  ), [getEditorTabRunningTone, ideTabContents, ideTabs]);
+  ), [ideTabContents, ideTabs]);
   const activeStatusBarTab = activeEditorTabMeta ?? ideTabs[activeEditorTab ?? 0] ?? null;
   const activeRenderedStatusBarTab = activeStatusBarTab
     ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTab.id) ?? activeStatusBarTab)
@@ -16180,8 +16530,9 @@ export default function App() {
         onEditorTabChange={handleEditorTabChange}
         onEditorTabClose={handleEditorTabClose}
         onEditorCodeChange={(code) => {
-          const tabId = ideTabs[activeEditorTab]?.id;
-          if (!tabId?.startsWith('agent-task-') && tabId !== AUTONOMOUS_WORKFLOW_TAB.id) return;
+          const activeTab = ideTabs[activeEditorTab];
+          const tabId = activeTab?.id;
+          if (!tabId?.startsWith('agent-task-') && !activeTab?.label?.endsWith('.md')) return;
           setIdeTabContents((prev) => ({
             ...prev,
             [tabId]: {
@@ -16193,10 +16544,8 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={openAndFocusIdeProblemsToolWindow} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} updatedRowTarget={updatedSpecRowTarget} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} specTabLabel={activeEditorTabMeta?.label ?? ''} pendingAcQuickFixCount={pendingAcQuickFixCount} onPlanWorkflowSelect={handlePlanWorkflowSelect} onPlanWorkflowOpen={handlePlanWorkflowOpen} onPlanWorkflowRemove={handlePlanWorkflowRemove} />
-            : (isAutonomousWorkflowTab
-                ? <AutonomousMarkdownEditor />
-                : (isDiffTab && activePlanDiffData
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => { clearPlanBuildClip(activeEditorTabId); resetRunUiForTab(activeEditorTabId); setGenState('idle'); }} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={openAndFocusIdeProblemsToolWindow} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} updatedRowTarget={updatedSpecRowTarget} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={activeEditorRunRequest} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} specTabLabel={activeEditorTabMeta?.label ?? ''} pendingAcQuickFixCount={pendingAcQuickFixCount} />
+            : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
@@ -16212,7 +16561,7 @@ export default function App() {
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                   />
                 )
-                : undefined))
+                : undefined)
         }
 
         projectTreeData={projectTreeData}
