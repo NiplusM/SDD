@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon } from '@jetbrains/int-ui-kit';
+import { Icon, Button } from '@jetbrains/int-ui-kit';
 
 const PLAN_DIFF_DEFAULT_CARET_LEFT = 12;
 const JAVA_SCRIPT_KEYWORDS = [
@@ -51,6 +51,9 @@ function getTokenPatterns(language = 'text') {
       { type: 'constant', regex: buildKeywordRegex(CODE_CONSTANTS) },
       { type: 'keyword', regex: buildKeywordRegex(JAVA_SCRIPT_KEYWORDS) },
       { type: 'number', regex: /\b\d+(?:\.\d+)?\b/y },
+      { type: 'type', regex: /\b[A-Z][A-Za-z0-9_]*\b/y },
+      { type: 'method', regex: /\b[A-Za-z_][A-Za-z0-9_]*(?=\s*\()/y },
+      { type: 'property', regex: /\b[A-Za-z_][A-Za-z0-9_]*(?=\s*:)/y },
     ];
   }
 
@@ -62,10 +65,6 @@ function getTokenPatterns(language = 'text') {
 function tokenizeCodeFragment(text = '', language = 'text') {
   if (!text) {
     return [{ text: ' ', type: 'plain' }];
-  }
-
-  if (String(language).toLowerCase() === 'java' && /^\s*(?:\/\*\*?| \*|\*| \*\/|\*\/)/.test(text)) {
-    return [{ text, type: 'comment' }];
   }
 
   const patterns = getTokenPatterns(language);
@@ -182,7 +181,12 @@ function PlanDiffToolbarIcon({ type }) {
   }
 
   if (type === 'settings') {
-    return <Icon name="general/settings" size={16} />;
+    return (
+      <span className="plan-diff-toolbar-settings-icon" aria-hidden="true">
+        <Icon name="general/settings" size={16} />
+        <Icon name="general/dropdownGutter" size={20} />
+      </span>
+    );
   }
 
   return (
@@ -222,112 +226,67 @@ function PlanDiffContentLabel({ children }) {
   );
 }
 
-function PlanDiffCommentCountIcon() {
-  return (
-    <svg className="spec-comment-count-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="M3.14258 1.64307L12.8564 1.64307C13.6849 1.64307 14.3564 2.31464 14.3564 3.14307L14.3564 14.9595L9.45508 11.0386C9.38853 10.9853 9.30968 10.9502 9.22656 10.936L9.14258 10.9292L3.14258 10.9292C2.31429 10.9292 1.6428 10.2574 1.64258 9.4292L1.64258 3.14307C1.64258 2.31464 2.31415 1.64307 3.14258 1.64307Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function PlanDiffFileHeader({ diffData }) {
-  const revision = diffData?.baseRevision ?? 'fc4f66b7';
-  const filePath = diffData?.filePath ?? 'src/main/java/org/springframework/samples/petclinic/owner/VisitController.java';
-
-  return (
-    <div className="plan-diff-file-header">
-      <div className="plan-diff-file-path-row">
-        <span className="plan-diff-file-revision">{revision}</span>
-        <span className="plan-diff-file-path">{filePath}</span>
-      </div>
-      <div className="plan-diff-file-version-row">Current version</div>
-    </div>
-  );
-}
-
 function DiffInlineCommentPopup({ comments, value, editingIndex, showCompose = true, onChange, onCancel, onSubmit, onStartEdit, onDelete }) {
   const ref = useRef(null);
-  const commentInputRef = useRef(null);
+  const textareaRef = useRef(null);
   const isEditing = Number.isInteger(editingIndex);
   const hasComments = comments.length > 0;
-  const shouldShowCompose = showCompose && (!hasComments || isEditing);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !showCompose) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [showCompose, value]);
 
   useEffect(() => {
     if (!showCompose) return;
-    const input = commentInputRef.current;
+    const input = textareaRef.current;
     if (input) { input.focus({ preventScroll: true }); if (isEditing) input.select(); }
   }, [hasComments, isEditing, showCompose]);
 
   return (
     <div ref={ref} className={`cmp-popup spec-done-comment-popup${hasComments ? ' has-comments' : ''}`} onMouseDown={(e) => e.stopPropagation()}>
-      {hasComments && !isEditing && (
-        <div className="spec-done-comment-popup-posted">
-          <span className="spec-done-comment-popup-posted-text">{comments[comments.length - 1]}</span>
-          <span className="spec-done-comment-popup-posted-actions">
-            <button type="button" className="spec-done-comment-popup-icon-btn" aria-label="Edit comment" onClick={() => onStartEdit?.(comments.length - 1)}>
-              <svg className="spec-done-comment-popup-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M13.4403 2.56066C12.6927 1.81314 11.4808 1.81311 10.7332 2.5606L3.33829 9.95484C3.15725 10.1359 3.02085 10.3566 2.93989 10.5994L2.02567 13.3421C1.96578 13.5218 2.01254 13.7198 2.14646 13.8538C2.28038 13.9877 2.47846 14.0344 2.65813 13.9746L5.40087 13.0603C5.64368 12.9794 5.86432 12.843 6.04531 12.662L13.4402 5.26783C14.1878 4.52029 14.1878 3.30823 13.4403 2.56066ZM11.4403 3.26774C11.7973 2.91074 12.3761 2.91076 12.7331 3.26777C13.0902 3.6248 13.0902 4.20367 12.7331 4.56069L11.9994 5.29437L10.7065 4.00148L11.4403 3.26774ZM9.99934 4.70855L11.2922 6.00145L5.33823 11.9549C5.26701 12.0261 5.18019 12.0798 5.08464 12.1116L3.29058 12.7096L3.88858 10.9157C3.92044 10.8201 3.97412 10.7332 4.04536 10.662L9.99934 4.70855Z" fill="currentColor" />
-              </svg>
-            </button>
-            <button type="button" className="spec-done-comment-popup-icon-btn" aria-label="Delete comment" onClick={() => onDelete?.(comments.length - 1)}>
-              <svg className="spec-done-comment-popup-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M4 5H12" stroke="currentColor" strokeLinecap="round" />
-                <path d="M6.25 5V3.75C6.25 3.34 6.59 3 7 3H9C9.41 3 9.75 3.34 9.75 3.75V5" stroke="currentColor" strokeLinecap="round" />
-                <path d="M5.25 6.75L5.62 12.1C5.66 12.6 6.08 13 6.58 13H9.42C9.92 13 10.34 12.6 10.38 12.1L10.75 6.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </span>
+      {hasComments && (
+        <div className="spec-done-comment-popup-list">
+          {comments.map((comment, i) => (
+            <div key={i} className="spec-done-comment-popup-item">
+              <div className="spec-done-comment-popup-item-body">
+                <div className="spec-done-comment-popup-item-text text-ui-default">{comment}</div>
+                <div className="spec-done-comment-popup-item-actions">
+                  <button type="button" className="spec-done-comment-popup-link" onClick={() => onStartEdit?.(i)}>Change</button>
+                  <button type="button" className="spec-done-comment-popup-link" onClick={() => onDelete?.(i)}>Delete</button>
+                </div>
+              </div>
+              <button type="button" className="spec-done-comment-popup-more-btn" aria-label="More actions">
+                <Icon name="general/moreVertical" size={16} />
+              </button>
+            </div>
+          ))}
         </div>
       )}
-      {shouldShowCompose && (
+      {showCompose && (
         <div
           className="spec-done-comment-popup-compose"
           onKeyDown={(e) => {
-            e.stopPropagation();
             if (e.key === 'Escape') { e.preventDefault(); onCancel?.(); }
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit?.(); }
           }}
-          onKeyUp={(e) => e.stopPropagation()}
-          onInput={(e) => e.stopPropagation()}
         >
           <div className="spec-done-comment-popup-input-wrap">
-            <input
-              ref={commentInputRef}
-              type="text"
-              className="spec-done-comment-popup-textarea"
+            <textarea
+              ref={textareaRef}
+              className="spec-done-comment-popup-textarea text-ui-default"
               value={value}
               placeholder="Write a comment"
               data-demo-id="diff-comment-input"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === 'Escape') {
-                  e.preventDefault();
-                  onCancel?.();
-                }
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  onSubmit?.();
-                }
-              }}
-              onKeyUp={(e) => e.stopPropagation()}
-              onInput={(e) => e.stopPropagation()}
               onChange={(e) => onChange?.(e.target.value)}
+              rows={1}
             />
           </div>
           <div className="spec-done-comment-popup-actions">
-            <span className="spec-done-comment-popup-submit-hint" aria-label={isEditing ? 'Enter to save' : 'Enter to add'} title={isEditing ? 'Enter to save' : 'Enter to add'}>
-              <svg className="spec-done-comment-popup-submit-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M12.5 3.5V7.25C12.5 8.35 11.6 9.25 10.5 9.25H4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M6.5 6.75L4 9.25L6.5 11.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+            <Button type="secondary" data-demo-id="diff-comment-cancel" onClick={onCancel}>Cancel</Button>
+            <Button type="primary" data-demo-id="diff-comment-submit" onClick={onSubmit}>{isEditing ? 'Save Comment' : 'Add a Comment'}</Button>
           </div>
         </div>
       )}
@@ -368,7 +327,6 @@ function buildPlanDiffPlanMarkerRow(anchorRow, text = '') {
     id: `${anchorRow.id}-plan-marker`,
     kind: 'plan-marker',
     text: normalizedText,
-    fileLabel: 'visit-booking.md',
     oldNumber: null,
     newNumber: null,
     isSynthetic: true,
@@ -425,7 +383,9 @@ export function normalizePlanDiffUiState(uiState = null) {
     commentRowId: typeof normalizedState.commentRowId === 'string' && normalizedState.commentRowId.length > 0
       ? normalizedState.commentRowId
       : null,
-    commentValue: '',
+    commentValue: typeof normalizedState.commentValue === 'string'
+      ? normalizedState.commentValue
+      : '',
     commentEditingIndex: Number.isInteger(normalizedState.commentEditingIndex)
       ? normalizedState.commentEditingIndex
       : null,
@@ -447,6 +407,7 @@ export function arePlanDiffUiStatesEqual(left = null, right = null) {
   return (
     normalizedLeft.activeRowId === normalizedRight.activeRowId
     && normalizedLeft.commentRowId === normalizedRight.commentRowId
+    && normalizedLeft.commentValue === normalizedRight.commentValue
     && normalizedLeft.commentEditingIndex === normalizedRight.commentEditingIndex
     && normalizedLeft.caretState.rowId === normalizedRight.caretState.rowId
     && normalizedLeft.caretState.left === normalizedRight.caretState.left
@@ -553,7 +514,7 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
     const nextCaretRowId = normalizedUiState.caretState.rowId || nextActiveRowId;
     setActiveRowId(nextActiveRowId);
     setCommentRowId(normalizedUiState.commentRowId);
-    setCommentValue('');
+    setCommentValue(normalizedUiState.commentValue);
     setCommentEditingIndex(normalizedUiState.commentEditingIndex);
     setDiffComments(normalizeDiffCommentsState(initialDiffComments));
     setCaretState({
@@ -572,6 +533,7 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
 
     setActiveRowId((prev) => (prev === nextActiveRowId ? prev : nextActiveRowId));
     setCommentRowId((prev) => (prev === normalizedUiState.commentRowId ? prev : normalizedUiState.commentRowId));
+    setCommentValue((prev) => (prev === normalizedUiState.commentValue ? prev : normalizedUiState.commentValue));
     setCommentEditingIndex((prev) => (
       prev === normalizedUiState.commentEditingIndex ? prev : normalizedUiState.commentEditingIndex
     ));
@@ -593,10 +555,11 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
     onUiStateChange?.({
       activeRowId,
       commentRowId,
+      commentValue,
       commentEditingIndex,
       caretState,
     });
-  }, [activeRowId, caretState, commentEditingIndex, commentRowId, onUiStateChange]);
+  }, [activeRowId, caretState, commentEditingIndex, commentRowId, commentValue, onUiStateChange]);
 
   useEffect(() => {
     if (!activeRowId) return undefined;
@@ -658,7 +621,6 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
                         <span className="plan-diff-plan-marker-icon" aria-hidden="true">
                         <PlanDiffAgentTaskIcon />
                       </span>
-                      <span className="plan-diff-plan-marker-file">{row.fileLabel ?? 'visit-booking.md'}</span>
                       <span className="plan-diff-plan-marker-text">{row.text}</span>
                     </span>
                   </div>
@@ -687,34 +649,26 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
                   <span className="plan-diff-line-number">{row.oldNumber ?? ''}</span>
                   <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>
                   <span
-                    className={`plan-diff-gutter-icon-slot${commentRowId === row.id ? ' is-open' : ''}`}
+                    className="plan-diff-gutter-icon-slot"
                     data-demo-id={`diff-comment-toggle-${row.id}`}
                     role="button"
-                    tabIndex={0}
+                    tabIndex={row.id === activeRowId || rowComments.length > 0 ? 0 : -1}
                     onClick={(e) => {
                       e.stopPropagation();
-                      activateRow(row.id);
-                      setCommentRowId((prev) => prev === row.id ? null : row.id);
-                      setCommentValue('');
-                      setCommentEditingIndex(null);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      activateRow(row.id);
-                      setCommentRowId((prev) => prev === row.id ? null : row.id);
-                      setCommentValue('');
-                      setCommentEditingIndex(null);
+                      if (row.id === activeRowId || rowComments.length > 0) {
+                        setCommentRowId((prev) => prev === row.id ? null : row.id);
+                        setCommentValue('');
+                        setCommentEditingIndex(null);
+                      }
                     }}
                   >
                     {rowComments.length > 0 ? (
                       <span className="plan-diff-comment-badge">
-                        <PlanDiffCommentCountIcon />
+                        <Icon name="general/balloon" size={16} />
                         <span className="plan-diff-comment-count">{rowComments.length}</span>
                       </span>
                     ) : (
-                      <PlanDiffCommentCountIcon />
+                      <Icon name="general/balloon" size={16} />
                     )}
                   </span>
                 </div>
@@ -725,6 +679,14 @@ function PlanDiffOverlay({ diffData, initialDiffComments = {}, onDiffCommentsCha
                     activateRow(row.id, event.currentTarget, event.clientX);
                   }}
                 >
+                  <span
+                    key={row.id === activeRowId ? `caret-active-${caretKey}` : `caret-${row.id}`}
+                    className={`plan-diff-row-caret${row.id === activeRowId ? ' is-visible' : ''}`}
+                    style={{
+                      left: `${row.id === caretState.rowId ? caretState.left : PLAN_DIFF_DEFAULT_CARET_LEFT}px`,
+                    }}
+                    aria-hidden="true"
+                  />
                   <span className="plan-diff-row-rail" aria-hidden="true" />
                   <span className="plan-diff-row-code-text">
                     {(row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, index) => (
@@ -877,11 +839,12 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-group">
                 <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
                 <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
+                <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
               </div>
               <span className="plan-diff-toolbar-separator" aria-hidden="true" />
               <PlanDiffToolbarSelect
                 label="Unified viewer"
-                width={142}
+                width={136}
                 onClick={(event) => {
                   if (showViewerPopup) {
                     setShowViewerPopup(false);
@@ -900,7 +863,10 @@ export function PlanDiffEditorArea({
               <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
             </div>
           </div>
-          <PlanDiffFileHeader diffData={diffData} />
+          <div className="plan-diff-content-labels">
+            <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
+            <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+          </div>
         </div>
       </div>
       {overlayHost && createPortal(

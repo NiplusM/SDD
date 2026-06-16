@@ -1,4 +1,4 @@
-import { Fragment, createElement, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
+import { Fragment, cloneElement, isValidElement, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
@@ -25,7 +25,6 @@ import {
   Checkbox,
   Tree,
   getIcon,
-  iconRegistry,
   DEFAULT_EDITOR_TABS,
   DEFAULT_EDITOR_TAB_CONTENTS,
   DEFAULT_LEFT_STRIPE_ITEMS,
@@ -38,25 +37,9 @@ import {
 } from '@jetbrains/int-ui-kit';
 import './App.css';
 
-const PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON = 'problems/referenceViewOptions';
-
-function ProblemsReferenceViewOptionsIcon(props) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
-      <rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke="#CED0D6" />
-      <path d="M6.5 3V13" stroke="#CED0D6" strokeLinecap="round" />
-      <path d="M8.5 5.5H11.5" stroke="#CED0D6" strokeLinecap="round" />
-      <path d="M8.5 8H11.5" stroke="#CED0D6" strokeLinecap="round" />
-      <path d="M8.5 10.5H11.5" stroke="#CED0D6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-iconRegistry[PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON] = ProblemsReferenceViewOptionsIcon;
-
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'spring-petclinic';
+const PROJECT_NAME = 'payment-service';
 const BRANCH_NAME = 'feature/visit-booking';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
@@ -71,12 +54,6 @@ const AGENT_TASK_CONTENT_MORPH_MAX_FRAMES = 24;
 const AGENT_TASK_CONTENT_MORPH_INLINE_MAX_FRAMES = 18;
 const AGENT_TASK_CONTENT_MORPH_STEP_DELAY_MS = 36;
 const SPEC_DONE_SCROLL_SELECTOR = '.spec-done-scroll[data-overlay-scroll-body="true"]';
-const ISSUE_INTENTION_POPUP_OPEN_DELAY_MS = 140;
-const ISSUE_INTENTION_POPUP_GAP = 4;
-const ISSUE_INTENTION_POPUP_WIDTH = 414;
-const ISSUE_INTENTION_POPUP_OPEN_EVENT = 'spec-done-intention-popup-opened';
-const SPEC_DONE_CLEAR_FOCUS_EVENT = 'spec-done-clear-focus';
-const VISIT_BOOKING_PROMPT_TEXT = 'Book visits against a specific vet and time slot, with no double-booking';
 
 function getSpecDoneScrollElement() {
   if (typeof document === 'undefined') return null;
@@ -112,88 +89,243 @@ function scheduleSpecDoneScrollRestore(snapshot) {
   setTimeout(restore, 0);
 }
 
-function scheduleSpecDoneRowCenter(rowKey, options = {}) {
-  if (!rowKey || typeof document === 'undefined') return;
-
-  const centerRow = (attempt = 0) => {
-    const scrollElement = getSpecDoneScrollElement();
-    const maxAttempts = Number.isInteger(options.maxAttempts) ? options.maxAttempts : 12;
-    const retry = () => {
-      if (attempt >= maxAttempts) return;
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => centerRow(attempt + 1));
-        return;
-      }
-      setTimeout(() => centerRow(attempt + 1), 16);
-    };
-
-    if (!scrollElement) {
-      retry();
-      return;
-    }
-
-    const escapedRowKey = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-      ? CSS.escape(rowKey)
-      : rowKey.replace(/["\\]/g, '\\$&');
-    const rowElement = scrollElement.querySelector(`.spec-done-row[data-row-key="${escapedRowKey}"]`);
-    if (!(rowElement instanceof HTMLElement)) {
-      retry();
-      return;
-    }
-
-    const topOffset = Number.isFinite(options.topOffset) ? options.topOffset : null;
-    const nextScrollTop = topOffset === null
-      ? rowElement.offsetTop - Math.max(0, (scrollElement.clientHeight - rowElement.offsetHeight) / 2)
-      : rowElement.offsetTop - topOffset;
-    scrollElement.scrollTop = Math.max(0, nextScrollTop);
-
-    const editable = rowElement.querySelector('[contenteditable]');
-    if (editable instanceof HTMLElement) {
-      editable.focus({ preventScroll: true });
-    }
-
-    rowElement.classList.add('spec-done-active-line');
-
-    if (options.highlightPlanBlock) {
-      const highlightRows = [rowElement];
-      let nextRow = rowElement.nextElementSibling;
-      while (nextRow instanceof HTMLElement && nextRow.classList.contains('spec-done-row')) {
-        if (nextRow.classList.contains('spec-done-row-plan-parent')) {
-          break;
-        }
-        highlightRows.push(nextRow);
-        nextRow = nextRow.nextElementSibling;
-      }
-
-      scrollElement.querySelectorAll('.spec-done-navigation-block-highlight').forEach((el) => el.remove());
-      const lastRow = highlightRows[highlightRows.length - 1] ?? rowElement;
-      const highlightBlock = document.createElement('div');
-      highlightBlock.className = 'spec-done-navigation-block-highlight';
-      highlightBlock.style.top = `${rowElement.offsetTop}px`;
-      highlightBlock.style.height = `${Math.max(22, lastRow.offsetTop + lastRow.offsetHeight - rowElement.offsetTop)}px`;
-      scrollElement.appendChild(highlightBlock);
-      window.setTimeout(() => {
-        highlightBlock.remove();
-      }, 1250);
-    }
-  };
-
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(() => requestAnimationFrame(() => centerRow(0)));
-    return;
-  }
-
-  setTimeout(() => centerRow(0), 0);
-}
-
 const MY_PROJECTS = [
-  { id: '1', name: 'spring-petclinic', path: '~/projects/spring-petclinic', initials: 'SP', gradient: ['#22c55e', '#15803d'] },
+  { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
   { id: '2', name: 'auth-module',     path: '~/projects/auth-module',     initials: 'AM', gradient: ['#8b5cf6', '#6d28d9'] },
   { id: '3', name: 'api-gateway',     path: '~/projects/api-gateway',     initials: 'AG', gradient: ['#10b981', '#059669'] },
 ];
 
-const MY_EDITOR_TABS = [];
-const MY_EDITOR_TAB_CONTENTS = {};
+const MY_EDITOR_TABS = [
+  { id: '1', label: 'VisitController.java',          icon: 'fileTypes/java', closable: true },
+  { id: '2', label: 'Visit.java',                    icon: 'fileTypes/java', closable: true },
+  { id: '3', label: 'createOrUpdateVisitForm.html',  icon: 'fileTypes/html', closable: true },
+  { id: '4', label: 'schema.sql',                    icon: 'fileTypes/text', closable: true },
+  { id: '5', label: 'VisitControllerTests.java',     icon: 'fileTypes/java', closable: true },
+];
+
+const MY_EDITOR_TAB_CONTENTS = {
+  '1': {
+    language: 'java',
+    code: `@Controller
+class VisitController {
+
+    private final OwnerRepository ownerRepository;
+    private final VisitRepository visitRepository;
+    private final VetRepository vetRepository;
+
+    public VisitController(
+            OwnerRepository ownerRepository,
+            VisitRepository visitRepository,
+            VetRepository vetRepository) {
+        this.ownerRepository = ownerRepository;
+        this.visitRepository = visitRepository;
+        this.vetRepository = vetRepository;
+    }
+
+    @ModelAttribute("vets")
+    public Collection<Vet> populateVets(
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {
+        if (date == null || time == null) {
+            return this.vetRepository.findAll();
+        }
+        return this.vetRepository.findAvailableFor(date, time);
+    }
+
+    @ModelAttribute("timeSlots")
+    public List<LocalTime> populateTimeSlots() {
+        List<LocalTime> slots = new ArrayList<>();
+        for (int hour = 9; hour <= 16; hour++) {
+            slots.add(LocalTime.of(hour, 0));
+        }
+        return slots;
+    }
+
+    @GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
+    public String initNewVisitForm(@PathVariable int ownerId, @PathVariable int petId, Map<String, Object> model) {
+        Owner owner = this.ownerRepository.findById(ownerId);
+        Pet pet = owner.getPet(petId);
+        Visit visit = new Visit();
+        pet.addVisit(visit);
+        model.put("visit", visit);
+        return "pets/createOrUpdateVisitForm";
+    }
+
+    @PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
+    public String processNewVisitForm(@PathVariable int ownerId,
+                                      @PathVariable int petId,
+                                      @Valid Visit visit,
+                                      BindingResult result,
+                                      Model model) {
+        if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null
+                && this.visitRepository.existsByVetIdAndDateAndTime(
+                    visit.getVet().getId(), visit.getDate(), visit.getTime())) {
+            result.rejectValue("time", "duplicate",
+                "This vet is already booked for the selected date and time.");
+        }
+
+        if (result.hasErrors()) {
+            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
+            model.addAttribute("timeSlots", populateTimeSlots());
+            return "pets/createOrUpdateVisitForm";
+        }
+
+        try {
+            Owner owner = this.ownerRepository.findById(ownerId);
+            Pet pet = owner.getPet(petId);
+            pet.addVisit(visit);
+            this.visitRepository.save(visit);
+        }
+        catch (DataIntegrityViolationException ex) {
+            result.rejectValue("time", "duplicate",
+                "Concurrent booking detected. Please choose another slot.");
+            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
+            model.addAttribute("timeSlots", populateTimeSlots());
+            return "pets/createOrUpdateVisitForm";
+        }
+        return "redirect:/owners/{ownerId}";
+    }
+}`,
+  },
+  '2': {
+    language: 'java',
+    code: `@Entity
+@Table(name = "visits")
+public class Visit extends BaseEntity {
+
+    @Column(name = "visit_date")
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    @NotNull
+    private LocalDate date;
+
+    @Column(name = "visit_time")
+    @NotNull
+    private LocalTime time;
+
+    @Column(name = "description")
+    private String description;
+
+    @ManyToOne
+    @JoinColumn(name = "vet_id")
+    @NotNull
+    private Vet vet;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id")
+    private Pet pet;
+
+    public LocalDate getDate() { return this.date; }
+    public void setDate(LocalDate date) { this.date = date; }
+
+    public LocalTime getTime() { return this.time; }
+    public void setTime(LocalTime time) { this.time = time; }
+
+    public String getDescription() { return this.description; }
+    public void setDescription(String description) { this.description = description; }
+
+    public Vet getVet() { return this.vet; }
+    public void setVet(Vet vet) { this.vet = vet; }
+
+    public Pet getPet() { return this.pet; }
+    public void setPet(Pet pet) { this.pet = pet; }
+}`,
+  },
+  '3': {
+    language: 'html',
+    code: `<html xmlns:th="https://www.thymeleaf.org">
+<body>
+  <h2>New Visit</h2>
+  <form th:object="\${visit}"
+        th:action="@{/owners/{ownerId}/pets/{petId}/visits/new(ownerId=\${owner.id},petId=\${pet.id})}"
+        method="post">
+
+    <div>
+      <label>Date</label>
+      <input type="date" th:field="*{date}" />
+    </div>
+
+    <div>
+      <label>Vet</label>
+      <select th:field="*{vet}">
+        <option value="">-- select vet --</option>
+        <option th:each="vet : \${vets}"
+                th:value="\${vet}"
+                th:text="\${vet.firstName + ' ' + vet.lastName}"></option>
+      </select>
+    </div>
+
+    <div>
+      <label>Time</label>
+      <select th:field="*{time}">
+        <option value="">-- select time --</option>
+        <option th:each="slot : \${timeSlots}"
+                th:value="\${slot}"
+                th:text="\${#temporals.format(slot, 'HH:mm')}"></option>
+      </select>
+    </div>
+
+    <div>
+      <label>Description</label>
+      <textarea th:field="*{description}" rows="3"></textarea>
+    </div>
+
+    <button type="submit">Add Visit</button>
+  </form>
+</body>
+</html>`,
+  },
+  '4': {
+    language: 'sql',
+    code: `DROP TABLE IF EXISTS visits;
+DROP TABLE IF EXISTS pets;
+DROP TABLE IF EXISTS types;
+DROP TABLE IF EXISTS vets;
+DROP TABLE IF EXISTS owners;
+
+CREATE TABLE vets (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    first_name  VARCHAR(30),
+    last_name   VARCHAR(30)
+);
+
+CREATE TABLE visits (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    pet_id      INTEGER NOT NULL,
+    vet_id      INTEGER NOT NULL,
+    visit_date  DATE NOT NULL,
+    visit_time  TIME NOT NULL,
+    description VARCHAR(255),
+    CONSTRAINT fk_visits_pet FOREIGN KEY (pet_id) REFERENCES pets(id),
+    CONSTRAINT fk_visits_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
+    CONSTRAINT uk_vet_date_time UNIQUE (vet_id, visit_date, visit_time)
+);`,
+  },
+  '5': {
+    language: 'java',
+    code: `@WebMvcTest(VisitController.class)
+class VisitControllerTests {
+
+    @MockBean
+    private VisitRepository visitRepository;
+
+    @Test
+    void processNewVisitFormDoubleBookingRejected() throws Exception {
+        when(visitRepository.existsByVetIdAndDateAndTime(
+                3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
+            .thenReturn(true);
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-15")
+                .param("time", "10:00")
+                .param("vet", "3")
+                .param("description", "Regular check"))
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrors("visit", "vet"))
+            .andExpect(view().name("pets/createOrUpdateVisitForm"));
+    }
+}`,
+  },
+};
 
 const PLAN_CODE_DIFF_PRESETS = {
   0: {
@@ -473,42 +605,16 @@ const MY_PROJECT_TREE = [
   },
 ];
 
-const PROJECT_ROOT_PATH = '~/projects/spring-petclinic';
+const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
 const TERMINAL_RUN_VISIBLE_DELAY_MS = 110;
 const TERMINAL_RUN_INITIAL_DELAY_MS = 160;
-const TERMINAL_RUN_STEP_DELAY_MS = 420;
-const TERMINAL_RUN_END_DELAY_MS = 480;
-const TERMINAL_UPDATE_SPEC_STEP_DELAY_MS = 620;
-const TERMINAL_UPDATE_SPEC_INTRO_LINE_COUNT = 2;
-const RESTORE_PLAN_FRAME_INITIAL_DELAY_MS = TERMINAL_RUN_VISIBLE_DELAY_MS + TERMINAL_RUN_INITIAL_DELAY_MS + (TERMINAL_UPDATE_SPEC_STEP_DELAY_MS * TERMINAL_UPDATE_SPEC_INTRO_LINE_COUNT);
-const RESTORE_PLAN_FRAME_STEP_DELAY_MS = TERMINAL_UPDATE_SPEC_STEP_DELAY_MS;
+const TERMINAL_RUN_STEP_DELAY_MS = 240;
+const TERMINAL_RUN_END_DELAY_MS = 260;
 const RUN_STATUS_REVEAL_STEP_DELAY_MS = 120;
 const CHAINED_SECTION_START_DELAY_MS = 220;
-const PLAN_BUILD_CLIP_INITIAL_BUILDING_DELAY_MS = 1100;
-const PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS = 3200;
-const PLAN_BUILD_CLIP_SCHEMA_CHILD_STEP_DELAYS_MS = [3100, 2300, 3200];
-const PLAN_BUILD_CLIP_SCHEMA_CHILD_TRANSITION_DELAY_MS = 450;
-const PLAN_BUILD_CLIP_PARENT_DONE_DELAY_MS = 450;
-const PLAN_BUILD_CLIP_GROUP_TRANSITION_DELAY_MS = 900;
-const PLAN_BUILD_CLIP_VISIT_ENTITY_CHILD_STEP_DELAYS_MS = [15000, 3200];
-const PLAN_BUILD_CLIP_FINISH_DELAY_MS = 520;
-const PLAN_BUILD_CLIP_SUMMARIES = [
-  'Working on the schema: `vet`/`time` columns, unique constraint, and seed data across `h2`, `mysql`, `postgres`...',
-  'Working on `Visit.java`: mapping the vet relation and the visit time field...',
-  'Working on `VetFormatter`: converting the form\'s vet selection into a `Vet` on submit...',
-  'Working on `VisitRepository`: double-booking lookup and slot-availability queries...',
-  'Working on `VisitController`: vet dropdown, time slots, and the double-booking guard...',
-  'Working on `application.properties`: configurable visit start and end hours...',
-  'Working on `createOrUpdateVisitForm.html`: vet and time-slot selects with field errors...',
-  'Working on `ownerDetails.html`: vet and time columns in the visits table...',
-  'Working on `VisitControllerTests`: success, double-booking, and model-population tests...',
-  'Working on `Vet.toString()`: full name so the dropdown renders each vet...',
-  'Working on `messages.properties`: vet and time labels across all locales...',
-  'Working on test fixes: formatter filter, mock beans, and the `@NotNull` fixture...',
-];
 const TERMINAL_PERMISSION_PROMPT = 'Allow agent execution?';
 const TERMINAL_PERMISSION_OPTIONS = [
   { id: 'allow-once', label: 'Allow once' },
@@ -516,7 +622,7 @@ const TERMINAL_PERMISSION_OPTIONS = [
   { id: 'reject', label: 'Reject' },
 ];
 const AC_WARNING_TARGET_ORIGINAL_INDEX = 0;
-const AC_WARNING_PROMPT = 'AC #1 partially met. Pre-filtering works on POST re-renders (booked vets excluded via findByDateAndTime). But on initial page load, no date/time is selected — `RequestParam` values are null — so all vets are shown. AC says "available vets for the selected date/time", implying always-filtered. Full filtering on date selection would require AJAX (out of scope). Suggest rewording AC.';
+const AC_WARNING_PROMPT = 'AC #1 partially met. Pre-filtering works on POST re-renders (booked vets excluded via findByDateAndTime). But on initial page load, no date/time is selected — @RequestParam values are null — so all vets are shown. AC says "available vets for the selected date/time", implying always-filtered. Full filtering on date selection would require AJAX (out of scope). Suggest rewording AC.';
 
 function buildTerminalBlocks(lines = []) {
   return lines.length > 0
@@ -588,7 +694,7 @@ function buildTerminalContextLabel({
     return `${resolvedTaskLabel} > Plan > Item ${checkTarget.index + 1}`;
   }
 
-  if (mode === 'generate' || mode === 'update-spec') {
+  if (mode === 'generate') {
     return `${resolvedTaskLabel} > Full specification`;
   }
 
@@ -634,30 +740,6 @@ function buildTerminalRunSequence({
         },
       };
     }
-
-    return {
-      initialLines: [
-        ...introLines,
-        ...buildTerminalPermissionContinuationLines(permissionChoice),
-      ],
-      permissionPrompt: null,
-    };
-  }
-
-  if (mode === 'update-spec') {
-    const planUpdateLines = createVisitBookingPlanItems()
-      .flatMap((item) => [
-        item?.text,
-        ...(item?.children ?? []).map((child) => child?.text),
-      ])
-      .filter((text) => typeof text === 'string' && text.trim().length > 0)
-      .map((text) => ({ type: 'output', text: `Generating Plan item: ${text}` }));
-    const introLines = [
-      { type: 'command', text: `agent run "${resolvedTaskLabel}" --update-spec` },
-      { type: 'output', text: 'Updating specification plan items...' },
-      ...planUpdateLines,
-      { type: 'output', text: 'Prepared plan steps' },
-    ];
 
     return {
       initialLines: [
@@ -934,52 +1016,34 @@ const AC_RUN_STATUSES = [
     issue: {
       severity: 'warning',
       label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets',
-      secondaryText: 'Line 6',
+      secondaryText: 'Line 4',
     },
-    proposal: 'Exclude already-booked vets from dropdown',
+    proposal: 'Proposal: dropdown filters to available vets after date/time is submitted',
     checks: [
       { status: 'passed', text: 'Pre-filter works on POST re-render', chip: 'VisitController.java' },
       { status: 'failed', text: 'On initial load no date is selected, all vets shown — live filtering on date pick needs AJAX (out of scope)', chip: null },
     ],
   },
-  null,
   {
-    status: 'failed',
-    checkboxStatus: null,
-    highlight: {
-      match: 'A vet cannot be booked for the same date+time twice.',
-      className: 'spec-inline-warning-highlight',
-      tooltip: {
-        title: 'Behavior not specified',
-        hint: 'Specify what the user sees when a booking is blocked.',
-      },
-    },
-    issue: {
-      severity: 'warning',
-      label: 'Behavior not specified',
-      secondaryText: 'Line 8',
-    },
-    proposalOptions: [
-      {
-        label: 'Inline field error on form re-render',
-        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
-      },
-      {
-        label: 'Modal with conflict details',
-        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
-      },
-      {
-        label: 'Let the agent decide',
-        replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
-      },
-      { type: 'text' },
+    status: 'passed',
+    checks: [
+      { status: 'passed', text: 'Time slot picker with hourly slots 09:00-16:00', chip: 'createOrUpdateVisitForm.html' },
+      { status: 'passed', text: 'populateTimeSlots() generates hourly intervals', chip: 'VisitController.java' },
     ],
-    checks: [],
   },
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: '`ManyToOne` vet persisted', chip: 'Visit.java' },
+      { status: 'passed', text: 'Read VisitController.processNewVisitForm(): calls existsByVetIdAndDateAndTime before save, rejects with field error on vet. Catch block for DataIntegrityViolationException as safety net.', chip: 'VisitController.java' },
+      { status: 'passed', text: 'Verified UNIQUE(vet_id, visit_date, visit_time) constraint present in all 3 schema files.', chip: 'schema.sql' },
+      { status: 'passed', text: 'Read VisitControllerTests.processNewVisitFormDoubleBookingRejected: mocks existsByVetIdAndDateAndTime returning true, asserts form re-renders with error.', chip: 'VisitControllerTests.java' },
+      { status: 'passed', text: 'Ran tests: processNewVisitFormDoubleBookingRejected passes.', chip: 'VisitControllerTests.java' },
+    ],
+  },
+  {
+    status: 'passed',
+    checks: [
+      { status: 'passed', text: '@ManyToOne vet persisted', chip: 'Visit.java' },
       { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' },
     ],
   },
@@ -1042,7 +1106,7 @@ const PLAN_RUN_STATUSES = [
 const ISSUE_QUICK_FIX_CONFIG = {
   ac: {
     0: {
-      actionLabel: 'Exclude already-booked vets from dropdown',
+      actionLabel: 'Fix vet availability',
       replacementText: 'Visit form shows a dropdown of vets, excluding those already booked for the selected date and time.',
       resolvedStatus: {
         status: 'passed',
@@ -1053,16 +1117,8 @@ const ISSUE_QUICK_FIX_CONFIG = {
       },
     },
     1: {
-      actionLabel: 'Specify 09:00–16:00, configurable',
+      actionLabel: 'Add time slots',
       replacementText: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.',
-      resolvedStatus: {
-        status: 'passed',
-        checks: [],
-      },
-    },
-    2: {
-      actionLabel: 'Show inline field error on booking conflict',
-      replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
       resolvedStatus: {
         status: 'passed',
         checks: [],
@@ -1134,7 +1190,7 @@ function buildResolvedRunStatuses(baseStatuses, kind, appliedIssueFixes, removed
   return baseStatuses.reduce((nextStatuses, status, originalIndex) => {
     if (removedMap[originalIndex]) return nextStatuses;
 
-    if (!getAppliedIssueFixValue(appliedIssueFixes, kind, originalIndex)) {
+    if (!appliedIssueFixes?.[kind]?.[originalIndex]) {
       nextStatuses.push(status);
       return nextStatuses;
     }
@@ -1196,23 +1252,6 @@ function cloneIssueStateMap(issueState = null) {
   };
 }
 
-function getAppliedIssueFixValue(appliedIssueFixes, kind, index) {
-  return appliedIssueFixes?.[kind]?.[index] ?? null;
-}
-
-function getAppliedIssueFixReplacementText(appliedIssueFixes, kind, index) {
-  const appliedFix = getAppliedIssueFixValue(appliedIssueFixes, kind, index);
-  return appliedFix && typeof appliedFix === 'object' && typeof appliedFix.replacementText === 'string'
-    ? appliedFix.replacementText
-    : null;
-}
-
-function createAppliedIssueFixValue(replacementText = null) {
-  return typeof replacementText === 'string' && replacementText.trim().length > 0
-    ? { applied: true, replacementText }
-    : true;
-}
-
 function parseProblemRawIndexFromSecondaryText(secondaryText) {
   if (typeof secondaryText !== 'string') return null;
 
@@ -1246,50 +1285,6 @@ function getDocumentCheckRawIndex(documentSections, kind, visibleIndex) {
     }
 
     currentVisibleIndex += 1;
-  }
-
-  return null;
-}
-
-function getDocumentCheckTargetAtRawIndex(documentSections, rawIndex, removedIssueIndices = null) {
-  if (!Array.isArray(documentSections) || !Number.isInteger(rawIndex) || rawIndex < 0) {
-    return null;
-  }
-
-  const { lineMap } = buildSerializedDocumentLines(documentSections);
-  const targetEntry = lineMap[rawIndex];
-  if (targetEntry?.type !== 'item' || targetEntry.itemType !== 'check' || (targetEntry.nestingLevel ?? 0) > 0) {
-    return null;
-  }
-
-  const targetSection = documentSections[targetEntry.sectionIndex];
-  const normalizedSectionTitle = targetSection?.title?.toLowerCase();
-  const kind = normalizedSectionTitle === 'acceptance criteria'
-    ? 'ac'
-    : normalizedSectionTitle === 'plan'
-      ? 'plan'
-      : null;
-
-  if (!kind) {
-    return null;
-  }
-
-  let visibleIndex = 0;
-  for (let index = 0; index <= rawIndex; index += 1) {
-    const entry = lineMap[index];
-    if (entry?.type !== 'item' || entry.itemType !== 'check' || (entry.nestingLevel ?? 0) > 0) continue;
-
-    const section = documentSections[entry.sectionIndex];
-    if (section?.title?.toLowerCase() !== normalizedSectionTitle) continue;
-
-    if (index === rawIndex) {
-      return {
-        kind,
-        index: mapVisibleIssueIndexToOriginal(kind, visibleIndex, removedIssueIndices),
-      };
-    }
-
-    visibleIndex += 1;
   }
 
   return null;
@@ -1556,166 +1551,6 @@ function getVisibleIssueOriginalIndices(kind, removedIssueIndices = null) {
   return visibleOriginalIndices;
 }
 
-function getVisibleDocumentCheckOriginalIndices(kind, documentSections = [], removedIssueIndices = null) {
-  const targetSectionTitle = kind === 'ac' ? 'acceptance criteria' : 'plan';
-  const section = (documentSections ?? []).find((candidate) => (
-    typeof candidate?.title === 'string'
-    && candidate.title.toLowerCase() === targetSectionTitle
-  ));
-  const removedMap = removedIssueIndices?.[kind] ?? {};
-  const visibleOriginalIndices = [];
-
-  (section?.items ?? []).forEach((item, originalIndex) => {
-    if (item?.type === 'check' && !removedMap[originalIndex]) {
-      visibleOriginalIndices.push(originalIndex);
-    }
-  });
-
-  return visibleOriginalIndices;
-}
-
-function getSectionCheckItemCount(documentSections = [], sectionTitle = '') {
-  const normalizedTitle = typeof sectionTitle === 'string' ? sectionTitle.toLowerCase() : '';
-  const section = (documentSections ?? []).find((candidate) => (
-    typeof candidate?.title === 'string'
-    && candidate.title.toLowerCase() === normalizedTitle
-  ));
-
-  return (section?.items ?? []).filter((item) => item?.type === 'check').length;
-}
-
-function restorePlanItemsIfEmpty(documentSections = [], fallbackItems = []) {
-  const fallbackPlanItems = Array.isArray(fallbackItems)
-    ? fallbackItems.filter((item) => item?.type === 'check')
-    : [];
-  if (fallbackPlanItems.length === 0 || getSectionCheckItemCount(documentSections, 'Plan') > 0) {
-    return documentSections;
-  }
-
-  let changed = false;
-  const nextSections = (documentSections ?? []).map((section) => {
-    if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'plan') {
-      return section;
-    }
-
-    changed = true;
-    return withDerivedPlanChildren({
-      ...section,
-      items: fallbackPlanItems.map((item) => cloneDocumentItem(item)),
-    });
-  });
-
-  return changed ? nextSections : documentSections;
-}
-
-function hasAnyAppliedIssueFix(appliedIssueFixes = null) {
-  return ['ac', 'plan'].some((kind) => (
-    Object.values(appliedIssueFixes?.[kind] ?? {}).some(Boolean)
-  ));
-}
-
-function addVisitBookingDecisionsAfterQuickFixes(documentSections = [], appliedIssueFixes = null) {
-  if (!hasAnyAppliedIssueFix(appliedIssueFixes)) {
-    return documentSections;
-  }
-
-  let changed = false;
-  const nextSections = (documentSections ?? []).map((section) => {
-    if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'decisions') {
-      return section;
-    }
-
-    const existingItems = Array.isArray(section.items) ? section.items : [];
-    const existingTexts = new Set(
-      existingItems
-        .map((item) => (typeof item?.text === 'string' ? item.text.trim() : ''))
-        .filter(Boolean),
-    );
-    const missingItems = VISIT_BOOKING_DECISION_ITEMS
-      .filter((item) => !existingTexts.has(item.text))
-      .map((item) => cloneDocumentItem(item));
-
-    if (missingItems.length === 0) {
-      return section;
-    }
-
-    changed = true;
-    return {
-      ...section,
-      items: [
-        ...existingItems.map((item) => cloneDocumentItem(item)),
-        ...missingItems,
-      ],
-    };
-  });
-
-  return changed ? nextSections : documentSections;
-}
-
-function buildPlanRestoreFrames(documentSections = [], fallbackItems = []) {
-  const fallbackPlanItems = Array.isArray(fallbackItems)
-    ? fallbackItems.filter((item) => item?.type === 'check')
-    : [];
-  if (fallbackPlanItems.length === 0) {
-    return [];
-  }
-
-  const hasPlanItems = getSectionCheckItemCount(documentSections, 'Plan') > 0;
-  if (hasPlanItems) {
-    return [];
-  }
-
-  const fullPlanItems = withDerivedPlanChildren({
-    id: 'plan',
-    title: 'Plan',
-    items: fallbackPlanItems.map((item) => cloneDocumentItem(item)),
-  }).items ?? [];
-  const restoreSteps = fullPlanItems.flatMap((item, parentIndex) => {
-    const childSteps = (item.children ?? [])
-      .filter((child) => child?.type === 'check')
-      .map((_, childIndex) => ({ parentIndex, childIndex }));
-
-    return [
-      { parentIndex, childIndex: null },
-      ...childSteps,
-    ];
-  });
-
-  return restoreSteps.map((step, stepIndex) => {
-    const frameItems = fullPlanItems
-      .slice(0, step.parentIndex + 1)
-      .map((item, itemIndex) => {
-        const nextItem = cloneDocumentItem(item);
-        if (itemIndex < step.parentIndex) {
-          return nextItem;
-        }
-
-        nextItem.children = Number.isInteger(step.childIndex)
-          ? (nextItem.children ?? []).slice(0, step.childIndex + 1)
-          : [];
-        return nextItem;
-      });
-    const frameDocument = (documentSections ?? []).map((section) => {
-      if (typeof section?.title !== 'string' || section.title.toLowerCase() !== 'plan') {
-        return cloneDocumentSection(section);
-      }
-
-      return {
-        ...cloneDocumentSection(section),
-        items: frameItems,
-      };
-    });
-    const framePlanRunResult = new Array(stepIndex + 1).fill(null);
-    framePlanRunResult[stepIndex] = { status: 'pending' };
-
-    return {
-      code: serializeSpecDocument(frameDocument),
-      documentSections: frameDocument,
-      planRunResult: framePlanRunResult,
-    };
-  });
-}
-
 function buildProblemTreeNodeId(issue, fallbackIndex) {
   const rawIndex = Number.isInteger(issue?.rawIndex)
     ? issue.rawIndex
@@ -1874,65 +1709,28 @@ function applyIssueQuickFixToDocumentSections(documentSections, { kind, index, r
   });
 }
 
-function applyPendingIssueFixesToSpec({ code, documentSections, appliedIssueFixes, removedIssueIndices }) {
-  let nextCode = typeof code === 'string' ? code : '';
-  let nextDocument = Array.isArray(documentSections) ? documentSections : [];
-
-  ['ac', 'plan'].forEach((kind) => {
-    const fixesForKind = appliedIssueFixes?.[kind] ?? {};
-    Object.keys(fixesForKind).forEach((rawOriginalIndex) => {
-      const originalIndex = Number(rawOriginalIndex);
-      if (!Number.isInteger(originalIndex) || !fixesForKind[originalIndex]) return;
-
-      const fixConfig = getIssueQuickFixConfig(kind, originalIndex);
-      const replacementText = getAppliedIssueFixReplacementText(appliedIssueFixes, kind, originalIndex)
-        ?? fixConfig?.replacementText;
-      if (!replacementText) return;
-
-      const visibleIndex = mapOriginalIssueIndexToVisible(kind, originalIndex, removedIssueIndices);
-      if (!Number.isInteger(visibleIndex) || visibleIndex < 0) return;
-
-      nextCode = applyIssueQuickFixToCode(nextCode, {
-        kind,
-        index: visibleIndex,
-        replacementText,
-      });
-      nextDocument = applyIssueQuickFixToDocumentSections(nextDocument, {
-        kind,
-        index: visibleIndex,
-        replacementText,
-      });
-    });
-  });
-
-  return {
-    code: nextCode,
-    documentSections: nextDocument,
-  };
-}
-
 function normalizeSpecSectionTitle(title = '') {
   return String(title).trim().toLowerCase();
 }
 
-function orderAcceptanceBeforePlanSections(documentSections = []) {
+function orderPlanBeforeAcceptanceSections(documentSections = []) {
   if (!Array.isArray(documentSections)) return [];
 
   const planIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'plan');
   const acceptanceIndex = documentSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
 
-  if (planIndex < 0 || acceptanceIndex < 0 || acceptanceIndex < planIndex) {
+  if (planIndex < 0 || acceptanceIndex < 0 || planIndex < acceptanceIndex) {
     return documentSections;
   }
 
   const nextSections = [...documentSections];
-  const [acceptanceSection] = nextSections.splice(acceptanceIndex, 1);
-  const nextPlanIndex = nextSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'plan');
-  nextSections.splice(nextPlanIndex, 0, acceptanceSection);
+  const [planSection] = nextSections.splice(planIndex, 1);
+  const nextAcceptanceIndex = nextSections.findIndex((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria');
+  nextSections.splice(nextAcceptanceIndex, 0, planSection);
   return nextSections;
 }
 
-function orderAcceptanceBeforePlanCode(code = '') {
+function orderPlanBeforeAcceptanceCode(code = '') {
   const lines = typeof code === 'string' ? code.split(/\r?\n/) : [];
   const sections = [];
   let preamble = [];
@@ -1955,14 +1753,14 @@ function orderAcceptanceBeforePlanCode(code = '') {
 
   if (sections.length === 0) return code;
 
-  const orderedSections = orderAcceptanceBeforePlanSections(sections);
+  const orderedSections = orderPlanBeforeAcceptanceSections(sections);
   return [...preamble, ...orderedSections.flatMap((section) => section.lines)].join('\n');
 }
 
 function buildSerializedDocumentLines(documentSections) {
   const lines = [];
   const lineMap = [];
-  const orderedDocumentSections = orderAcceptanceBeforePlanSections(documentSections);
+  const orderedDocumentSections = orderPlanBeforeAcceptanceSections(documentSections);
 
   orderedDocumentSections.forEach((section) => {
     const sectionIndex = (documentSections ?? []).indexOf(section);
@@ -1994,32 +1792,11 @@ function buildSerializedDocumentLines(documentSections) {
       });
 
       (item.children ?? []).forEach((childItem, childIndex) => {
-        const nextChildPath = [...normalizedChildPath, childIndex];
-        if (childItem?.type === 'check') {
-          pushCheckLine(childItem, itemIndex, {
-            nestingLevel: nestingLevel + 1,
-            childPath: nextChildPath,
-          });
-          return;
-        }
-
-        if (childItem?.type === 'bullet') {
-          const childStableId = childItem?.id ?? `${itemStableId}:child-${childIndex + 1}`;
-          lines.push(`${'  '.repeat(nestingLevel + 1)}- ${childItem.text}`);
-          lineMap.push({
-            type: 'item',
-            sectionIndex,
-            itemIndex,
-            itemType: childItem.type,
-            sectionId: sectionStableId,
-            itemId: childStableId,
-            parentItemId: itemStableId,
-            childIndex,
-            childPath: nextChildPath,
-            nestingLevel: nestingLevel + 1,
-            stableKey: `section-item:${childStableId}`,
-          });
-        }
+        if (childItem?.type !== 'check') return;
+        pushCheckLine(childItem, itemIndex, {
+          nestingLevel: nestingLevel + 1,
+          childPath: [...normalizedChildPath, childIndex],
+        });
       });
     };
 
@@ -2471,7 +2248,7 @@ function applyCommentCommandsToSpec({
       index: visibleIndex,
       replacementText: fixConfig.replacementText,
     });
-    nextAppliedIssueFixes[kind][index] = createAppliedIssueFixValue(fixConfig.replacementText);
+    nextAppliedIssueFixes[kind][index] = true;
   });
 
   let hasEnhancedComments = false;
@@ -2517,31 +2294,10 @@ const DEFAULT_PROBLEMS_ISSUES = [
 ];
 
 const AGENT_TASK_PROBLEMS_ISSUES = [
-  { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
-];
-
-const VISIT_BOOKING_CONFLICT_PROBLEM_TARGET = { kind: 'ac', index: 2 };
-const VISIT_BOOKING_CONFLICT_PROBLEM_TITLE = 'Behavior not specified';
-const VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION = 'Prevention is defined, but the blocked-booking response is missing. How would you like to handle it?';
-const VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS = [
-  {
-    label: 'Inline error on vet field',
-    replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
-  },
-  {
-    label: 'Conflict modal',
-    replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
-  },
-  {
-    label: 'Let the agent decide',
-    isSoftOption: true,
-    replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
-  },
-  {
-    label: 'Describe a different fix',
-    isCustomInput: true,
-    replacementText: 'A vet cannot be booked for the same date+time twice. The conflict UX follows the custom instruction provided for this inspection.',
-  },
+  { severity: 'warning', label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets', secondaryText: 'Line 4' },
+  { severity: 'warning', label: 'Ambiguous AC — "e.g." makes time slot granularity untestable', secondaryText: 'Line 5' },
+  { severity: 'warning', label: 'Possible race condition — check-then-act without DB constraint', secondaryText: 'Line 10' },
+  { severity: 'error', label: 'Incomplete plan — missing VetFormatter, form POST will fail', secondaryText: 'Line 12' },
 ];
 
 const EDITOR_PROBLEMS_BY_LABEL = {
@@ -2549,7 +2305,7 @@ const EDITOR_PROBLEMS_BY_LABEL = {
     path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`,
     issues: [
       { severity: 'warning', label: 'populateTimeSlots() rebuilds list on every request', secondaryText: 'Line 121' },
-      { severity: 'warning', label: '`ModelAttribute("vets")` loads all vets on GET — no pre-filtering', secondaryText: 'Line 95' },
+      { severity: 'warning', label: '@ModelAttribute("vets") loads all vets on GET — no pre-filtering', secondaryText: 'Line 95' },
       { severity: 'error', label: 'DataIntegrityViolationException not caught — 500 on concurrent booking', secondaryText: 'Line 142' },
       { severity: 'error', label: 'Missing VetFormatter — form binding will fail at runtime', secondaryText: 'Line 108' },
     ],
@@ -2559,8 +2315,6 @@ const EDITOR_PROBLEMS_BY_LABEL = {
 const MY_LEFT_STRIPE = DEFAULT_LEFT_STRIPE_ITEMS.filter(i =>
   ['project', 'commit', 'structure'].includes(i.id)
 );
-const DECORATIVE_LEFT_STRIPE_ITEMS = MY_LEFT_STRIPE.map(({ panel, ...item }) => item);
-const DECORATIVE_RIGHT_STRIPE_ITEMS = DEFAULT_RIGHT_STRIPE_ITEMS.map(({ panel, ...item }) => item);
 
 const AGENT_TASKS_ICON = (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2578,6 +2332,7 @@ const AT_COMPLETIONS = [
   { label: 'New Task.md',                  description: 'Agent Specifications' },
   { label: 'Configuration.md',             description: 'Agent Specifications' },
   { label: 'visit-booking.md',             description: 'Agent Specifications' },
+  { label: 'vet-schedules.md',             description: 'Agent Specifications' },
   { label: 'visit-booking-inspections.md', description: 'Agent Specifications' },
   { label: 'visit-booking-beat-3-execution.md', description: 'Agent Specifications' },
   { label: 'visit-booking-code-review-moment.md', description: 'Agent Specifications' },
@@ -2592,13 +2347,6 @@ const HASH_COMPLETIONS = [
   { label: 'schema.sql',                   description: 'db/h2'          },
 ];
 
-const SLASH_COMPLETIONS = [
-  { label: '/summarize-changes', description: 'Summarizes the changes made in the run' },
-  { label: '/update-knowledge-base', description: 'Records what was learned for future runs' },
-  { label: '/check-unused', description: 'Flags dead code and unused imports' },
-  { label: '/post-metrics', description: 'Logs run duration, tokens, and pass rate' },
-];
-
 const COMPLETION_PREVIEW_MAX_LINES = 5;
 const COMPLETION_PREVIEW_MAX_SECTIONS = 6;
 
@@ -2607,17 +2355,17 @@ const COMPLETION_PREVIEW_LIBRARY = {
     previewLines: [
       '## Goal',
       'Describe the capability or workflow the agent should deliver.',
-      '## Acceptance Criteria',
-      '- Make the result testable and concrete.',
       '## Plan',
       '- Outline the implementation steps.',
+      '## Acceptance Criteria',
+      '- Make the result testable and concrete.',
     ],
-    sections: ['Goal', 'Acceptance Criteria', 'Plan', 'Implementation Notes'],
+    sections: ['Goal', 'Plan', 'Acceptance Criteria', 'Implementation Notes'],
   },
   'Configuration.md': {
     previewLines: [
       '## Context',
-      '- `VetRepository.findAll()` is `Cacheable("vets")`.',
+      '- VetRepository.findAll() is @Cacheable("vets").',
       '- Formatter<T> is required for entity-backed form selects.',
       '## Constraints',
       '- Keep H2, MySQL, and PostgreSQL schema updates aligned.',
@@ -2676,50 +2424,7 @@ const COMPLETION_PREVIEW_LIBRARY = {
   'schema.sql': {
     sections: ['visits-table', 'unique-constraint', 'seed-data'],
   },
-  '/update-knowledge-base': {
-    previewLines: [
-      '## Skill',
-      'Capture durable decisions, conventions, or discoveries from the current task.',
-      '## Typical use',
-      '- Update project memory after a meaningful implementation pass.',
-    ],
-    sections: ['Skill', 'Typical use'],
-  },
-  '/check-unused': {
-    previewLines: [
-      '## Skill',
-      'Look for dead code, stale references, and imports or assets that are no longer needed.',
-      '## Typical use',
-      '- Run after a larger refactor or workflow simplification.',
-    ],
-    sections: ['Skill', 'Typical use'],
-  },
-  '/post-metric': {
-    previewLines: [
-      '## Skill',
-      'Record a short delivery metric or execution note for the current task.',
-      '## Typical use',
-      '- Publish a lightweight progress signal at the end of a run.',
-    ],
-    sections: ['Skill', 'Typical use'],
-  },
-  '/guided-merge': {
-    previewLines: [
-      '## Skill',
-      'Prepare a cautious merge path with checks, context, and reviewer-facing notes.',
-      '## Typical use',
-      '- Use after implementation and self-review are already complete.',
-    ],
-    sections: ['Skill', 'Typical use'],
-  },
 };
-
-function getCompletionItemsForTrigger(trigger) {
-  if (trigger === '@') return AT_COMPLETIONS;
-  if (trigger === '#') return HASH_COMPLETIONS;
-  if (trigger === '/') return SLASH_COMPLETIONS;
-  return [];
-}
 
 function buildCompletionPreviewLinesFromText(text = '', maxLines = COMPLETION_PREVIEW_MAX_LINES) {
   const lines = String(text)
@@ -2780,6 +2485,7 @@ function getEditorTabContentByLabel(label = '') {
   if (label === 'Visit.java') return MY_EDITOR_TAB_CONTENTS['2'] ?? null;
   if (label === 'createOrUpdateVisitForm.html') return MY_EDITOR_TAB_CONTENTS['3'] ?? null;
   if (label === 'schema.sql') return MY_EDITOR_TAB_CONTENTS['4'] ?? null;
+  if (label === 'VisitControllerTests.java') return MY_EDITOR_TAB_CONTENTS['5'] ?? null;
   return null;
 }
 
@@ -2797,6 +2503,10 @@ function getCompletionPreviewData(item) {
 
   if (item.label === 'visit-booking.md') {
     return buildDocumentCompletionPreview(item, createSpecDocument());
+  }
+
+  if (item.label === 'vet-schedules.md') {
+    return buildDocumentCompletionPreview(item, createVetSchedulesSpecDocument());
   }
 
   const editorTabContent = getEditorTabContentByLabel(item.label);
@@ -2889,56 +2599,6 @@ function ProblemsCommentNodeIcon() {
   );
 }
 
-function VisitBookingProblemDiagnosticLabel({ rawIndex = null, onExpand = null }) {
-  return (
-    <div
-      className="visit-problem-diagnostic-label"
-      data-problem-raw-index={Number.isInteger(rawIndex) ? rawIndex : undefined}
-      onClick={() => onExpand?.(rawIndex)}
-    >
-      <span className="visit-problem-diagnostic-title">{VISIT_BOOKING_CONFLICT_PROBLEM_TITLE}</span>
-      <span className="visit-problem-diagnostic-description">{VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION}</span>
-    </div>
-  );
-}
-
-function VisitBookingProblemOptionLabel({ option, optionIndex = 0, onSelect }) {
-  const optionClassName = [
-    'visit-problem-option',
-    option?.isSoftOption ? 'visit-problem-option-soft' : '',
-    option?.isCustomInput ? 'visit-problem-option-custom' : '',
-  ].filter(Boolean).join(' ');
-
-  return (
-    <button
-      type="button"
-      className={optionClassName}
-      data-visit-problem-option-index={optionIndex}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onSelect?.(option);
-      }}
-    >
-      <span className="visit-problem-option-caret" aria-hidden="true">
-        <DoneCommentCountIcon />
-      </span>
-      <span className="visit-problem-option-label">{option.label}</span>
-    </button>
-  );
-}
-
-function VisitBookingProblemCommentLabel({ comment, isFading = false }) {
-  return (
-    <div className={`visit-problem-comment-label${isFading ? ' visit-problem-comment-label-fading' : ''}`}>
-      <span className="visit-problem-comment-marker" aria-hidden="true">
-        <DoneCommentCountIcon />
-      </span>
-      <span className="visit-problem-comment-text">{comment}</span>
-    </div>
-  );
-}
-
 function renderProblemsFileIcon(tab) {
   if (typeof tab?.icon === 'string') {
     return (
@@ -2961,8 +2621,9 @@ function renderProblemsFileIcon(tab) {
 
 function EditorTabRunningIcon({ icon, tone = 'green' }) {
   return (
-    <span className={`editor-tab-running-icon editor-tab-running-icon-${tone}`} aria-hidden="true">
+    <span className="editor-tab-running-icon" aria-hidden="true">
       {typeof icon === 'string' ? <Icon name={icon} size={16} /> : icon}
+      <span className={`editor-tab-running-dot editor-tab-running-dot-${tone}`} />
     </span>
   );
 }
@@ -3062,14 +2723,7 @@ function normalizeCommentTarget(target) {
   const index = target?.index;
 
   if ((kind === 'ac' || kind === 'plan') && Number.isInteger(index) && index >= 0) {
-    const normalizedTarget = { kind, index };
-    if (kind === 'plan' && Number.isInteger(target?.lineIndex) && target.lineIndex >= 0) {
-      normalizedTarget.lineIndex = target.lineIndex;
-    }
-    if (kind === 'plan' && Number.isInteger(target?.parentIndex) && target.parentIndex >= 0) {
-      normalizedTarget.parentIndex = target.parentIndex;
-    }
-    return normalizedTarget;
+    return { kind, index };
   }
 
   return null;
@@ -3208,24 +2862,6 @@ function buildPlanDiffInitialComments(commentEntries = [], diffData = null, targ
   };
 }
 
-function applyDiffCommentStateToPlanRunResult(planRunResult = null, target = null, hasComments = false) {
-  const normalizedTarget = normalizeCommentTarget(target);
-  if (normalizedTarget?.kind !== 'plan' || !Number.isInteger(normalizedTarget.index)) {
-    return planRunResult;
-  }
-
-  const nextPlanRunResult = Array.isArray(planRunResult)
-    ? [...planRunResult]
-    : [];
-  const currentStatusItem = nextPlanRunResult[normalizedTarget.index] ?? { status: 'passed' };
-  nextPlanRunResult[normalizedTarget.index] = {
-    ...currentStatusItem,
-    status: hasComments ? 'stale' : (currentStatusItem.status === 'stale' ? 'passed' : currentStatusItem.status),
-  };
-
-  return nextPlanRunResult;
-}
-
 function mergeCommentEntriesWithExistingDiffAnchors(nextEntries = [], previousEntries = []) {
   const normalizedPreviousEntries = Array.isArray(previousEntries) ? previousEntries : [];
 
@@ -3270,36 +2906,6 @@ function getCommentEntryStorageKey(entry) {
   const sectionTitle = entry?.sectionTitle ?? '';
   const line = entry?.line ?? '';
   return `row:${rowIndex}:${sectionTitle}:${line}`;
-}
-
-function getCommentEntryStorageCandidates(entry) {
-  const candidates = [];
-
-  if (typeof entry?.rowStableKey === 'string' && entry.rowStableKey) {
-    candidates.push(`row-key:${entry.rowStableKey}`);
-  }
-
-  const targetKey = getCommentTargetStorageKey(entry);
-  if (targetKey && !candidates.includes(targetKey)) {
-    candidates.push(targetKey);
-  }
-
-  if (Number.isInteger(entry?.rawIndex)) {
-    const rawKey = `raw:${entry.rawIndex}:${entry?.line ?? ''}`;
-    if (!candidates.includes(rawKey)) {
-      candidates.push(rawKey);
-    }
-  }
-
-  const rowIndex = Number.isInteger(entry?.rowIndex) ? entry.rowIndex : 'unknown';
-  const sectionTitle = entry?.sectionTitle ?? '';
-  const line = entry?.line ?? '';
-  const fallbackKey = `row:${rowIndex}:${sectionTitle}:${line}`;
-  if (!candidates.includes(fallbackKey)) {
-    candidates.push(fallbackKey);
-  }
-
-  return candidates;
 }
 
 function getRowMetaCommentStorageKey(rowMeta) {
@@ -3370,9 +2976,8 @@ function buildRowCommentsStateFromEntries(rowMetaList = [], commentEntries = [])
       : [];
     if (comments.length === 0) return;
 
-    const canonicalKey = getCommentEntryStorageCandidates(entry)
-      .map((candidateKey) => canonicalKeysByCandidate.get(candidateKey))
-      .find(Boolean);
+    const storageKey = getCommentEntryStorageKey(entry);
+    const canonicalKey = canonicalKeysByCandidate.get(storageKey);
     if (!canonicalKey) return;
 
     nextState[canonicalKey] = [
@@ -3572,7 +3177,6 @@ function buildSmoothInlineTransitionFrames(sourceText = '', targetText = '') {
 
 function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEntries = []) {
   const meta = getProblemsMetaForTab(tab, agentTaskIssuesOverride);
-  const isAgentTaskProblemsTab = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md');
   const commentIssues = tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
     ? buildCommentIssuesFromEntries(commentEntries)
     : [];
@@ -3595,9 +3199,7 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
       id: 'active-problems-file',
       label: meta.label,
       icon: fileIcon,
-      secondaryText: isAgentTaskProblemsTab
-        ? secondarySuffixParts.join(PROBLEMS_SECONDARY_GAP)
-        : `${meta.path}${secondarySuffix}`,
+      secondaryText: `${meta.path}${secondarySuffix}`,
       isExpanded: treeIssues.length > 0,
       children: treeIssues.map((issue, index) => {
         const normalizedIssue = {
@@ -3616,7 +3218,7 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
               : normalizedIssue.severity === 'comment'
                 ? <ProblemsCommentNodeIcon />
                 : <ProblemsWarningNodeIcon />,
-          secondaryText: isAgentTaskProblemsTab ? '' : normalizedIssue.secondaryText,
+          secondaryText: normalizedIssue.secondaryText,
         };
       }),
     },
@@ -3624,31 +3226,12 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
 }
 
 function extractRuntimeInspectionIssues(results = [], kind, documentSections = null) {
-  const serialized = buildSerializedDocumentLines(documentSections ?? []);
-  const lines = serialized?.lines ?? [];
-
   return results.reduce((issues, item, visibleIndex) => {
-    if (item?.issue && item?.highlight) {
-      const rawIndex = getDocumentCheckRawIndex(documentSections, kind, visibleIndex);
-      const matchText = item.highlight?.match;
-      if (
-        typeof matchText === 'string'
-        && matchText.length > 0
-        && Number.isInteger(rawIndex)
-        && rawIndex >= 0
-        && typeof lines[rawIndex] === 'string'
-        && !lines[rawIndex].includes(matchText)
-      ) {
-        return issues;
-      }
-
+    if (item?.issue) {
       issues.push({
         ...item.issue,
         id: `${kind}-issue-${visibleIndex}`,
-        rawIndex,
-        secondaryText: Number.isInteger(rawIndex) && rawIndex >= 0
-          ? `Line ${rawIndex + 1}`
-          : item.issue.secondaryText,
+        rawIndex: getDocumentCheckRawIndex(documentSections, kind, visibleIndex),
       });
     }
     return issues;
@@ -3699,32 +3282,101 @@ function resolveRuntimeInspectionItem(item) {
   };
 }
 
-const VISIT_BOOKING_FIXED_AC_RUN_STATUSES = AC_RUN_STATUSES.map((item) => resolveRuntimeInspectionItem(item));
-const VISIT_BOOKING_FIXED_PLAN_RUN_STATUSES = PLAN_RUN_STATUSES.map((item) => resolveRuntimeInspectionItem(item));
+function CompletionNestedChevron() {
+  return (
+    <svg className="cmp-nested-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M6.25 4.5L9.75 8L6.25 11.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
-function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style, selectedLabels = [] }) {
+function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style }) {
   const filtered = useMemo(() => {
-    const items = getCompletionItemsForTrigger(trigger);
+    const items = trigger === '@' ? AT_COMPLETIONS : HASH_COMPLETIONS;
     return items.filter(item =>
       item.label.toLowerCase().includes(query.toLowerCase())
     ).slice(0, COMPLETION_POPUP_MAX_ITEMS);
   }, [query, trigger]);
-  const selectedLabelSet = useMemo(() => new Set(selectedLabels), [selectedLabels]);
+  const [expandedIdx, setExpandedIdx] = useState(selectedIdx);
+  const rootRef = useRef(null);
+  const mainRef = useRef(null);
+  const bodyRef = useRef(null);
+  const rowRefs = useRef(new Map());
+  const [submenuLayout, setSubmenuLayout] = useState({ top: 4, maxHeight: 320 });
+
+  const setRowRef = useCallback((label, node) => {
+    if (!label) return;
+
+    if (node) {
+      rowRefs.current.set(label, node);
+    } else {
+      rowRefs.current.delete(label);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (filtered.length === 0) return;
+    setExpandedIdx(Math.min(selectedIdx, filtered.length - 1));
+  }, [filtered.length, query, selectedIdx, trigger]);
+
+  const expandedItem = filtered[expandedIdx] ?? null;
+  const expandedPreview = expandedItem ? getCompletionPreviewData(expandedItem) : null;
+
+  const updateSubmenuLayout = useCallback(() => {
+    const rootEl = rootRef.current;
+    const mainEl = mainRef.current;
+    const bodyEl = bodyRef.current;
+    const rowEl = expandedItem ? rowRefs.current.get(expandedItem.label) : null;
+    if (!(rootEl instanceof HTMLElement) || !(mainEl instanceof HTMLElement) || !(bodyEl instanceof HTMLElement) || !(rowEl instanceof HTMLElement)) {
+      return;
+    }
+
+    const rootRect = rootEl.getBoundingClientRect();
+    const rowRect = rowEl.getBoundingClientRect();
+    const rowTop = rowRect.top - rootRect.top;
+    const top = Math.max(4, Math.round(rowTop - 4));
+    const maxHeight = Math.max(180, Math.round(window.innerHeight - rowRect.top - 16));
+
+    setSubmenuLayout((prev) => (
+      prev.top === top && prev.maxHeight === maxHeight
+        ? prev
+        : { top, maxHeight }
+    ));
+  }, [expandedItem]);
+
+  useLayoutEffect(() => {
+    updateSubmenuLayout();
+  }, [expandedIdx, filtered, updateSubmenuLayout]);
+
+  useEffect(() => {
+    const bodyEl = bodyRef.current;
+    if (!(bodyEl instanceof HTMLElement)) return undefined;
+
+    bodyEl.addEventListener('scroll', updateSubmenuLayout, { passive: true });
+    window.addEventListener('resize', updateSubmenuLayout);
+
+    return () => {
+      bodyEl.removeEventListener('scroll', updateSubmenuLayout);
+      window.removeEventListener('resize', updateSubmenuLayout);
+    };
+  }, [updateSubmenuLayout]);
 
   if (filtered.length === 0) return null;
 
   return (
-    <div className="cmp-popup-completion-root" style={style}>
-      <div className="cmp-popup cmp-popup-completion-main">
-        <div className="cmp-popup-completion-body">
+    <div ref={rootRef} className="cmp-popup-completion-root" style={style}>
+      <div ref={mainRef} className="cmp-popup cmp-popup-completion-main">
+        <div ref={bodyRef} className="cmp-popup-completion-body">
           {filtered.map((item, i) => {
             const matchLen = query.length;
             const matchesStart = item.label.toLowerCase().startsWith(query.toLowerCase());
-            const isAlreadySelected = selectedLabelSet.has(item.label);
+            const isExpanded = i === expandedIdx;
             return (
               <div
                 key={item.label}
-                className="cmp-item"
+                ref={(node) => setRowRef(item.label, node)}
+                className={`cmp-item${isExpanded ? ' cmp-item-expanded' : ''}`}
+                onMouseEnter={() => setExpandedIdx(i)}
               >
                 <div
                   className={`cmp-cell${i === selectedIdx ? ' cmp-cell-selected' : ''}`}
@@ -3742,13 +3394,76 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
                     </span>
                     <span className="cmp-desc">{item.description}</span>
                   </div>
-                  {isAlreadySelected ? <span className="cmp-selected-tag">Selected</span> : null}
+                  <CompletionNestedChevron />
                 </div>
               </div>
             );
           })}
         </div>
+        <div className="cmp-footer">
+          <span className="cmp-footer-text">Press ⌃⇧Space to show only variants suitable by type</span>
+          <span className="cmp-footer-tip">Next Tip</span>
+        </div>
       </div>
+      {expandedItem && expandedPreview && (
+        <div
+          className="cmp-popup cmp-submenu-window"
+          style={{ top: submenuLayout.top, maxHeight: submenuLayout.maxHeight }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="cmp-submenu-window-body">
+            <div className="cmp-submenu-head">
+              <div className="cmp-submenu-meta">
+                <span className="cmp-submenu-title">Preview</span>
+                <span className="cmp-submenu-caption">{expandedItem.label}</span>
+              </div>
+              <button
+                type="button"
+                className="cmp-submenu-link-btn"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelect(buildCompletionSelection(expandedItem));
+                }}
+              >
+                Reference file
+              </button>
+            </div>
+            <div className="cmp-submenu-preview">
+              {expandedPreview.previewLines.map((line, lineIndex) => (
+                <span key={`${expandedItem.label}-preview-${lineIndex}`} className="cmp-submenu-line">
+                  {line}
+                </span>
+              ))}
+            </div>
+            {expandedPreview.sections.length > 0 && (
+              <div className="cmp-submenu-sections">
+                <span className="cmp-submenu-sections-title">Reference section</span>
+                <div className="cmp-submenu-section-list">
+                  {expandedPreview.sections.map((section) => {
+                    const selection = buildCompletionSelection(expandedItem, section);
+                    return (
+                      <button
+                        key={`${expandedItem.label}-${section.id}`}
+                        type="button"
+                        className="cmp-submenu-section-btn"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelect(selection);
+                        }}
+                      >
+                        <span className="cmp-submenu-section-label">{section.title}</span>
+                        <span className="cmp-submenu-section-anchor">#{section.anchor}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3758,6 +3473,7 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 const ADD_RECENT_FILES = [
   { label: 'Configuration.md',                    type: 'md', description: 'Agent Specifications' },
   { label: 'visit-booking.md',                    type: 'md', description: 'Agent Specifications' },
+  { label: 'vet-schedules.md',                    type: 'md', description: 'Agent Specifications' },
   { label: 'visit-booking-inspections.md',        type: 'md', description: 'Agent Specifications' },
   { label: 'visit-booking-beat-3-execution.md',   type: 'md', description: 'Agent Specifications' },
   { label: 'visit-booking-code-review-moment.md', type: 'md', description: 'Agent Specifications' },
@@ -3854,28 +3570,28 @@ const SPEC_LINES = [
   { text: 'Add vet assignment and time slot selection to the visit creation flow.',                         type: 'text' },
   { text: 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).', type: 'text' },
   { text: '',                                                                                                 type: 'empty'   },
+  { text: 'Plan',                                                                                            type: 'heading' },
+  { text: '\u2610 Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table',              type: 'check'   },
+  { text: '\u2610 Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull',                  type: 'check'   },
+  { text: '\u2610 VisitRepository \u2014 add existsByVetIdAndDateAndTime for double-booking check',           type: 'check'   },
+  { text: '\u2610 VisitController \u2014 inject VetRepository, add @ModelAttribute("vets") with findAll()',   type: 'check'   },
+  { text: '\u2610 Form template \u2014 add <select> for vet and <select> for time slot',                      type: 'check'   },
+  { text: '\u2610 Owner details \u2014 add Vet and Time columns to visit history table',                      type: 'check'   },
+  { text: '\u2610 Tests \u2014 vet list in model, successful booking, double-booking rejected',               type: 'check'   },
+  { text: '',                                                                                                 type: 'empty'   },
   { text: 'Acceptance Criteria',                                                                             type: 'heading' },
-  { text: '\u2610 Visit form shows a dropdown of available vets for the selected date/time.',                type: 'check'   },
-  { text: '\u2610 Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.', type: 'check' },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice.',                                    type: 'check'   },
+  { text: '\u2610 Visit form shows a dropdown filtered to available vets for selected date/time.',                type: 'check'   },
+  { text: '\u2610 Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).',             type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).', type: 'check' },
   { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
-  { text: '\u2610 Existing visit display (owner details page, visit history table) shows the assigned vet and time.', type: 'check' },
+  { text: '\u2610 Existing visit display (owner details page) shows the assigned vet and time.',             type: 'check'   },
   { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
   { text: '',                                                                                                 type: 'empty'   },
-  { text: 'Plan',                                                                                            type: 'heading' },
-  { text: '\u2610 Schema changes',                                                                           type: 'check'   },
-  { text: '\u2610 Visit entity \u2014 src/main/java/org/springframework/samples/petclinic/owner/Visit.java', type: 'check'   },
-  { text: '\u2610 VisitRepository \u2014 add existsByVetIdAndDateAndTime for double-booking check',           type: 'check'   },
-  { text: '\u2610 VisitController updates \u2014 src/main/java/org/springframework/samples/petclinic/owner/VisitController.java', type: 'check' },
-  { text: '\u2610 Form template update \u2014 src/main/resources/templates/pets/createOrUpdateVisitForm.html', type: 'check' },
-  { text: '\u2610 Owner details / visit history display \u2014 src/main/resources/templates/owners/ownerDetails.html', type: 'check' },
-  { text: '\u2610 Tests',                                                                                    type: 'check'   },
-  { text: '',                                                                                                 type: 'empty'   },
   { text: 'Implementation Notes',                                                                            type: 'heading' },
-  { text: '\u2022 Current Visit entity (Visit.java): Only has date (LocalDate) and description (String). Extends BaseEntity. No relationship to Vet.', type: 'note' },
-  { text: '\u2022 Current visits table: Columns are id, pet_id, visit_date, description. No vet or time columns.', type: 'note' },
-  { text: '\u2022 Vet entity (vet/Vet.java): Extends Person (firstName, lastName). Has ManyToMany specialties.', type: 'note' },
-  { text: '\u2022 No existing VisitRepository: Visits are currently persisted entirely through cascade (Owner \u2192 Pet \u2192 Visit via CascadeType.ALL).', type: 'note' },
+  { text: '\u2022 Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.', type: 'note' },
+  { text: '\u2022 Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.',  type: 'note'    },
+  { text: '\u2022 VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.',                  type: 'note'    },
+  { text: '\u2022 Project uses Formatter<T> for form selects (see PetTypeFormatter).',                        type: 'note'    },
   { text: '',                                                                                                 type: 'empty'   },
   { text: 'Decisions',                                                                                       type: 'heading' },
   { text: '',                                                                                                 type: 'empty'   },
@@ -3884,194 +3600,8 @@ const SPEC_LINES = [
   { text: '// Vet specialties matching \u2014 not in prompt, out of scope',                                   type: 'comment' },
 ];
 
-const VISIT_BOOKING_PLAN_ITEMS = [
-  {
-    id: 'plan-1',
-    type: 'check',
-    checked: false,
-    text: '**1. Schema** - `db/h2/schema.sql`, `db/mysql/schema.sql`, `db/postgres/schema.sql`',
-    children: [
-      { id: 'plan-1-1', type: 'check', checked: false, text: 'Add `vet_id` (FK -> vets) and `visit_time` (TIME) columns to `visits`.' },
-      { id: 'plan-1-2', type: 'check', checked: false, text: 'Add `UNIQUE(vet_id, visit_date, visit_time)` in all three schemas - DB-level double-booking guard.' },
-      { id: 'plan-1-3', type: 'check', checked: false, text: 'Update seed data in each `db/*/data.sql` (same three databases) with vet and time for existing visits.' },
-    ],
-  },
-  {
-    id: 'plan-2',
-    type: 'check',
-    checked: false,
-    text: '**2. Visit entity** - `owner/Visit.java`',
-    children: [
-      { id: 'plan-2-1', type: 'check', checked: false, text: 'Add `@ManyToOne vet` with `@JoinColumn(name = "vet_id")`.' },
-      { id: 'plan-2-2', type: 'check', checked: false, text: 'Add `LocalTime time` with `@Column(name = "visit_time")` + `@DateTimeFormat(pattern = "HH:mm")`.' },
-      { id: 'plan-2-3', type: 'check', checked: false, text: 'Add `@NotNull` on both new fields.' },
-    ],
-  },
-  {
-    id: 'plan-3',
-    type: 'check',
-    checked: false,
-    text: '**3. VetFormatter** - `vet/VetFormatter.java`',
-    children: [
-      { id: 'plan-3-1', type: 'check', checked: false, text: 'New `@Component implements Formatter<Vet>`, following the `PetTypeFormatter` pattern: `print` returns the full name (`firstName + " " + lastName`), `parse` looks the vet up by name via `VetRepository.findAll()`.' },
-      { id: 'plan-3-2', type: 'check', checked: false, text: 'Needed so Spring MVC converts the form select value into a `Vet` on POST.' },
-    ],
-  },
-  {
-    id: 'plan-4',
-    type: 'check',
-    checked: false,
-    text: '**4. VisitRepository** - `owner/VisitRepository.java`',
-    children: [
-      { id: 'plan-4-1', type: 'check', checked: false, text: 'New Spring Data interface extending `Repository<Visit, Integer>`.' },
-      { id: 'plan-4-2', type: 'check', checked: false, text: '`boolean existsByVetIdAndDateAndTime(Integer vetId, LocalDate date, LocalTime time)` - double-booking check (`VetId` resolves to the `vet.id` path).' },
-      { id: 'plan-4-3', type: 'check', checked: false, text: '`List<Visit> findByDateAndTime(LocalDate date, LocalTime time)` - visits already booked in a slot; their vets are excluded from the dropdown.' },
-    ],
-  },
-  {
-    id: 'plan-5',
-    type: 'check',
-    checked: false,
-    text: '**5. VisitController** - `owner/VisitController.java`',
-    children: [
-      { id: 'plan-5-1', type: 'check', checked: false, text: 'Inject `VetRepository` and `VisitRepository`.' },
-      { id: 'plan-5-2', type: 'check', checked: false, text: '`@ModelAttribute("vets")` method `populateVets()`, params `@RequestParam(required=false) LocalDate date` and `@RequestParam(required=false) @DateTimeFormat(pattern = "HH:mm") LocalTime time`. On GET (both null) returns all vets via `findAll()`; on POST (both set) excludes already-booked vets via `findByDateAndTime`. (The `@DateTimeFormat` on the param is needed to parse the submitted time, since the entity-level annotation does not apply to request params.)' },
-      { id: 'plan-5-3', type: 'check', checked: false, text: '`@ModelAttribute("timeSlots")` method `populateTimeSlots()`: read `petclinic.visit.start-hour` / `end-hour` (default 9 / 16), generate hourly `LocalTime` values start->end inclusive. Runs on every request (GET and POST).' },
-      { id: 'plan-5-4', type: 'check', checked: false, text: 'In `processNewVisitForm` (already takes `@Valid Visit visit, BindingResult result`): run the double-booking check before save; on a blocked booking, `result.rejectValue("vet", ...)` and return `"pets/createOrUpdateVisitForm"`.' },
-      { id: 'plan-5-5', type: 'check', checked: false, text: 'Wrap save in try/catch for `DataIntegrityViolationException` - concurrent requests that pass the app check but hit the DB constraint re-render with the same friendly error (the dual-layer defense in Decisions).' },
-    ],
-  },
-  {
-    id: 'plan-6',
-    type: 'check',
-    checked: false,
-    text: '**6. Configuration** - `application.properties`',
-    children: [
-      { id: 'plan-6-1', type: 'check', checked: false, text: 'Add `petclinic.visit.start-hour=9` and `petclinic.visit.end-hour=16`.' },
-      { id: 'plan-6-2', type: 'check', checked: false, text: 'Read via `@Value` in `VisitController`.' },
-    ],
-  },
-  {
-    id: 'plan-7',
-    type: 'check',
-    checked: false,
-    text: '**7. Form template** - `pets/createOrUpdateVisitForm.html`',
-    children: [
-      { id: 'plan-7-1', type: 'check', checked: false, text: '`<select>` for vet via the existing `fragments/selectField` fragment (bound to `visit.vet`, from `${vets}`).' },
-      { id: 'plan-7-2', type: 'check', checked: false, text: '`<select>` for time slot via the same fragment (bound to `visit.time`, from `${timeSlots}`).' },
-      { id: 'plan-7-3', type: 'check', checked: false, text: 'The `selectField` fragment renders field errors automatically.' },
-    ],
-  },
-  {
-    id: 'plan-8',
-    type: 'check',
-    checked: false,
-    text: '**8. Visit history display** - `owners/ownerDetails.html`',
-    children: [
-      { id: 'plan-8-1', type: 'check', checked: false, text: 'Add Vet and Time columns to the per-pet visits table.' },
-    ],
-  },
-  {
-    id: 'plan-9',
-    type: 'check',
-    checked: false,
-    text: '**9. Tests** - `owner/VisitControllerTests.java`',
-    children: [
-      { id: 'plan-9-1', type: 'check', checked: false, text: '`processNewVisitFormSuccess` - booking with vet+time succeeds, redirects to owner page.' },
-      { id: 'plan-9-2', type: 'check', checked: false, text: '`processNewVisitFormDoubleBookingRejected` - conflicting slot re-renders the form with a field error on `vet`.' },
-      { id: 'plan-9-3', type: 'check', checked: false, text: 'Vets and time slots populated in the model.' },
-    ],
-  },
-  {
-    id: 'plan-10',
-    type: 'check',
-    checked: false,
-    text: '**10. Vet.toString()** - `vet/Vet.java`',
-    children: [
-      { id: 'plan-10-1', type: 'check', checked: false, text: 'Override returning `firstName + " " + lastName` - the `selectField` fragment renders `${item}` via `toString()`.' },
-    ],
-  },
-  {
-    id: 'plan-11',
-    type: 'check',
-    checked: false,
-    text: '**11. i18n keys** - `messages/messages.properties` + all locales',
-    children: [
-      { id: 'plan-11-1', type: 'check', checked: false, text: 'Add `vet=Vet` and `time=Time` - needed for labels and `I18nPropertiesSyncTest` (all locales must share keys).' },
-    ],
-  },
-  {
-    id: 'plan-12',
-    type: 'check',
-    checked: false,
-    text: '**12. Test fixes**',
-    children: [
-      { id: 'plan-12-1', type: 'check', checked: false, text: '`VisitControllerTests` (`@WebMvcTest(VisitController.class)`): add `includeFilters = @ComponentScan.Filter(value = VetFormatter.class, type = FilterType.ASSIGNABLE_TYPE)` (like `PetControllerTests` for `PetTypeFormatter`); add `@MockitoBean` for `VetRepository` + `VisitRepository`.' },
-      { id: 'plan-12-2', type: 'check', checked: false, text: '`ClinicServiceTests.shouldAddNewVisitForPet`: today builds a `Visit` with only `setDescription("test")` - also set `vet` + `time` before `owners.save(owner6)` to satisfy the new `@NotNull` fields.' },
-    ],
-  },
-];
-
-const VISIT_BOOKING_DECISION_ITEMS = [
-  { id: 'decision-heading-1', type: 'paragraph', text: '**Blocked-booking UX**' },
-  { id: 'decision-1', type: 'paragraph', text: "On a blocked booking, the form re-renders with an inline error on the vet field, matching existing Thymeleaf validation patterns. (Agent's call, per the AC3 refinement.)" },
-];
-
-function cloneDocumentItem(item) {
-  if (!item || typeof item !== 'object') return item;
-
-  return {
-    ...item,
-    children: Array.isArray(item.children)
-      ? item.children.map((child) => cloneDocumentItem(child))
-      : item.children,
-  };
-}
-
-function cloneDocumentSection(section) {
-  if (!section || typeof section !== 'object') return section;
-
-  return {
-    ...section,
-    items: Array.isArray(section.items)
-      ? section.items.map((item) => cloneDocumentItem(item))
-      : section.items,
-  };
-}
-
-function markDocumentItemDone(item) {
-  if (!item || typeof item !== 'object') return item;
-
-  return {
-    ...item,
-    checked: item.type === 'check' ? true : item.checked,
-    children: Array.isArray(item.children)
-      ? item.children.map((child) => markDocumentItemDone(child))
-      : item.children,
-  };
-}
-
-function markDocumentChecksDone(documentSections = []) {
-  if (!Array.isArray(documentSections)) return [];
-
-  return documentSections.map((section) => ({
-    ...section,
-    items: Array.isArray(section.items)
-      ? section.items.map((item) => markDocumentItemDone(item))
-      : section.items,
-  }));
-}
-
-function createVisitBookingPlanItems() {
-  return withDerivedPlanChildren({
-    id: 'plan',
-    title: 'Plan',
-    items: VISIT_BOOKING_PLAN_ITEMS.map((item) => cloneDocumentItem(item)),
-  }).items;
-}
-
-const VISIT_BOOKING_GOAL_LINE_ONE = 'Today a visit records only a date and a free-text description, with no vet and nothing stopping two visits from landing on the same vet at the same time.';
-const VISIT_BOOKING_GOAL_LINE_TWO = 'This adds vet and time-slot selection to the existing visit form, and enforces one visit per vet per slot.';
+const VISIT_BOOKING_GOAL_LINE_ONE = 'Add vet assignment and time slot selection to the visit creation flow.';
+const VISIT_BOOKING_GOAL_LINE_TWO = 'When booking a visit, users pick a vet and a time slot for the chosen date. The system prevents double-booking (same vet, same date+time).';
 const LEGACY_VISIT_BOOKING_GOAL_TEXT = `${VISIT_BOOKING_GOAL_LINE_ONE} ${VISIT_BOOKING_GOAL_LINE_TWO}`;
 
 function isLegacyVisitBookingGoalText(text = '') {
@@ -4253,127 +3783,55 @@ function createSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
+      id: 'plan',
+      title: 'Plan',
+      meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown of available vets for the selected date/time.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice. On a blocked booking, the form re-renders with an inline error on the vet field.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
-        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page, visit history table) shows the assigned vet and time.' },
-        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
+        { id: 'plan-1', type: 'check', checked: false, text: 'Schema changes \u2014 add vet_id (FK) and visit_time (TIME) to visits table' },
+        { id: 'plan-2', type: 'check', checked: false, text: 'Visit entity \u2014 add @ManyToOne vet and LocalTime time with @NotNull' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'VisitRepository \u2014 add existsByVetIdAndDateAndTime for double-booking check' },
+        { id: 'plan-4', type: 'check', checked: false, text: 'VisitController \u2014 inject VetRepository, add @ModelAttribute("vets") with findAll()' },
+        { id: 'plan-5', type: 'check', checked: false, text: 'Form template \u2014 add <select> for vet and <select> for time slot' },
+        { id: 'plan-6', type: 'check', checked: false, text: 'Owner details \u2014 add Vet and Time columns to visit history table' },
+        { id: 'plan-7', type: 'check', checked: false, text: 'Tests \u2014 vet list in model, successful booking, double-booking rejected' },
       ],
     },
     {
-      id: 'plan',
-      title: 'Plan',
-      items: VISIT_BOOKING_PLAN_ITEMS.map((item) => cloneDocumentItem(item)),
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Visit form shows a dropdown filtered to available vets for selected date/time.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Visit form includes a time slot picker (e.g. hourly slots 09:00\u201316:00).' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'A vet cannot be booked for the same date+time twice (server-side validation + database unique constraint).' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
+        { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
+        { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
+      ],
     },
     {
       id: 'implementation',
       title: 'Implementation Notes',
       items: [
-        { id: 'impl-1', type: 'bullet', text: '**Visit entity** (`Visit.java`): today only `date` (LocalDate, `@Column("visit_date")` + `@DateTimeFormat("yyyy-MM-dd")`) + `description` (String, `@NotBlank`), extends `BaseEntity`, no link to Vet.' },
-        { id: 'impl-2', type: 'bullet', text: '**visits table**: today `id`, `pet_id`, `visit_date`, `description` - no vet or time.' },
-        { id: 'impl-3', type: 'bullet', text: '**Vet entity** (`vet/Vet.java`): extends `Person`, `ManyToMany` specialties. Lives in the `vet` package - `owner.Visit` needs a cross-package import.' },
-        { id: 'impl-4', type: 'bullet', text: '**VetRepository** (`vet/VetRepository.java`): cached `findAll()`, returns `Collection<Vet>` / `Page<Vet>`.' },
-        { id: 'impl-5', type: 'bullet', text: '**No VisitRepository yet**: visits persist via cascade (`Owner -> Pet -> Visit`, `CascadeType.ALL`). A new repo is needed for the double-booking query and availability filtering.' },
-        { id: 'impl-6', type: 'bullet', text: '**VisitController** (`owner/VisitController.java`): package-private `class VisitController`. Builds the Visit in `@ModelAttribute("visit")` (`loadPetWithVisit`), and in `processNewVisitForm(@ModelAttribute Owner owner, @PathVariable int petId, @Valid Visit visit, BindingResult result, ...)` saves via `owner.addVisit(petId, visit)` + `this.owners.save(owner)` (cascade). Injects only `OwnerRepository` (field named `owners`) today. Already has a `@ModelAttribute("minVisitDate")` method.' },
-        { id: 'impl-7', type: 'bullet', text: '**Form template** (`createOrUpdateVisitForm.html`): Thymeleaf form using the `fragments/inputField` fragment for date + description, plus a previous-visits table. A `fragments/selectField` fragment already exists (used by `createOrUpdatePetForm` for pet type) - the new vet/time selects reuse it.' },
-        { id: 'impl-8', type: 'bullet', text: "**PetTypeFormatter pattern** (`owner/PetTypeFormatter.java`): a `@Component implements Formatter<PetType>` converting form strings <-> JPA entities (`print`/`parse(String, Locale)`). `VetFormatter` follows it, placed in `vet` next to `VetRepository`. Note `PetTypeFormatter` lives in the `owner` package - `VetFormatter` in `vet` is the spec's choice." },
-        { id: 'impl-9', type: 'bullet', text: '**selectField fragment** (`fragments/selectField.html`): renders options as `th:value="${item}"` / `th:text="${item}"`, i.e. via `item.toString()` - which is why `Vet` needs a `toString()` override.' },
-        { id: 'impl-10', type: 'bullet', text: '**`populateTimeSlots()`**: an `@ModelAttribute` method, so Spring re-invokes it on every request and it rebuilds the identical fixed `LocalTime` list each time. Functionally correct; a candidate for building the list once (constructor / cached field) since the bounds are config-fixed.' },
+        { id: 'impl-1', type: 'bullet', text: 'Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.' },
+        { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
+        { id: 'impl-3', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.' },
+        { id: 'impl-4', type: 'bullet', text: 'Project uses Formatter<T> for form selects (see PetTypeFormatter).' },
       ],
     },
     {
-      id: 'decisions',
+      id: 'tradeoffs',
       title: 'Decisions',
-      items: VISIT_BOOKING_DECISION_ITEMS.map((item) => cloneDocumentItem(item)),
+      items: [],
     },
     {
       id: 'other',
       title: 'Other',
       items: [
-        { id: 'other-heading-1', type: 'paragraph', text: '**Out of scope**' },
-        { id: 'other-1', type: 'bullet', text: '**Vet specialties matching** - no filtering by pet type or specialty; all vets shown.' },
-        { id: 'other-2', type: 'bullet', text: '**Dynamic availability (AJAX)** - dropdown static on load, no refresh on date change. Possible follow-up.' },
-        { id: 'other-3', type: 'bullet', text: '**Multi-slot / duration booking** - one slot per visit, no duration.' },
-        { id: 'other-4', type: 'bullet', text: '**Vet calendar view** - no schedule UI for vets.' },
-        { id: 'other-5', type: 'bullet', text: '**VetRepository cache invalidation** - `findAll()` is `@Cacheable("vets")`; adding a vet won\'t auto-refresh the dropdown. Existing behavior, not introduced here.' },
+        { id: 'other-1', type: 'comment', text: 'Dynamic availability (AJAX) \u2014 not in prompt, out of scope' },
+        { id: 'other-2', type: 'comment', text: 'Vet specialties matching \u2014 not in prompt, out of scope' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
-}
-
-const PLAN_WORKFLOW_CHIP_LABEL = 'Autonomous';
-
-function addPlanAutonomousChip(documentSections = []) {
-  if (!Array.isArray(documentSections)) {
-    return [];
-  }
-
-  return documentSections.map((section) => (
-    normalizeSpecSectionTitle(section?.title) === 'plan'
-      ? {
-          ...section,
-          meta: {
-            kind: 'chip',
-            text: PLAN_WORKFLOW_CHIP_LABEL,
-          },
-        }
-      : section
-  ));
-}
-
-const VISIT_BOOKING_AC_CHECKS_BY_ID = {
-  'ac-1': [
-    { status: 'passed', text: 'Pre-filter on POST re-render', chip: 'VisitController.java' },
-    { status: 'passed', text: 'All vets shown on initial GET (expected)', chip: null },
-  ],
-  'ac-2': [
-    { status: 'passed', text: 'Hourly slots from 09:00 to 16:00 are rendered', chip: 'VisitController.java' },
-    { status: 'passed', text: 'Slot bounds stay configurable', chip: 'Configuration.md' },
-  ],
-  'ac-3': [
-    { status: 'passed', text: 'Duplicate vet/date/time bookings are rejected', chip: 'VisitRepository.java' },
-    { status: 'passed', text: 'Blocked booking re-renders with an inline vet-field error', chip: 'VisitController.java' },
-  ],
-  'ac-4': [
-    { status: 'passed', text: '`ManyToOne` vet persisted', chip: 'Visit.java' },
-    { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' },
-  ],
-  'ac-5': [
-    { status: 'passed', text: 'Vet column in ownerDetails.html', chip: 'ownerDetails.html' },
-    { status: 'passed', text: 'Time column in ownerDetails.html', chip: null },
-  ],
-  'ac-6': [
-    { status: 'passed', text: 'H2, MySQL, PostgreSQL schemas updated', chip: 'schema.sql' },
-    { status: 'passed', text: 'Seed data includes vet_id and visit_time', chip: 'data.sql' },
-  ],
-};
-
-function getDocumentSectionByTitle(documentSections = [], title = '') {
-  const normalizedTitle = normalizeSpecSectionTitle(title);
-  return (documentSections ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === normalizedTitle) ?? null;
-}
-
-function buildPassedAcStatusesFromDocument(documentSections = []) {
-  const acceptanceSection = getDocumentSectionByTitle(documentSections, 'Acceptance Criteria');
-
-  return (acceptanceSection?.items ?? [])
-    .filter((item) => item?.type === 'check')
-    .map((item) => ({
-      status: 'passed',
-      checks: (VISIT_BOOKING_AC_CHECKS_BY_ID[item.id] ?? []).map((check) => ({ ...check })),
-    }));
-}
-
-function buildPassedPlanStatusesFromDocument(documentSections = []) {
-  const planSection = getDocumentSectionByTitle(documentSections, 'Plan');
-
-  return (planSection?.items ?? [])
-    .filter((item) => item?.type === 'check')
-    .map(() => ({ status: 'passed' }));
 }
 
 function serializeSpecDocument(documentSections) {
@@ -4949,37 +4407,12 @@ function extractGoalTitleFromMarkdown(code) {
 }
 
 function renderDoneInlineText(text, keyPrefix = 'inline') {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  const parts = text.split(/(@\w+)/g);
   if (parts.length === 1) return text;
-  return parts.map((part, index) => {
-    if (/^`[^`]+`$/.test(part)) {
-      return <span key={`${keyPrefix}-${index}`} className="spec-ref">{part.slice(1, -1)}</span>;
-    }
-    if (/^\*\*[^*]+\*\*$/.test(part)) {
-      return <strong key={`${keyPrefix}-${index}`}>{part.slice(2, -2)}</strong>;
-    }
-    return part;
-  });
-}
-
-function stripTrailingEllipsis(text = '') {
-  return String(text).replace(/(?:\.{3}|…)\s*$/, '');
-}
-
-function stripInlineCodeMarkers(text = '') {
-  return String(text).replace(/`([^`]+)`/g, '$1');
-}
-
-function formatRunningToolbarText(text = '') {
-  const normalizedText = stripInlineCodeMarkers(stripTrailingEllipsis(text)).trim();
-  return normalizedText ? `${normalizedText}...` : '';
-}
-
-function RunningToolbarLabel({ text }) {
-  return (
-    <span className="at-generating-label">
-      {formatRunningToolbarText(text)}
-    </span>
+  return parts.map((part, index) =>
+    /^@\w+$/.test(part)
+      ? <span key={`${keyPrefix}-${index}`} className="spec-ref">{part}</span>
+      : part
   );
 }
 
@@ -5075,10 +4508,75 @@ function InlineInspectionHoverTooltip({ rect, tooltip, onMouseEnter, onMouseLeav
 }
 
 function InlineInspectionHighlight({ className, tooltip = null, onAccept = null, onReject = null, children }) {
+  const anchorRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const closeTimerRef = useRef(null);
+  const hasTooltip = Boolean(tooltip?.title);
+
+  const updateRect = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!(anchor instanceof HTMLElement)) return;
+
+    const nextRect = anchor.getBoundingClientRect();
+    setRect({
+      top: nextRect.top,
+      left: nextRect.left,
+      width: nextRect.width,
+      height: nextRect.height,
+    });
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    closeTimerRef.current = setTimeout(() => setIsOpen(false), 120);
+  }, []);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !hasTooltip) return undefined;
+
+    updateRect();
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+
+    return () => {
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [hasTooltip, isOpen, updateRect]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+  }, []);
+
   return (
-    <span className={className}>
-      {children}
-    </span>
+    <>
+      <span
+        ref={anchorRef}
+        className={`${className}${hasTooltip ? ' spec-inline-hover-trigger' : ''}`}
+        onMouseEnter={hasTooltip ? () => {
+          cancelClose();
+          updateRect();
+          setIsOpen(true);
+        } : undefined}
+        onMouseLeave={hasTooltip ? scheduleClose : undefined}
+      >
+        {children}
+      </span>
+      {hasTooltip && isOpen && rect ? (
+        <InlineInspectionHoverTooltip
+          rect={rect}
+          tooltip={tooltip}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          onAccept={() => { setIsOpen(false); onAccept?.(); }}
+          onReject={() => { setIsOpen(false); onReject?.(); }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -5121,7 +4619,7 @@ function renderDoneMarkdownInline(text, highlight = null, issue = null, onAccept
   });
 }
 
-function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '', menuMode = 'files', onWorkflowSelect = null, onChipClick = null, onChipRemove = null, showAddButton = true, disableAddButton = false, removable = true }) {
+function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '' }) {
   const normalizedInitialFiles = useMemo(
     () => normalizeDoneFileEntries(initialFiles),
     [initialFiles]
@@ -5140,20 +4638,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
     setFiles((prev) => prev.filter((file) => file.label !== labelToRemove));
   };
 
-  const clearDoneEditorFocus = () => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return;
-
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && activeElement.closest('.spec-done-overlay')) {
-      activeElement.blur();
-    }
-    window.getSelection()?.removeAllRanges();
-    document.dispatchEvent(new Event('selectionchange'));
-    window.dispatchEvent(new Event(SPEC_DONE_CLEAR_FOCUS_EVENT));
-  };
-
   const openAddPopup = () => {
-    clearDoneEditorFocus();
     if (!showAddPopup && addBtnRef.current) {
       const rect = addBtnRef.current.getBoundingClientRect();
       setPopupPos({ top: rect.bottom + 6, left: rect.left });
@@ -5169,70 +4654,34 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
             key={file.label}
             label={file.label}
             className="spec-done-ref-chip"
-            onClick={onChipClick ? ((event) => {
+            onRemove={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onChipClick(file);
-            }) : undefined}
-            onRemove={!removable ? null : ((onChipClick && onChipRemove) ? ((event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                removeFile(file.label);
-                onChipRemove(file);
-              }) : (onChipClick ? null : ((event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                removeFile(file.label);
-              })))}
+              removeFile(file.label);
+            }}
           />
         ))}
-        {showAddButton && (
-          <button
-            type="button"
-            className="at-icon-btn spec-done-ref-add-btn"
-            ref={addBtnRef}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={disableAddButton ? undefined : ((event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              openAddPopup();
-            })}
-            aria-label={addButtonLabel}
-            aria-disabled={disableAddButton ? 'true' : undefined}
-            tabIndex={disableAddButton ? -1 : undefined}
-          >
-            <Icon name="general/settings" size={16} />
-          </button>
-        )}
+        <button
+          type="button"
+          className="at-icon-btn spec-done-ref-add-btn"
+          ref={addBtnRef}
+          onClick={openAddPopup}
+          aria-label={addButtonLabel}
+        >
+          <Icon name="general/settings" size={16} />
+        </button>
       </div>
       {showAddPopup && popupPos && createPortal(
         <>
           <div className="add-popup-overlay" onMouseDown={() => setShowAddPopup(false)} />
-          {menuMode === 'workflow' ? (
-            <WorkflowPopup
-              onClose={() => setShowAddPopup(false)}
-              onSelect={(workflow) => {
-                clearDoneEditorFocus();
-                setFiles([{ label: workflow.label }]);
-                onWorkflowSelect?.(workflow);
-                setShowAddPopup(false);
-                window.requestAnimationFrame(clearDoneEditorFocus);
-              }}
-              style={{ position: 'fixed', ...popupPos }}
-            />
-          ) : (
-            <AddPopup
-              onClose={() => setShowAddPopup(false)}
-              onSelectFile={(item) => {
-                setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, { label: item.label }]);
-              }}
-              files={addPopupFiles}
-              style={{ position: 'fixed', ...popupPos }}
-            />
-          )}
+          <AddPopup
+            onClose={() => setShowAddPopup(false)}
+            onSelectFile={(item) => {
+              setFiles((prev) => prev.some((file) => file.label === item.label) ? prev : [...prev, { label: item.label }]);
+            }}
+            files={addPopupFiles}
+            style={{ position: 'fixed', ...popupPos }}
+          />
         </>,
         document.body
       )}
@@ -5240,49 +4689,8 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
   );
 }
 
-const WORKFLOW_MENU_ITEMS = [
-  { id: 'step-through', label: 'Step-through' },
-  { id: 'autonomous', label: 'Autonomous' },
-  { id: 'new-workflow', label: 'Create new workflow', separatorBefore: true },
-];
-
-function WorkflowPopup({ onClose, onSelect, style }) {
-  return (
-    <div className="add-popup workflow-popup" style={style}>
-      <div className="add-popup-files">
-        {WORKFLOW_MENU_ITEMS.map((item) => (
-          <Fragment key={item.id}>
-            {item.separatorBefore && <div className="workflow-popup-separator" aria-hidden="true" />}
-            <div
-              className="add-popup-item workflow-popup-item"
-              onMouseDown={() => {
-                onSelect?.(item);
-                onClose?.();
-            }}
-          >
-            <span className="workflow-popup-icon" aria-hidden="true">
-                {item.id === 'new-workflow' ? <Icon name="general/add" size={16} /> : <WorkflowCheckIcon />}
-            </span>
-            <span className="add-popup-item-label">{item.label}</span>
-          </div>
-          </Fragment>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function WorkflowCheckIcon() {
-  return (
-    <svg className="workflow-popup-check-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3 8.3L6.2 11.5L13 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = null }) {
   const hasComments = commentCount > 0;
-  const canOpen = typeof onOpen === 'function';
 
   return (
     <span className={`spec-done-comment-slot${hasComments ? ' has-comments' : ''}${isOpen ? ' is-open' : ''}`}>
@@ -5291,8 +4699,8 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
         className={`spec-done-comment-btn${isOpen ? ' is-open' : ''}${hasComments ? ' has-comments' : ''}`}
         aria-label={hasComments ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : 'Add comment'}
         data-demo-id={demoId ?? undefined}
-        aria-haspopup={canOpen ? 'dialog' : undefined}
-        aria-expanded={canOpen ? isOpen : undefined}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
         onMouseDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -5300,7 +4708,6 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          if (!canOpen) return;
           onOpen?.(event.currentTarget.getBoundingClientRect());
         }}
       >
@@ -5363,7 +4770,7 @@ function DoneInlineRunButton({ onRun, demoId = null, title = 'Build item' }) {
 
 function DoneCommentCountIcon() {
   return (
-    <svg className="spec-comment-count-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
         d="M3.14258 1.64307L12.8564 1.64307C13.6849 1.64307 14.3564 2.31464 14.3564 3.14307L14.3564 14.9595L9.45508 11.0386C9.38853 10.9853 9.30968 10.9502 9.22656 10.936L9.14258 10.9292L3.14258 10.9292C2.31429 10.9292 1.6428 10.2574 1.64258 9.4292L1.64258 3.14307C1.64258 2.31464 2.31415 1.64307 3.14258 1.64307Z"
         stroke="currentColor"
@@ -5384,13 +4791,19 @@ function DoneCommentPopup({
   onDelete,
 }) {
   const popupRef = useRef(null);
-  const commentInputRef = useRef(null);
+  const textareaRef = useRef(null);
   const hasComments = comments.length > 0;
   const isEditing = Number.isInteger(editingIndex);
-  const shouldShowCompose = !hasComments || isEditing;
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [value]);
 
   useEffect(() => {
-    const input = commentInputRef.current;
+    const input = textareaRef.current;
     if (input instanceof HTMLTextAreaElement) {
       input.focus();
       if (isEditing) {
@@ -5416,57 +4829,50 @@ function DoneCommentPopup({
         }
       }}
     >
-      {hasComments && !isEditing && (
-        <div className="spec-done-comment-popup-posted">
-          <span className="spec-done-comment-popup-posted-marker">
-            <DoneCommentCountIcon />
-          </span>
-          <span className="spec-done-comment-popup-posted-text">{comments[comments.length - 1]}</span>
-          <span className="spec-done-comment-popup-posted-actions">
-            <button type="button" className="spec-done-comment-popup-icon-btn" aria-label="Edit comment" onClick={() => onStartEdit?.(comments.length - 1)}>
-              <svg className="spec-done-comment-popup-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M13.4403 2.56066C12.6927 1.81314 11.4808 1.81311 10.7332 2.5606L3.33829 9.95484C3.15725 10.1359 3.02085 10.3566 2.93989 10.5994L2.02567 13.3421C1.96578 13.5218 2.01254 13.7198 2.14646 13.8538C2.28038 13.9877 2.47846 14.0344 2.65813 13.9746L5.40087 13.0603C5.64368 12.9794 5.86432 12.843 6.04531 12.662L13.4402 5.26783C14.1878 4.52029 14.1878 3.30823 13.4403 2.56066ZM11.4403 3.26774C11.7973 2.91074 12.3761 2.91076 12.7331 3.26777C13.0902 3.6248 13.0902 4.20367 12.7331 4.56069L11.9994 5.29437L10.7065 4.00148L11.4403 3.26774ZM9.99934 4.70855L11.2922 6.00145L5.33823 11.9549C5.26701 12.0261 5.18019 12.0798 5.08464 12.1116L3.29058 12.7096L3.88858 10.9157C3.92044 10.8201 3.97412 10.7332 4.04536 10.662L9.99934 4.70855Z" fill="currentColor" />
-              </svg>
-            </button>
-            <button type="button" className="spec-done-comment-popup-icon-btn" aria-label="Delete comment" onClick={() => onDelete?.(comments.length - 1)}>
-              <svg className="spec-done-comment-popup-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M4 5H12" stroke="currentColor" strokeLinecap="round" />
-                <path d="M6.25 5V3.75C6.25 3.34 6.59 3 7 3H9C9.41 3 9.75 3.34 9.75 3.75V5" stroke="currentColor" strokeLinecap="round" />
-                <path d="M5.25 6.75L5.62 12.1C5.66 12.6 6.08 13 6.58 13H9.42C9.92 13 10.34 12.6 10.38 12.1L10.75 6.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </span>
-        </div>
+      {hasComments && (
+        <>
+          <div className="spec-done-comment-popup-header">
+            <span className="spec-done-comment-popup-title text-ui-default-semibold">Comments</span>
+          </div>
+          <div className="spec-done-comment-popup-list">
+            {comments.map((comment, index) => (
+              <div key={`comment-${index}`} className="spec-done-comment-popup-item">
+                <div className="spec-done-comment-popup-item-body">
+                  <div className="spec-done-comment-popup-item-text text-ui-default">{comment}</div>
+                  <div className="spec-done-comment-popup-item-actions">
+                    <button type="button" className="spec-done-comment-popup-link" onClick={() => onStartEdit?.(index)}>Change</button>
+                    <button type="button" className="spec-done-comment-popup-link" onClick={() => onDelete?.(index)}>Delete</button>
+                  </div>
+                </div>
+                <button type="button" className="spec-done-comment-popup-more-btn" aria-label="More actions">
+                  <Icon name="general/moreVertical" size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
-      {shouldShowCompose && (
       <div className="spec-done-comment-popup-compose">
-        <span className="spec-done-comment-popup-compose-icon" aria-hidden="true">
-          <DoneCommentCountIcon />
-        </span>
         <div className="spec-done-comment-popup-input-wrap">
           <textarea
-            ref={commentInputRef}
-            className="spec-done-comment-popup-textarea"
+            ref={textareaRef}
+            className="spec-done-comment-popup-textarea text-ui-default"
             value={value}
             placeholder="Write a comment"
             data-demo-id="spec-comment-input"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            rows={1}
             onChange={(event) => onChange?.(event.target.value)}
+            rows={1}
           />
         </div>
         <div className="spec-done-comment-popup-actions">
-          <span className="spec-done-comment-popup-submit-hint" aria-label={isEditing ? 'Enter to save' : 'Enter to add'} title={isEditing ? 'Enter to save' : 'Enter to add'}>
-            <svg className="spec-done-comment-popup-submit-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M12.5 3.5V7.25C12.5 8.35 11.6 9.25 10.5 9.25H4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M6.5 6.75L4 9.25L6.5 11.75" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
+          <Button type="secondary" data-demo-id="spec-comment-cancel" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="primary" data-demo-id="spec-comment-submit" onClick={onSubmit}>
+            {isEditing ? 'Save Comment' : 'Add a Comment'}
+          </Button>
         </div>
       </div>
-      )}
     </div>
   );
 }
@@ -5485,7 +4891,7 @@ function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }
   );
 }
 
-function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null, menuMode = 'files', onWorkflowSelect = null, onWorkflowOpen = null, onWorkflowRemove = null, showAddButton = true, disableAddButton = false, removable = true }) {
+function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null }) {
   return (
     <div className="spec-done-heading-row">
       <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
@@ -5496,13 +4902,6 @@ function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, comment
         addPopupFiles={addPopupFiles}
         addButtonLabel={`Add file to ${title}`}
         className="spec-done-heading-files"
-        menuMode={menuMode}
-        onWorkflowSelect={onWorkflowSelect}
-        onChipClick={onWorkflowOpen}
-        onChipRemove={onWorkflowRemove}
-        showAddButton={showAddButton}
-        disableAddButton={disableAddButton}
-        removable={removable}
       />
       {commentAdornment}
     </div>
@@ -5514,34 +4913,36 @@ function getDoneHeadingTitle(line) {
   return headingMatch ? headingMatch[1].trim() : null;
 }
 
-function shouldShowDoneRunIcon(line, { hidePlanRun = false, hideAcRun = false } = {}) {
+function shouldShowDoneRunIcon(line) {
   const headingTitle = getDoneHeadingTitle(line)?.toLowerCase();
-  if (hidePlanRun && headingTitle === 'plan') {
-    return false;
-  }
-  if (hideAcRun && headingTitle === 'acceptance criteria') {
-    return false;
-  }
   return headingTitle === 'plan' || headingTitle === 'acceptance criteria';
 }
 
-function CheckStatus({ status, outdated = false, isLoading = false, variant = null }) {
+function CheckStatus({ status, outdated = false, isLoading = false }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
-  const statusIcon = (() => {
-    if (variant === 'empty') return <IconStatusEmpty />;
-    if (isLoading) return <IconStatusExecuting />;
-    if (normalizedStatus === 'passed') return <IconDone />;
-    if (normalizedStatus === 'pending' || normalizedStatus === 'stale' || normalizedStatus === 'skipped') return <IconStatusMinus />;
-    return <IconStatusIssue />;
-  })();
 
   return (
     <span
-      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}${isLoading ? ' is-loading' : ''}${variant ? ` spec-check-status-${variant}` : ''}`}
+      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}`}
       aria-label={normalizedStatus}
       title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
     >
-      {statusIcon}
+      {isLoading ? (
+        <IconLoaderSpinner />
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          {normalizedStatus === 'pending'
+            ? <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" stroke="currentColor" strokeWidth="1.5" />
+            : <rect x="1" y="1" width="14" height="14" rx="3" fill="currentColor" />
+          }
+          {normalizedStatus === 'passed'
+            ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            : normalizedStatus === 'pending'
+              ? null
+              : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
+          }
+        </svg>
+      )}
     </span>
   );
 }
@@ -5561,6 +4962,25 @@ function AcSubcheckIcon({ status }) {
   );
 }
 
+function AcSubcheckChip({ label, onOpen }) {
+  const handleOpen = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpen?.(label);
+  };
+
+  return (
+    <button
+      type="button"
+      className="ac-subcheck-chip"
+      onClick={handleOpen}
+      title={`Open ${label}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function AcCheckRow({
   checkItem,
   text,
@@ -5568,17 +4988,15 @@ function AcCheckRow({
   commentAdornment = null,
   onProposalAccept = null,
   onProposalDecision = null,
+  onOpenCheckChip = null,
   isRunning = false,
-  useCheckbox = false,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
   const [proposalRejected, setProposalRejected] = useState(false);
   const checks = checkItem.checks || [];
-  const problemCount = checks.filter(c => c.status === 'failed').length || checkItem.problemCount || 0;
   const hasChecks = checks.length > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
-  const hasToggle = !isOutdated && (hasChecks || problemCount > 0);
 
   const handleProposalAccept = () => {
     setProposalAccepted(true);
@@ -5591,8 +5009,7 @@ function AcCheckRow({
     onProposalDecision?.('reject');
   };
 
-  const proposalOptions = Array.isArray(checkItem.proposalOptions) ? checkItem.proposalOptions : null;
-  const showProposal = (Boolean(checkItem.proposal) || Boolean(proposalOptions)) && !proposalAccepted && !proposalRejected;
+  const showProposal = Boolean(checkItem.proposal) && !proposalAccepted && !proposalRejected;
 
   const displayText = proposalAccepted && checkItem.highlight?.match && checkItem.proposal
     ? text.replace(checkItem.highlight.match, checkItem.proposal.replace(/^Proposal:\s*/i, ''))
@@ -5602,28 +5019,22 @@ function AcCheckRow({
 
   const visualStatus = proposalAccepted
     ? 'pending'
-    : ('checkboxStatus' in checkItem
-        ? checkItem.checkboxStatus
-        : (checkItem.status === 'passed'
-            ? 'passed'
-            : (checkItem.issue?.severity === 'warning'
-                ? 'warning'
-                : (checkItem.issue?.severity === 'error'
-                    ? 'error'
-                    : checkItem.status))));
+    : (checkItem.status === 'passed'
+        ? 'passed'
+        : (checkItem.issue?.severity === 'warning'
+            ? 'warning'
+            : (checkItem.issue?.severity === 'error'
+                ? 'error'
+                : checkItem.status)));
 
   return (
-    <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
-      <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
-        {isOutdated
-          ? <CheckStatus status="stale" outdated />
-          : useCheckbox
-          ? <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
-          : <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />}
-        <span>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
-        {hasToggle && (
+    <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
+      <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
+        <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />
+        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
+        {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
-            {hasChecks ? `${checks.length} checks` : ''}{!proposalAccepted && problemCount > 0 ? `${hasChecks ? '/' : ''}${problemCount} problem` : ''}
+            {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
               <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -5636,42 +5047,19 @@ function AcCheckRow({
           {checks.map((check, i) => (
             <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
-              <span className="ac-subcheck-text">{renderDoneMarkdownInline(check.text ?? '')}</span>
-              {check.chip && <span className="ac-subcheck-chip">{check.chip}</span>}
-              {check.note && <span className="ac-subcheck-note">{renderDoneMarkdownInline(check.note)}</span>}
+              <span className="ac-subcheck-text">{check.text}</span>
+              {check.chip && <AcSubcheckChip label={check.chip} onOpen={onOpenCheckChip} />}
+              {check.note && <span className="ac-subcheck-note">{check.note}</span>}
             </div>
           ))}
           {showProposal && (
-            <div className={`ac-proposal-row${proposalOptions ? ' ac-proposal-row-options' : ''}`}>
+            <div className="ac-proposal-row">
               <span className="ac-proposal-icon">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M6 13.5H10M7 15H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.5 10.5C4.5 9.5 4 8.5 4 7.5C4 5.29086 5.79086 3.5 8 3.5C10.2091 3.5 12 5.29086 12 7.5C12 8.5 11.5 9.5 10.5 10.5V11.5C10.5 11.7761 10.2761 12 10 12H6C5.72386 12 5.5 11.7761 5.5 11.5V10.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                </svg>
+                <Icon name="codeInsight/intentionBulb" size={16} />
               </span>
-              {proposalOptions ? (
-                <div className="ac-proposal-options">
-                  {proposalOptions.map((opt, i) =>
-                    opt.type === 'text' ? (
-                      <div key={i} className="ac-proposal-option-text-row">
-                        <span className="ac-proposal-option-num">{i + 1}.</span>
-                        <input type="text" className="ac-proposal-text-field" placeholder={opt.placeholder || 'Custom...'} />
-                      </div>
-                    ) : (
-                      <button key={i} type="button" className="ac-proposal-option-btn" onClick={handleProposalAccept}>
-                        <span className="ac-proposal-option-num">{i + 1}.</span>
-                        {opt.label}
-                      </button>
-                    )
-                  )}
-                </div>
-              ) : (
-                <>
-                  <span className="ac-proposal-text">{checkItem.proposal}</span>
-                  <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
-                  <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
-                </>
-              )}
+              <span className="ac-proposal-text">{checkItem.proposal}</span>
+              <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
+              <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
             </div>
           )}
         </div>
@@ -5682,9 +5070,9 @@ function AcCheckRow({
 
 const PLAN_DIFF_PREVIEW_REPLACEMENTS = {
   0: 'Schema changes — add vet_id (FK), visit_time (TIME), and UNIQUE(vet_id, visit_date, visit_time) constraint',
-  1: 'Visit entity — add `ManyToOne` vet and `LocalTime` time with `NotNull`',
+  1: 'Visit entity — add @ManyToOne vet and LocalTime time with @NotNull',
   2: 'VisitRepository — add double-booking query + UNIQUE(vet_id, visit_date, visit_time) constraint',
-  3: 'VisitController — inject `VetRepository`, add `ModelAttribute("vets")` with `findAll()`',
+  3: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()',
   4: 'Form template — add <select> for vet with VetFormatter (per PetTypeFormatter pattern) and time slot',
   5: 'Owner details — add Vet and Time columns to visit history table',
   6: 'Tests — vet list in model, successful booking, double-booking rejected',
@@ -5786,11 +5174,20 @@ function normalizeDoneFileEntries(files = []) {
 }
 
 function getDonePlanHeadingFiles(sectionMeta = null, attachedFiles = []) {
+  const initialFiles = [];
+
   if (sectionMeta?.kind === 'chip' && typeof sectionMeta.text === 'string' && sectionMeta.text.trim().length > 0) {
-    return normalizeDoneFileEntries([sectionMeta.text]);
+    initialFiles.push(sectionMeta.text);
   }
 
-  return [];
+  (attachedFiles ?? []).forEach((file) => {
+    const label = typeof file === 'string' ? file : file?.label;
+    if (label === 'Configuration.md') {
+      initialFiles.push(label);
+    }
+  });
+
+  return normalizeDoneFileEntries(initialFiles);
 }
 
 function getDoneAcceptanceHeadingFiles(sectionMeta = null, attachedFiles = []) {
@@ -5872,381 +5269,18 @@ function buildPlanDiffViewerData({
 }
 
 function getPlanCodeDiffPreset(issueTarget) {
-  return PLAN_CODE_DIFF_PRESETS[4];
-}
-
-const VISIT_CONTROLLER_RAW_DIFF = `diff --git a/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java b/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-index cc3e3ce..c654d38 100644
---- a/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-+++ b/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-@@ -15,9 +15,21 @@
-  */
- package org.springframework.samples.petclinic.owner;
- 
-+import java.time.LocalDate;
-+import java.time.LocalTime;
-+import java.util.ArrayList;
-+import java.util.Collection;
-+import java.util.List;
- import java.util.Map;
- import java.util.Optional;
-+import java.util.Set;
-+import java.util.stream.Collectors;
- 
-+import org.springframework.beans.factory.annotation.Value;
-+import org.springframework.dao.DataIntegrityViolationException;
-+import org.springframework.format.annotation.DateTimeFormat;
-+import org.springframework.samples.petclinic.vet.Vet;
-+import org.springframework.samples.petclinic.vet.VetRepository;
- import org.springframework.stereotype.Controller;
- import org.springframework.validation.BindingResult;
- import org.springframework.web.bind.WebDataBinder;
-@@ -26,6 +38,7 @@ import org.springframework.web.bind.annotation.InitBinder;
- import org.springframework.web.bind.annotation.ModelAttribute;
- import org.springframework.web.bind.annotation.PathVariable;
- import org.springframework.web.bind.annotation.PostMapping;
-+import org.springframework.web.bind.annotation.RequestParam;
- 
- import jakarta.validation.Valid;
- import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-@@ -43,8 +56,22 @@ class VisitController {
- 
- \tprivate final OwnerRepository owners;
- 
--\tpublic VisitController(OwnerRepository owners) {
-+\tprivate final VetRepository vetRepository;
-+
-+\tprivate final VisitRepository visitRepository;
-+
-+\tprivate final int startHour;
-+
-+\tprivate final int endHour;
-+
-+\tpublic VisitController(OwnerRepository owners, VetRepository vetRepository, VisitRepository visitRepository,
-+\t\t\t@Value("\${petclinic.visit.start-hour:9}") int startHour,
-+\t\t\t@Value("\${petclinic.visit.end-hour:16}") int endHour) {
- \t\tthis.owners = owners;
-+\t\tthis.vetRepository = vetRepository;
-+\t\tthis.visitRepository = visitRepository;
-+\t\tthis.startHour = startHour;
-+\t\tthis.endHour = endHour;
- \t}
- 
- \t@InitBinder
-@@ -79,6 +106,29 @@ class VisitController {
- \t\treturn visit;
- \t}
- 
-+\t@ModelAttribute("vets")
-+\tpublic Collection<Vet> populateVets(@RequestParam(required = false) LocalDate date,
-+\t\t\t@RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {
-+\t\tif (date != null && time != null) {
-+\t\t\tList<Visit> bookedVisits = visitRepository.findByDateAndTime(date, time);
-+\t\t\tSet<Integer> bookedVetIds = bookedVisits.stream().map(v -> v.getVet().getId()).collect(Collectors.toSet());
-+\t\t\treturn vetRepository.findAll()
-+\t\t\t\t.stream()
-+\t\t\t\t.filter(vet -> !bookedVetIds.contains(vet.getId()))
-+\t\t\t\t.collect(Collectors.toList());
-+\t\t}
-+\t\treturn vetRepository.findAll();
-+\t}
-+
-+\t@ModelAttribute("timeSlots")
-+\tpublic List<LocalTime> populateTimeSlots() {
-+\t\tList<LocalTime> slots = new ArrayList<>();
-+\t\tfor (int hour = startHour; hour <= endHour; hour++) {
-+\t\t\tslots.add(LocalTime.of(hour, 0));
-+\t\t}
-+\t\treturn slots;
-+\t}
-+
- \t// Spring MVC calls method loadPetWithVisit(...) before initNewVisitForm is
- \t// called
- \t@GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-@@ -95,8 +145,20 @@ class VisitController {
- \t\t\treturn "pets/createOrUpdateVisitForm";
- \t\t}
- 
-+\t\tif (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null && visitRepository
-+\t\t\t.existsByVetIdAndDateAndTime(visit.getVet().getId(), visit.getDate(), visit.getTime())) {
-+\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");
-+\t\t\treturn "pets/createOrUpdateVisitForm";
-+\t\t}
-+
- \t\towner.addVisit(petId, visit);
--\t\tthis.owners.save(owner);
-+\t\ttry {
-+\t\t\tthis.owners.save(owner);
-+\t\t}
-+\t\tcatch (DataIntegrityViolationException ex) {
-+\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");
-+\t\t\treturn "pets/createOrUpdateVisitForm";
-+\t\t}
- \t\tredirectAttributes.addFlashAttribute("message", "Your visit has been booked");
- \t\treturn "redirect:/owners/{ownerId}";
- \t}`;
-
-function parseUnifiedDiffRows(rawDiff = '', rowIdPrefix = 'visit-controller') {
-  const addRow = (rows, kind, oldNumber, newNumber, text) => {
-    const id = `${rowIdPrefix}-${kind}-${oldNumber ?? 'new'}-${newNumber ?? 'old'}-${rows.length}`;
-    rows.push({
-      id,
-      kind,
-      oldNumber,
-      newNumber,
-      text,
-      fragments: [{ text: text || ' ', tone: 'plain' }],
-    });
+  const planIndex = Number.isInteger(issueTarget?.index) ? issueTarget.index : 0;
+  const presetIndexMap = {
+    0: 0,
+    1: 1,
+    2: 2,
+    3: 4,
+    4: 5,
+    5: 3,
+    6: 6,
   };
-  const addPlanMarkerRow = (rows, markerId, planKey, label, planItemId) => {
-    rows.push({
-      id: `${rowIdPrefix}-plan-marker-${markerId}`,
-      kind: 'plan-marker',
-      fileLabel: 'visit-booking.md',
-      planKey,
-      label,
-      text: label,
-      planItemId,
-      oldNumber: null,
-      newNumber: null,
-      isSynthetic: true,
-    });
-  };
-
-  const rows = [];
-  const contextRows = [
-    [1, 1, '/*'],
-    [2, 2, ' * Copyright 2012-2025 the original author or authors.'],
-    [3, 3, ' *'],
-    [4, 4, ' * Licensed under the Apache License, Version 2.0 (the "License");'],
-    [5, 5, ' * you may not use this file except in compliance with the License.'],
-    [6, 6, ' * You may obtain a copy of the License at'],
-    [7, 7, ' *'],
-    [8, 8, ' *      https://www.apache.org/licenses/LICENSE-2.0'],
-    [9, 9, ' *'],
-    [10, 10, ' * Unless required by applicable law or agreed to in writing, software'],
-    [11, 11, ' * distributed under the License is distributed on an "AS IS" BASIS,'],
-    [12, 12, ' * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.'],
-    [13, 13, ' * See the License for the specific language governing permissions and'],
-    [14, 14, ' * limitations under the License.'],
-    [15, 15, ' */'],
-    [16, 16, 'package org.springframework.samples.petclinic.owner;'],
-    [17, 17, ''],
-  ];
-  contextRows.forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  [
-    [18, 'import java.time.LocalDate;'],
-    [19, 'import java.time.LocalTime;'],
-    [20, 'import java.util.ArrayList;'],
-    [21, 'import java.util.Collection;'],
-    [22, 'import java.util.List;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [18, 23, 'import java.util.Map;'],
-    [19, 24, 'import java.util.Optional;'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  [
-    [25, 'import java.util.Set;'],
-    [26, 'import java.util.stream.Collectors;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addRow(rows, 'context', 20, 27, '');
-
-  [
-    [28, 'import org.springframework.beans.factory.annotation.Value;'],
-    [29, 'import org.springframework.dao.DataIntegrityViolationException;'],
-    [30, 'import org.springframework.format.annotation.DateTimeFormat;'],
-    [31, 'import org.springframework.samples.petclinic.vet.Vet;'],
-    [32, 'import org.springframework.samples.petclinic.vet.VetRepository;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [21, 33, 'import org.springframework.stereotype.Controller;'],
-    [22, 34, 'import org.springframework.validation.BindingResult;'],
-    [23, 35, 'import org.springframework.web.bind.WebDataBinder;'],
-    [24, 36, 'import org.springframework.web.bind.annotation.GetMapping;'],
-    [25, 37, 'import org.springframework.web.bind.annotation.InitBinder;'],
-    [26, 38, 'import org.springframework.web.bind.annotation.ModelAttribute;'],
-    [27, 39, 'import org.springframework.web.bind.annotation.PathVariable;'],
-    [28, 40, 'import org.springframework.web.bind.annotation.PostMapping;'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'added', null, 41, 'import org.springframework.web.bind.annotation.RequestParam;');
-
-  [
-    [29, 42, ''],
-    [30, 43, 'import jakarta.validation.Valid;'],
-    [31, 44, 'import org.springframework.web.servlet.mvc.support.RedirectAttributes;'],
-    [32, 45, ''],
-    [33, 46, '/**'],
-    [34, 47, ' * @author Juergen Hoeller'],
-    [35, 48, ' * @author Ken Krebs'],
-    [36, 49, ' * @author Arjen Poutsma'],
-    [37, 50, ' * @author Michael Isvy'],
-    [38, 51, ' * @author Dave Syer'],
-    [39, 52, ' * @author Wick Dy nex'],
-    [40, 53, ' */'],
-    [41, 54, '@Controller'],
-    [42, 55, 'class VisitController {'],
-    [43, 56, ''],
-    [44, 57, '\tprivate final OwnerRepository owners;'],
-    [45, 58, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'removed', 46, null, '\tpublic VisitController(OwnerRepository owners) {');
-  addPlanMarkerRow(rows, '5a', '5a', 'Inject VetRepository & VisitRepository', 'plan-5-1');
-  addPlanMarkerRow(rows, '6', '6', 'Read start/end-hour via @Value', 'plan-6-2');
-  [
-    [59, '\tprivate final VetRepository vetRepository;'],
-    [60, ''],
-    [61, '\tprivate final VisitRepository visitRepository;'],
-    [62, ''],
-    [63, '\tprivate final int startHour;'],
-    [64, ''],
-    [65, '\tprivate final int endHour;'],
-    [66, ''],
-    [67, '\tpublic VisitController(OwnerRepository owners, VetRepository vetRepository, VisitRepository visitRepository,'],
-    [68, '\t\t\t@Value("${petclinic.visit.start-hour:9}") int startHour,'],
-    [69, '\t\t\t@Value("${petclinic.visit.end-hour:16}") int endHour) {'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addRow(rows, 'context', 47, 70, '\t\tthis.owners = owners;');
-  [
-    [71, '\t\tthis.vetRepository = vetRepository;'],
-    [72, '\t\tthis.visitRepository = visitRepository;'],
-    [73, '\t\tthis.startHour = startHour;'],
-    [74, '\t\tthis.endHour = endHour;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [48, 75, '\t}'],
-    [49, 76, ''],
-    [50, 77, '\t@InitBinder'],
-    [51, 78, '\tpublic void setAllowedFields(WebDataBinder dataBinder) {'],
-    [52, 79, '\t\tdataBinder.setDisallowedFields("id");'],
-    [53, 80, '\t}'],
-    [54, 81, ''],
-    [55, 82, '\t/**'],
-    [56, 83, '\t * Called before each and every @RequestMapping annotated method. 2 goals: - Make sure'],
-    [57, 84, '\t * we always have fresh data - Since we do not use the session scope, make sure that'],
-    [58, 85, '\t * Pet object always has an id (Even though id is not part of the form fields)'],
-    [59, 86, '\t * @param petId'],
-    [60, 87, '\t * @return Pet'],
-    [61, 88, '\t */'],
-    [62, 89, '\t@ModelAttribute("visit")'],
-    [63, 90, '\tpublic Visit loadPetWithVisit(@PathVariable("ownerId") int ownerId, @PathVariable("petId") int petId,'],
-    [64, 91, '\t\t\tMap<String, Object> model) {'],
-    [65, 92, '\t\tOptional<Owner> optionalOwner = owners.findById(ownerId);'],
-    [66, 93, '\t\tOwner owner = optionalOwner.orElseThrow(() -> new IllegalArgumentException('],
-    [67, 94, '\t\t\t\t"Owner not found with id: " + ownerId + ". Please ensure the ID is correct "));'],
-    [68, 95, ''],
-    [69, 96, '\t\tPet pet = owner.getPet(petId);'],
-    [70, 97, '\t\tif (pet == null) {'],
-    [71, 98, '\t\t\tthrow new IllegalArgumentException('],
-    [72, 99, '\t\t\t\t"Pet with id " + petId + " not found for owner with id " + ownerId + ".");'],
-    [73, 100, '\t\t}'],
-    [74, 101, '\t\tmodel.put("pet", pet);'],
-    [75, 102, '\t\tmodel.put("owner", owner);'],
-    [76, 103, ''],
-    [77, 104, '\t\tVisit visit = new Visit();'],
-    [78, 105, '\t\tpet.addVisit(visit);'],
-    [79, 106, '\t\treturn visit;'],
-    [80, 107, '\t}'],
-    [81, 108, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addPlanMarkerRow(rows, '5b', '5b', 'populateVets(): vets, filtered by slot on POST', 'plan-5-2');
-  [
-    [109, '\t@ModelAttribute("vets")'],
-    [110, '\tpublic Collection<Vet> populateVets(@RequestParam(required = false) LocalDate date,'],
-    [111, '\t\t\t@RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {'],
-    [112, '\t\tif (date != null && time != null) {'],
-    [113, '\t\t\tList<Visit> bookedVisits = visitRepository.findByDateAndTime(date, time);'],
-    [114, '\t\t\tSet<Integer> bookedVetIds = bookedVisits.stream().map(v -> v.getVet().getId()).collect(Collectors.toSet());'],
-    [115, '\t\t\treturn vetRepository.findAll()'],
-    [116, '\t\t\t\t.stream()'],
-    [117, '\t\t\t\t.filter(vet -> !bookedVetIds.contains(vet.getId()))'],
-    [118, '\t\t\t\t.collect(Collectors.toList());'],
-    [119, '\t\t}'],
-    [120, '\t\treturn vetRepository.findAll();'],
-    [121, '\t}'],
-    [122, ''],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addPlanMarkerRow(rows, '5c', '5c', 'populateTimeSlots(): hourly slots from config', 'plan-5-3');
-  [
-    [123, '\t@ModelAttribute("timeSlots")'],
-    [124, '\tpublic List<LocalTime> populateTimeSlots() {'],
-    [125, '\t\tList<LocalTime> slots = new ArrayList<>();'],
-    [126, '\t\tfor (int hour = startHour; hour <= endHour; hour++) {'],
-    [127, '\t\t\tslots.add(LocalTime.of(hour, 0));'],
-    [128, '\t\t}'],
-    [129, '\t\treturn slots;'],
-    [130, '\t}'],
-    [131, ''],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [82, 132, '\t// Spring MVC calls method loadPetWithVisit(...) before initNewVisitForm is'],
-    [83, 133, '\t// called'],
-    [84, 134, '\t@GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")'],
-    [85, 135, '\tpublic String initNewVisitForm() {'],
-    [86, 136, '\t\treturn "pets/createOrUpdateVisitForm";'],
-    [87, 137, '\t}'],
-    [88, 138, ''],
-    [89, 139, '\t// Spring MVC calls method loadPetWithVisit(...) before processNewVisitForm is'],
-    [90, 140, '\t// called'],
-    [91, 141, '\t@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")'],
-    [92, 142, '\tpublic String processNewVisitForm(@ModelAttribute Owner owner, @PathVariable int petId, @Valid Visit visit,'],
-    [93, 143, '\t\t\tBindingResult result, RedirectAttributes redirectAttributes) {'],
-    [94, 144, '\t\tif (result.hasErrors()) {'],
-    [95, 145, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [96, 146, '\t\t}'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addPlanMarkerRow(rows, '5d', '5d', 'Double-booking check before save', 'plan-5-4');
-  [
-    [147, ''],
-    [148, '\t\tif (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null && visitRepository'],
-    [149, '\t\t\t.existsByVetIdAndDateAndTime(visit.getVet().getId(), visit.getDate(), visit.getTime())) {'],
-    [150, '\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");'],
-    [151, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [152, '\t\t}'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [97, 153, ''],
-    [98, 154, '\t\towner.addVisit(petId, visit);'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'removed', 99, null, '\t\tthis.owners.save(owner);');
-  addPlanMarkerRow(rows, '5e', '5e', 'Catch DataIntegrityViolationException on save', 'plan-5-5');
-  [
-    [155, '\t\ttry {'],
-    [156, '\t\t\tthis.owners.save(owner);'],
-    [157, '\t\t}'],
-    [158, '\t\tcatch (DataIntegrityViolationException ex) {'],
-    [159, '\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");'],
-    [160, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [161, '\t\t}'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [100, 162, '\t\tredirectAttributes.addFlashAttribute("message", "Your visit has been booked");'],
-    [101, 163, '\t\treturn "redirect:/owners/{ownerId}";'],
-    [102, 164, '\t}'],
-    [103, 165, ''],
-    [104, 166, '}'],
-    [105, 167, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  return {
-    rows,
-    focusRowId: null,
-  };
+  const presetIndex = presetIndexMap[planIndex] ?? planIndex;
+  return PLAN_CODE_DIFF_PRESETS[presetIndex] ?? PLAN_CODE_DIFF_PRESETS[0];
 }
 
 function buildCodeDiffRows(beforeCode = '', afterCode = '', rowIdPrefix = 'code-diff', contextRadius = 4) {
@@ -6443,19 +5477,21 @@ function findSectionCheckLineIndex(code, kind, index) {
 function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel }) {
   if (issueTarget?.kind === 'plan') {
     const codeDiffPreset = getPlanCodeDiffPreset(issueTarget);
-    const codeDiff = parseUnifiedDiffRows(VISIT_CONTROLLER_RAW_DIFF, 'visit-controller-raw');
+    const codeDiff = buildCodeDiffRows(
+      codeDiffPreset.beforeCode,
+      codeDiffPreset.afterCode,
+      `plan-code-${issueTarget.index}`
+    );
 
     return {
       sourceTabLabel: codeDiffPreset.fileLabel,
       title: `Diff ${codeDiffPreset.fileLabel}`,
-      differenceCount: 9,
+      differenceCount: codeDiff.differenceCount,
       rows: codeDiff.rows,
       focusRowId: codeDiff.focusRowId,
       status: statusItem.status,
-      lineText: '',
+      lineText: text,
       language: codeDiffPreset.language,
-      filePath: 'src/main/java/org/springframework/samples/petclinic/owner/VisitController.java',
-      baseRevision: 'fc4f66b7',
     };
   }
 
@@ -6914,8 +5950,7 @@ function withDerivedPlanChildren(section) {
 
       const scopedDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item');
       const legacyDerivedChildren = buildDerivedPlanCheckChildren(item.text, item.id ?? 'plan-item', { includeScope: false });
-      const hasExplicitChildren = Array.isArray(item.children);
-      const hasExistingChildren = hasExplicitChildren && item.children.length > 0;
+      const hasExistingChildren = Array.isArray(item.children) && item.children.length > 0;
       const shouldUpgradeLegacyChildren = hasExistingChildren && arePlanCheckChildTextsEqual(item.children, legacyDerivedChildren);
 
       return {
@@ -6926,7 +5961,7 @@ function withDerivedPlanChildren(section) {
               id: child?.id ?? scopedDerivedChildren[childIndex]?.id ?? `${item.id ?? 'plan-item'}:child-${childIndex + 1}`,
               text: scopedDerivedChildren[childIndex]?.text ?? child?.text ?? '',
             }))
-          : (hasExplicitChildren
+          : (hasExistingChildren
               ? item.children
               : scopedDerivedChildren),
       };
@@ -6934,28 +5969,29 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, isInRunningScope = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
   const canShowDiff = Boolean(statusItem) && statusItem?.status !== 'pending';
   const isNested = nestingLevel > 0;
-  const isParentScopePending = isInRunningScope && !isRunning && statusItem?.status === 'pending';
   const planLineStyle = isNested
     ? { '--spec-plan-nesting-level': nestingLevel }
     : undefined;
 
   return (
     <div
-      className={`spec-done-line spec-done-line-check spec-done-plan-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isNested ? ' spec-done-plan-child-line' : ''}${isRunning ? ' is-running-exact' : ''}${isParentScopePending ? ' is-running-scope' : ''}`}
+      className={`spec-done-line spec-done-line-check spec-done-plan-main spec-done-primary-line${isIssueActive ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isNested ? ' spec-done-plan-child-line' : ''}`}
       data-plan-nesting-level={isNested ? nestingLevel : undefined}
       style={planLineStyle}
     >
       {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'stale' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} variant={isParentScopePending ? 'empty' : null} />
-        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
+        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} />
+        : (isRunning
+            ? <CheckStatus status="pending" isLoading />
+            : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />)
       }
-      <span className="spec-done-plan-text">{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
+      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
       {canShowDiff && !isNested && (
         <button
@@ -6973,7 +6009,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -6985,7 +6021,6 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           initialFiles={initialFiles}
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
-          menuMode="workflow"
         />
       );
     }
@@ -6996,9 +6031,8 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           key={key}
           title={headingTitle}
           initialFiles={initialFiles}
-          addPopupFiles={[]}
+          addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
-          disableAddButton
         />
       );
     }
@@ -7020,43 +6054,20 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     const checked = checkMatch[2].toLowerCase() === 'x';
     const normalizedRunTarget = normalizeCommentTarget(activeRunRequest?.checkTarget ?? null);
     const normalizedSectionTitle = typeof currentSectionTitle === 'string' ? currentSectionTitle.trim().toLowerCase() : '';
-    const normalizedActiveRunSectionTitle = typeof activeRunRequest?.sectionTitle === 'string'
-      ? activeRunRequest.sectionTitle.trim().toLowerCase()
-      : '';
     const isRunning = Boolean(activeRunRequest) && (
       (normalizedRunTarget
         && checkTarget
         && normalizedRunTarget.kind === checkTarget.kind
-        && normalizedRunTarget.index === checkTarget.index
-        && (
-          !Number.isInteger(normalizedRunTarget.lineIndex)
-          || normalizedRunTarget.lineIndex === checkTarget.lineIndex
-        ))
+        && normalizedRunTarget.index === checkTarget.index)
       || (!normalizedRunTarget
-        && (normalizedActiveRunSectionTitle.length > 0
-          ? normalizedActiveRunSectionTitle === normalizedSectionTitle
-          : ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
-            || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan'))))
-    );
-    const isRunningPlanParent = Boolean(
-      activeRunRequest
-      && normalizedRunTarget
-      && checkTarget?.kind === 'plan'
-      && normalizedRunTarget.kind === 'plan'
-      && nestingLevel === 0
-      && Number.isInteger(normalizedRunTarget.parentIndex)
-      && Number.isInteger(checkTarget.parentIndex)
-      && normalizedRunTarget.parentIndex === checkTarget.parentIndex
-      && normalizedRunTarget.lineIndex !== checkTarget.lineIndex
+        && ((normalizedSectionTitle === 'acceptance criteria' && checkTarget?.kind === 'ac')
+          || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan')))
     );
     if (checkStatus != null) {
-      if ('checkboxStatus' in checkStatus && checkStatus.checkboxStatus === null) {
-        return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} useCheckbox />;
-      }
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning={isRunning} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning={isRunning} />;
     }
     if (checkTarget?.kind === 'ac' && isRunning) {
-      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} isRunning />;
+      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -7072,7 +6083,6 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
           isRunning={isRunning}
-          isInRunningScope={isRunning || isRunningPlanParent}
         />
       );
     }
@@ -7084,7 +6094,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
       </div>
     );
   }
-  const bulletMatch = line.match(/^\s*-\s+(.*)$/);
+  const bulletMatch = line.match(/^-\s+(.*)$/);
   if (bulletMatch) {
     return (
       <div key={key} className="spec-done-line spec-done-line-bullet">
@@ -7214,7 +6224,7 @@ function DoneInspectionWidget({
               </span>
             )}
             {hasComments && (
-              <span className="spec-done-inspection-group spec-done-inspection-comment-group">
+              <span className="spec-done-inspection-group">
                 <DoneCommentCountIcon />
                 <span className="spec-done-inspection-text">{commentCount}</span>
               </span>
@@ -7522,145 +6532,9 @@ function buildDoneIntentionPopupActions({ severity, canFixIssue = true, issueTar
   };
 }
 
-function ProblemsQuickFixesMenu({ proposals = [], onSelect, onClose }) {
-  const menuOptions = useMemo(
-    () => (Array.isArray(proposals) ? proposals : []),
-    [proposals],
-  );
-  const [activeIndex, setActiveIndex] = useState(0);
-  const activeIndexRef = useRef(0);
-  const itemRefs = useRef([]);
-  const lastHandledKeyRef = useRef({ key: null, time: 0 });
-
-  const setActiveMenuIndex = (nextIndex, { focus = true } = {}) => {
-    activeIndexRef.current = nextIndex;
-    setActiveIndex(nextIndex);
-    if (focus) {
-      requestAnimationFrame(() => {
-        itemRefs.current[nextIndex]?.focus({ preventScroll: true });
-      });
-    }
-  };
-
-  useEffect(() => {
-    itemRefs.current = itemRefs.current.slice(0, menuOptions.length);
-    activeIndexRef.current = 0;
-    setActiveIndex(0);
-    const focusFirstItem = () => {
-      itemRefs.current[0]?.focus({ preventScroll: true });
-    };
-    requestAnimationFrame(focusFirstItem);
-    const focusTimeoutId = window.setTimeout(focusFirstItem, 0);
-    return () => window.clearTimeout(focusTimeoutId);
-  }, [menuOptions]);
-
-  const selectOption = (opt) => {
-    if (!opt) return;
-    onSelect?.(opt);
-    onClose?.();
-  };
-
-  const moveSelection = (direction) => {
-    const current = activeIndexRef.current;
-    const next = (current + direction + menuOptions.length) % menuOptions.length;
-    setActiveMenuIndex(next);
-  };
-
-  const handleKeyDown = (event) => {
-    const isArrowDown = event.key === 'ArrowDown' || event.key === 'Down' || event.code === 'ArrowDown' || event.keyCode === 40;
-    const isArrowUp = event.key === 'ArrowUp' || event.key === 'Up' || event.code === 'ArrowUp' || event.keyCode === 38;
-    const isEnter = event.key === 'Enter' || event.code === 'Enter' || event.keyCode === 13;
-    const isEscape = event.key === 'Escape' || event.key === 'Esc' || event.code === 'Escape' || event.keyCode === 27;
-
-    if (isArrowDown) {
-      lastHandledKeyRef.current = { key: 'ArrowDown', time: Date.now() };
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      moveSelection(1);
-      return;
-    }
-    if (isArrowUp) {
-      lastHandledKeyRef.current = { key: 'ArrowUp', time: Date.now() };
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      moveSelection(-1);
-      return;
-    }
-    if (isEnter) {
-      if (event.altKey || event.metaKey || event.ctrlKey) return;
-      lastHandledKeyRef.current = { key: 'Enter', time: Date.now() };
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      selectOption(menuOptions[activeIndexRef.current]);
-      return;
-    }
-    if (isEscape) {
-      lastHandledKeyRef.current = { key: 'Escape', time: Date.now() };
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation?.();
-      onClose?.();
-    }
-  };
-
-  useEffect(() => {
-    if (menuOptions.length === 0) return undefined;
-
-    const handleDocumentKeyDown = (event) => {
-      if (event.defaultPrevented) return;
-      handleKeyDown(event);
-    };
-
-    document.addEventListener('keydown', handleDocumentKeyDown, true);
-    return () => document.removeEventListener('keydown', handleDocumentKeyDown, true);
-  }, [activeIndex, menuOptions]);
-
-  if (menuOptions.length === 0) return null;
-
-  return (
-    <div className="popup-options" role="menu" onKeyDownCapture={handleKeyDown}>
-      {menuOptions.map((opt, i) => (
-        <button
-          key={i}
-          ref={(el) => {
-            itemRefs.current[i] = el;
-          }}
-          type="button"
-          className={`popup-cell problems-quick-fix-menu-item${i === activeIndex ? ' problems-quick-fix-menu-item-active' : ''}`}
-          role="menuitem"
-          aria-selected={i === activeIndex}
-          data-active={i === activeIndex ? 'true' : undefined}
-          tabIndex={i === activeIndex ? 0 : -1}
-          onFocus={() => setActiveMenuIndex(i, { focus: false })}
-          onMouseEnter={() => setActiveMenuIndex(i, { focus: false })}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            selectOption(opt);
-          }}
-        >
-          <span className="problems-quick-fix-menu-label text-ui-default">{opt.label}</span>
-          <span className="problems-quick-fix-menu-actions" aria-hidden="true">
-            <span className="problems-quick-fix-menu-separator" />
-            <span className="problems-quick-fix-menu-more">
-              <Icon name="general/moreVertical" size={16} />
-            </span>
-          </span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = null, proposalOptions = null, onOpenProblems, onRegenerateSpec, onFixIssue, onClose }) {
+function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = null, onOpenProblems, onRegenerateSpec, onFixIssue, onClose }) {
   const actions = buildDoneIntentionPopupActions({ severity, canFixIssue, issueTarget });
   const demoTargetId = formatDemoTargetId(issueTarget);
-  const filteredProposalOptions = Array.isArray(proposalOptions)
-    ? proposalOptions.filter((opt) => opt?.type !== 'text' && typeof opt?.label === 'string')
-    : [];
-  const hasProposalOptions = filteredProposalOptions.length > 0;
 
   const handleAction = (item) => {
     if (item.action === 'fix') {
@@ -7694,40 +6568,9 @@ function DoneIssueIntentionPopup({ severity, canFixIssue = true, issueTarget = n
     </button>
   );
 
-  const primaryItems = hasProposalOptions
-    ? [
-        ...filteredProposalOptions.map((opt, i) => ({
-          id: `proposal-${i}`,
-          label: opt.label,
-          icon: 'codeInsight/intentionBulb',
-          action: 'fix',
-          demoId: demoTargetId ? `issue-popup-proposal-${i}-${demoTargetId}` : undefined,
-        })),
-        ...actions.primary.filter((item) => item.action !== 'fix'),
-      ]
-    : actions.primary;
-
   return (
     <div className="cmp-popup spec-done-intention-popup" onMouseDown={(event) => event.preventDefault()}>
-      {primaryItems.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="cmp-cell spec-done-intention-popup-item spec-done-intention-popup-item-primary"
-          data-demo-id={item.demoId ?? (demoTargetId ? `issue-popup-${item.id}-${demoTargetId}` : undefined)}
-          onMouseDown={(event) => {
-            event.preventDefault();
-            handleAction(item);
-          }}
-        >
-          <span className="spec-done-intention-popup-leading" aria-hidden="true">
-            {item.icon ? <Icon name={item.icon} size={16} /> : null}
-          </span>
-          <div className="cmp-content">
-            <span className="cmp-label">{item.label}</span>
-          </div>
-        </button>
-      ))}
+      {actions.primary.map((item) => renderActionRow(item, { key: item.id, primary: true }))}
       <div className="spec-done-intention-popup-divider" />
       {actions.secondary.map((item) => renderActionRow(item, { key: item.id }))}
       <div className="cmp-footer spec-done-intention-popup-footer">
@@ -7846,15 +6689,15 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '', onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null }) {
   const effectiveDocumentSections = useMemo(
-    () => orderAcceptanceBeforePlanSections(
+    () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
     ),
     [documentSections]
   );
   const effectiveCode = useMemo(
-    () => orderAcceptanceBeforePlanCode(
+    () => orderPlanBeforeAcceptanceCode(
       normalizeLegacyDerivedPlanChildrenCode(
         normalizeLegacyVisitBookingGoalCode(
           typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
@@ -7863,6 +6706,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     ),
     [code, effectiveDocumentSections]
   );
+  const [extraDecisionItems, setExtraDecisionItems] = useState([]);
+  const addExtraDecisionItem = useCallback((text) => {
+    setExtraDecisionItems((prev) => prev.includes(text) ? prev : [...prev, text]);
+  }, []);
   const tradeoffCount = useMemo(
     () => countRecordedTradeoffs(effectiveDocumentSections),
     [effectiveDocumentSections]
@@ -7882,7 +6729,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     }),
     [acceptanceCriteriaCount, planItemCount, tradeoffCount]
   );
-  const showSuccessBanner = false;
+  const showSuccessBanner = useMemo(
+    () => !acWarningBanner
+      && areAllChecklistStatusesPassed(acRunResult)
+      && areAllChecklistStatusesPassed(planRunResult),
+    [acRunResult, acWarningBanner, planRunResult]
+  );
   const shouldRenderSuccessBanner = showSuccessBanner && !projectContextBannerDismissed;
   const [draftCode, setDraftCode] = useState(() => effectiveCode);
   const draftCodeRef = useRef(draftCode);
@@ -7920,14 +6772,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   );
   const serializedDocumentLineMap = serializedDocumentModel.lineMap;
   const serializedDocumentLines = serializedDocumentModel.lines;
-  const hasPlanWorkflowMeta = useMemo(() => (
-    (effectiveDocumentSections ?? []).some((section) => (
-      normalizeSpecSectionTitle(section?.title) === 'plan'
-      && section?.meta?.kind === 'chip'
-      && typeof section.meta.text === 'string'
-      && section.meta.text.trim().length > 0
-    ))
-  ), [effectiveDocumentSections]);
   const matchedSerializedLineMetaByRow = useMemo(
     () => buildDisplayRowSerializedLineMatches(displayRows, serializedDocumentLines, serializedDocumentLineMap),
     [displayRows, serializedDocumentLineMap, serializedDocumentLines]
@@ -7961,14 +6805,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [selectionToolbarPos, setSelectionToolbarPos] = useState(null);
   const [activeIssueRowKey, setActiveIssueRowKey] = useState(null);
   const [navigatedIssueRowKey, setNavigatedIssueRowKey] = useState(null);
+  const [resolvedProposalRowKeys, setResolvedProposalRowKeys] = useState(() => new Set());
   const [focusedCommentRowKey, setFocusedCommentRowKey] = useState(null);
-  const [suppressInlineCommentAdornment, setSuppressInlineCommentAdornment] = useState(false);
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
   const [commentPopup, setCommentPopup] = useState(null);
   const [intentionPopup, setIntentionPopup] = useState(null);
-  const intentionPopupRef = useRef(null);
-  const intentionPopupTimerRef = useRef(0);
-  const [problemsFixMenu, setProblemsFixMenu] = useState(null);
   const normalizedCode = useMemo(
     () => normalizeSpecCodeForComparison(effectiveCode),
     [effectiveCode]
@@ -7976,20 +6817,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const runStatusMetaByStableKey = useMemo(() => {
     const nextMeta = new Map();
     let acVisibleIndex = 0;
-    let planParentVisibleIndex = 0;
-    let planLineVisibleIndex = 0;
+    let planVisibleIndex = 0;
     let currentAcVisibleIndex = null;
-    let currentPlanParentVisibleIndex = null;
-    const planTopLevelCheckCount = serializedDocumentLineMap.filter((lineMeta) => {
-      if (lineMeta?.type !== 'item' || lineMeta.itemType !== 'check' || (lineMeta.nestingLevel ?? 0) !== 0) {
-        return false;
-      }
-
-      const sectionTitle = effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '';
-      return sectionTitle.toLowerCase() === 'plan';
-    }).length;
-    const useLineBasedPlanStatuses = Array.isArray(planRunResult)
-      && planRunResult.length > planTopLevelCheckCount;
+    let currentPlanVisibleIndex = null;
 
     serializedDocumentLineMap.forEach((lineMeta) => {
       if (lineMeta?.type !== 'item' || lineMeta.itemType !== 'check') {
@@ -8021,98 +6851,26 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
       if (normalizedSectionTitle === 'plan') {
         if ((lineMeta.nestingLevel ?? 0) === 0) {
-          currentPlanParentVisibleIndex = planParentVisibleIndex;
-          planParentVisibleIndex += 1;
+          currentPlanVisibleIndex = planVisibleIndex;
+          planVisibleIndex += 1;
         }
 
-        if (!Number.isInteger(currentPlanParentVisibleIndex) || currentPlanParentVisibleIndex < 0) {
+        if (!Number.isInteger(currentPlanVisibleIndex) || currentPlanVisibleIndex < 0) {
           return;
         }
 
-        const statusVisibleIndex = useLineBasedPlanStatuses
-          ? planLineVisibleIndex
-          : currentPlanParentVisibleIndex;
-        planLineVisibleIndex += 1;
-        const originalIndex = mapVisibleIssueIndexToOriginal('plan', currentPlanParentVisibleIndex, removedIssueIndices);
+        const originalIndex = mapVisibleIssueIndexToOriginal('plan', currentPlanVisibleIndex, removedIssueIndices);
         nextMeta.set(lineMeta.stableKey, {
           kind: 'plan',
-          visibleIndex: statusVisibleIndex,
+          visibleIndex: currentPlanVisibleIndex,
           originalIndex,
-          lineIndex: statusVisibleIndex,
-          parentIndex: currentPlanParentVisibleIndex,
-          statusItem: planRunResult?.[statusVisibleIndex] ?? null,
+          statusItem: planRunResult?.[currentPlanVisibleIndex] ?? null,
         });
       }
     });
 
     return nextMeta;
   }, [acRunResult, effectiveDocumentSections, planRunResult, removedIssueIndices, serializedDocumentLineMap]);
-  useEffect(() => {
-    intentionPopupRef.current = intentionPopup;
-    if (intentionPopup && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(ISSUE_INTENTION_POPUP_OPEN_EVENT));
-    }
-  }, [intentionPopup]);
-
-  const closeIntentionPopup = useCallback(() => {
-    if (intentionPopupTimerRef.current) {
-      window.clearTimeout(intentionPopupTimerRef.current);
-      intentionPopupTimerRef.current = 0;
-    }
-    intentionPopupRef.current = null;
-    setIntentionPopup(null);
-  }, []);
-
-  const scheduleIntentionPopupOpen = useCallback((nextPopup) => {
-    if (intentionPopupTimerRef.current) {
-      window.clearTimeout(intentionPopupTimerRef.current);
-      intentionPopupTimerRef.current = 0;
-    }
-
-    const currentPopup = intentionPopupRef.current;
-
-    if (currentPopup?.rowKey === nextPopup.rowKey) {
-      intentionPopupRef.current = null;
-      setIntentionPopup(null);
-      return;
-    }
-
-    if (currentPopup) {
-      return;
-    }
-
-    intentionPopupTimerRef.current = window.setTimeout(() => {
-      intentionPopupTimerRef.current = 0;
-      if (intentionPopupRef.current) {
-        return;
-      }
-      intentionPopupRef.current = nextPopup;
-      setIntentionPopup(nextPopup);
-    }, ISSUE_INTENTION_POPUP_OPEN_DELAY_MS);
-  }, []);
-
-  const intentionPopupPosition = useMemo(() => {
-    if (!intentionPopup?.rect) return null;
-
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || ISSUE_INTENTION_POPUP_WIDTH;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const maxLeft = Math.max(8, viewportWidth - ISSUE_INTENTION_POPUP_WIDTH - 8);
-    const left = Math.min(Math.max(8, intentionPopup.rect.left), maxLeft);
-    const belowTop = intentionPopup.rect.bottom + ISSUE_INTENTION_POPUP_GAP;
-    const top = viewportHeight > 0 && belowTop > viewportHeight - 16
-      ? Math.max(8, intentionPopup.rect.top - ISSUE_INTENTION_POPUP_GAP)
-      : belowTop;
-
-    return { top, left };
-  }, [intentionPopup?.rect]);
-
-  useEffect(() => () => {
-    if (intentionPopupTimerRef.current) {
-      window.clearTimeout(intentionPopupTimerRef.current);
-      intentionPopupTimerRef.current = 0;
-    }
-  }, []);
-
   const rowMetaList = useMemo(() => {
     const sectionMetaByTitle = new Map(
       (effectiveDocumentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
@@ -8132,7 +6890,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const line = row.line;
       const headingTitle = getDoneHeadingTitle(line);
       const sectionMeta = headingTitle ? sectionMetaByTitle.get(headingTitle.toLowerCase()) ?? null : null;
-      const showRunIcon = shouldShowDoneRunIcon(line, { hidePlanRun: false, hideAcRun: false });
+      const showRunIcon = shouldShowDoneRunIcon(line);
       const serializedLineMeta = matchedSerializedLineMetaByRow[rowIndex] ?? null;
 
       if (headingTitle !== null) {
@@ -8215,12 +6973,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
         const originalIndex = statusMeta.originalIndex;
         if (Number.isInteger(originalIndex)) {
-          checkTarget = {
-            kind: 'plan',
-            index: originalIndex,
-            lineIndex: statusMeta.lineIndex,
-            parentIndex: statusMeta.parentIndex,
-          };
+          checkTarget = { kind: 'plan', index: originalIndex };
         }
         planStatus = displayStatusItem;
         if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(originalIndex)) {
@@ -8256,7 +7009,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         checkTarget,
         issueSeverity,
         issueTarget,
-        proposalOptions: Array.isArray(displayStatusItem?.proposalOptions) ? displayStatusItem.proposalOptions : null,
       };
     });
   }, [displayRows, effectiveDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
@@ -8287,12 +7039,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const issueRowKeys = useMemo(() => (
     rowMetaList
       .filter((rowMeta) => (
-        rowMeta.issueSeverity === 'warning'
-        || rowMeta.issueSeverity === 'failed'
-        || rowMeta.issueSeverity === 'error'
+        !resolvedProposalRowKeys.has(rowMeta.stableKey)
+        && (
+          rowMeta.issueSeverity === 'warning'
+          || rowMeta.issueSeverity === 'failed'
+          || rowMeta.issueSeverity === 'error'
+        )
       ))
       .map((rowMeta) => rowMeta.stableKey)
-  ), [rowMetaList]);
+  ), [resolvedProposalRowKeys, rowMetaList]);
 
   useEffect(() => {
     if (lastStoredBreakpointKeysSignatureRef.current === storedBreakpointKeysSignature) {
@@ -8396,7 +7151,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!rowMeta) return;
 
     if (actionId === 'comment') {
-      closeIntentionPopup();
+      setIntentionPopup(null);
       setSelectionToolbarPos(null);
       setCommentPopup((prev) => (
         prev?.rowKey === rowMeta.stableKey
@@ -8418,16 +7173,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setSelectionToolbarPos(null);
       setActiveIssueRowKey(rowMeta.stableKey);
       setNavigatedIssueRowKey(rowMeta.stableKey);
-      scheduleIntentionPopupOpen({
-        rowKey: rowMeta.stableKey,
-        rowIndex: rowMeta.rowIndex,
-        rect: triggerRect,
-        severity: rowMeta.issueSeverity ?? 'warning',
-        sectionTitle: rowMeta.currentSectionTitle,
-        issueTarget: rowMeta.issueTarget,
-      });
+      setIntentionPopup((prev) => (
+        prev?.rowKey === rowMeta.stableKey
+          ? null
+          : {
+              rowKey: rowMeta.stableKey,
+              rowIndex: rowMeta.rowIndex,
+              rect: triggerRect,
+              severity: rowMeta.issueSeverity ?? 'warning',
+              sectionTitle: rowMeta.currentSectionTitle,
+              issueTarget: rowMeta.issueTarget,
+            }
+      ));
     }
-  }, [closeIntentionPopup, getSelectionToolbarRowMeta, scheduleIntentionPopupOpen]);
+  }, [getSelectionToolbarRowMeta]);
 
   const closeCommentPopup = useCallback((rowIndex = null) => {
     setCommentPopup(null);
@@ -8695,6 +7454,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const next = new Set([...prev].filter((k) => validKeys.has(k)));
       return next.size === prev.size ? prev : next;
     });
+    setResolvedProposalRowKeys((prev) => {
+      const next = new Set([...prev].filter((k) => validKeys.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [rowMetaList]);
 
 
@@ -8791,22 +7554,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     const clearHighlights = () => {
       el.querySelectorAll('.spec-done-active-line').forEach((node) => node.classList.remove('spec-done-active-line'));
     };
-    const clearSelectionUi = ({ suppressComments = false } = {}) => {
-      clearHighlights();
-      setActiveIssueRowKey(null);
-      setNavigatedIssueRowKey(null);
-      setFocusedCommentRowKey(null);
-      setSelectionToolbarPos(null);
-      if (suppressComments) {
-        setSuppressInlineCommentAdornment(true);
-      }
-    };
     const updateSelectionUi = () => {
       clearHighlights();
 
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) {
-        clearSelectionUi();
+        setActiveIssueRowKey(null);
+        setNavigatedIssueRowKey(null);
+        setFocusedCommentRowKey(null);
+        setSelectionToolbarPos(null);
         return;
       }
 
@@ -8816,13 +7572,19 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const focusElement = focusNode?.nodeType === Node.TEXT_NODE ? focusNode.parentElement : focusNode;
 
       if (!anchorElement || !focusElement || !el.contains(anchorElement) || !el.contains(focusElement)) {
-        clearSelectionUi();
+        setActiveIssueRowKey(null);
+        setNavigatedIssueRowKey(null);
+        setFocusedCommentRowKey(null);
+        setSelectionToolbarPos(null);
         return;
       }
 
       const anchorEditable = anchorElement.closest('[contenteditable]');
       if (!anchorEditable) {
-        clearSelectionUi();
+        setActiveIssueRowKey(null);
+        setNavigatedIssueRowKey(null);
+        setFocusedCommentRowKey(null);
+        setSelectionToolbarPos(null);
         return;
       }
 
@@ -8868,17 +7630,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     document.addEventListener('selectionchange', scheduleSelectionUiUpdate);
     el.addEventListener('scroll', scheduleSelectionUiUpdate, { passive: true });
     window.addEventListener('resize', scheduleSelectionUiUpdate);
-    const clearWorkflowSelectionUi = () => clearSelectionUi({ suppressComments: true });
-
-    window.addEventListener(SPEC_DONE_CLEAR_FOCUS_EVENT, clearWorkflowSelectionUi);
 
     return () => {
       window.cancelAnimationFrame(frameId);
       document.removeEventListener('selectionchange', scheduleSelectionUiUpdate);
       el.removeEventListener('scroll', scheduleSelectionUiUpdate);
       window.removeEventListener('resize', scheduleSelectionUiUpdate);
-      window.removeEventListener(SPEC_DONE_CLEAR_FOCUS_EVENT, clearWorkflowSelectionUi);
-      clearSelectionUi();
+      clearHighlights();
+      setActiveIssueRowKey(null);
+      setNavigatedIssueRowKey(null);
+      setFocusedCommentRowKey(null);
     };
   }, []);
 
@@ -8925,11 +7686,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   }, [onCommentCountChange, totalCommentCount]);
 
   useEffect(() => {
-    if (commentEntries.length === 0 && totalCommentCount === 0 && persistedCommentEntries.length > 0) {
-      return;
-    }
     onCommentsChange?.(commentEntries);
-  }, [commentEntries, onCommentsChange, persistedCommentEntries.length, totalCommentCount]);
+  }, [commentEntries, onCommentsChange]);
 
   useEffect(() => {
     let frameId = requestAnimationFrame(() => {
@@ -8982,11 +7740,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setIntentionPopup(null);
     }
 
-    if (activeIssueRowKey && !rowMetaByKey.has(activeIssueRowKey)) {
+    if (activeIssueRowKey && (!rowMetaByKey.has(activeIssueRowKey) || resolvedProposalRowKeys.has(activeIssueRowKey))) {
       setActiveIssueRowKey(null);
     }
 
-    if (navigatedIssueRowKey && !rowMetaByKey.has(navigatedIssueRowKey)) {
+    if (navigatedIssueRowKey && (!rowMetaByKey.has(navigatedIssueRowKey) || resolvedProposalRowKeys.has(navigatedIssueRowKey))) {
       setNavigatedIssueRowKey(null);
     }
 
@@ -8999,6 +7757,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     focusedCommentRowKey,
     intentionPopup?.rowKey,
     navigatedIssueRowKey,
+    resolvedProposalRowKeys,
     rowMetaByKey,
     rowMetaList,
   ]);
@@ -9006,6 +7765,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     setActiveIssueRowKey(null);
     setNavigatedIssueRowKey(null);
+    setResolvedProposalRowKeys(new Set());
     setFocusedCommentRowKey(null);
     setCommentPopup(null);
     setIntentionPopup(null);
@@ -9024,6 +7784,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setRowComments({});
     setDeletedRowKeys(new Set());
     setClearedRowKeys(new Set());
+    setResolvedProposalRowKeys(new Set());
     setHasEditedLines(false);
     setCommentPopup(null);
     setSelectionToolbarPos(null);
@@ -9037,14 +7798,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   useEffect(() => {
     if (!Number.isInteger(highlightedProblemRowIndex)) return undefined;
 
-    const matchingRow = rowMetaList.find((rowMeta) => rowMeta.rowIndex === highlightedProblemRowIndex);
-    if (matchingRow?.stableKey) {
-      setActiveIssueRowKey(matchingRow.stableKey);
-      setNavigatedIssueRowKey(matchingRow.stableKey);
-    }
+    let frameId = 0;
 
-    return undefined;
-  }, [highlightedProblemRowIndex, highlightedProblemLocation?.requestKey, rowMetaList]);
+    frameId = requestAnimationFrame(() => {
+      scrollDoneRowIntoView(highlightedProblemRowIndex);
+    });
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [highlightedProblemRowIndex, highlightedProblemLocation?.requestKey, scrollDoneRowIntoView]);
 
   return (
     <>
@@ -9066,7 +7829,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         onNavigateNextIssue={() => navigateInspectionIssue(1)}
         warningCount={inspectionSummary?.warningCount ?? 0}
         errorCount={inspectionSummary?.errorCount ?? 0}
-        commentCount={0}
+        commentCount={totalCommentCount}
         versions={versionHistory?.versions ?? []}
         onVersionSelect={onOpenVersionDiff}
       />
@@ -9085,7 +7848,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               checkTarget,
               issueSeverity,
               issueTarget,
-              proposalOptions,
             } = rowMeta;
             // Row deleted by user — render invisible ghost so snapshot can record empty line
             if (deletedRowKeys.has(stableKey)) {
@@ -9102,11 +7864,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
 
             // Row cleared (prefix/checkbox stripped) — treat as empty line
+            const isProposalResolved = resolvedProposalRowKeys.has(stableKey);
             const effectiveLine = clearedRowKeys.has(stableKey) ? '' : rowMeta.line;
             const effectiveCheckStatus = clearedRowKeys.has(stableKey) ? null : checkStatus;
             const effectivePlanStatus = clearedRowKeys.has(stableKey) ? null : planStatus;
-            const effectiveIssueSeverity = clearedRowKeys.has(stableKey) ? null : issueSeverity;
-            const effectiveIssueTarget = clearedRowKeys.has(stableKey) ? null : issueTarget;
+            const effectiveIssueSeverity = clearedRowKeys.has(stableKey) || isProposalResolved ? null : issueSeverity;
+            const effectiveIssueTarget = clearedRowKeys.has(stableKey) || isProposalResolved ? null : issueTarget;
             const effectiveCheckTarget = clearedRowKeys.has(stableKey) ? null : checkTarget;
             const isRunOutdated = Boolean(effectiveCheckStatus?.isOutdated || effectivePlanStatus?.isOutdated);
 
@@ -9115,51 +7878,47 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
-            const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
-            const showIssueBulb = hasIssueBulb && isProblemHighlightedRow;
-            const hasRunnableGutterAction = showRunIcon;
-            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen || isProblemHighlightedRow);
-            const shouldShowTargetComments = !(
-              effectiveCheckTarget?.kind === 'plan'
-              && !rowMeta.isTopLevelPlanParent
-            );
-            const commentsForRow = rowComments[rowCommentKey] ?? (shouldShowTargetComments
-              ? getCommentsForCommentTarget(
-                  persistedCommentEntries,
-                  rowMeta.checkTarget ?? rowMeta.issueTarget,
-                )
-              : []);
+            const showIssueBulb = hasIssueBulb
+              && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
+            const hasRunnableGutterAction = showRunIcon || Boolean(effectiveCheckTarget);
+            const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isNavigatedIssueRow || isIssuePopupOpen);
+            const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
-            const isUpdatedSpecRow = Boolean(
-              updatedRowTarget?.kind
-              && effectiveCheckTarget?.kind === updatedRowTarget.kind
-              && effectiveCheckTarget?.index === updatedRowTarget.index
-            );
-            const isRestoringPlanRow = effectiveCheckTarget?.kind === 'plan'
-              && effectivePlanStatus?.status === 'pending'
-              && !hasPlanComment;
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
-            const renderCommentAdornment = () => (
-              <DoneCommentAdornment
-                comments={commentsForRow}
-                isOpen={false}
-                demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
-              />
-            );
-            const showGutterCommentAdornment = commentCount > 0;
-            const showInlineCommentAdornment = !hasPlanWorkflowMeta && !suppressInlineCommentAdornment && !showGutterCommentAdornment && !isProblemHighlightedRow && (focusedCommentRowKey === stableKey || isCommentPopupOpen
+            const showCommentAdornment = commentCount > 0 || focusedCommentRowKey === stableKey || isCommentPopupOpen
               || (isEmptyLine && hoveredRowKey === stableKey)
               || activeIssueRowKey === stableKey
-              || isNavigatedIssueRow);
-            const commentAdornment = showInlineCommentAdornment ? renderCommentAdornment() : null;
+              || isNavigatedIssueRow;
+            const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
+            const commentAdornment = showCommentAdornment ? (
+              <DoneCommentAdornment
+                comments={commentsForRow}
+                isOpen={isCommentPopupOpen}
+                demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
+                onOpen={(rect) => {
+                  setCommentPopup((prev) => (
+                    prev?.rowKey === stableKey
+                      ? null
+                      : {
+                          rowKey: stableKey,
+                          rowCommentKey,
+                          rowIndex,
+                          rect,
+                          value: '',
+                          editingIndex: null,
+                        }
+                  ));
+                }}
+              />
+            ) : null;
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'fixing' ? ' spec-done-row-fixing' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase !== 'fixing' ? ' spec-done-row-updated' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -9172,10 +7931,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 setHoveredRowKey(null);
               }}
               onClick={(e) => {
-                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-ref-chip-list') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn') || e.target.closest('.spec-done-gutter-breakpoint-btn')) {
+                if (e.target.closest('.spec-done-comment-adornment') || e.target.closest('.spec-done-gutter-intention-btn') || e.target.closest('.spec-done-gutter-item-run-btn') || e.target.closest('.spec-done-gutter-breakpoint-btn')) {
                   return;
                 }
-                setSuppressInlineCommentAdornment(false);
 
                 if (isEmptyLine) {
                   // Focus the caret editable when clicking anywhere in the empty row.
@@ -9200,6 +7958,23 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               }}
             >
               <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-section-run' : ''}`}>
+                <button
+                  type="button"
+                  className={`spec-done-gutter-breakpoint-btn${breakpoints.has(stableKey) ? ' is-active' : ''}`}
+                  aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleBreakpoint(stableKey);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
+                >
+                  <span className="editor-breakpoint-dot" />
+                </button>
                 {hasRunnableGutterAction ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
@@ -9214,22 +7989,46 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           checkTarget: effectiveCheckTarget,
                         })}
                   />
-                ) : showIssueBulb ? (
-                  <span
-                    className="spec-done-gutter-intention-btn spec-done-gutter-intention-indicator"
-                    aria-label="Selected problem"
-                    data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
-                  >
-                    <Icon name="codeInsight/intentionBulb" size={16} />
-                  </span>
-                ) : showGutterCommentAdornment ? (
-                  <span className="spec-done-gutter-comment-slot">
-                    {renderCommentAdornment()}
-                  </span>
                 ) : (
                   <span className="spec-done-gutter-slot" aria-hidden="true" />
                 )}
-                <span className="spec-done-gutter-slot" aria-hidden="true" />
+                {showIssueBulb ? (
+                  <button
+                    type="button"
+                    className={`spec-done-gutter-intention-btn${isIssuePopupOpen ? ' is-open' : ''}`}
+                    aria-label="Open issue actions"
+                    data-demo-id={demoTargetId ? `spec-issue-actions-${demoTargetId}` : undefined}
+                    aria-haspopup="menu"
+                    aria-expanded={isIssuePopupOpen}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setActiveIssueRowKey(stableKey);
+                      setNavigatedIssueRowKey(stableKey);
+                      setIntentionPopup((prev) => (
+                        prev?.rowKey === stableKey
+                          ? null
+                          : {
+                              rowKey: stableKey,
+                              rowIndex,
+                              rect,
+                              severity: issueSeverity,
+                              sectionTitle: currentSectionTitle,
+                              issueTarget,
+                            }
+                      ));
+                    }}
+                  >
+                    <Icon name="codeInsight/intentionBulb" size={16} />
+                  </button>
+                ) : (
+                  <span className="spec-done-gutter-slot" aria-hidden="true" />
+                )}
               </div>
               <div
                 className="spec-done-row-content"
@@ -9251,19 +8050,43 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   currentSectionTitle,
                   activeRunRequest,
                   rowMeta.nestingLevel ?? 0,
-                  null,
-                  () => {
-                    if (effectiveCheckTarget?.kind === 'plan') {
-                      onUserInput?.();
+                  rowMeta.isFirstTopLevelAcItem ? () => addExtraDecisionItem('AC1 rephrased: scope narrowed to post-submission filtering. Live filtering would require AJAX - deferred') : null,
+                  (decision) => {
+                    if (decision === 'accept') {
+                      setResolvedProposalRowKeys((prev) => {
+                        if (prev.has(stableKey)) return prev;
+                        const next = new Set(prev);
+                        next.add(stableKey);
+                        return next;
+                      });
+                      if (activeIssueRowKey === stableKey) {
+                        setActiveIssueRowKey(null);
+                      }
+                      if (navigatedIssueRowKey === stableKey) {
+                        setNavigatedIssueRowKey(null);
+                      }
+                      if (intentionPopup?.rowKey === stableKey) {
+                        setIntentionPopup(null);
+                      }
                     }
+                    onUserInput?.();
                   },
                   hasPlanComment,
-                  onPlanWorkflowSelect,
-                  onPlanWorkflowOpen,
-                  onPlanWorkflowRemove,
+                  onOpenCheckChip,
                 )}
               </div>
             </div>
+            {headingTitle?.toLowerCase() === 'decisions' && extraDecisionItems.map((item, i) => (
+              <div key={`extra-decision-${i}`} className="spec-done-row">
+                <div className="editor-gutter-row spec-done-gutter-cell" />
+                <div className="spec-done-row-content">
+                  <div className="spec-done-line spec-done-line-bullet">
+                    <span className="spec-done-bullet">•</span>
+                    <span contentEditable suppressContentEditableWarning>{item}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </Fragment>
         );
         })}
@@ -9300,32 +8123,39 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       </>,
       document.body
     )}
+    {commentPopup && (
+      <PositionedPopup triggerRect={commentPopup.rect} onDismiss={() => closeCommentPopup()} gap={8}>
+        <DoneCommentPopup
+          comments={rowComments[commentPopup.rowCommentKey] ?? []}
+          value={commentPopup.value}
+          editingIndex={commentPopup.editingIndex ?? null}
+          onChange={(nextValue) => {
+            setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
+          }}
+          onStartEdit={(commentIndex) => handleCommentEditStart(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
+          onDelete={(commentIndex) => handleCommentDelete(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
+          onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
+          onSubmit={handleCommentSubmit}
+        />
+      </PositionedPopup>
+    )}
     <SpecSelectionToolbar position={selectionToolbarPos} onAction={handleSelectionToolbarAction} />
-    {intentionPopup && intentionPopupPosition && createPortal(
-      <>
-        <div className="spec-done-intention-popup-overlay" onMouseDown={closeIntentionPopup} />
-        <div
-          className="spec-done-intention-popup-singleton"
-          style={{ top: intentionPopupPosition.top, left: intentionPopupPosition.left }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <DoneIssueIntentionPopup
-            severity={intentionPopup.severity}
-            canFixIssue={Boolean(intentionPopup.issueTarget)}
-            issueTarget={intentionPopup.issueTarget}
-            proposalOptions={intentionPopup.proposalOptions}
-            onOpenProblems={onOpenProblems}
-            onRegenerateSpec={onRegenerateSpec}
-            onFixIssue={() => {
-              if (intentionPopup.issueTarget) {
-                onFixIssue?.(intentionPopup.issueTarget);
-              }
-            }}
-            onClose={closeIntentionPopup}
-          />
-        </div>
-      </>,
-      document.body
+    {intentionPopup && (
+      <PositionedPopup triggerRect={intentionPopup.rect} onDismiss={() => setIntentionPopup(null)} gap={4}>
+        <DoneIssueIntentionPopup
+          severity={intentionPopup.severity}
+          canFixIssue={Boolean(intentionPopup.issueTarget)}
+          issueTarget={intentionPopup.issueTarget}
+          onOpenProblems={onOpenProblems}
+          onRegenerateSpec={onRegenerateSpec}
+          onFixIssue={() => {
+            if (intentionPopup.issueTarget) {
+              onFixIssue?.(intentionPopup.issueTarget);
+            }
+          }}
+          onClose={() => setIntentionPopup(null)}
+        />
+      </PositionedPopup>
     )}
     </>
   );
@@ -9452,21 +8282,9 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
 
 // ─── Agent Task Editor Area ───────────────────────────────────────────────────
 
-function AttachedFileChip({ label, onRemove, onClick = null, className = '' }) {
+function AttachedFileChip({ label, onRemove, className = '' }) {
   return (
-    <div
-      className={`attached-file-chip${onClick ? ' is-clickable' : ''}${className ? ` ${className}` : ''}`}
-      contentEditable={false}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onClick={onClick ?? undefined}
-      onKeyDown={onClick ? ((event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onClick(event);
-        }
-      }) : undefined}
-    >
+    <div className={`attached-file-chip${className ? ` ${className}` : ''}`} contentEditable={false}>
       <IconMdTask />
       <span className="attached-file-label">{label}</span>
       {onRemove && (
@@ -9480,11 +8298,11 @@ function AttachedFileChip({ label, onRemove, onClick = null, className = '' }) {
   );
 }
 
-function AgentTaskTopBarIcon({ style, animated = false }) {
+function AgentTaskTopBarIcon({ style }) {
   const gradientId = useId();
 
   return (
-    <svg className={animated ? 'agent-task-topbar-icon is-animated' : 'agent-task-topbar-icon'} width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
       <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill={`url(#${gradientId})`} />
       <path d="M10.4202 17.71C6.0202 17.71 2.4502 14.26 2.4502 10C2.4502 5.74004 6.0202 2.29004 10.4202 2.29004" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
       <path d="M17.34 7.87004C17.34 10.86 14.35 13.45 10.43 13.45C6.51002 13.45 3.52002 10.86 3.52002 7.87004C3.52002 4.88004 6.51002 2.29004 10.43 2.29004C14.35 2.29004 17.34 4.88004 17.34 7.87004Z" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
@@ -9498,7 +8316,7 @@ function AgentTaskTopBarIcon({ style, animated = false }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -9535,19 +8353,22 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const hasToolbarText = value.trim().length > 0;
   const collapsedDoneToolbarText = hasToolbarText ? value.replace(/\s+/g, ' ').trim() : toolbarPlaceholder;
   const isDoneToolbarInputCollapsed = genState === 'done' && (!TOOLBAR_INPUT_IS_EDITABLE || !isDoneToolbarInputFocused);
-  const showLoadingState = false;
-  const showGeneratingState = false;
+  const showLoadingState = AGENT_TASK_LOADING_STATE_ENABLED && genState === 'loading';
+  const showGeneratingState = AGENT_TASK_GENERATING_STATE_ENABLED && genState === 'generating';
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
-  const isTaskRunRunning = false;
-  const runningToolbarSummary = typeof activeRunRequest?.summary === 'string' && activeRunRequest.summary.trim().length > 0
-    ? activeRunRequest.summary
-    : 'Building...';
-  const hasPendingQuickFixRerun = false;
-  const hasPendingSpecifyChanges = false;
-  const shouldShowDoneEnhanceHint = false;
-  const isDoneEnhanceEnabled = false;
+  const hasPendingQuickFixRerun =
+    (Array.isArray(acRunResult) && acRunResult.some((status) => status === null))
+    || (Array.isArray(planRunResult) && planRunResult.some((status) => status === null));
+  const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || hasPendingQuickFixRerun;
+  const shouldShowDoneEnhanceHint = genState === 'done'
+    && runState !== 'running'
+    && hasPendingSpecifyChanges
+    && !isDoneEnhanceLocked;
+  const isDoneEnhanceEnabled = genState === 'done'
+    && hasPendingSpecifyChanges
+    && !isDoneEnhanceLocked;
   const setDoneEnhanceLockedForSession = useCallback((locked) => {
     setDoneEnhanceLocksBySession((prev) => {
       const isCurrentlyLocked = Boolean(prev[doneEnhanceSessionKey]);
@@ -9671,10 +8492,10 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   useEffect(() => {
     if (genState !== 'done' || doneTitleHydratedRef.current) return;
     doneTitleHydratedRef.current = true;
-    if (!value.trim()) {
-      setValue(VISIT_BOOKING_PROMPT_TEXT);
+    if (!value.trim() && goalTitle !== toolbarPlaceholder) {
+      setValue(goalTitle);
     }
-  }, [genState, value]);
+  }, [genState, goalTitle, toolbarPlaceholder, value]);
 
   useEffect(() => {
     if (completion && toolbarRef.current) {
@@ -9787,17 +8608,19 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     // Re-snapshot the current null-slot count so that returning to this tab
     // (same nulls, new reference) doesn't re-trigger the badge.
     const currentNullCount =
-      Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0;
+      (Array.isArray(acRunResult) ? acRunResult.filter((s) => s === null).length : 0) +
+      (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
     prevNullSlotCountRef.current = currentNullCount;
-  }, [commentResetToken, currentCode, planRunResult, resetDoneEnhanceAttention, specSessionKey]);
+  }, [acRunResult, commentResetToken, currentCode, planRunResult, resetDoneEnhanceAttention, specSessionKey]);
 
-  // When a plan quick fix is applied the affected run-result slot is set to null.
+  // When a quick fix is applied the affected run-result slot is set to null.
   // Treat that as a pending change so the Enhance badge + popup appear.
   // Track the null-slot count so that tab switches (same nulls, new reference)
   // don't re-trigger the badge — only genuinely new null slots do.
   useEffect(() => {
     const nullCount =
-      Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0;
+      (Array.isArray(acRunResult) ? acRunResult.filter((s) => s === null).length : 0) +
+      (Array.isArray(planRunResult) ? planRunResult.filter((s) => s === null).length : 0);
     if (nullCount > prevNullSlotCountRef.current) {
       setTimeout(() => {
         if (isDoneEnhanceLocked) {
@@ -9809,7 +8632,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       }, 0);
     }
     prevNullSlotCountRef.current = nullCount;
-  }, [isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
+  }, [acRunResult, isDoneEnhanceLocked, liftDoneEnhanceSuppression, planRunResult, setDoneEnhanceLockedForSession]);
 
   // When a comment arrives from outside (e.g. from the diff view) the baseline
   // inside DoneMarkdownOverlay already matches, so hasPendingCommentChanges
@@ -9850,16 +8673,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     prevAttachedFileCountRef.current = attachedFileCount;
   }, [attachedFiles, genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
 
-  useEffect(() => {
-    if (genState !== 'done' || pendingAcQuickFixCount <= 0) return;
-
-    if (isDoneEnhanceLocked) {
-      setDoneEnhanceLockedForSession(false);
-    }
-    liftDoneEnhanceSuppression();
-    allowDoneEnhanceAttentionRef.current = true;
-  }, [genState, isDoneEnhanceLocked, liftDoneEnhanceSuppression, pendingAcQuickFixCount, setDoneEnhanceLockedForSession]);
-
   const handlePendingEnhanceStateChange = useCallback((pending) => {
     if (!pending && hasPendingQuickFixRerun && !isDoneEnhanceLocked) {
       return;
@@ -9877,15 +8690,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     setHasPendingDoneEnhanceChanges(true);
   }, [liftDoneEnhanceSuppression, setDoneEnhanceLockedForSession]);
   const handleDoneOverlayFixIssue = useCallback((payload) => {
-    if (payload?.kind !== 'plan') {
-      resetDoneEnhanceAttention(2000);
-      setDoneEnhanceLockedForSession(false);
-      allowDoneEnhanceAttentionRef.current = true;
-      liftDoneEnhanceSuppression();
-      onFixIssue?.(payload);
-      return;
-    }
-
     // Quick fix updates `currentCode` and may also bump comment reset state in
     // separate renders. Skip both baseline-reset passes so Enhance stays active.
     skipNextDoneEnhanceBaselineResetCountRef.current = 2;
@@ -9894,7 +8698,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     liftDoneEnhanceSuppression();
     setHasPendingDoneEnhanceChanges(true);
     onFixIssue?.(payload);
-  }, [liftDoneEnhanceSuppression, onFixIssue, resetDoneEnhanceAttention, setDoneEnhanceLockedForSession]);
+  }, [liftDoneEnhanceSuppression, onFixIssue, setDoneEnhanceLockedForSession]);
 
   function handleChange(e) {
     const v = e.target.value;
@@ -9967,7 +8771,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }
 
   function handleDoneEnhance() {
-    if (!isDoneEnhanceEnabled) {
+    if (!hasPendingDoneEnhanceChanges) {
       return;
     }
     // Reset the done-state attention immediately so a completed Enhance cycle
@@ -10124,7 +8928,16 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
         <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
           <div className="agent-task-toolbar-left">
-            <IconLoaderSpinner />
+            <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
+              <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+              <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
+              <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
+              <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
+              <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+              <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
+              <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
+            </svg>
             <span className="at-generating-label">{title}</span>
           </div>
 
@@ -10175,11 +8988,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="loading">
-          {renderBusyToolbar('Updating spec...')}
+          {renderBusyToolbar('Analizing...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -10190,11 +9003,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="generating">
-          {renderBusyToolbar('Updating spec...')}
+          {renderBusyToolbar('Specifying...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -10210,9 +9023,18 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
-                {isTaskRunRunning ? (<>
-                  <AgentTaskTopBarIcon style={{ flexShrink: 0 }} animated />
-                  <RunningToolbarLabel text={runningToolbarSummary} />
+                {runState === 'running' ? (<>
+                  <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
+                    <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                    <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
+                    <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
+                    <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
+                    <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                    <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
+                    <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
+                  </svg>
+                  <span className="at-generating-label">Building...</span>
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
                   {renderToolbarInput({ collapsibleInDone: true })}
@@ -10221,7 +9043,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               {/* Default state — right */}
               <div className="agent-task-toolbar-right">
-                {isTaskRunRunning ? (
+                {runState === 'running' ? (
                   <button className="at-send-btn" onClick={() => onStop()}>
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
                       <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
@@ -10240,7 +9062,21 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       ))}
                     </div>
                   )}
-                  <button className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {}}>
+                  <button className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
+                    // Suppress badge during and after the run — the run itself
+                    // will produce authoritative statuses, so pre-run pending
+                    // changes are no longer relevant.
+                    setHasPendingDoneEnhanceChanges(false);
+                    if (suppressEnhanceBadgeTimerRef.current) {
+                      clearTimeout(suppressEnhanceBadgeTimerRef.current);
+                    }
+                    suppressEnhanceBadgeRef.current = true;
+                    suppressEnhanceBadgeTimerRef.current = setTimeout(() => {
+                      suppressEnhanceBadgeRef.current = false;
+                      suppressEnhanceBadgeTimerRef.current = 0;
+                    }, 4000);
+                    onOpenTerminal?.(null);
+                  }}>
                     <Icon name="run/run" size={16} />
                     <span className="at-send-label">Build</span>
                   </button>
@@ -10251,7 +9087,9 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     className={`at-send-btn at-send-btn-enhance${shouldShowDoneEnhanceHint ? ' has-attention' : ''}`}
                     ref={doneEnhanceBtnRef}
                     data-demo-id="agent-task-enhance"
-                    onClick={() => {}}
+                    onClick={handleDoneEnhance}
+                    disabled={!isDoneEnhanceEnabled}
+                    aria-disabled={!isDoneEnhanceEnabled}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
@@ -10290,9 +9128,18 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             </>,
             document.body
           )}
+          {doneEnhanceHintRect && shouldShowDoneEnhanceHint && (
+            <PositionedPopup triggerRect={doneEnhanceHintRect} onDismiss={() => setDoneEnhanceHintRect(null)} gap={20}>
+              <DoneEnhanceGuidePopup
+                arrowPosition={doneEnhanceHintArrowPosition}
+                dismissing={isDoneEnhanceHintDismissing}
+                onDismiss={() => setDoneEnhanceHintRect(null)}
+              />
+            </PositionedPopup>
+          )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} />,
           doneOverlayHost
         )}
       </>
@@ -10308,8 +9155,17 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {showGeneratingState ? <>
             {/* Generating state — left */}
             <div className="agent-task-toolbar-left">
-              <IconLoaderSpinner />
-              <span className="at-generating-label">Updating spec...</span>
+              <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
+                <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
+                <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
+                <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
+                <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
+                <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
+              </svg>
+              <span className="at-generating-label">Specifying...</span>
             </div>
 
             {/* Generating state — right */}
@@ -10382,7 +9238,8 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 // ─── Agent Tasks Panel ────────────────────────────────────────────────────────
 
 const AGENT_TASKS = [
-  { id: 't1',               label: 'visit-booking.md', time: '2m',  status: null },
+  { id: 't1', label: 'visit-booking.md',   time: '2m',  status: null },
+  { id: 't2', label: 'vet-schedules.md',   time: '15m', status: 'running' },
 ];
 
 const VET_SCHEDULES_AC_RUN_STATUSES = [
@@ -10434,16 +9291,6 @@ function createVetSchedulesSpecDocument() {
       ],
     },
     {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
-      ],
-    },
-    {
       id: 'plan',
       title: 'Plan',
       items: [
@@ -10452,6 +9299,16 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection' },
+      ],
+    },
+    {
+      id: 'acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
+        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
       ],
     },
     {
@@ -10508,22 +9365,36 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
   const normalizedTabId = typeof tabId === 'string' ? tabId : '';
   const normalizedLabel = typeof label === 'string' ? label : '';
 
-  const documentSections = addPlanAutonomousChip(markDocumentChecksDone(createSpecDocument()));
+  if (normalizedTabId === 'agent-task-t2' || normalizedLabel === 'vet-schedules.md') {
+    const documentSections = createVetSchedulesSpecDocument();
+    return {
+      initialCode: createVetSchedulesTaskDraft(),
+      defaultDocument: documentSections,
+      acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
+      planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
+      initialTaskState: createInteractiveTaskState({
+        documentSections,
+        genState: 'idle',
+        acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
+        planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
+      }),
+    };
+  }
+
+  const documentSections = createSpecDocument();
   const isVisitBookingPreset = normalizedTabId === 'agent-task-t1' || normalizedLabel === 'visit-booking.md';
-  const fixedAcStatuses = buildPassedAcStatusesFromDocument(documentSections);
-  const fixedPlanStatuses = buildPassedPlanStatusesFromDocument(documentSections);
 
   return {
     initialCode: isVisitBookingPreset ? serializeSpecDocument(documentSections) : ' ',
     defaultDocument: documentSections,
-    acBaseStatuses: isVisitBookingPreset ? fixedAcStatuses : AC_RUN_STATUSES,
-    planBaseStatuses: isVisitBookingPreset ? fixedPlanStatuses : PLAN_RUN_STATUSES,
+    acBaseStatuses: AC_RUN_STATUSES,
+    planBaseStatuses: PLAN_RUN_STATUSES,
     initialTaskState: createInteractiveTaskState({
       documentSections,
-      genState: 'done',
-      planBaseStatuses: isVisitBookingPreset ? fixedPlanStatuses : PLAN_RUN_STATUSES,
-      acBaseStatuses: isVisitBookingPreset ? fixedAcStatuses : AC_RUN_STATUSES,
-      seedRunResults: true,
+      genState: isVisitBookingPreset ? 'done' : 'idle',
+      acBaseStatuses: AC_RUN_STATUSES,
+      planBaseStatuses: PLAN_RUN_STATUSES,
+      seedRunResults: isVisitBookingPreset,
     }),
   };
 }
@@ -10543,6 +9414,20 @@ function getPresetAgentTaskDefinition(taskId) {
     };
   }
 
+  if (taskId === 't2') {
+    const scenario = getAgentTaskScenario({ tabId: 'agent-task-t2', label: 'vet-schedules.md' });
+
+    return {
+      tab: { id: 'agent-task-t2', label: 'vet-schedules.md', icon: 'fileTypes/markdown', closable: true },
+      content: {
+        language: 'markdown',
+        code: scenario.initialCode,
+      },
+      kind: 'interactive',
+      interactiveState: scenario.initialTaskState,
+    };
+  }
+
   return null;
 }
 
@@ -10552,481 +9437,39 @@ function getAgentTaskTabId(taskId) {
   return getPresetAgentTaskDefinition(taskId)?.tab?.id ?? `agent-task-${taskId}`;
 }
 
-const AUTONOMOUS_WORKFLOW_TAB = {
-  id: 'workflow-autonomous',
-  label: 'autonomous.md',
-  icon: 'fileTypes/markdown',
-  closable: true,
-};
-
-const AUTONOMOUS_WORKFLOW_SETTINGS = [
-  { key: 'max_consecutive_failures', value: '3', kind: 'scalar' },
-  { key: 'token_constraint_total', value: '1M', kind: 'scalar' },
-  { key: 'time_constraint_total', value: 'None', kind: 'editable-time' },
-  { key: 'on_done', value: '/summarize-changes', kind: 'editable-skills' },
-];
-
-const AUTONOMOUS_WORKFLOW_CONTENT = [
-  '# Autonomous',
-  '',
-  '> Runs the existing plan to completion. Continues through implementation work, verifies acceptance criteria at the end, and stops only when it is done or hits constraints.',
-  '',
-  '## Settings',
-  '',
-  ...AUTONOMOUS_WORKFLOW_SETTINGS.map((setting) => {
-    const value = setting.value;
-    return `| \`${setting.key}\` | \`${value}\` |`;
-  }),
-  '',
-  '## Workflow',
-  '',
-  'You are running an existing plan to completion. Work within the spec',
-  'permissions below and keep moving; pause only at the limits below or when',
-  'a criterion is broken (see Spec permissions).',
-  '',
-  '### A run',
-  '',
-  'Work through the plan from the top, in order. Check off each step as you',
-  'finish it. A step box means "done", not "verified", so a',
-  'halfway-interrupted run still shows where you got to.',
-  '',
-  'At the end of the pass, verify the acceptance criteria using the',
-  'verification configuration the spec defines for them. Check off a',
-  'criterion only once it actually passes.',
-  '',
-  '### Done',
-  '',
-  'A run is done only when a single fresh pass leaves every plan step',
-  'checked and every acceptance criterion passing. A pass inherited from an',
-  'earlier run does not count.',
-  '',
-  'If a criterion fails, work out why before retrying:',
-  '- if the criterion itself is wrong or unachievable, stop and surface it',
-  '  (see Spec permissions) rather than starting another run;',
-  '- if the plan is what fell short, uncheck every step and start a fresh',
-  '  run from the top, re-verifying all criteria, not just the one that',
-  '  failed.',
-  '',
-  '### Limits',
-  '',
-  'If one criterion fails `max_consecutive_failures` runs in a row, stop',
-  'rather than burning more runs on the same failure. Treat',
-  '`token_constraint_total` as a hard stop across the whole task. If',
-  '`time_constraint_total` is set, treat that as a hard stop too; if it is',
-  '`None`, keep going until the run is done or another limit is hit.',
-  '',
-  '### On done',
-  '',
-  'Once the run is done, run the skills in `on_done`, in order. These run',
-  'on every task: reporting, hygiene, or checks you always want at the end.',
-  'They must not affect whether the run passed; anything that modifies code',
-  'belongs in a plan step, not here.',
-  '',
-  '### Spec permissions',
-  '',
-  "The plan is yours to revise: reorder, split, or add steps as you learn",
-  "more, and record what you changed in the spec's Decisions log.",
-  '',
-  'The acceptance criteria are not. Treat them as fixed: never edit, soften,',
-  'or drop one to make a run pass. If a criterion seems wrong or',
-  'unachievable, stop and surface it instead of changing it.',
-].join('\n');
-
-function AutonomousInlineMarkdown({ text }) {
-  const parts = String(text ?? '').split(/(`[^`]+`)/g);
-  return parts.map((part, index) => (
-    part.startsWith('`') && part.endsWith('`')
-      ? <span key={`${part}-${index}`} className="spec-ref">{part.slice(1, -1)}</span>
-      : <Fragment key={`${part}-${index}`}>{part}</Fragment>
-  ));
-}
-
-function renderAutonomousTimeValue(value = '') {
-  const normalizedValue = String(value ?? '');
-  if (normalizedValue.trim().toLowerCase() === 'none') {
-    return <span className="autonomous-md-none-value">{normalizedValue}</span>;
-  }
-  return <span className="autonomous-md-scalar-value">{normalizedValue}</span>;
-}
-
-function renderAutonomousSkillText(value = '') {
-  const parts = String(value ?? '').split(/(\/[a-z0-9-]+)/gi);
-  return parts.map((part, index) => {
-    if (!part) return null;
-    if (/^\/[a-z0-9-]+$/i.test(part)) {
-      return <span key={`${part}-${index}`} className="autonomous-md-skill-item">{part}</span>;
-    }
-    return <span key={`${part}-${index}`} className="autonomous-md-skill-separator">{part}</span>;
-  });
-}
-
-function AutonomousInlineEditor({
-  value,
-  onChange,
-  onKeyDown = null,
-  onFocus = null,
-  onBlur = null,
-  inputRef = null,
-  className = '',
-  minWidth = null,
-  renderValue,
-  ariaLabel,
-}) {
-  return (
-    <span className={`autonomous-md-inline-editor ${className}`.trim()} style={minWidth ? { minWidth } : undefined}>
-      <span className="autonomous-md-inline-editor-highlight" aria-hidden="true">
-        {renderValue(value)}
-        <span className="autonomous-md-inline-editor-trailing-space">&nbsp;</span>
-      </span>
-      <input
-        ref={inputRef}
-        type="text"
-        className="autonomous-md-inline-editor-input"
-        value={value}
-        onChange={onChange}
-        onKeyDown={onKeyDown ?? undefined}
-        onFocus={onFocus ?? undefined}
-        onBlur={onBlur ?? undefined}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        autoComplete="off"
-        aria-label={ariaLabel}
-      />
-    </span>
-  );
-}
-
-function AutonomousSettingValue({ setting, valueOverride = null, onTimeChange = null, onSkillsChange = null, onSkillsKeyDown = null, skillsInputRef = null, timeInputRef = null }) {
-  const value = valueOverride ?? setting.value;
-
-  if (setting.kind === 'enum') {
-    return (
-      <span className="autonomous-md-enum-inline">
-        <span className="autonomous-md-enum-text">{setting.value}</span>
-        <span className="autonomous-md-enum-chevron" aria-hidden="true">⌄</span>
-      </span>
-    );
-  }
-
-  if (setting.kind === 'editable-skills') {
-    return (
-      <span className="autonomous-md-skill-list">
-        <AutonomousInlineEditor
-          value={String(value ?? '')}
-          onChange={(event) => onSkillsChange?.(event.target.value, event.target.selectionStart ?? 0)}
-          onKeyDown={onSkillsKeyDown}
-          inputRef={skillsInputRef}
-          className="autonomous-md-inline-editor-skills"
-          minWidth="280px"
-          renderValue={renderAutonomousSkillText}
-          ariaLabel="on_done"
-        />
-      </span>
-    );
-  }
-
-  if (setting.kind === 'editable-time') {
-    return (
-      <AutonomousInlineEditor
-        value={String(value ?? '')}
-        onChange={(event) => onTimeChange?.(event.target.value)}
-        inputRef={timeInputRef}
-        className="autonomous-md-inline-editor-time"
-        minWidth="52px"
-        renderValue={renderAutonomousTimeValue}
-        ariaLabel="time_constraint_total"
-      />
-    );
-  }
-
-  return <span className="autonomous-md-scalar-value">{setting.value}</span>;
-}
-
-function AutonomousMarkdownEditor() {
-  const [timeConstraintValue, setTimeConstraintValue] = useState('None');
-  const [onDoneValue, setOnDoneValue] = useState('/summarize-changes');
-  const [skillsCompletion, setSkillsCompletion] = useState(null);
-  const [skillsCompletionPos, setSkillsCompletionPos] = useState(null);
-  const skillsInputRef = useRef(null);
-
-  const updateSkillsCompletionPosition = useCallback(() => {
-    const input = skillsInputRef.current;
-    if (!(input instanceof HTMLInputElement)) {
-      setSkillsCompletionPos(null);
-      return;
-    }
-    const rect = input.getBoundingClientRect();
-    setSkillsCompletionPos({
-      top: rect.bottom + 6,
-      left: rect.left - 10,
-      width: Math.min(453, Math.max(320, window.innerWidth - rect.left - 24)),
-    });
-  }, []);
-
-  const updateSkillsCompletionState = useCallback((nextValue, cursorPos) => {
-    const safeCursorPos = Number.isInteger(cursorPos) ? cursorPos : nextValue.length;
-    const textBeforeCursor = nextValue.slice(0, safeCursorPos);
-    const slashIndex = textBeforeCursor.lastIndexOf('/');
-
-    if (slashIndex >= 0) {
-      const query = textBeforeCursor.slice(slashIndex + 1);
-      if (!query.includes(' ') && !query.includes(',') && !query.includes('\n')) {
-        setSkillsCompletion((prev) => ({
-          trigger: '/',
-          query,
-          selectedIdx: Math.min(prev?.selectedIdx ?? 0, Math.max(0, SLASH_COMPLETIONS.length - 1)),
-        }));
-        updateSkillsCompletionPosition();
-        return;
-      }
-    }
-
-    setSkillsCompletion(null);
-    setSkillsCompletionPos(null);
-  }, [updateSkillsCompletionPosition]);
-
-  const handleOnDoneChange = useCallback((nextValue, cursorPos) => {
-    setOnDoneValue(nextValue);
-    updateSkillsCompletionState(nextValue, cursorPos);
-  }, [updateSkillsCompletionState]);
-
-  const applySkillsCompletion = useCallback((item) => {
-    const input = skillsInputRef.current;
-    if (!(input instanceof HTMLInputElement) || !item) return;
-
-    const cursorPos = input.selectionStart ?? onDoneValue.length;
-    const textBeforeCursor = onDoneValue.slice(0, cursorPos);
-    const slashIndex = textBeforeCursor.lastIndexOf('/');
-    if (slashIndex < 0) return;
-
-    const insertText = getCompletionInsertText(item);
-    const nextValue = `${onDoneValue.slice(0, slashIndex)}${insertText}${onDoneValue.slice(cursorPos)}`;
-    const nextCursorPos = slashIndex + insertText.length;
-
-    setOnDoneValue(nextValue);
-    setSkillsCompletion(null);
-    setSkillsCompletionPos(null);
-
-    requestAnimationFrame(() => {
-      const currentInput = skillsInputRef.current;
-      if (!(currentInput instanceof HTMLInputElement)) return;
-      currentInput.focus({ preventScroll: true });
-      currentInput.setSelectionRange(nextCursorPos, nextCursorPos);
-    });
-  }, [onDoneValue]);
-
-  const handleOnDoneKeyDown = useCallback((event) => {
-    if (!skillsCompletion) return;
-
-    const filtered = getCompletionItemsForTrigger('/')
-      .filter((item) => item.label.toLowerCase().includes(skillsCompletion.query.toLowerCase()))
-      .slice(0, COMPLETION_POPUP_MAX_ITEMS);
-
-    if (filtered.length === 0) {
-      if (event.key === 'Escape') {
-        setSkillsCompletion(null);
-        setSkillsCompletionPos(null);
-      }
-      return;
-    }
-
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setSkillsCompletion((prev) => prev ? { ...prev, selectedIdx: Math.min(prev.selectedIdx + 1, filtered.length - 1) } : prev);
-      return;
-    }
-
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setSkillsCompletion((prev) => prev ? { ...prev, selectedIdx: Math.max(prev.selectedIdx - 1, 0) } : prev);
-      return;
-    }
-
-    if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault();
-      applySkillsCompletion(buildCompletionSelection(filtered[skillsCompletion.selectedIdx]));
-      return;
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setSkillsCompletion(null);
-      setSkillsCompletionPos(null);
-    }
-  }, [applySkillsCompletion, skillsCompletion]);
-
-  const selectedSkillLabels = useMemo(() => {
-    const matches = String(onDoneValue ?? '').match(/\/[a-z0-9-]+/gi);
-    return matches ?? [];
-  }, [onDoneValue]);
-
-  useEffect(() => {
-    if (!skillsCompletion) return undefined;
-
-    updateSkillsCompletionPosition();
-    window.addEventListener('resize', updateSkillsCompletionPosition);
-    return () => {
-      window.removeEventListener('resize', updateSkillsCompletionPosition);
-    };
-  }, [skillsCompletion, updateSkillsCompletionPosition]);
-
-  return (
-    <div className="autonomous-md-editor">
-      <div className="autonomous-md-scroll">
-        <article className="autonomous-md-document" contentEditable suppressContentEditableWarning spellCheck={false}>
-          <h1>Autonomous</h1>
-
-          <blockquote className="autonomous-md-description">
-            Runs the existing plan to completion. Continues through implementation work,
-            verifies acceptance criteria at the end, and stops only when it is done or hits constraints.
-          </blockquote>
-
-          <h2>Settings</h2>
-          <table className="autonomous-md-table" contentEditable={false}>
-            <tbody>
-              {AUTONOMOUS_WORKFLOW_SETTINGS.map((setting) => (
-                <tr key={setting.key}>
-                  <td><span className="spec-ref autonomous-md-setting-key">{setting.key}</span></td>
-                  <td>
-                    <AutonomousSettingValue
-                      setting={setting}
-                      valueOverride={
-                        setting.key === 'time_constraint_total'
-                          ? timeConstraintValue
-                          : setting.key === 'on_done'
-                            ? onDoneValue
-                            : setting.value
-                      }
-                      onTimeChange={setTimeConstraintValue}
-                      onSkillsChange={handleOnDoneChange}
-                      onSkillsKeyDown={handleOnDoneKeyDown}
-                      skillsInputRef={skillsInputRef}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <h2>Workflow</h2>
-          <p>
-            You are running an existing plan to completion. Work within the spec
-            permissions below and keep moving; pause only at the limits below or when
-            a criterion is broken (see Spec permissions).
-          </p>
-
-          <h3>A run</h3>
-          <p>
-            Work through the plan from the top, in order. Check off each step as you
-            finish it. A step box means "done", not "verified", so a
-            halfway-interrupted run still shows where you got to.
-          </p>
-          <p>
-            At the end of the pass, verify the acceptance criteria using the
-            verification configuration the spec defines for them. Check off a
-            criterion only once it actually passes.
-          </p>
-
-          <h3>Done</h3>
-          <p>
-            A run is done only when a single fresh pass leaves every plan step
-            checked and every acceptance criterion passing. A pass inherited from an
-            earlier run does not count.
-          </p>
-          <p>If a criterion fails, work out why before retrying:</p>
-          <ul>
-            <li>
-              if the criterion itself is wrong or unachievable, stop and surface it
-              (see Spec permissions) rather than starting another run;
-            </li>
-            <li>
-              if the plan is what fell short, uncheck every step and start a fresh
-              run from the top, re-verifying all criteria, not just the one that
-              failed.
-            </li>
-          </ul>
-
-          <h3>Limits</h3>
-          <p>
-            <AutonomousInlineMarkdown text="If one criterion fails `max_consecutive_failures` runs in a row, stop rather than burning more runs on the same failure. Treat `token_constraint_total` as a hard stop across the whole task. If `time_constraint_total` is set, treat that as a hard stop too; if it is `None`, keep going until the run is done or another limit is hit." />
-          </p>
-
-          <h3>On done</h3>
-          <p>
-            <AutonomousInlineMarkdown text="Once the run is done, run the skills in `on_done`, in order. These are end-of-run skills for reporting, hygiene, or checks you always want after implementation and verification are complete." />
-          </p>
-          <p>
-            They must not affect whether the run passed; anything that modifies code
-            belongs in a plan step, not here.
-          </p>
-
-          <h3>Spec permissions</h3>
-          <p>
-            The plan is yours to revise: reorder, split, or add steps as you learn
-            more, and record what you changed in the spec's Decisions log.
-          </p>
-          <p>
-            The acceptance criteria are not. Treat them as fixed: never edit, soften,
-            or drop one to make a run pass. If a criterion seems wrong or
-            unachievable, stop and surface it instead of changing it.
-          </p>
-        </article>
-      </div>
-      {skillsCompletion && skillsCompletionPos && createPortal(
-        <CompletionPopup
-          trigger={skillsCompletion.trigger}
-          query={skillsCompletion.query}
-          selectedIdx={skillsCompletion.selectedIdx}
-          onSelect={applySkillsCompletion}
-          selectedLabels={selectedSkillLabels}
-          onClose={() => {
-            setSkillsCompletion(null);
-            setSkillsCompletionPos(null);
-          }}
-          style={{
-            position: 'fixed',
-            top: skillsCompletionPos.top,
-            left: skillsCompletionPos.left,
-            width: skillsCompletionPos.width,
-          }}
-        />,
-        document.body
-      )}
-    </div>
-  );
-}
-
 function buildInitialEditorTabs() {
-  const visitBookingTab = getPresetAgentTaskDefinition('t1')?.tab;
-  return visitBookingTab ? [visitBookingTab, AUTONOMOUS_WORKFLOW_TAB] : [AUTONOMOUS_WORKFLOW_TAB];
+  const presetTabs = ['t1', 't2']
+    .map((taskId) => getPresetAgentTaskDefinition(taskId)?.tab)
+    .filter(Boolean);
+
+  return [
+    ...presetTabs,
+    ...MY_EDITOR_TABS,
+  ];
 }
 
 function buildInitialEditorTabContents() {
-  const preset = getPresetAgentTaskDefinition('t1');
-  if (!preset?.tab?.id || !preset?.content) {
-    return {};
-  }
+  return ['t1', 't2'].reduce((contents, taskId) => {
+    const preset = getPresetAgentTaskDefinition(taskId);
+    if (!preset?.tab?.id || !preset?.content) return contents;
 
-  return {
-    [preset.tab.id]: preset.content,
-    [AUTONOMOUS_WORKFLOW_TAB.id]: {
-      language: 'markdown',
-      code: AUTONOMOUS_WORKFLOW_CONTENT,
-    },
-    ...MY_EDITOR_TAB_CONTENTS,
-  };
+    return {
+      ...contents,
+      [preset.tab.id]: preset.content,
+    };
+  }, { ...MY_EDITOR_TAB_CONTENTS });
 }
 
 function buildInitialInteractiveTaskStates() {
-  const preset = getPresetAgentTaskDefinition('t1');
-  if (!preset?.tab?.id || !preset?.interactiveState) {
-    return {};
-  }
+  return ['t1', 't2'].reduce((states, taskId) => {
+    const preset = getPresetAgentTaskDefinition(taskId);
+    if (!preset?.tab?.id || !preset?.interactiveState) return states;
 
-  return {
-    [preset.tab.id]: preset.interactiveState,
-  };
+    return {
+      ...states,
+      [preset.tab.id]: preset.interactiveState,
+    };
+  }, {});
 }
 
 function createAgentTaskExecutionTiming() {
@@ -11147,44 +9590,8 @@ function IconWarning() {
 
 function IconDone() {
   return (
-    <svg className="spec-status-glyph spec-status-glyph-done" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="2" y="2" width="12" height="12" rx="3" fill="currentColor" />
-      <path d="M5.2 8.2L7.15 10.1L10.95 5.9" stroke="#fff" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconStatusMinus() {
-  return (
-    <svg className="spec-status-glyph spec-status-glyph-minus" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.14)" stroke="currentColor" strokeWidth="1.25" />
-      <path d="M5.25 8H10.75" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconStatusEmpty() {
-  return (
-    <svg className="spec-status-glyph spec-status-glyph-empty" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.08)" stroke="currentColor" strokeWidth="1.25" />
-    </svg>
-  );
-}
-
-function IconStatusExecuting() {
-  return (
-    <svg className="spec-status-glyph spec-status-glyph-executing" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2.75" fill="rgba(134, 138, 145, 0.14)" stroke="currentColor" strokeWidth="1.25" />
-      <path className="spec-status-executing-dash" d="M5.25 8H10.75" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconStatusIssue() {
-  return (
-    <svg className="spec-status-glyph spec-status-glyph-issue" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect x="2" y="2" width="12" height="12" rx="3" fill="currentColor" />
-      <path d="M5.2 5.2L10.8 10.8M10.8 5.2L5.2 10.8" stroke="#fff" strokeWidth="1.45" strokeLinecap="round" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2.5 8.25L6 11.75L13.5 4.25" stroke="#868A91" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -11222,8 +9629,6 @@ function resolveAgentTaskPlanFileIcon(fileName = '') {
   if (normalized.endsWith('.java')) candidateIconIds.push('fileTypes/java');
   if (normalized.endsWith('.html')) candidateIconIds.push('fileTypes/html');
   if (normalized.endsWith('.md')) candidateIconIds.push('fileTypes/markdown');
-  if (normalized.endsWith('.properties')) candidateIconIds.push('fileTypes/properties');
-  if (normalized.endsWith('.sql')) candidateIconIds.push('fileTypes/sql', 'database/table');
   if (normalized.endsWith('.py')) candidateIconIds.push('fileTypes/python');
   if (normalized.endsWith('.js')) candidateIconIds.push('fileTypes/javaScript');
 
@@ -11243,87 +9648,8 @@ function AgentTaskPlanFileChanges({ added = 0, removed = 0 }) {
 
 const AGENT_TASK_TREE_ROOT_NODE_ID = 'agent-task-tree-root';
 
-const VISIT_BOOKING_REVIEW_CHANGES = [
-  { id: 'visit-controller', file: 'VisitController.java', path: 'src/main/java/.../petclinic/owner' },
-  { id: 'visit-repository', file: 'VisitRepository.java', path: 'src/main/java/.../petclinic/owner' },
-  { id: 'visit-entity', file: 'Visit.java', path: 'src/main/java/.../petclinic/owner' },
-  { id: 'vet-formatter', file: 'VetFormatter.java', path: 'src/main/java/.../petclinic/vet' },
-  { id: 'vet-entity', file: 'Vet.java', path: 'src/main/java/.../petclinic/vet' },
-  { id: 'visit-controller-tests', file: 'VisitControllerTests.java', path: 'src/test/java/.../petclinic/owner' },
-  { id: 'clinic-service-tests', file: 'ClinicServiceTests.java', path: 'src/test/java/.../petclinic/service' },
-  { id: 'visit-form', file: 'createOrUpdateVisitForm.html', path: 'src/main/resources/templates/pets' },
-  { id: 'owner-details', file: 'ownerDetails.html', path: 'src/main/resources/templates/owners' },
-  { id: 'schema-h2', file: 'schema.sql', path: 'src/main/resources/db/h2' },
-  { id: 'schema-mysql', file: 'schema.sql', path: 'src/main/resources/db/mysql' },
-  { id: 'schema-postgres', file: 'schema.sql', path: 'src/main/resources/db/postgres' },
-  { id: 'data-h2', file: 'data.sql', path: 'src/main/resources/db/h2' },
-  { id: 'data-mysql', file: 'data.sql', path: 'src/main/resources/db/mysql' },
-  { id: 'data-postgres', file: 'data.sql', path: 'src/main/resources/db/postgres' },
-  { id: 'application-properties', file: 'application.properties', path: 'src/main/resources' },
-  { id: 'messages', file: 'messages.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-de', file: 'messages_de.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-en', file: 'messages_en.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-es', file: 'messages_es.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-fa', file: 'messages_fa.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-ko', file: 'messages_ko.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-pt', file: 'messages_pt.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-ru', file: 'messages_ru.properties', path: 'src/main/resources/messages' },
-  { id: 'messages-tr', file: 'messages_tr.properties', path: 'src/main/resources/messages' },
-];
-
 function buildAgentTaskTreeTaskNodeId(taskId) {
   return `agent-task-tree-task:${taskId}`;
-}
-
-function buildVisitBookingReviewChangeNodes({
-  task = null,
-  sourceTabId = null,
-  sourceCode = '',
-  planRunResult = null,
-} = {}) {
-  if (!task?.id || !sourceTabId) {
-    return null;
-  }
-
-  const issueTarget = { kind: 'plan', index: 4 };
-  const statusItem = planRunResult?.[4] ?? { status: 'passed' };
-  const diffData = buildPlanDiffData({
-    sourceCode,
-    text: '**5. VisitController** - `owner/VisitController.java`',
-    statusItem,
-    issueTarget,
-    sourceTabLabel: task.label,
-  });
-  const navigationByNodeId = {};
-
-  const fileNodes = VISIT_BOOKING_REVIEW_CHANGES.map((change) => {
-    const nodeId = `agent-task-tree-file:${task.id}:${change.id}`;
-    navigationByNodeId[nodeId] = {
-      type: 'file',
-      taskId: task.id,
-      sourceTabId,
-      sourceLabel: task.label,
-      text: '**5. VisitController** - `owner/VisitController.java`',
-      statusItem,
-      issueTarget,
-      activeRowId: diffData?.focusRowId ?? null,
-    };
-
-    return {
-      id: nodeId,
-      label: (
-        <span className="agent-task-plan-file-label agent-task-change-file-label">
-          <span className="agent-task-plan-file-name">{change.file}</span>
-        </span>
-      ),
-      icon: resolveAgentTaskPlanFileIcon(change.file),
-    };
-  });
-
-  return {
-    treeData: fileNodes,
-    navigationByNodeId,
-  };
 }
 
 function buildAgentTaskPlanTreeModel({
@@ -11339,15 +9665,6 @@ function buildAgentTaskPlanTreeModel({
       treeData: [],
       navigationByNodeId: {},
     };
-  }
-
-  if (task.id === 't1') {
-    return buildVisitBookingReviewChangeNodes({
-      task,
-      sourceTabId,
-      sourceCode,
-      planRunResult,
-    });
   }
 
   const viewerData = buildPlanDiffViewerData({
@@ -11460,7 +9777,7 @@ function AgentTasksPanel({
       const taskTree = planTreesByTaskId?.[task.id] ?? null;
       const hasChanges = Array.isArray(taskTree?.treeData) && taskTree.treeData.length > 0;
       const isTaskSelected = selected === task.id;
-      const shouldExpandByDefault = true;
+      const shouldExpandByDefault = false;
 
       nextNavigationByNodeId[taskNodeId] = {
         type: 'task',
@@ -11594,14 +9911,14 @@ export default function App() {
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
-  const [activeEditorTab, setActiveEditorTab] = useState(0);
+  const [activeEditorTab, setActiveEditorTab] = useState(null);
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -11622,7 +9939,6 @@ export default function App() {
   );
   const [runStatesByTab, setRunStatesByTab] = useState({});
   const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
-  const [pendingAcQuickFixCount, setPendingAcQuickFixCount] = useState(0);
   const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
   const lastRunSectionRef = useRef(null);
@@ -11631,10 +9947,8 @@ export default function App() {
   const currentTerminalRunTabIdRef = useRef(null);
   const currentRunSourceTabIdRef = useRef(null);
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
-  const planBuildClipTimeoutsRef = useRef([]);
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
-  const [planBuildClipRequestsByTab, setPlanBuildClipRequestsByTab] = useState({});
   const [genState, setGenState] = useState(() => initialVisitBookingTaskState.genState ?? 'done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
   const [genProgress, setGenProgress] = useState(() => initialVisitBookingTaskState.genProgress ?? 1);
   const [generatedDocument, setGeneratedDocument] = useState(() => initialVisitBookingTaskState.documentSections ?? createSpecDocument());
@@ -11643,41 +9957,12 @@ export default function App() {
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
-  const [updatedSpecRowTarget, setUpdatedSpecRowTarget] = useState(null);
-  const [isVisitBookingProblemCommentFading, setIsVisitBookingProblemCommentFading] = useState(false);
-  const [problemsFixMenu, setProblemsFixMenu] = useState(null);
-  const [visitBookingProblemExpanded, setVisitBookingProblemExpanded] = useState(false);
   const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
   const doneEnhanceFlowRef = useRef(null);
   const seededPresetTaskRef = useRef(false);
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
-  const updatedSpecRowTimeoutRef = useRef(null);
-  const visitBookingProblemCommentFadeTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    const preset = getPresetAgentTaskDefinition('t1');
-    if (!preset?.tab?.id || !preset?.interactiveState) return;
-
-    setInteractiveTaskStates((prev) => ({
-      ...prev,
-      [preset.tab.id]: preset.interactiveState,
-    }));
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [preset.tab.id]: preset.content,
-    }));
-    setAcRunResult(preset.interactiveState.acRunResult ?? null);
-    setPlanRunResult(preset.interactiveState.planRunResult ?? null);
-    setGeneratedDocument(preset.interactiveState.documentSections ?? []);
-    setGenState('done');
-    setGenProgress(1);
-    setAcWarningBanner(null);
-    setRunStatesByTab({});
-  }, []);
-  const suppressDoneCommentsSyncRef = useRef(false);
-  const suppressDoneCommentsSyncTimeoutRef = useRef(null);
   const specDoneScrollSnapshotsRef = useRef({});
 
   // Editor completion state
@@ -12071,21 +10356,6 @@ export default function App() {
     statusRevealTimeoutsRef.current[kind] = [];
   }, []);
 
-  const clearPlanBuildClip = useCallback((sourceTabId = null) => {
-    planBuildClipTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-    planBuildClipTimeoutsRef.current = [];
-
-    setPlanBuildClipRequestsByTab((prev) => {
-      if (sourceTabId) {
-        if (!(sourceTabId in prev)) return prev;
-        const { [sourceTabId]: _removedRequest, ...rest } = prev;
-        return rest;
-      }
-
-      return Object.keys(prev).length > 0 ? {} : prev;
-    });
-  }, []);
-
   const clearChainedRunTimeout = useCallback(() => {
     if (!chainedRunTimeoutRef.current) return;
     window.clearTimeout(chainedRunTimeoutRef.current);
@@ -12100,7 +10370,6 @@ export default function App() {
   const resetRunUiForTab = useCallback((sourceTabId) => {
     if (!sourceTabId) return;
     const terminalTabId = buildTerminalSessionTabId(sourceTabId);
-    clearPlanBuildClip(sourceTabId);
     setRunStateForTab('default', sourceTabId);
     setPendingTerminalRunForTab(null, terminalTabId);
     setTerminalPermissionPromptForTab(null, terminalTabId);
@@ -12109,7 +10378,6 @@ export default function App() {
       currentRunSourceTabIdRef.current = null;
     }
   }, [
-    clearPlanBuildClip,
     setAcWarningBannerForTab,
     setPendingTerminalRunForTab,
     setRunStateForTab,
@@ -12117,59 +10385,9 @@ export default function App() {
   ]);
 
   const resetDoneComments = useCallback(() => {
-    if (visitBookingProblemCommentFadeTimeoutRef.current) {
-      window.clearTimeout(visitBookingProblemCommentFadeTimeoutRef.current);
-      visitBookingProblemCommentFadeTimeoutRef.current = null;
-    }
-    if (suppressDoneCommentsSyncTimeoutRef.current) {
-      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
-      suppressDoneCommentsSyncTimeoutRef.current = null;
-    }
-    suppressDoneCommentsSyncRef.current = false;
-    setIsVisitBookingProblemCommentFading(false);
     setAgentTaskCommentEntries([]);
     setDoneCommentResetToken((prev) => prev + 1);
   }, []);
-
-  const fadeOutDoneComments = useCallback(() => {
-    if (visitBookingProblemCommentFadeTimeoutRef.current) {
-      return;
-    }
-
-    const tabIdToClear = generationTabId ?? activeSourceEditorTabId ?? activeEditorTabId;
-    suppressDoneCommentsSyncRef.current = true;
-    if (suppressDoneCommentsSyncTimeoutRef.current) {
-      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
-      suppressDoneCommentsSyncTimeoutRef.current = null;
-    }
-    setIsVisitBookingProblemCommentFading(true);
-    visitBookingProblemCommentFadeTimeoutRef.current = window.setTimeout(() => {
-      visitBookingProblemCommentFadeTimeoutRef.current = null;
-      setIsVisitBookingProblemCommentFading(false);
-      setAgentTaskCommentEntries([]);
-      if (tabIdToClear) {
-        setInteractiveTaskStates((prev) => {
-          const currentTaskState = prev[tabIdToClear];
-          if (!currentTaskState || !Array.isArray(currentTaskState.commentEntries) || currentTaskState.commentEntries.length === 0) {
-            return prev;
-          }
-
-          return {
-            ...prev,
-            [tabIdToClear]: {
-              ...currentTaskState,
-              commentEntries: [],
-            },
-          };
-        });
-      }
-      setDoneCommentResetToken((prev) => prev + 1);
-      suppressDoneCommentsSyncTimeoutRef.current = window.setTimeout(() => {
-        suppressDoneCommentsSyncRef.current = false;
-        suppressDoneCommentsSyncTimeoutRef.current = null;
-      }, 900);
-    }, 520);
-  }, [activeEditorTabId, activeSourceEditorTabId, generationTabId]);
 
   const clearAgentTaskRuntime = useCallback(() => {
     if (genTimerRef.current) {
@@ -12182,7 +10400,6 @@ export default function App() {
     clearChainedRunTimeout();
     clearStatusReveal('plan');
     clearStatusReveal('ac');
-    clearPlanBuildClip();
     clearAcWarningFlow();
     clearTerminalRunAnimation();
     setPendingTerminalRunForTab(null);
@@ -12199,7 +10416,6 @@ export default function App() {
   }, [
     clearAcWarningFlow,
     clearChainedRunTimeout,
-    clearPlanBuildClip,
     clearStatusReveal,
     clearTerminalRunAnimation,
     resetDoneComments,
@@ -12239,297 +10455,6 @@ export default function App() {
       label: resolvedTab?.label ?? '',
     });
   }, [activeEditorTab, generationTabId, ideTabs]);
-
-  const startPlanBuildClip = useCallback((sourceTabId, initialPlanStatuses = null) => {
-    if (!sourceTabId) return;
-
-    clearPlanBuildClip();
-    clearStatusReveal('plan');
-
-    const scenario = getCurrentAgentTaskScenario(sourceTabId);
-    const planSection = (generatedDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'plan')
-      ?? (scenario?.defaultDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'plan')
-      ?? null;
-    const acceptanceSection = (generatedDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria')
-      ?? (scenario?.defaultDocument ?? []).find((section) => normalizeSpecSectionTitle(section?.title) === 'acceptance criteria')
-      ?? null;
-    const planItems = Array.isArray(planSection?.items) ? planSection.items.filter((item) => item?.type === 'check') : [];
-    const acceptanceItemCount = Array.isArray(acceptanceSection?.items)
-      ? acceptanceSection.items.filter((item) => item?.type === 'check').length
-      : 0;
-    const planGroups = [];
-    let lineIndex = 0;
-
-    planItems.forEach((item, parentIndex) => {
-      const parentLineIndex = lineIndex;
-      lineIndex += 1;
-      const children = Array.isArray(item.children)
-        ? item.children.filter((child) => child?.type === 'check').map((child) => {
-            const childLineIndex = lineIndex;
-            lineIndex += 1;
-            return childLineIndex;
-          })
-        : [];
-
-      planGroups.push({
-        parentIndex,
-        parentLineIndex,
-        executableLineIndices: children.length > 0 ? children : [parentLineIndex],
-      });
-    });
-
-    const totalPlanLineCount = Math.max(lineIndex, planItems.length);
-    const completedStatuses = Array.from({ length: totalPlanLineCount }, () => ({ status: 'passed' }));
-    const seedStatuses = Array.from({ length: totalPlanLineCount }, (_, index) => (
-      Array.isArray(initialPlanStatuses) && initialPlanStatuses[index] ? initialPlanStatuses[index] : null
-    ));
-    const resolvedAcStatuses = buildResolvedRunStatuses(
-      scenario.acBaseStatuses,
-      'ac',
-      appliedIssueFixes,
-      removedIssueIndices,
-    );
-    const nextAcStatuses = Array.from({ length: acceptanceItemCount }, (_, index) => {
-      const existingStatus = resolvedAcStatuses[index];
-      return withRunStatusOutdated(existingStatus ?? {
-        status: 'pending',
-        checkboxStatus: null,
-        checks: [],
-      });
-    });
-
-    currentRunSourceTabIdRef.current = sourceTabId;
-    setRunStateForTab('running', sourceTabId);
-    setPlanRunResult(seedStatuses);
-    setAcRunResult(nextAcStatuses);
-    setInteractiveTaskStates((prev) => ({
-      ...prev,
-      [sourceTabId]: {
-        ...(prev[sourceTabId] ?? {}),
-        acRunResult: nextAcStatuses,
-        planRunResult: seedStatuses,
-      },
-    }));
-
-    const setClipRequest = (parentIndex, currentLineIndex) => {
-      setPlanBuildClipRequestsByTab((prev) => ({
-        ...prev,
-        [sourceTabId]: {
-          mode: 'section',
-          sourceTabId,
-          sectionTitle: 'Plan',
-          checkTarget: {
-            kind: 'plan',
-            index: parentIndex,
-            parentIndex,
-            lineIndex: currentLineIndex,
-          },
-          summary: PLAN_BUILD_CLIP_SUMMARIES[parentIndex] ?? `Building plan step ${parentIndex + 1}`,
-        },
-      }));
-    };
-
-    const setStepStatuses = (parentLineIndex, currentLineIndex, currentStatus) => {
-      const buildNextPlanStatuses = (prev) => {
-        const next = Array.isArray(prev) ? [...prev] : [];
-        if (currentLineIndex !== parentLineIndex) {
-          next[parentLineIndex] = { status: 'pending' };
-        }
-        if (currentLineIndex < completedStatuses.length) {
-          next[currentLineIndex] = currentStatus;
-        }
-        return next;
-      };
-
-      setPlanRunResult(buildNextPlanStatuses);
-      setInteractiveTaskStates((prev) => {
-        const previousTaskState = prev[sourceTabId] ?? {};
-        return {
-          ...prev,
-          [sourceTabId]: {
-            ...previousTaskState,
-            acRunResult: nextAcStatuses,
-            planRunResult: buildNextPlanStatuses(previousTaskState.planRunResult ?? seedStatuses),
-          },
-        };
-      });
-    };
-
-    const finishClip = () => {
-      setPlanRunResult(completedStatuses);
-      setInteractiveTaskStates((prev) => {
-        const previousTaskState = prev[sourceTabId] ?? {};
-        return {
-          ...prev,
-          [sourceTabId]: {
-            ...previousTaskState,
-            acRunResult: nextAcStatuses,
-            planRunResult: completedStatuses,
-          },
-        };
-      });
-      setPlanBuildClipRequestsByTab((prev) => {
-        if (!(sourceTabId in prev)) return prev;
-        const { [sourceTabId]: _removedRequest, ...rest } = prev;
-        return rest;
-      });
-      setRunStateForTab('default', sourceTabId);
-      if (currentRunSourceTabIdRef.current === sourceTabId) {
-        currentRunSourceTabIdRef.current = null;
-      }
-      planBuildClipTimeoutsRef.current = [];
-    };
-
-    const schedulePlanBuildClipTimeout = (callback, delay) => {
-      const timeoutId = window.setTimeout(() => {
-        planBuildClipTimeoutsRef.current = planBuildClipTimeoutsRef.current.filter((id) => id !== timeoutId);
-        callback();
-      }, delay);
-      planBuildClipTimeoutsRef.current.push(timeoutId);
-      return timeoutId;
-    };
-
-    const getChildWorkDelay = (groupIndex, childIndex) => {
-      if (groupIndex === 0) {
-        return PLAN_BUILD_CLIP_SCHEMA_CHILD_STEP_DELAYS_MS[childIndex] ?? PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
-      }
-      if (groupIndex === 1) {
-        return PLAN_BUILD_CLIP_VISIT_ENTITY_CHILD_STEP_DELAYS_MS[childIndex] ?? PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
-      }
-      return PLAN_BUILD_CLIP_DEFAULT_CHILD_STEP_DELAY_MS;
-    };
-
-    const getChildTransitionDelay = (groupIndex, childIndex, isLastChild) => {
-      if (!isLastChild) {
-        return groupIndex === 0 ? PLAN_BUILD_CLIP_SCHEMA_CHILD_TRANSITION_DELAY_MS : 0;
-      }
-      if (groupIndex === 0) {
-        return PLAN_BUILD_CLIP_PARENT_DONE_DELAY_MS;
-      }
-      return 0;
-    };
-
-    const getGroupTransitionDelay = (groupIndex) => (
-      groupIndex === 0 ? PLAN_BUILD_CLIP_GROUP_TRANSITION_DELAY_MS : 0
-    );
-
-    setPlanBuildClipRequestsByTab((prev) => ({
-      ...prev,
-      [sourceTabId]: {
-        mode: 'section',
-        sourceTabId,
-        sectionTitle: '__building__',
-        checkTarget: null,
-        summary: 'Building',
-      },
-    }));
-
-    const runGroup = (groupIndex) => {
-      if (groupIndex >= planGroups.length) {
-        schedulePlanBuildClipTimeout(finishClip, PLAN_BUILD_CLIP_FINISH_DELAY_MS);
-        return;
-      }
-
-      const group = planGroups[groupIndex];
-      let childIndex = 0;
-
-      const runChild = () => {
-        const currentLineIndex = group.executableLineIndices[childIndex] ?? group.parentLineIndex;
-        const childDelay = getChildWorkDelay(groupIndex, childIndex);
-        setClipRequest(group.parentIndex, currentLineIndex);
-        setStepStatuses(group.parentLineIndex, currentLineIndex, { status: 'pending' });
-
-        schedulePlanBuildClipTimeout(() => {
-          const isLastChild = childIndex >= group.executableLineIndices.length - 1;
-
-          const buildNextPlanStatuses = (prev) => {
-            const next = Array.isArray(prev) ? [...prev] : [];
-            next[currentLineIndex] = completedStatuses[currentLineIndex];
-
-            if (isLastChild && currentLineIndex === group.parentLineIndex) {
-              next[group.parentLineIndex] = completedStatuses[group.parentLineIndex];
-            }
-
-            return next;
-          };
-
-          setPlanRunResult(buildNextPlanStatuses);
-          setInteractiveTaskStates((prev) => {
-            const previousTaskState = prev[sourceTabId] ?? {};
-            return {
-              ...prev,
-              [sourceTabId]: {
-                ...previousTaskState,
-                acRunResult: nextAcStatuses,
-                planRunResult: buildNextPlanStatuses(previousTaskState.planRunResult ?? seedStatuses),
-              },
-            };
-          });
-
-          const childTransitionDelay = getChildTransitionDelay(groupIndex, childIndex, isLastChild);
-
-          if (isLastChild) {
-            const completeParentAndAdvance = () => {
-              if (currentLineIndex !== group.parentLineIndex) {
-                const markParentDone = (prev) => {
-                  const next = Array.isArray(prev) ? [...prev] : [];
-                  next[group.parentLineIndex] = completedStatuses[group.parentLineIndex];
-                  return next;
-                };
-
-                setPlanRunResult(markParentDone);
-                setInteractiveTaskStates((prev) => {
-                  const previousTaskState = prev[sourceTabId] ?? {};
-                  return {
-                    ...prev,
-                    [sourceTabId]: {
-                      ...previousTaskState,
-                      acRunResult: nextAcStatuses,
-                      planRunResult: markParentDone(previousTaskState.planRunResult ?? seedStatuses),
-                    },
-                  };
-                });
-              }
-
-              schedulePlanBuildClipTimeout(() => runGroup(groupIndex + 1), getGroupTransitionDelay(groupIndex));
-            };
-
-            if (childTransitionDelay > 0) {
-              schedulePlanBuildClipTimeout(completeParentAndAdvance, childTransitionDelay);
-              return;
-            }
-
-            completeParentAndAdvance();
-            return;
-          }
-
-          const advanceChild = () => {
-            childIndex += 1;
-            runChild();
-          };
-
-          if (childTransitionDelay > 0) {
-            schedulePlanBuildClipTimeout(advanceChild, childTransitionDelay);
-            return;
-          }
-
-          advanceChild();
-        }, childDelay);
-      };
-
-      runChild();
-    };
-
-    schedulePlanBuildClipTimeout(() => runGroup(0), PLAN_BUILD_CLIP_INITIAL_BUILDING_DELAY_MS);
-  }, [
-    appliedIssueFixes,
-    clearPlanBuildClip,
-    clearStatusReveal,
-    generatedDocument,
-    getCurrentAgentTaskScenario,
-    removedIssueIndices,
-    setRunStateForTab,
-  ]);
 
   const getTaskRuntimeState = useCallback((tabId) => {
     if (!tabId) return null;
@@ -12730,7 +10655,6 @@ export default function App() {
     const nextComments = Array.isArray(comments)
       ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
       : flattenStoredDiffCommentsState(nextDiffComments);
-    const hasNextComments = nextComments.length > 0;
     const targetMetadata = buildCommentTargetEntryMetadata(
       runtimeState?.taskState?.documentSections ?? runtimeState?.scenario?.defaultDocument ?? [],
       normalizedTarget,
@@ -12755,16 +10679,8 @@ export default function App() {
         nextComments,
         metadata,
       );
-      const nextPlanRunResult = applyDiffCommentStateToPlanRunResult(
-        currentTaskState?.planRunResult,
-        normalizedTarget,
-        hasNextComments,
-      );
 
-      if (
-        JSON.stringify(currentTaskState?.commentEntries ?? []) === JSON.stringify(nextCommentEntries)
-        && JSON.stringify(currentTaskState?.planRunResult ?? null) === JSON.stringify(nextPlanRunResult ?? null)
-      ) {
+      if (JSON.stringify(currentTaskState?.commentEntries ?? []) === JSON.stringify(nextCommentEntries)) {
         return prev;
       }
 
@@ -12773,7 +10689,6 @@ export default function App() {
         [sourceTabId]: {
           ...currentTaskState,
           commentEntries: nextCommentEntries,
-          planRunResult: nextPlanRunResult,
         },
       };
     });
@@ -12784,11 +10699,6 @@ export default function App() {
         normalizedTarget,
         nextComments,
         metadata,
-      ));
-      setPlanRunResult((prev) => applyDiffCommentStateToPlanRunResult(
-        prev,
-        normalizedTarget,
-        hasNextComments,
       ));
     }
   }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
@@ -12821,6 +10731,9 @@ export default function App() {
 
     setSelectedTask(taskId);
     setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+    ));
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
     const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
@@ -12903,36 +10816,12 @@ export default function App() {
   const requestProblemHighlight = useCallback((rawIndex) => {
     if (!Number.isInteger(rawIndex) || rawIndex < 0) return;
 
-    const issueTarget = getDocumentCheckTargetAtRawIndex(generatedDocument, rawIndex, removedIssueIndices);
-
     setHighlightedProblemLocation((prev) => ({
       rawIndex,
-      kind: issueTarget?.kind ?? null,
-      index: issueTarget?.index ?? null,
       tabId: activeEditorTabId,
       requestKey: (prev?.requestKey ?? 0) + 1,
     }));
-  }, [activeEditorTabId, generatedDocument, removedIssueIndices]);
-
-  const triggerUpdatedSpecRowAnimation = useCallback((target) => {
-    const normalizedTarget = normalizeCommentTarget(target);
-    if (!normalizedTarget) return;
-
-    if (updatedSpecRowTimeoutRef.current) {
-      window.clearTimeout(updatedSpecRowTimeoutRef.current);
-      updatedSpecRowTimeoutRef.current = null;
-    }
-
-    setUpdatedSpecRowTarget({
-      ...normalizedTarget,
-      phase: 'updated',
-      requestKey: Date.now(),
-    });
-    updatedSpecRowTimeoutRef.current = window.setTimeout(() => {
-      setUpdatedSpecRowTarget(null);
-      updatedSpecRowTimeoutRef.current = null;
-    }, 950);
-  }, []);
+  }, [activeEditorTabId]);
 
   useEffect(() => {
     if (!activeEditorTabId?.startsWith('agent-task-')) return;
@@ -12983,10 +10872,6 @@ export default function App() {
 
   const handleProblemsNodeSelect = useCallback((nodeId, selected) => {
     if (!selected) return;
-
-    if (typeof nodeId === 'string' && nodeId.includes('visit-conflict-diagnostic')) {
-      setVisitBookingProblemExpanded(true);
-    }
 
     const rawIndex = getProblemRawIndexFromTreeNodeId(nodeId);
     if (!Number.isInteger(rawIndex)) return;
@@ -13078,12 +10963,6 @@ export default function App() {
     const normalizedCommentEntries = Array.isArray(commentEntriesOverride)
       ? commentEntriesOverride
       : (Array.isArray(agentTaskCommentEntries) ? agentTaskCommentEntries : []);
-    const hasPlanSectionComment = applyPendingComments && normalizedCommentEntries.some((entry) => {
-      const target = entry.issueTarget ?? entry.checkTarget;
-      const hasNoPlanItemTarget = !target || target.kind !== 'plan';
-      const isPlanSection = (entry.sectionTitle ?? '').toLowerCase() === 'plan';
-      return hasNoPlanItemTarget && isPlanSection;
-    });
     const currentAppliedIssueFixes = cloneIssueStateMap(
       currentViewState?.appliedIssueFixes
       ?? runtimeState?.taskState?.appliedIssueFixes
@@ -13099,8 +10978,6 @@ export default function App() {
     let nextPendingAppliedIssueFixes = cloneIssueStateMap(currentAppliedIssueFixes);
     let nextRemovedIssueIndices = cloneIssueStateMap(currentRemovedIssueIndices);
     let commentResolution = null;
-    let restoredPlanItemsFromEmptyPlan = false;
-    let restoredPlanFrames = [];
 
     if (applyPendingComments && normalizedCommentEntries.length > 0) {
       commentResolution = applyCommentCommandsToSpec({
@@ -13114,40 +10991,6 @@ export default function App() {
       nextDocument = commentResolution.nextDocument;
       nextPendingAppliedIssueFixes = commentResolution.nextAppliedIssueFixes;
       nextRemovedIssueIndices = commentResolution.nextRemovedIssueIndices;
-    }
-
-    if (hasPlanSectionComment && getSectionCheckItemCount(nextDocument, 'Plan') === 0) {
-      const scenarioPlanSection = (runtimeState?.scenario?.defaultDocument ?? []).find((section) => (
-        typeof section?.title === 'string' && section.title.toLowerCase() === 'plan'
-      ));
-      const fallbackPlanItems = (scenarioPlanSection?.items ?? []).some((item) => item?.type === 'check')
-        ? scenarioPlanSection.items
-        : createVisitBookingPlanItems();
-      restoredPlanFrames = buildPlanRestoreFrames(nextDocument, fallbackPlanItems);
-      const restoredDocument = restorePlanItemsIfEmpty(nextDocument, fallbackPlanItems);
-      if (restoredDocument !== nextDocument) {
-        nextDocument = restoredDocument;
-        targetCode = serializeSpecDocument(nextDocument);
-        restoredPlanItemsFromEmptyPlan = true;
-      }
-    }
-
-    const documentWithPendingFixes = applyPendingIssueFixesToSpec({
-      code: targetCode,
-      documentSections: nextDocument,
-      appliedIssueFixes: nextPendingAppliedIssueFixes,
-      removedIssueIndices: nextRemovedIssueIndices,
-    });
-    targetCode = documentWithPendingFixes.code;
-    nextDocument = documentWithPendingFixes.documentSections;
-
-    const documentWithQuickFixDecisions = addVisitBookingDecisionsAfterQuickFixes(
-      nextDocument,
-      nextPendingAppliedIssueFixes,
-    );
-    if (documentWithQuickFixDecisions !== nextDocument) {
-      nextDocument = documentWithQuickFixDecisions;
-      targetCode = serializeSpecDocument(nextDocument);
     }
 
     const currentAcRunResult =
@@ -13179,44 +11022,21 @@ export default function App() {
     const rerunAcOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'ac',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: nextDocument,
+      nextDocumentSections: snapshotDocument,
       currentStatuses: currentAcRunResult,
       nextStatuses: nextAcRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
     });
-    let rerunPlanOriginalIndices = collectRunRerunOriginalIndices({
+    const rerunPlanOriginalIndices = collectRunRerunOriginalIndices({
       kind: 'plan',
       currentDocumentSections: baseDocumentSections,
-      nextDocumentSections: nextDocument,
+      nextDocumentSections: snapshotDocument,
       currentStatuses: currentPlanRunResult,
       nextStatuses: nextPlanRunResult,
       currentRemovedIssueIndices,
       nextRemovedIssueIndices,
     });
-    // If there are comments on plan items (or on the Plan section heading/separator),
-    // include those items in rerun so plan is regenerated.
-    // A comment on the Plan heading (no specific item target, sectionTitle === 'Plan')
-    // triggers a full-plan rerun — all items are regenerated.
-    if (applyPendingComments && Array.isArray(normalizedCommentEntries) && normalizedCommentEntries.length > 0) {
-      let planCommentIndices = normalizedCommentEntries
-        .map((entry) => {
-          const target = entry.issueTarget ?? entry.checkTarget;
-          return (target?.kind === 'plan') ? target.index : null;
-        })
-        .filter((idx) => Number.isInteger(idx) && idx >= 0);
-
-      if (hasPlanSectionComment) {
-        // Schedule all currently visible plan items for rerun, including specs whose
-        // plan count differs from the default scenario status list.
-        const allPlanIndices = getVisibleDocumentCheckOriginalIndices('plan', nextDocument, nextRemovedIssueIndices);
-        planCommentIndices = mergeOriginalIssueIndices(planCommentIndices, allPlanIndices);
-      }
-
-      if (planCommentIndices.length > 0) {
-        rerunPlanOriginalIndices = mergeOriginalIssueIndices(rerunPlanOriginalIndices, planCommentIndices);
-      }
-    }
     const hasPendingReruns = rerunAcOriginalIndices.length > 0 || rerunPlanOriginalIndices.length > 0;
 
     return {
@@ -13235,8 +11055,6 @@ export default function App() {
       currentRemovedIssueIndices,
       rerunAcOriginalIndices,
       rerunPlanOriginalIndices,
-      restoredPlanItemsFromEmptyPlan,
-      restoredPlanFrames,
       hasPendingReruns,
       commentResolution,
       hasPendingComments: applyPendingComments && normalizedCommentEntries.length > 0,
@@ -13353,10 +11171,13 @@ export default function App() {
     if (resolvedTaskId) {
       setSelectedTask(resolvedTaskId);
       if (issueTarget?.kind === 'plan' && Number.isInteger(issueTarget.index)) {
-        setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:visit-controller`);
+        setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:${issueTarget.index}:0`);
       }
     }
     setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+    ));
     setActiveEditorTab(nextActiveTabIndex);
   }, [
     activeEditorTab,
@@ -13369,6 +11190,30 @@ export default function App() {
     ideTabs,
     updatePlanDiffUiStateForTab,
   ]);
+
+  const openEditorTabByLabel = useCallback((label) => {
+    if (typeof label !== 'string' || label.trim().length === 0) return;
+
+    const normalizedLabel = label.trim();
+    const existingTabIndex = ideTabs.findIndex((tab) => tab.label === normalizedLabel);
+    if (existingTabIndex >= 0) {
+      setScreen('ide');
+      setActiveEditorTab(existingTabIndex);
+      return;
+    }
+
+    const presetTab = MY_EDITOR_TABS.find((tab) => tab.label === normalizedLabel);
+    const tabContent = getEditorTabContentByLabel(normalizedLabel);
+    if (!presetTab || !tabContent) return;
+
+    setIdeTabs((prev) => [...prev, presetTab]);
+    setIdeTabContents((prev) => ({
+      ...prev,
+      [presetTab.id]: tabContent,
+    }));
+    setScreen('ide');
+    setActiveEditorTab(ideTabs.length);
+  }, [ideTabs]);
 
   const openSpecVersionDiffTab = useCallback(({
     sourceTabId,
@@ -13563,23 +11408,6 @@ export default function App() {
         allowPendingOutdated,
       });
 
-      // If there are rerun items, animate them from the outdated seed to their final status.
-      if (Array.isArray(rerunOriginalIndices) && rerunOriginalIndices.length > 0) {
-        const visibleRerunIndices = rerunOriginalIndices
-          .map((origIdx) => mapOriginalIssueIndexToVisible(kind, origIdx, nextRemovedIssueIndices))
-          .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < nextStatuses.length);
-
-        if (visibleRerunIndices.length > 0) {
-          revealRunStatuses(kind, nextStatuses, {
-            initialResult: Array.isArray(initialResult) ? initialResult : [],
-            indices: visibleRerunIndices,
-            initialDelay: RUN_STATUS_REVEAL_STEP_DELAY_MS,
-            onComplete,
-          });
-          return;
-        }
-      }
-
       setResult(initialResult);
       onComplete?.(initialResult);
     };
@@ -13622,7 +11450,7 @@ export default function App() {
       rerunOriginalIndices: rerunPlanOriginalIndices,
     });
     revealAcceptanceCriteria();
-  }, [clearChainedRunTimeout, clearStatusReveal, revealRunStatuses]);
+  }, [clearChainedRunTimeout, clearStatusReveal]);
 
   const finishTerminalRun = useCallback((options = {}) => {
     const { advanceGeneration = false, cancelGeneration = false } = options;
@@ -13661,7 +11489,6 @@ export default function App() {
       });
       // Clear applied AC fixes — run result is now authoritative
       setAppliedIssueFixes((prev) => ({ ...prev, ac: {} }));
-      setPendingAcQuickFixCount(0);
       revealRunStatuses('ac', nextAcRunStatuses, {
         initialResult: acRevealOptions.initialResult,
         ...(acRevealOptions.hasSelectiveRerun
@@ -13823,7 +11650,7 @@ export default function App() {
   ]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
-    const { baseLines = [], onComplete, stepDelay = TERMINAL_RUN_STEP_DELAY_MS } = options;
+    const { baseLines = [], onComplete } = options;
     const frames = buildTerminalFrames(lines, baseLines);
     if (frames.length === 0) {
       onComplete?.();
@@ -13835,14 +11662,14 @@ export default function App() {
     frames.forEach((frame, idx) => {
       const timeoutId = window.setTimeout(() => {
         setTerminalBlocksForTab(frame);
-      }, TERMINAL_RUN_INITIAL_DELAY_MS + stepDelay * idx);
+      }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * idx);
       terminalRunTimeoutsRef.current.push(timeoutId);
     });
 
     const finalTimeoutId = window.setTimeout(() => {
       setTerminalStreamingForTab(false);
       onComplete?.();
-    }, TERMINAL_RUN_INITIAL_DELAY_MS + stepDelay * frames.length + TERMINAL_RUN_END_DELAY_MS);
+    }, TERMINAL_RUN_INITIAL_DELAY_MS + TERMINAL_RUN_STEP_DELAY_MS * frames.length + TERMINAL_RUN_END_DELAY_MS);
     terminalRunTimeoutsRef.current.push(finalTimeoutId);
   }, [setTerminalBlocksForTab, setTerminalStreamingForTab]);
 
@@ -14033,9 +11860,6 @@ export default function App() {
     }
 
     runTerminalLineAnimation(initialLines, {
-      stepDelay: effectiveRunRequest?.mode === 'update-spec'
-        ? TERMINAL_UPDATE_SPEC_STEP_DELAY_MS
-        : TERMINAL_RUN_STEP_DELAY_MS,
       onComplete: () => {
         if (permissionPrompt) {
           setTerminalBlocksForTab(buildTerminalBlocks(initialLines));
@@ -14062,9 +11886,6 @@ export default function App() {
     terminalPermissionScope,
   ]);
 
-  const problemsPanelActiveRef = useRef(false);
-  const problemsSelectedLeafIdxRef = useRef(-1);
-
   const setActiveIdeBottomToolWindow = (id) => {
     setIdeOpenWindows((prev) => {
       const nonBottomWindows = prev.filter((windowId) => !BOTTOM_TOOL_WINDOW_IDS.has(windowId));
@@ -14090,36 +11911,6 @@ export default function App() {
     return false;
   };
 
-  const focusIdeProblemsPanel = () => {
-    if (typeof document === 'undefined') return;
-
-    const focusPanel = () => {
-      const panelEl = document.querySelector('.main-window .problems-window');
-      if (!(panelEl instanceof HTMLElement)) return false;
-
-      const target =
-        panelEl.querySelector('.tree-node-selected') ??
-        panelEl.querySelector('.tree-node-children .tree-node') ??
-        panelEl;
-      if (!(target instanceof HTMLElement)) return false;
-
-      panelEl.dispatchEvent(new MouseEvent('mousedown', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      }));
-      if (target.tabIndex < 0) target.tabIndex = -1;
-      target.focus({ preventScroll: true });
-      problemsPanelActiveRef.current = true;
-      return true;
-    };
-
-    requestAnimationFrame(() => {
-      if (focusPanel()) return;
-      requestAnimationFrame(focusPanel);
-    });
-  };
-
   const openIdeBottomToolWindow = (id) => {
     const stripe = findIdeBottomToolWindowButton(id);
     const alreadyOpen =
@@ -14129,35 +11920,13 @@ export default function App() {
 
     if (alreadyOpen) {
       setActiveIdeBottomToolWindow(id);
-      if (id !== 'problems') {
-        problemsPanelActiveRef.current = false;
-      }
-      if (stripe?.getAttribute('aria-pressed') !== 'true') {
-        requestAnimationFrame(() => stripe.click());
-      }
-      if (id === 'problems') focusIdeProblemsPanel();
       return;
     }
 
     setActiveIdeBottomToolWindow(id);
     if (stripe) {
-      requestAnimationFrame(() => {
-        if (stripe.getAttribute('aria-pressed') !== 'true') {
-          stripe.click();
-        }
-      });
+      stripe.click();
     }
-    if (id === 'problems') focusIdeProblemsPanel();
-    if (id !== 'problems') {
-      problemsPanelActiveRef.current = false;
-    }
-  };
-
-  const openAndFocusIdeProblemsToolWindow = () => {
-    setVisitBookingProblemExpanded(false);
-    setHighlightedProblemLocation(null);
-    openIdeBottomToolWindow('problems');
-    focusIdeProblemsPanel();
   };
 
   const toggleIdeBottomToolWindow = (id) => {
@@ -14218,14 +11987,8 @@ export default function App() {
     if (!isTerminalAlreadyOpen) {
       bumpTerminalViewKeyForTab(nextTerminalTabId);
     }
-    if (nextRunRequest?.mode === 'update-spec') {
-      requestAnimationFrame(() => {
-        startTerminalRunAnimation(nextRunRequest);
-      });
-      return;
-    }
-
     setPendingTerminalRunForTab(nextRunRequest, nextTerminalTabId);
+    openIdeBottomToolWindow('terminal');
   };
   queueTerminalRunRef.current = queueTerminalRun;
 
@@ -14336,110 +12099,14 @@ export default function App() {
       currentRemovedIssueIndices,
       rerunAcOriginalIndices,
       rerunPlanOriginalIndices,
-      restoredPlanItemsFromEmptyPlan,
-      restoredPlanFrames,
       pendingCommentEntriesSnapshot,
+      hasPendingReruns,
       hasPendingComments,
       hasSpecChanges,
     } = pendingDoneSpecState;
-    const effectiveRerunAcOriginalIndices = [];
-    const effectiveHasPendingReruns = rerunPlanOriginalIndices.length > 0;
-    const shouldClearDoneCommentsAfterUpdate =
-      hasPendingComments ||
-      (Array.isArray(commentEntries) && commentEntries.length > 0) ||
-      pendingAcQuickFixCount > 0;
-    const updatedRowTargetForSpecRegeneration =
-      pendingAcQuickFixCount > 0 ? VISIT_BOOKING_CONFLICT_PROBLEM_TARGET : null;
-    if (!hasSpecChanges && !hasPendingComments && !effectiveHasPendingReruns) {
+    if (!hasSpecChanges && !hasPendingComments && !hasPendingReruns) {
       return;
     }
-    if (updatedRowTargetForSpecRegeneration) {
-      if (updatedSpecRowTimeoutRef.current) {
-        window.clearTimeout(updatedSpecRowTimeoutRef.current);
-        updatedSpecRowTimeoutRef.current = null;
-      }
-      setUpdatedSpecRowTarget({
-        ...updatedRowTargetForSpecRegeneration,
-        phase: 'fixing',
-        requestKey: Date.now(),
-      });
-    }
-
-    // Confirm any pending AC quick fixes — counter reset deactivates the Specify
-    // button after the animation without touching acRunResult (avoids checkmarks).
-    setPendingAcQuickFixCount(0);
-
-    if (restoredPlanItemsFromEmptyPlan) {
-      clearChainedRunTimeout();
-      clearStatusReveal('plan');
-      clearStatusReveal('ac');
-      resetRunUiForTab(currentTabId);
-      terminalDrivenGenerationRef.current = false;
-      doneEnhanceFlowRef.current = {
-        mode: 'restore-plan-progressive',
-        sourceTabId: currentTabId,
-        initialCode: currentCode,
-        targetCode,
-        nextDocument,
-        nextAppliedIssueFixes,
-        nextRemovedIssueIndices,
-        nextAcRunResult,
-        nextPlanRunResult: null,
-        currentAcRunResult,
-        currentPlanRunResult,
-        currentRemovedIssueIndices,
-        rerunAcOriginalIndices: [],
-        rerunPlanOriginalIndices: [],
-        restorePlanFrames: restoredPlanFrames?.length ? restoredPlanFrames : [{
-          code: targetCode,
-          documentSections: nextDocument,
-          planRunResult: [{ status: 'pending' }],
-        }],
-        updatedRowTarget: updatedRowTargetForSpecRegeneration,
-        commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
-        versionCommit: hasSpecChanges
-          ? {
-              sourceTabId: currentTabId,
-              currentCode: (() => {
-                const history = specVersionsByTab[currentTabId];
-                const lastVersion = Array.isArray(history?.versions) && history.versions.length > 0
-                  ? history.versions[history.versions.length - 1]
-                  : null;
-                return lastVersion?.code ?? currentCode;
-              })(),
-              currentCommentEntries: pendingCommentEntriesSnapshot,
-              nextCode: targetCode,
-            }
-          : null,
-      };
-      setGenerationTabId(currentTabId);
-      setGenProgress(0);
-      queueTerminalRun({
-        mode: 'update-spec',
-        sourceTabId: currentTabId,
-        taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
-        question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
-        permissionChoice: 'allow-once',
-      }, {
-        preserveAcRunResult: true,
-        preservePlanRunResult: true,
-        preserveWarningBanner: true,
-      });
-      setGenState('generating');
-      return;
-    }
-
-    const resolveVisibleRunResults = (currentResults, fallbackResults) => {
-      const sourceResults = Array.isArray(currentResults)
-        ? currentResults
-        : (Array.isArray(fallbackResults) ? fallbackResults : null);
-
-      return Array.isArray(sourceResults)
-        ? sourceResults.map((statusItem) => resolveRuntimeInspectionItem(statusItem))
-        : sourceResults;
-    };
-    const resolvedNextAcRunResult = resolveVisibleRunResults(currentAcRunResult, nextAcRunResult);
-    const resolvedNextPlanRunResult = resolveVisibleRunResults(currentPlanRunResult, nextPlanRunResult);
 
     clearChainedRunTimeout();
     clearStatusReveal('plan');
@@ -14453,16 +12120,15 @@ export default function App() {
       nextDocument,
       nextAppliedIssueFixes,
       nextRemovedIssueIndices,
-      nextAcRunResult: resolvedNextAcRunResult,
-      nextPlanRunResult: resolvedNextPlanRunResult,
+      nextAcRunResult,
+      nextPlanRunResult,
       currentAcRunResult,
       currentPlanRunResult,
       currentRemovedIssueIndices,
-      rerunAcOriginalIndices: effectiveRerunAcOriginalIndices,
+      rerunAcOriginalIndices,
       rerunPlanOriginalIndices,
-      updatedRowTarget: updatedRowTargetForSpecRegeneration,
-      commentsAlreadyCleared: !shouldClearDoneCommentsAfterUpdate,
-      versionCommit: (hasSpecChanges || effectiveHasPendingReruns)
+      commentsAlreadyCleared: hasPendingComments,
+      versionCommit: (hasSpecChanges || hasPendingReruns)
         ? {
             sourceTabId: currentTabId,
             // Use the version history's latest code as the "before" snapshot so
@@ -14483,11 +12149,24 @@ export default function App() {
 
     setGenerationTabId(currentTabId);
     setGenProgress(0);
-    terminalDrivenGenerationRef.current = false;
+    terminalDrivenGenerationRef.current = true;
+    if (hasPendingComments) {
+      clearTaskCommentsForTab(currentTabId);
+    }
+    queueTerminalRun({
+      mode: 'generate',
+      sourceTabId: currentTabId,
+      taskLabel: ideTabs.find((tab) => tab.id === currentTabId)?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
+      question: getTaskRuntimeState(currentTabId)?.taskState?.prompt ?? '',
+    }, {
+      preserveAcRunResult: true,
+      preservePlanRunResult: true,
+      preserveWarningBanner: true,
+    });
     setGenState(AGENT_TASK_LOADING_STATE_ENABLED ? 'loading' : 'generating');
   };
 
-  const handleDoneIssueFix = useCallback(({ kind, index, replacementText: replacementTextOverride = null, commentText: commentTextOverride = null }) => {
+  const handleDoneIssueFix = useCallback(({ kind, index }) => {
     if (!Number.isInteger(index) || index < 0) return;
     const fixConfig = getIssueQuickFixConfig(kind, index);
     if (!fixConfig) return;
@@ -14496,10 +12175,6 @@ export default function App() {
     const terminalTabId = currentTabId ? buildTerminalSessionTabId(currentTabId) : null;
     const visibleIndex = mapOriginalIssueIndexToVisible(kind, index, removedIssueIndices);
     if (!Number.isInteger(visibleIndex) || visibleIndex < 0) return;
-    const selectedReplacementText =
-      typeof replacementTextOverride === 'string' && replacementTextOverride.trim().length > 0
-        ? replacementTextOverride
-        : fixConfig.replacementText;
 
     // A quick fix invalidates any in-flight run/reveal state for this spec.
     clearChainedRunTimeout();
@@ -14521,100 +12196,50 @@ export default function App() {
       setTerminalPermissionPromptForTab(null, terminalTabId);
     }
 
-    setAppliedIssueFixes((prev) => ({
-      ...prev,
-      [kind]: {
-        ...(prev[kind] ?? {}),
-        [index]: createAppliedIssueFixValue(selectedReplacementText),
-      },
-    }));
-
-    if (kind === 'ac') {
-      setPendingAcQuickFixCount((c) => c + 1);
-    }
-
-    setHighlightedProblemLocation(null);
-
     if (currentTabId) {
-      const targetMetadata = buildCommentTargetEntryMetadata(
-        generatedDocument,
-        { kind, index },
-        removedIssueIndices,
-      );
-      const quickFixComment = (
-        typeof commentTextOverride === 'string' && commentTextOverride.trim().length > 0
-          ? commentTextOverride.trim()
-          : fixConfig.actionLabel
-      );
-      const commentMetadata = {
-        sectionTitle: kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-        line: targetMetadata.line ?? '',
-        rawIndex: targetMetadata.rawIndex,
-        rowStableKey: targetMetadata.rowStableKey,
-      };
-      const nextAcRunResult = kind === 'ac' && Array.isArray(acRunResult)
-        ? acRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
-        : acRunResult;
-      const nextPlanRunResult = kind === 'plan' && Array.isArray(planRunResult)
-        ? planRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
-        : planRunResult;
-
-      setAgentTaskCommentEntries((prev) => replaceCommentEntriesForTarget(
-        prev,
-        { kind, index },
-        quickFixComment ? [quickFixComment] : [],
-        commentMetadata,
-      ));
-      if (kind === 'ac' && Array.isArray(nextAcRunResult)) {
-        setAcRunResult(nextAcRunResult);
-      }
-      if (kind === 'plan' && Array.isArray(nextPlanRunResult)) {
-        setPlanRunResult(nextPlanRunResult);
-      }
-
-      setInteractiveTaskStates((prev) => {
-        const previousTaskState = prev[currentTabId] ?? {};
-        const baseAcRunResult = previousTaskState.acRunResult ?? acRunResult;
-        const basePlanRunResult = previousTaskState.planRunResult ?? planRunResult;
-        const storedAcRunResult = kind === 'ac' && Array.isArray(baseAcRunResult)
-          ? baseAcRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
-          : baseAcRunResult;
-        const storedPlanRunResult = kind === 'plan' && Array.isArray(basePlanRunResult)
-          ? basePlanRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
-          : basePlanRunResult;
-        const storedCommentEntries = replaceCommentEntriesForTarget(
-          previousTaskState.commentEntries ?? agentTaskCommentEntries,
-          { kind, index },
-          quickFixComment ? [quickFixComment] : [],
-          commentMetadata,
-        );
-
+      setIdeTabContents((prev) => {
+        const currentEntry = prev[currentTabId] ?? { language: 'markdown', code: '' };
         return {
           ...prev,
           [currentTabId]: {
-            ...previousTaskState,
-            genState,
-            genProgress,
-            documentSections: previousTaskState.documentSections ?? generatedDocument,
-            appliedIssueFixes: {
-              ...cloneIssueStateMap(previousTaskState.appliedIssueFixes ?? appliedIssueFixes),
-              [kind]: {
-                ...(previousTaskState.appliedIssueFixes?.[kind] ?? appliedIssueFixes?.[kind] ?? {}),
-                [index]: createAppliedIssueFixValue(selectedReplacementText),
-              },
-            },
-            removedIssueIndices: previousTaskState.removedIssueIndices ?? removedIssueIndices,
-            acRunResult: storedAcRunResult,
-            planRunResult: storedPlanRunResult,
-            commentEntries: storedCommentEntries,
+            ...currentEntry,
+            language: 'markdown',
+            code: applyIssueQuickFixToCode(currentEntry.code ?? '', {
+              kind,
+              index: visibleIndex,
+              replacementText: fixConfig.replacementText,
+            }),
           },
         };
       });
     }
 
-    // Keep the existing Problems list visible until Specify regenerates the spec.
-    // Reset only keyboard tracking so navigation starts from the first row.
-    problemsSelectedLeafIdxRef.current = -1;
+    setGeneratedDocument((prev) => applyIssueQuickFixToDocumentSections(prev, {
+      kind,
+      index: visibleIndex,
+      replacementText: fixConfig.replacementText,
+    }));
+
+    setAppliedIssueFixes((prev) => ({
+      ...prev,
+      [kind]: {
+        ...(prev[kind] ?? {}),
+        [index]: true,
+      },
+    }));
+
+    // Immediately show empty checkbox — run will confirm the fix with green status
+    const setResult = kind === 'ac' ? setAcRunResult : setPlanRunResult;
+    setResult((prev) => {
+      if (!Array.isArray(prev)) return prev;
+      const next = [...prev];
+      next[visibleIndex] = null;
+      return next;
+    });
+
+    if (currentTabId) {
+      clearTaskCommentTargetForTab(currentTabId, { kind, index });
+    }
 
   }, [
     activeEditorTab,
@@ -14623,19 +12248,10 @@ export default function App() {
     clearChainedRunTimeout,
     clearStatusReveal,
     clearTerminalRunAnimation,
-    acRunResult,
-    agentTaskCommentEntries,
-    appliedIssueFixes,
     generationTabId,
-    generatedDocument,
-    genProgress,
-    genState,
     ideTabs,
-    planRunResult,
     removedIssueIndices,
     setAcRunResult,
-    setAgentTaskCommentEntries,
-    setPendingAcQuickFixCount,
     setPendingTerminalRunForTab,
     setPlanRunResult,
     setRunStateForTab,
@@ -14651,18 +12267,6 @@ export default function App() {
     if (chainedRunTimeoutRef.current) {
       window.clearTimeout(chainedRunTimeoutRef.current);
       chainedRunTimeoutRef.current = null;
-    }
-    if (updatedSpecRowTimeoutRef.current) {
-      window.clearTimeout(updatedSpecRowTimeoutRef.current);
-      updatedSpecRowTimeoutRef.current = null;
-    }
-    if (visitBookingProblemCommentFadeTimeoutRef.current) {
-      window.clearTimeout(visitBookingProblemCommentFadeTimeoutRef.current);
-      visitBookingProblemCommentFadeTimeoutRef.current = null;
-    }
-    if (suppressDoneCommentsSyncTimeoutRef.current) {
-      window.clearTimeout(suppressDoneCommentsSyncTimeoutRef.current);
-      suppressDoneCommentsSyncTimeoutRef.current = null;
     }
     acWarningFlowRef.current = null;
   }, []);
@@ -14718,245 +12322,11 @@ export default function App() {
     setActiveEditorTab(0);
   }, [screen, activeEditorTab, ideTabs.length]);
 
-  const handleProblemsQuickFixesClick = useCallback((buttonElement) => {
-    let resolvedIssueTarget = null;
-    let resolvedProposals = null;
-    let resolvedStatusItem = null;
-    const hasPendingFixForIssue = (target) => (
-      Boolean(target?.kind)
-      && Number.isInteger(target?.index)
-      && Boolean(appliedIssueFixes?.[target.kind]?.[target.index])
-    );
-
-    const currentIssues = buildInspectionSummary({
-      planRunResult,
-      acRunResult,
-      documentSections: generatedDocument,
-    }).issues;
-    const selectedProblemNode = typeof document !== 'undefined'
-      ? document.querySelector('.problems-window .tree-node-children .tree-node-selected')
-      : null;
-    const selectedProblemLabel = selectedProblemNode instanceof HTMLElement
-      ? (selectedProblemNode.textContent ?? '').replace(/\s+/g, ' ').trim()
-      : '';
-    const selectedIssue = selectedProblemLabel
-      ? (currentIssues.find((issue) => selectedProblemLabel.includes(issue?.label ?? '')) ?? null)
-      : null;
-
-    if (selectedIssue) {
-      const issueTarget = getDocumentCheckTargetAtRawIndex(
-        generatedDocument,
-        selectedIssue.rawIndex,
-        removedIssueIndices,
-      );
-      if (issueTarget && !hasPendingFixForIssue(issueTarget)) {
-        const visibleIndex = mapOriginalIssueIndexToVisible(issueTarget.kind, issueTarget.index, removedIssueIndices);
-        if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
-          const statusItem = issueTarget.kind === 'ac'
-            ? acRunResult?.[visibleIndex]
-            : planRunResult?.[visibleIndex];
-          resolvedStatusItem = statusItem ?? null;
-          resolvedIssueTarget = issueTarget;
-          if (Array.isArray(statusItem?.proposalOptions)) {
-            resolvedProposals = statusItem.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
-          } else if (typeof statusItem?.proposal === 'string' && statusItem.proposal) {
-            resolvedProposals = [{ label: statusItem.proposal }];
-          }
-        }
-      }
-    } else if (highlightedProblemLocation?.kind) {
-      // A specific problem is selected — resolve proposals only for that problem.
-      const rawIndex = highlightedProblemLocation.rawIndex;
-      const issueTarget = normalizeCommentTarget({
-        kind: highlightedProblemLocation.kind,
-        index: highlightedProblemLocation.index,
-      }) ?? getDocumentCheckTargetAtRawIndex(generatedDocument, rawIndex, removedIssueIndices);
-
-      if (issueTarget && !hasPendingFixForIssue(issueTarget)) {
-        const visibleIndex = mapOriginalIssueIndexToVisible(issueTarget.kind, issueTarget.index, removedIssueIndices);
-        if (Number.isInteger(visibleIndex) && visibleIndex >= 0) {
-          const statusItem = issueTarget.kind === 'ac'
-            ? acRunResult?.[visibleIndex]
-            : planRunResult?.[visibleIndex];
-          resolvedStatusItem = statusItem ?? null;
-          resolvedIssueTarget = issueTarget;
-          if (Array.isArray(statusItem?.proposalOptions)) {
-            // Multi-option proposals (e.g. "Inline field error", "Modal with conflict details")
-            resolvedProposals = statusItem.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
-          } else if (typeof statusItem?.proposal === 'string' && statusItem.proposal) {
-            // Single string proposal — treat as a one-item list
-            resolvedProposals = [{ label: statusItem.proposal }];
-          }
-        }
-      }
-    } else {
-      // Nothing highlighted — fall back to first issue with any proposals
-      const sources = [
-        ...(Array.isArray(acRunResult) ? acRunResult.map((item, i) => ({ item, kind: 'ac', index: i })) : []),
-        ...(Array.isArray(planRunResult) ? planRunResult.map((item, i) => ({ item, kind: 'plan', index: i })) : []),
-      ];
-      for (const { item, kind, index } of sources) {
-        let proposals = null;
-        if (appliedIssueFixes?.[kind]?.[index]) {
-          continue;
-        }
-        if (Array.isArray(item?.proposalOptions)) {
-          proposals = item.proposalOptions.filter(opt => opt?.type !== 'text' && typeof opt?.label === 'string');
-        } else if (typeof item?.proposal === 'string' && item.proposal) {
-          proposals = [{ label: item.proposal }];
-        }
-        if (proposals && proposals.length > 0) {
-          resolvedProposals = proposals;
-          resolvedStatusItem = item;
-          resolvedIssueTarget = { kind, index };
-          break;
-        }
-      }
-    }
-
-    const rect = buttonElement?.getBoundingClientRect?.();
-    setProblemsFixMenu({
-      proposals: resolvedProposals ?? [],
-      rect: rect,
-      issueTarget: resolvedIssueTarget,
-      severity: resolvedStatusItem?.issue?.severity ?? 'warning',
-      canFixIssue: resolvedIssueTarget ? Boolean(getIssueQuickFixConfig(resolvedIssueTarget.kind, resolvedIssueTarget.index)) : false,
-    });
-  }, [acRunResult, appliedIssueFixes, generatedDocument, highlightedProblemLocation, planRunResult, removedIssueIndices]);
-
   useEffect(() => {
     if (screen !== 'ide' || seededPresetTaskRef.current) return;
     seededPresetTaskRef.current = true;
     handleAgentTaskSelect('t1');
   }, [screen, handleAgentTaskSelect]);
-
-  useEffect(() => {
-    const handleProblemsToolbarMouseDown = (e) => {
-      const btn = e.target.closest?.('button[title="Show Quick-Fixes"]');
-      if (!btn) return;
-      // Defer to next tick so PositionedPopup's dismiss listener (added after render)
-      // does not fire on the same mousedown event that opens the menu.
-      const btnSnapshot = btn;
-      setTimeout(() => handleProblemsQuickFixesClick(btnSnapshot), 0);
-    };
-    document.addEventListener('mousedown', handleProblemsToolbarMouseDown, true);
-    return () => {
-      document.removeEventListener('mousedown', handleProblemsToolbarMouseDown, true);
-    };
-  }, [handleProblemsQuickFixesClick]);
-
-  // Focus the Problems panel whenever it transitions from closed → open,
-  // regardless of how it was opened (widget button, stripe button, keyboard shortcut, etc.)
-  const prevIdeOpenWindowsRef = useRef(ideOpenWindows);
-  useEffect(() => {
-    const prev = prevIdeOpenWindowsRef.current;
-    prevIdeOpenWindowsRef.current = ideOpenWindows;
-    const justOpened = ideOpenWindows.includes('problems') && !prev.includes('problems');
-    if (!justOpened) return;
-    const panelEl = document.querySelector('.problems-window');
-    if (!panelEl) return;
-    const target =
-      panelEl.querySelector('.tree-node-selected') ??
-      panelEl.querySelector('.tree-node-children .tree-node') ??
-      panelEl;
-    if (target.tabIndex < 0) target.tabIndex = -1;
-    target.focus({ preventScroll: true });
-    problemsPanelActiveRef.current = true;
-  }, [ideOpenWindows]);
-
-  // Track whether the Problems panel is the "active" panel for keyboard navigation,
-  // and which leaf index is currently selected (avoids relying on tree-node-selected CSS class
-  // which the UI kit resets on re-renders).
-  useEffect(() => {
-    const onMouseDown = (e) => {
-      const panelEl = e.target.closest?.('.problems-window');
-      if (panelEl) {
-        problemsPanelActiveRef.current = true;
-        // Track which leaf node was clicked so arrow nav starts from the right position
-        const clickedLeaf = e.target.closest?.('.tree-node');
-        if (clickedLeaf) {
-          const leaves = Array.from(panelEl.querySelectorAll('.tree-node-children .tree-node'));
-          const idx = leaves.indexOf(clickedLeaf);
-          if (idx >= 0) problemsSelectedLeafIdxRef.current = idx;
-        }
-      } else {
-        problemsPanelActiveRef.current = false;
-      }
-    };
-    document.addEventListener('mousedown', onMouseDown, true);
-    return () => document.removeEventListener('mousedown', onMouseDown, true);
-  }, []);
-
-  useEffect(() => {
-    if (screen !== 'ide') return undefined;
-
-    const handleProblemsArrowNav = (e) => {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-      if (document.querySelector('.problems-quick-fix-menu-item')) return;
-      // Don't intercept when an input/textarea has focus
-      const active = document.activeElement;
-      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) return;
-
-      // Use DOM check instead of stale-closure ideOpenWindows check
-      const panelEl = document.querySelector('.problems-window');
-      if (!panelEl) return;
-      // Handle if focus is inside the panel OR user previously clicked it
-      if (!panelEl.contains(document.activeElement) && !problemsPanelActiveRef.current) return;
-      // Leaf nodes are rendered in the same order as treeData children
-      const leafNodes = Array.from(panelEl.querySelectorAll('.tree-node-children .tree-node'));
-      if (leafNodes.length === 0) return;
-
-      // Use the ref-tracked index (reliable across re-renders) with CSS class as fallback
-      let currentIdx = problemsSelectedLeafIdxRef.current;
-      if (currentIdx < 0 || currentIdx >= leafNodes.length) {
-        currentIdx = leafNodes.findIndex((n) => n.classList.contains('tree-node-selected'));
-      }
-
-      // Nothing selected yet — first arrow key always lands on the first item.
-      if (currentIdx < 0) {
-        currentIdx = -1;
-      }
-
-      const nextIdx = currentIdx < 0
-        ? 0
-        : e.key === 'ArrowDown'
-          ? (currentIdx < leafNodes.length - 1 ? currentIdx + 1 : 0)
-          : (currentIdx > 0 ? currentIdx - 1 : leafNodes.length - 1);
-
-      const targetNode = leafNodes[nextIdx];
-      if (!targetNode) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-      problemsSelectedLeafIdxRef.current = nextIdx;
-      // Click triggers both UI kit visual selection and our onNodeSelect callback
-      targetNode.click();
-      targetNode.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-    };
-
-    document.addEventListener('keydown', handleProblemsArrowNav, true);
-    return () => document.removeEventListener('keydown', handleProblemsArrowNav, true);
-  }, [screen]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined' || screen !== 'ide') return undefined;
-
-    const handleProblemsQuickFixesShortcut = (event) => {
-      if (!event.altKey || event.key !== 'Enter' || event.isComposing) return;
-
-      const button = document.querySelector('button[title="Show Quick-Fixes"]');
-      if (!(button instanceof HTMLElement)) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      handleProblemsQuickFixesClick(button);
-    };
-
-    document.addEventListener('keydown', handleProblemsQuickFixesShortcut, true);
-    return () => {
-      document.removeEventListener('keydown', handleProblemsQuickFixesShortcut, true);
-    };
-  }, [screen, handleProblemsQuickFixesClick]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -15135,11 +12505,7 @@ export default function App() {
           }
         }
       } else if (e.key === 'Escape') {
-        if (problemsFixMenu) {
-          setProblemsFixMenu(null);
-        } else {
-          setEditorCompletion(null);
-        }
+        setEditorCompletion(null);
       }
     };
 
@@ -15150,7 +12516,7 @@ export default function App() {
       document.removeEventListener('input', handleEditorInput, true);
       document.removeEventListener('keydown', handleEditorKeyDown, true);
     };
-  }, [screen, updateAttachedFilesForTab, problemsFixMenu]);
+  }, [screen, updateAttachedFilesForTab]);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -15241,41 +12607,13 @@ export default function App() {
 
       const treeNode = target.closest('.tree-node');
       if (!(treeNode instanceof HTMLElement)) return;
-      if (!treeNode.closest('.problems-window')) return;
-      const isVisitConflictDiagnosticNode =
-        (typeof treeNode.id === 'string' && treeNode.id.includes('visit-conflict-diagnostic'))
-        || (treeNode.textContent ?? '').includes(VISIT_BOOKING_CONFLICT_PROBLEM_TITLE);
-
-      const rawIndexMarker = target.closest('[data-problem-raw-index]');
-      let rawIndex = rawIndexMarker instanceof HTMLElement
-        ? Number(rawIndexMarker.dataset.problemRawIndex)
-        : null;
 
       const secondary = treeNode.querySelector('.tree-node-secondary');
-      rawIndex = Number.isInteger(rawIndex)
-        ? rawIndex
-        : secondary instanceof HTMLElement
-        ? parseProblemRawIndexFromSecondaryText(secondary.textContent ?? '')
-        : null;
-      if (!Number.isInteger(rawIndex)) {
-        const leafNodes = Array.from(document.querySelectorAll('.problems-window .tree-node-children .tree-node'));
-        const leafIndex = leafNodes.indexOf(treeNode);
-        const currentIssues = buildInspectionSummary({
-          planRunResult,
-          acRunResult,
-          documentSections: generatedDocument,
-        }).issues;
-        const issue = leafIndex >= 0 ? currentIssues[leafIndex] : null;
-        rawIndex = Number.isInteger(issue?.rawIndex) ? issue.rawIndex : null;
-      }
-      if (!Number.isInteger(rawIndex) && isVisitConflictDiagnosticNode) {
-        rawIndex = getDocumentCheckRawIndex(generatedDocument, 'ac', VISIT_BOOKING_CONFLICT_PROBLEM_TARGET.index);
-      }
+      if (!(secondary instanceof HTMLElement)) return;
+
+      const rawIndex = parseProblemRawIndexFromSecondaryText(secondary.textContent ?? '');
       if (!Number.isInteger(rawIndex)) return;
 
-      if (isVisitConflictDiagnosticNode) {
-        setVisitBookingProblemExpanded(true);
-      }
       requestProblemHighlight(rawIndex);
     };
 
@@ -15284,7 +12622,7 @@ export default function App() {
     return () => {
       document.removeEventListener('click', handleProblemsNodeClick, true);
     };
-  }, [acRunResult, generatedDocument, planRunResult, requestProblemHighlight]);
+  }, [requestProblemHighlight]);
 
   useEffect(() => {
     if (screen !== 'ide') return;
@@ -15394,6 +12732,9 @@ export default function App() {
     setAgentTasks((tasks) => [newTask, ...tasks]);
     setSelectedTask(id);
     setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+    ));
     setIdeTabs((prev) => (
       prev.some((tab) => tab.id === id) ? prev : [nextTab, ...prev]
     ));
@@ -15530,10 +12871,8 @@ export default function App() {
           currentRemovedIssueIndices,
           rerunAcOriginalIndices,
           rerunPlanOriginalIndices,
-          updatedRowTarget,
           commentsAlreadyCleared = false,
           usesDirectSwap = false,
-          restorePlanFrames = null,
           versionCommit = null,
         } = doneEnhanceFlow;
         setGenProgress(0);
@@ -15563,103 +12902,8 @@ export default function App() {
         const clearDoneCommentsOnce = () => {
           if (commentsCleared) return;
           commentsCleared = true;
-          fadeOutDoneComments();
-          if (doneEnhanceFlowRef.current) {
-            doneEnhanceFlowRef.current = {
-              ...doneEnhanceFlowRef.current,
-              commentsAlreadyCleared: true,
-            };
-          }
+          resetDoneComments();
         };
-        const persistDoneEnhanceTaskState = () => {
-          if (!sourceTabId) return;
-
-          setInteractiveTaskStates((prev) => ({
-            ...prev,
-            [sourceTabId]: {
-              ...(prev[sourceTabId] ?? {}),
-              genState: 'done',
-              genProgress: 1,
-              documentSections: nextDocument,
-              appliedIssueFixes: nextAppliedIssueFixes,
-              removedIssueIndices: nextRemovedIssueIndices,
-              acRunResult: nextAcRunResult,
-              planRunResult: nextPlanRunResult,
-              commentEntries: [],
-              pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
-              pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
-            },
-          }));
-        };
-
-        if (mode === 'restore-plan-progressive') {
-          const frames = Array.isArray(restorePlanFrames) ? restorePlanFrames : [];
-          let frameIndex = 0;
-          let cancelled = false;
-
-          const finishRestore = () => {
-            if (cancelled) return;
-            doneEnhanceFlowRef.current = null;
-            clearDoneCommentsOnce();
-            if (versionCommit?.sourceTabId) {
-              updateSpecVersionsForTab((prevHistory) => appendSpecVersionHistoryEntry(prevHistory, {
-                currentCode: versionCommit.currentCode,
-                currentCommentEntries: versionCommit.currentCommentEntries,
-                nextCode: versionCommit.nextCode,
-              }), versionCommit.sourceTabId);
-            }
-            setIdeTabContents((prev) => ({
-              ...prev,
-              [activeTabIdForGen]: {
-                ...(prev[activeTabIdForGen] ?? {}),
-                language: 'markdown',
-                code: targetCode,
-              },
-            }));
-            setGeneratedDocument(nextDocument);
-            triggerUpdatedSpecRowAnimation(updatedRowTarget);
-            setAppliedIssueFixes(nextAppliedIssueFixes);
-            setRemovedIssueIndices(nextRemovedIssueIndices);
-            setAcRunResult(nextAcRunResult);
-            setPlanRunResult(null);
-            persistDoneEnhanceTaskState();
-            setGenProgress(1);
-            setGenState('done');
-          };
-
-          const showNextRestoreFrame = () => {
-            if (cancelled) return;
-            if (frameIndex >= frames.length) {
-              finishRestore();
-              return;
-            }
-
-            const frame = frames[frameIndex];
-            frameIndex += 1;
-            setIdeTabContents((prev) => ({
-              ...prev,
-              [activeTabIdForGen]: {
-                ...(prev[activeTabIdForGen] ?? {}),
-                language: 'markdown',
-                code: frame.code,
-              },
-            }));
-            setGeneratedDocument(frame.documentSections);
-            setPlanRunResult(frame.planRunResult);
-            setGenProgress(frameIndex / Math.max(frames.length, 1));
-            genTimerRef.current = setTimeout(showNextRestoreFrame, RESTORE_PLAN_FRAME_STEP_DELAY_MS);
-          };
-
-          genTimerRef.current = setTimeout(showNextRestoreFrame, RESTORE_PLAN_FRAME_INITIAL_DELAY_MS);
-
-          return () => {
-            cancelled = true;
-            if (genTimerRef.current) {
-              clearTimeout(genTimerRef.current);
-              genTimerRef.current = null;
-            }
-          };
-        }
 
         if (usesDirectSwap) {
           clearDoneCommentsOnce();
@@ -15680,7 +12924,6 @@ export default function App() {
           }
           doneEnhanceFlowRef.current = null;
           setGeneratedDocument(nextDocument);
-          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -15692,7 +12935,17 @@ export default function App() {
             rerunAcOriginalIndices,
             allowPendingOutdated: false,
           });
-          persistDoneEnhanceTaskState();
+          // Store rerun indices so Run knows what to check after Enhance
+          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
+            setInteractiveTaskStates((prev) => ({
+              ...prev,
+              [sourceTabId]: {
+                ...(prev[sourceTabId] ?? {}),
+                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
+                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
+              },
+            }));
+          }
           setGenProgress(1);
           setGenState('done');
           return undefined;
@@ -15709,10 +12962,19 @@ export default function App() {
             }), versionCommit.sourceTabId);
           }
           doneEnhanceFlowRef.current = null;
-          persistDoneEnhanceTaskState();
+          // Store rerun indices so Run knows what to check after Enhance
+          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
+            setInteractiveTaskStates((prev) => ({
+              ...prev,
+              [sourceTabId]: {
+                ...(prev[sourceTabId] ?? {}),
+                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
+                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
+              },
+            }));
+          }
           clearDoneCommentsOnce();
           setGeneratedDocument(nextDocument);
-          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -15736,6 +12998,7 @@ export default function App() {
           if (cancelled) return;
 
           if (frameIndex < frames.length) {
+            clearDoneCommentsOnce();
             const nextFrame = frames[frameIndex];
             frameIndex += 1;
 
@@ -15766,7 +13029,6 @@ export default function App() {
             }), versionCommit.sourceTabId);
           }
           setGeneratedDocument(nextDocument);
-          triggerUpdatedSpecRowAnimation(updatedRowTarget);
           setAppliedIssueFixes(nextAppliedIssueFixes);
           setRemovedIssueIndices(nextRemovedIssueIndices);
           startDoneEnhanceStatusReveal(nextPlanRunResult, nextAcRunResult, {
@@ -15778,7 +13040,17 @@ export default function App() {
             rerunAcOriginalIndices,
             allowPendingOutdated: false,
           });
-          persistDoneEnhanceTaskState();
+          // Store rerun indices so Run knows what to check after Enhance
+          if (sourceTabId && (Array.isArray(rerunAcOriginalIndices) || Array.isArray(rerunPlanOriginalIndices))) {
+            setInteractiveTaskStates((prev) => ({
+              ...prev,
+              [sourceTabId]: {
+                ...(prev[sourceTabId] ?? {}),
+                pendingRerunAcOriginalIndices: Array.isArray(rerunAcOriginalIndices) && rerunAcOriginalIndices.length > 0 ? rerunAcOriginalIndices : undefined,
+                pendingRerunPlanOriginalIndices: Array.isArray(rerunPlanOriginalIndices) && rerunPlanOriginalIndices.length > 0 ? rerunPlanOriginalIndices : undefined,
+              },
+            }));
+          }
           setGenProgress(1);
           setGenState('done');
         }
@@ -15847,8 +13119,8 @@ export default function App() {
     }
   }, [
     activeTabIdForGen,
-    fadeOutDoneComments,
     genState,
+    generatedDocument,
     generationTabId,
     isTerminalStreaming,
     pendingTerminalRun,
@@ -15856,7 +13128,6 @@ export default function App() {
     resetRunUiForTab,
     startDoneEnhanceStatusReveal,
     terminalPermissionPrompt,
-    triggerUpdatedSpecRowAnimation,
     updateSpecVersionsForTab,
   ]);
 
@@ -15895,11 +13166,7 @@ export default function App() {
     updateDoneOverlayUiStateForTab(uiState, visibleEditorStateTabId);
   }, [updateDoneOverlayUiStateForTab, visibleEditorStateTabId]);
   const handleDoneCommentsChange = useCallback((nextEntries) => {
-    if (
-      doneEnhanceFlowRef.current?.commentsAlreadyCleared
-      || isVisitBookingProblemCommentFading
-      || suppressDoneCommentsSyncRef.current
-    ) {
+    if (doneEnhanceFlowRef.current?.commentsAlreadyCleared) {
       return;
     }
 
@@ -15913,7 +13180,7 @@ export default function App() {
         ? prev
         : mergedNextEntries;
     });
-  }, [isVisitBookingProblemCommentFading]);
+  }, []);
   const activeAgentTaskViewState = useMemo(
     () => (
       activeEditorTabId?.startsWith('agent-task-') && (genState === 'done' || Boolean(doneEnhanceFlowRef.current))
@@ -16153,10 +13420,6 @@ export default function App() {
   const visiblePendingTerminalRun = hasLocalTerminalTabs ? (activeTerminalSession?.pendingRun ?? null) : pendingTerminalRun;
   const visibleTerminalPermissionPrompt = hasLocalTerminalTabs ? (activeTerminalSession?.permissionPrompt ?? null) : terminalPermissionPrompt;
   const visibleAcWarningBanner = hasLocalTerminalTabs ? (activeTerminalSession?.acWarningBanner ?? null) : acWarningBanner;
-  const activePlanBuildClipRequest = activeEditorTabId ? (planBuildClipRequestsByTab[activeEditorTabId] ?? null) : null;
-  const activeEditorRunRequest = activePlanBuildClipRequest ?? (
-    runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null
-  );
   const handleTerminalTabChange = useCallback((nextIndex) => {
     const nextTab = terminalTabsState[nextIndex];
     if (!nextTab) return;
@@ -16429,7 +13692,6 @@ export default function App() {
     if (terminalTabId) {
       setAcWarningBannerForTab(null, terminalTabId);
     }
-    const shouldRunPlanBuildClip = resolvedRunSectionTitle.toLowerCase() === 'plan' && !runTarget;
 
     if (sourceTabId && (taskState?.pendingRerunAcOriginalIndices || taskState?.pendingRerunPlanOriginalIndices)) {
       setInteractiveTaskStates((prev) => ({
@@ -16440,11 +13702,6 @@ export default function App() {
           pendingRerunPlanOriginalIndices: undefined,
         },
       }));
-    }
-
-    if (shouldRunPlanBuildClip) {
-      startPlanBuildClip(sourceTabId, initialPlanRunResult);
-      return;
     }
 
     queueTerminalRun({
@@ -16498,164 +13755,18 @@ export default function App() {
       });
     }
     if (id === 'problems') {
-      const isAgentTaskProblemsTab =
-        currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md');
-      const baseProblemsTreeData = buildProblemsTreeForTab(
-        currentProblemsTab,
-        isAgentTaskProblemsTab
-          ? agentTaskInspectionSummary.issues
-          : null,
-        isAgentTaskProblemsTab
-          ? agentTaskCommentEntries
-          : []
-      );
-      const visitConflictIssue = isAgentTaskProblemsTab
-        ? agentTaskInspectionSummary.issues.find((issue) => issue?.label === VISIT_BOOKING_CONFLICT_PROBLEM_TITLE)
-        : null;
-      const visitConflictComments = isAgentTaskProblemsTab
-        ? getCommentsForCommentTarget(agentTaskCommentEntries, VISIT_BOOKING_CONFLICT_PROBLEM_TARGET)
-        : [];
-      const shouldUseVisitBookingProblemsView =
-        isAgentTaskProblemsTab && (Boolean(visitConflictIssue) || visitConflictComments.length > 0);
-      const visitConflictRawIndex = Number.isInteger(visitConflictIssue?.rawIndex)
-        ? visitConflictIssue.rawIndex
-        : getDocumentCheckRawIndex(activeAgentTaskDocumentSections, 'ac', VISIT_BOOKING_CONFLICT_PROBLEM_TARGET.index);
-      const visitConflictCommentText = visitConflictComments[0] ?? null;
-      const visitConflictChildren = shouldUseVisitBookingProblemsView
-        ? (
-          visitConflictCommentText
-            ? [{
-                id: Number.isInteger(visitConflictRawIndex)
-                  ? `problem-line-${visitConflictRawIndex}-visit-conflict-comment`
-                  : 'visit-conflict-comment',
-                label: (
-                  <VisitBookingProblemCommentLabel
-                    comment={visitConflictCommentText}
-                    isFading={isVisitBookingProblemCommentFading}
-                  />
-                ),
-                icon: null,
-                secondaryText: '',
-              }]
-              : VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS.map((option, optionIndex) => ({
-                id: `visit-conflict-option-${optionIndex}`,
-                label: (
-                  <VisitBookingProblemOptionLabel
-                    option={option}
-                    optionIndex={optionIndex}
-                    onSelect={(selectedOption) => {
-                      handleDoneIssueFix({
-                        ...VISIT_BOOKING_CONFLICT_PROBLEM_TARGET,
-                        replacementText: selectedOption.replacementText,
-                        commentText: selectedOption.label,
-                      });
-                    }}
-                  />
-                ),
-                icon: null,
-                secondaryText: '',
-              }))
-        )
-        : [];
-      const problemsTreeData = shouldUseVisitBookingProblemsView
-        ? [
-            {
-              id: Number.isInteger(visitConflictRawIndex)
-                ? `problem-line-${visitConflictRawIndex}-visit-conflict-diagnostic`
-                : 'visit-conflict-diagnostic',
-              label: (
-                <VisitBookingProblemDiagnosticLabel
-                  rawIndex={visitConflictRawIndex}
-                  onExpand={(rawIndex) => {
-                    setVisitBookingProblemExpanded(true);
-                    requestProblemHighlight(rawIndex);
-                  }}
-                />
-              ),
-              icon: <ProblemsWarningNodeIcon />,
-              secondaryText: '',
-              isExpanded: Boolean(visitConflictCommentText) || visitBookingProblemExpanded,
-              children: visitConflictChildren,
-            },
-          ]
-        : baseProblemsTreeData;
-      const visibleProblemsCount = shouldUseVisitBookingProblemsView
-        ? 1
-        : problemsTreeData.reduce(
-        (count, node) => count + (Array.isArray(node?.children) ? node.children.length : 0),
-        0
-      );
-      const hasVisibleProblems = visibleProblemsCount > 0;
-      const shouldShowEmptyProblemsState = !hasVisibleProblems;
-      const emptyProblemsFileLabel = problemsTreeData[0]?.label ?? currentProblemsTab?.label ?? 'current file';
-      const problemsTabs = [
-        {
-          label: 'File',
-          ...(visibleProblemsCount > 0 ? { count: visibleProblemsCount } : {}),
-        },
-        { label: 'Project Errors' },
-        { label: 'Vulnerable Dependencies' },
-        { label: 'Qodana' },
-      ];
-      const patchedPanel = cloneElement(panel, {
-        key: shouldUseVisitBookingProblemsView
-          ? `visit-booking-problems-${visitConflictCommentText ?? 'options'}-${visitBookingProblemExpanded ? 'expanded' : 'collapsed'}`
-          : panel.key,
-        tabs: problemsTabs,
-        treeData: shouldShowEmptyProblemsState ? [] : problemsTreeData,
-        empty: shouldShowEmptyProblemsState,
-        emptyText: `No problems in ${emptyProblemsFileLabel}`,
-        className: [
-          panel.props.className,
-          shouldShowEmptyProblemsState ? 'problems-window-empty-state' : '',
-          shouldUseVisitBookingProblemsView ? 'visit-booking-problems-window' : '',
-        ].filter(Boolean).join(' ') || undefined,
+      return cloneElement(panel, {
+        treeData: buildProblemsTreeForTab(
+          currentProblemsTab,
+          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
+            ? agentTaskInspectionSummary.issues
+            : null,
+          currentProblemsTab?.id?.startsWith('agent-task-') || currentProblemsTab?.label?.endsWith('.md')
+            ? agentTaskCommentEntries
+            : []
+        ),
         onNodeSelect: handleProblemsNodeSelect,
-        toolbarButtons: [
-          { icon: 'general/show', tooltip: 'Preview' },
-          {
-            icon: 'codeInsight/intentionBulb',
-            tooltip: 'Show Quick-Fixes',
-            onClick: shouldShowEmptyProblemsState
-              ? undefined
-              : (e) => {
-                const btn = e?.currentTarget ?? e?.target ?? document.querySelector('button[title="Show Quick-Fixes"]');
-                handleProblemsQuickFixesClick(btn);
-              },
-          },
-          { icon: PROBLEMS_REFERENCE_VIEW_OPTIONS_ICON, tooltip: 'View Options' },
-        ],
       });
-      // Wrap in a capture-phase click interceptor to catch Quick-Fixes button click
-      // and to transfer keyboard focus into the panel on any click.
-      return createElement('div', {
-        style: { display: 'contents' },
-        onClickCapture: (e) => {
-          const btn = e.target.closest('button[title="Show Quick-Fixes"]');
-          if (btn) {
-            e.stopPropagation();
-            handleProblemsQuickFixesClick(btn);
-          }
-          // Move focus into the problems panel so ArrowUp/ArrowDown work immediately.
-          // Use requestAnimationFrame so the UI kit can finish its own click handling first.
-          requestAnimationFrame(() => {
-            const panelEl = document.querySelector('.problems-window');
-            if (!panelEl) return;
-            if (panelEl.contains(document.activeElement)) return;
-            // Try the selected node first, then any tree node, then the panel itself.
-            const target =
-              panelEl.querySelector('.tree-node-selected') ??
-              panelEl.querySelector('.tree-node-children .tree-node') ??
-              panelEl;
-            if (target.tabIndex === -1 || target.tabIndex >= 0) {
-              target.focus({ preventScroll: true });
-            } else {
-              target.tabIndex = -1;
-              target.focus({ preventScroll: true });
-            }
-          });
-        },
-      }, patchedPanel);
     }
     return panel;
   }
@@ -16759,14 +13870,13 @@ export default function App() {
       });
     }
 
-    const commentTarget = activePlanDiffTarget ?? { kind: 'plan', index: 4 };
-    if (!activePlanDiffSourceTabId) return;
+    if (!activePlanDiffTarget || !activePlanDiffSourceTabId) return;
 
     syncDiffCommentsToTaskTarget({
       sourceTabId: activePlanDiffSourceTabId,
-      target: commentTarget,
+      target: activePlanDiffTarget,
       comments,
-      sectionTitle: commentTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+      sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
       line: activePlanDiffLineText,
     });
   }, [
@@ -16838,24 +13948,45 @@ export default function App() {
 
     if (sourceTabIndex >= 0) {
       setActiveEditorTab(sourceTabIndex);
-      scheduleSpecDoneRowCenter('section-item:plan-5', {
-        topOffset: 94,
-        highlightPlanBlock: true,
-      });
+      restoreSpecDoneScrollForTab(activePlanDiffSourceTabId);
     }
 
     if (taskId) {
       setSelectedTask(taskId);
+      setIdeOpenWindows((prev) => (
+        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+      ));
 
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
-  }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs]);
+  }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs, restoreSpecDoneScrollForTab]);
+  const getEditorTabRunningTone = useCallback((tab) => {
+    if (!tab?.id?.startsWith('agent-task-')) return null;
+
+    const taskState = getTaskRuntimeState(tab.id)?.taskState ?? null;
+    const taskRunState = runStatesByTab[tab.id] ?? 'default';
+
+    if (taskRunState === 'running' || taskState?.genState === 'loading' || taskState?.genState === 'generating') {
+      return 'green';
+    }
+
+    return null;
+  }, [getTaskRuntimeState, runStatesByTab]);
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
         Boolean(ideTabContents[tab.id]?.diffData) ||
         tab.id?.startsWith('plan-diff-') ||
         tab.id?.startsWith('spec-version-diff-');
+      const runningTone = getEditorTabRunningTone(tab);
+
+      if (runningTone) {
+        const baseIcon = shouldUseDiffIcon ? DIFF_TAB_ICON_NAME : tab.icon;
+        return {
+          ...tab,
+          icon: <EditorTabRunningIcon icon={baseIcon} tone={runningTone} />,
+        };
+      }
 
       if (shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME) {
         return { ...tab, icon: DIFF_TAB_ICON_NAME };
@@ -16863,7 +13994,7 @@ export default function App() {
 
       return tab;
     })
-  ), [ideTabContents, ideTabs]);
+  ), [getEditorTabRunningTone, ideTabContents, ideTabs]);
   const activeStatusBarTab = activeEditorTabMeta ?? ideTabs[activeEditorTab ?? 0] ?? null;
   const activeRenderedStatusBarTab = activeStatusBarTab
     ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTab.id) ?? activeStatusBarTab)
@@ -16960,6 +14091,7 @@ export default function App() {
             ...MY_LEFT_STRIPE,
             { id: '_sep',        separator: true,                                                   section: 'top'    },
             { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
+            { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
@@ -17102,9 +14234,8 @@ export default function App() {
         onEditorTabChange={handleEditorTabChange}
         onEditorTabClose={handleEditorTabClose}
         onEditorCodeChange={(code) => {
-          const activeTab = ideTabs[activeEditorTab];
-          const tabId = activeTab?.id;
-          if (!tabId?.startsWith('agent-task-') && !activeTab?.label?.endsWith('.md')) return;
+          const tabId = ideTabs[activeEditorTab]?.id;
+          if (!tabId?.startsWith('agent-task-')) return;
           setIdeTabContents((prev) => ({
             ...prev,
             [tabId]: {
@@ -17116,44 +14247,7 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea
-                genState="done"
-                genProgress={1}
-                onSend={() => {}}
-                onStop={() => {}}
-                onRegenerate={() => {}}
-                onDoneRegenerate={() => {}}
-                onFixIssue={handleDoneIssueFix}
-                onOpenDiffTab={openPlanDiffTab}
-                onOpenVersionDiff={handleDoneVersionSelect}
-                attachedFiles={attachedFiles}
-                onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))}
-                onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])}
-                currentCode={activeAgentTaskCode}
-                documentSections={activeAgentTaskDocumentSections}
-                onOpenProblems={openAndFocusIdeProblemsToolWindow}
-                onOpenTerminal={() => {}}
-                addPopupFiles={addPopupFiles}
-                acRunResult={activeAgentTaskAcRunResult}
-                planRunResult={activeAgentTaskPlanRunResult}
-                acWarningBanner={null}
-                inspectionSummary={agentTaskInspectionSummary}
-                versionHistory={activeVersionHistory}
-                removedIssueIndices={activeAgentTaskRemovedIssueIndices}
-                highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null}
-                updatedRowTarget={updatedSpecRowTarget}
-                doneCommentEntries={agentTaskCommentEntries}
-                onDoneCommentsChange={handleDoneCommentsChange}
-                commentResetToken={doneCommentResetToken}
-                preserveDoneOverlayDuringBusy={false}
-                runState="idle"
-                activeRunRequest={null}
-                doneOverlayUiState={activeDoneOverlayUiState}
-                onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange}
-                specSessionKey={activeEditorTabId}
-                specTabLabel={activeEditorTabMeta?.label ?? ''}
-                pendingAcQuickFixCount={0}
-              />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={agentTaskCommentEntries} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} specSessionKey={activeEditorTabId} />
             : (isDiffTab && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
@@ -17176,13 +14270,14 @@ export default function App() {
         projectTreeData={projectTreeData}
 
         leftStripeItems={[
-          ...DECORATIVE_LEFT_STRIPE_ITEMS,
+          ...MY_LEFT_STRIPE,
           { id: '_sep',        separator: true,                                                    section: 'top' },
           { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
-          { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        section: 'bottom' },
-          { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   section: 'bottom' },
+          { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
+          { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
+          { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
         ]}
-        rightStripeItems={DECORATIVE_RIGHT_STRIPE_ITEMS}
+        rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
@@ -17222,24 +14317,6 @@ export default function App() {
       {editorTabsMorePortal}
       {terminalPermissionPortal}
       <SpecSelectionToolbar position={idleSelectionToolbarPos} />
-      {problemsFixMenu && problemsFixMenu.rect && (
-        <PositionedPopup triggerRect={problemsFixMenu.rect} onDismiss={() => setProblemsFixMenu(null)} gap={4}>
-          <ProblemsQuickFixesMenu
-            proposals={problemsFixMenu.proposals}
-            onSelect={(selectedOption) => {
-              if (problemsFixMenu.issueTarget) {
-                handleDoneIssueFix({
-                  ...problemsFixMenu.issueTarget,
-                  replacementText: selectedOption?.replacementText,
-                  commentText: selectedOption?.label,
-                });
-              }
-              setProblemsFixMenu(null);
-            }}
-            onClose={() => setProblemsFixMenu(null)}
-          />
-        </PositionedPopup>
-      )}
       {editorCompletion && editorCompletion.pos && createPortal(
         <CompletionPopup
           trigger={editorCompletion.trigger}
@@ -17276,9 +14353,6 @@ export default function App() {
         />,
         document.body
       )}
-      <div className="video-speaker-note" aria-label="Speaker note">
-        These slots are fixed at startup. Build the list once in the constructor, not on every request.
-      </div>
     </ThemeProvider>
   );
 }
