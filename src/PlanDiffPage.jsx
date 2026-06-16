@@ -5,7 +5,7 @@ import { PlanDiffEditorArea } from './PlanDiffView.jsx';
 import { PLAN_DIFF_PAGE_STORAGE_KEY } from './planDiffPageState.js';
 
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
-const PLAN_DIFF_PAGE_PROJECT_NAME = 'payment-service';
+const PLAN_DIFF_PAGE_PROJECT_NAME = 'spring-petclinic';
 const PLAN_DIFF_PAGE_BRANCH_NAME = 'feature/visit-booking';
 
 const DEFAULT_PLAN_DIFF_ROWS = [
