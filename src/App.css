@@ -20,6 +20,7 @@ body {
   --motion-duration-fast: 0.18s;
   --motion-duration-medium: 0.24s;
   --motion-duration-slow: 0.42s;
+  --agent-activity-breathe-duration: 2.4s;
 }
 
 .main-window-island .main-window-editor-tabs {
@@ -3963,6 +3964,28 @@ body {
 
 .agent-task-toolbar-left.is-multiline > svg:first-child {
   margin-top: 0;
+}
+
+.agent-task-topbar-icon {
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.agent-task-topbar-icon.is-animated {
+  animation: agent-task-topbar-icon-breathe var(--agent-activity-breathe-duration) ease-in-out infinite;
+}
+
+@keyframes agent-task-topbar-icon-breathe {
+  0%, 100% {
+    opacity: 0.78;
+    filter: drop-shadow(0 0 0 rgba(149, 90, 224, 0));
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(149, 90, 224, 0.24));
+    transform: scale(1.055);
+  }
 }
 
 .at-input-shell {
