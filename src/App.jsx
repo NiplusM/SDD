@@ -10382,7 +10382,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 // ─── Agent Tasks Panel ────────────────────────────────────────────────────────
 
 const AGENT_TASKS = [
-  { id: 't1',               label: 'visit-booking.md', time: '2m',  status: null },
+  { id: 't1',               label: 'visit-booking.md', time: '15m', status: null },
 ];
 
 const VET_SCHEDULES_AC_RUN_STATUSES = [
