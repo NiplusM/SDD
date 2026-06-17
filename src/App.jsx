@@ -2,11 +2,6 @@ import { Fragment, createElement, cloneElement, isValidElement, useState, useRef
 import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
-  PlanDiffEditorArea,
-  arePlanDiffUiStatesEqual,
-  normalizePlanDiffUiState,
-} from './PlanDiffView.jsx';
-import {
   ThemeProvider,
   MainWindow,
   MainToolbar,
@@ -61,7 +56,6 @@ const BRANCH_NAME = 'feature/visit-booking';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
-const DIFF_TAB_ICON_NAME = 'vcs/diff';
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
 const AGENT_TASK_GENERATING_STATE_ENABLED = true;
 const AGENT_TASK_USES_INTERMEDIATE_STATES =
@@ -194,166 +188,6 @@ const MY_PROJECTS = [
 
 const MY_EDITOR_TABS = [];
 const MY_EDITOR_TAB_CONTENTS = {};
-
-const PLAN_CODE_DIFF_PRESETS = {
-  0: {
-    fileLabel: 'schema.sql',
-    language: 'sql',
-    beforeCode: `CREATE TABLE visits (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    pet_id      INTEGER NOT NULL,
-    visit_date  DATE NOT NULL,
-    description VARCHAR(255),
-    CONSTRAINT fk_visits_pet FOREIGN KEY (pet_id) REFERENCES pets(id)
-);`,
-    afterCode: `CREATE TABLE visits (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    pet_id      INTEGER NOT NULL,
-    vet_id      INTEGER NOT NULL,
-    visit_date  DATE NOT NULL,
-    visit_time  TIME NOT NULL,
-    description VARCHAR(255),
-    CONSTRAINT fk_visits_pet FOREIGN KEY (pet_id) REFERENCES pets(id),
-    CONSTRAINT fk_visits_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
-    CONSTRAINT uk_vet_date_time UNIQUE (vet_id, visit_date, visit_time)
-);`,
-  },
-  1: {
-    fileLabel: 'Visit.java',
-    language: 'java',
-    beforeCode: `@Entity
-@Table(name = "visits")
-public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    @NotNull
-    private LocalDate date;
-
-    @Column(name = "description")
-    private String description;
-}`,
-    afterCode: `@Entity
-@Table(name = "visits")
-public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    @NotNull
-    private LocalDate date;
-
-    @Column(name = "visit_time")
-    @NotNull
-    private LocalTime time;
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    @NotNull
-    private Vet vet;
-
-    @Column(name = "description")
-    private String description;
-}`,
-  },
-  2: {
-    fileLabel: 'VisitRepository.java',
-    language: 'java',
-    beforeCode: `public interface VisitRepository extends CrudRepository<Visit, Integer> {
-}`,
-    afterCode: `public interface VisitRepository extends CrudRepository<Visit, Integer> {
-
-    boolean existsByVetIdAndDateAndTime(Integer vetId, LocalDate date, LocalTime time);
-}`,
-  },
-  3: {
-    fileLabel: 'ownerDetails.html',
-    language: 'html',
-    beforeCode: `<table>
-  <thead>
-    <tr>
-      <th>Date</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-</table>`,
-    afterCode: `<table>
-  <thead>
-    <tr>
-      <th>Date</th>
-      <th>Time</th>
-      <th>Vet</th>
-      <th>Description</th>
-    </tr>
-  </thead>
-</table>`,
-  },
-  4: {
-    fileLabel: 'VisitController.java',
-    language: 'java',
-    beforeCode: `@ModelAttribute("timeSlots")
-public List<LocalTime> populateTimeSlots() {
-    List<LocalTime> slots = new ArrayList<>();
-    for (int hour = 9; hour <= 16; hour++) {
-        slots.add(LocalTime.of(hour, 0));
-    }
-    return slots;
-}`,
-    afterCode: `private final List<LocalTime> timeSlots;
-
-public VisitController(...) {
-    this.timeSlots = IntStream.rangeClosed(9, 16)
-        .mapToObj(hour -> LocalTime.of(hour, 0))
-        .toList();
-}
-
-@ModelAttribute("timeSlots")
-public List<LocalTime> populateTimeSlots() {
-    return this.timeSlots;
-}`,
-  },
-  5: {
-    fileLabel: 'createOrUpdateVisitForm.html',
-    language: 'html',
-    beforeCode: `<form th:object="\${visit}" method="post">
-  <input type="date" th:field="*{date}" />
-  <textarea th:field="*{description}"></textarea>
-</form>`,
-    afterCode: `<form th:object="\${visit}" method="post">
-  <input type="date" th:field="*{date}" />
-  <select th:field="*{vet}"></select>
-  <select th:field="*{time}"></select>
-  <textarea th:field="*{description}"></textarea>
-</form>`,
-  },
-  6: {
-    fileLabel: 'VisitControllerTests.java',
-    language: 'java',
-    beforeCode: `@WebMvcTest(VisitController.class)
-class VisitControllerTests {
-
-    @Test
-    void initCreationFormDoesNotExposeVetChoices() throws Exception {
-        mockMvc.perform(get("/owners/1/pets/1/visits/new"))
-            .andExpect(status().isOk());
-    }
-}`,
-    afterCode: `@WebMvcTest(VisitController.class)
-class VisitControllerTests {
-
-    @Test
-    void rejectsDoubleBookingForSameVetAndTime() throws Exception {
-        when(visitRepository.existsByVetIdAndDateAndTime(3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
-            .thenReturn(true);
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-15")
-                .param("time", "10:00")
-                .param("vet", "3"))
-            .andExpect(model().attributeHasFieldErrors("visit", "time"));
-    }
-}`,
-  },
-};
 
 const MY_PROJECT_TREE = [
   {
@@ -923,81 +757,65 @@ function DoneSuccessBanner({
 const AC_RUN_STATUSES = [
   {
     status: 'failed',
-    highlight: {
-      match: 'filtered to available vets for selected date/time',
-      className: 'spec-inline-warning-highlight',
-      tooltip: {
-        title: 'Still shows all vets before availability filtering.',
-        hint: 'Dropdown filters to available vets after date/time is submitted',
-      },
-    },
     issue: {
       severity: 'warning',
-      label: 'AC/Plan mismatch — AC says "available vets" but plan loads all vets',
-      secondaryText: 'Line 6',
+      label: 'Initial GET returns all vets before a date/time is selected',
+      secondaryText: 'VisitController.java:120',
     },
-    proposal: 'Exclude already-booked vets from dropdown',
     checks: [
-      { status: 'passed', text: 'Pre-filter works on POST re-render', chip: 'VisitController.java' },
-      { status: 'failed', text: 'On initial load no date is selected, all vets shown — live filtering on date pick needs AJAX (out of scope)', chip: null },
+      { status: 'passed', text: 'Read populateVets(): filters out booked vets when both date and time are present.', chip: 'VisitController.java:109' },
+      { status: 'failed', text: 'Read populateVets(): initial GET has no selected date/time, so it returns all vets; the form still renders the dropdown from ${vets}.', chip: 'VisitController.java:120' },
     ],
-  },
-  null,
-  {
-    status: 'failed',
-    checkboxStatus: null,
-    highlight: {
-      match: 'A vet cannot be booked for the same date+time twice.',
-      className: 'spec-inline-warning-highlight',
-      tooltip: {
-        title: 'Behavior not specified',
-        hint: 'Specify what the user sees when a booking is blocked.',
-      },
-    },
-    issue: {
-      severity: 'warning',
-      label: 'Behavior not specified',
-      secondaryText: 'Line 8',
-    },
-    proposalOptions: [
-      {
-        label: 'Inline field error on form re-render',
-        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
-      },
-      {
-        label: 'Modal with conflict details',
-        replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the user sees a modal with conflict details and can pick a different time slot.',
-      },
-      {
-        label: 'Let the agent decide',
-        replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
-      },
-      { type: 'text' },
-    ],
-    checks: [],
+    proposal: 'Proposal: Match the criterion to the behavior: all vets on initial load, narrowed to available ones after a date and time are submitted.',
+    replacementText: 'Visit form shows a dropdown of vets: all on initial load, narrowed to those available for the selected slot after submission.',
   },
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: '`ManyToOne` vet persisted', chip: 'Visit.java' },
-      { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' },
+      { status: 'passed', text: 'Read constructor injection: startHour / endHour come from properties.', chip: 'VisitController.java:67' },
+      { status: 'passed', text: 'Read config: slot range is configured as 9 to 16.', chip: 'application.properties:15' },
+      { status: 'passed', text: 'Read form: time picker is rendered from ${timeSlots}.', chip: 'createOrUpdateVisitForm.html:34' },
     ],
   },
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'Vet column in ownerDetails.html', chip: 'ownerDetails.html' },
-      { status: 'passed', text: 'Time column in ownerDetails.html', chip: null },
+      { status: 'passed', text: 'Read controller: checks existsByVetIdAndDateAndTime, rejects field vet, and catches DataIntegrityViolationException.', chip: 'VisitController.java:148' },
+      { status: 'passed', text: 'Ran ./mvnw test: VisitControllerTests passed, including processNewVisitFormDoubleBookingRejected.', chip: 'VisitControllerTests.java:122' },
     ],
   },
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'H2, MySQL, PostgreSQL schemas updated', chip: 'schema.sql' },
-      { status: 'passed', text: 'Seed data includes vet_id and visit_time', chip: 'data.sql' },
+      { status: 'passed', text: 'Read entity: vet is persisted via @ManyToOne and vet_id.', chip: 'Visit.java:47' },
+      { status: 'passed', text: 'Read entity: time is persisted as visit_time; ran ./mvnw test with ClinicServiceTests passing.', chip: 'Visit.java:52' },
+    ],
+  },
+  {
+    status: 'passed',
+    checks: [
+      { status: 'passed', text: 'Read owner details table: shows assigned time and vet.', chip: 'ownerDetails.html:64' },
+      { status: 'passed', text: 'Read previous visits table: shows assigned time and vet.', chip: 'createOrUpdateVisitForm.html:50' },
+    ],
+  },
+  {
+    status: 'passed',
+    checks: [
+      { status: 'passed', text: 'Ran rg over `db/h2/schema.sql`, `db/h2/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
+      { status: 'passed', text: 'Ran rg over `db/mysql/schema.sql`, `db/mysql/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
+      { status: 'passed', text: 'Ran rg over `db/postgres/schema.sql`, `db/postgres/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
     ],
   },
 ];
+
+const VISIT_BOOKING_AC1_VERIFIED_STATUS = {
+  status: 'passed',
+  checksLabel: '2 checks pass',
+  checks: [
+    { status: 'passed', text: 'Read populateVets(): initial load returns all vets when date and time are absent.', chip: 'VisitController.java:120' },
+    { status: 'passed', text: 'Read populateVets(): submitted date+time narrows the dropdown to vets available for that slot.', chip: 'VisitController.java:109' },
+  ],
+};
 
 const PLAN_RUN_STATUSES = [
   { status: 'passed' },
@@ -1042,14 +860,12 @@ const PLAN_RUN_STATUSES = [
 const ISSUE_QUICK_FIX_CONFIG = {
   ac: {
     0: {
-      actionLabel: 'Exclude already-booked vets from dropdown',
-      replacementText: 'Visit form shows a dropdown of vets, excluding those already booked for the selected date and time.',
+      actionLabel: 'Match the criterion to the behavior: all vets on initial load, narrowed to available ones after a date and time are submitted.',
+      replacementText: 'Visit form shows a dropdown of vets: all on initial load, narrowed to those available for the selected slot after submission.',
       resolvedStatus: {
-        status: 'passed',
-        checks: [
-          { status: 'passed', text: 'Pre-filter on POST re-render', chip: 'VisitController.java' },
-          { status: 'passed', text: 'All vets shown on initial GET (expected)', chip: null },
-        ],
+        status: 'stale',
+        checks: [],
+        verifiedStatus: VISIT_BOOKING_AC1_VERIFIED_STATUS,
       },
     },
     1: {
@@ -2521,6 +2337,7 @@ const AGENT_TASK_PROBLEMS_ISSUES = [
 ];
 
 const VISIT_BOOKING_CONFLICT_PROBLEM_TARGET = { kind: 'ac', index: 2 };
+const VISIT_BOOKING_AC_REWORD_TARGET = { kind: 'ac', index: 0 };
 const VISIT_BOOKING_CONFLICT_PROBLEM_TITLE = 'Behavior not specified';
 const VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION = 'Prevention is defined, but the blocked-booking response is missing. How would you like to handle it?';
 const VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS = [
@@ -3185,29 +3002,6 @@ function replaceCommentEntriesForTarget(commentEntries = [], target, comments = 
   ];
 }
 
-function buildPlanDiffInitialComments(commentEntries = [], diffData = null, target = null) {
-  const existingEntry = (commentEntries ?? []).find((entry) => doesEntryMatchCommentTarget(entry, target)) ?? null;
-  const storedDiffComments = normalizeStoredDiffCommentsState(existingEntry?.diffComments);
-  if (Object.keys(storedDiffComments).length > 0) {
-    return storedDiffComments;
-  }
-
-  const nextComments = getCommentsForCommentTarget(commentEntries, target);
-  if (nextComments.length === 0) return {};
-
-  const targetRowId =
-    diffData?.focusRowId ??
-    diffData?.rows?.find((row) => row.kind === 'added' || row.kind === 'context')?.id ??
-    diffData?.rows?.[0]?.id ??
-    null;
-
-  if (!targetRowId) return {};
-
-  return {
-    [targetRowId]: nextComments,
-  };
-}
-
 function applyDiffCommentStateToPlanRunResult(planRunResult = null, target = null, hasComments = false) {
   const normalizedTarget = normalizeCommentTarget(target);
   if (normalizedTarget?.kind !== 'plan' || !Number.isInteger(normalizedTarget.index)) {
@@ -3857,7 +3651,7 @@ const SPEC_LINES = [
   { text: 'Acceptance Criteria',                                                                             type: 'heading' },
   { text: '\u2610 Visit form shows a dropdown of available vets for the selected date/time.',                type: 'check'   },
   { text: '\u2610 Visit form includes a time slot picker with hourly slots from 09:00 to 16:00 (last bookable slot). Slot range is configurable.', type: 'check' },
-  { text: '\u2610 A vet cannot be booked for the same date+time twice.',                                    type: 'check'   },
+  { text: '\u2610 A vet cannot be booked for the same date+time twice. On a blocked booking, the form re-renders with an inline error on the vet field.', type: 'check' },
   { text: '\u2610 Vet and time are persisted with the visit.',                                               type: 'check'   },
   { text: '\u2610 Existing visit display (owner details page, visit history table) shows the assigned vet and time.', type: 'check' },
   { text: '\u2610 All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.',                  type: 'check'   },
@@ -4327,28 +4121,30 @@ function addPlanAutonomousChip(documentSections = []) {
 
 const VISIT_BOOKING_AC_CHECKS_BY_ID = {
   'ac-1': [
-    { status: 'passed', text: 'Pre-filter on POST re-render', chip: 'VisitController.java' },
-    { status: 'passed', text: 'All vets shown on initial GET (expected)', chip: null },
+    { status: 'passed', text: 'Read populateVets(): filters out booked vets when both date and time are present.', chip: 'VisitController.java:109' },
+    { status: 'failed', text: 'Read populateVets(): initial GET has no selected date/time, so it returns all vets; the form still renders the dropdown from ${vets}.', chip: 'VisitController.java:120' },
   ],
   'ac-2': [
-    { status: 'passed', text: 'Hourly slots from 09:00 to 16:00 are rendered', chip: 'VisitController.java' },
-    { status: 'passed', text: 'Slot bounds stay configurable', chip: 'Configuration.md' },
+    { status: 'passed', text: 'Read constructor injection: startHour / endHour come from properties.', chip: 'VisitController.java:67' },
+    { status: 'passed', text: 'Read config: slot range is configured as 9 to 16.', chip: 'application.properties:15' },
+    { status: 'passed', text: 'Read form: time picker is rendered from ${timeSlots}.', chip: 'createOrUpdateVisitForm.html:34' },
   ],
   'ac-3': [
-    { status: 'passed', text: 'Duplicate vet/date/time bookings are rejected', chip: 'VisitRepository.java' },
-    { status: 'passed', text: 'Blocked booking re-renders with an inline vet-field error', chip: 'VisitController.java' },
+    { status: 'passed', text: 'Read controller: checks existsByVetIdAndDateAndTime, rejects field vet, and catches DataIntegrityViolationException.', chip: 'VisitController.java:148' },
+    { status: 'passed', text: 'Ran ./mvnw test: VisitControllerTests passed, including processNewVisitFormDoubleBookingRejected.', chip: 'VisitControllerTests.java:122' },
   ],
   'ac-4': [
-    { status: 'passed', text: '`ManyToOne` vet persisted', chip: 'Visit.java' },
-    { status: 'passed', text: 'LocalTime time persisted', chip: 'Visit.java' },
+    { status: 'passed', text: 'Read entity: vet is persisted via @ManyToOne and vet_id.', chip: 'Visit.java:47' },
+    { status: 'passed', text: 'Read entity: time is persisted as visit_time; ran ./mvnw test with ClinicServiceTests passing.', chip: 'Visit.java:52' },
   ],
   'ac-5': [
-    { status: 'passed', text: 'Vet column in ownerDetails.html', chip: 'ownerDetails.html' },
-    { status: 'passed', text: 'Time column in ownerDetails.html', chip: null },
+    { status: 'passed', text: 'Read owner details table: shows assigned time and vet.', chip: 'ownerDetails.html:64' },
+    { status: 'passed', text: 'Read previous visits table: shows assigned time and vet.', chip: 'createOrUpdateVisitForm.html:50' },
   ],
   'ac-6': [
-    { status: 'passed', text: 'H2, MySQL, PostgreSQL schemas updated', chip: 'schema.sql' },
-    { status: 'passed', text: 'Seed data includes vet_id and visit_time', chip: 'data.sql' },
+    { status: 'passed', text: 'Ran rg over `db/h2/schema.sql`, `db/h2/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
+    { status: 'passed', text: 'Ran rg over `db/mysql/schema.sql`, `db/mysql/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
+    { status: 'passed', text: 'Ran rg over `db/postgres/schema.sql`, `db/postgres/data.sql`: verified vet_id, visit_time, unique constraint, and seeded visits.' },
   ],
 };
 
@@ -4363,7 +4159,18 @@ function buildPassedAcStatusesFromDocument(documentSections = []) {
   return (acceptanceSection?.items ?? [])
     .filter((item) => item?.type === 'check')
     .map((item) => ({
-      status: 'passed',
+      status: item.id === 'ac-1' ? 'failed' : 'passed',
+      ...(item.id === 'ac-1'
+        ? {
+            issue: {
+              severity: 'warning',
+              label: 'Initial GET returns all vets before a date/time is selected',
+              secondaryText: 'VisitController.java:120',
+            },
+            proposal: 'Proposal: Match the criterion to the behavior: all vets on initial load, narrowed to available ones after a date and time are submitted.',
+            replacementText: 'Visit form shows a dropdown of vets: all on initial load, narrowed to those available for the selected slot after submission.',
+          }
+        : {}),
       checks: (VISIT_BOOKING_AC_CHECKS_BY_ID[item.id] ?? []).map((check) => ({ ...check })),
     }));
 }
@@ -5561,6 +5368,26 @@ function AcSubcheckIcon({ status }) {
   );
 }
 
+function AcSubcheckChip({ value }) {
+  const parts = String(value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return null;
+
+  return (
+    <span className="ac-subcheck-chip">
+      {parts.map((part, index) => (
+        <Fragment key={`${part}-${index}`}>
+          {index > 0 && <span className="ac-subcheck-chip-separator">, </span>}
+          <span className="ac-subcheck-chip-file">{part}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 function AcCheckRow({
   checkItem,
   text,
@@ -5571,14 +5398,18 @@ function AcCheckRow({
   isRunning = false,
   useCheckbox = false,
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [proposalAccepted, setProposalAccepted] = useState(false);
-  const [proposalRejected, setProposalRejected] = useState(false);
   const checks = checkItem.checks || [];
   const problemCount = checks.filter(c => c.status === 'failed').length || checkItem.problemCount || 0;
+  const [expanded, setExpanded] = useState(true);
+  const [proposalAccepted, setProposalAccepted] = useState(false);
+  const [proposalRejected, setProposalRejected] = useState(false);
   const hasChecks = checks.length > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
   const hasToggle = !isOutdated && (hasChecks || problemCount > 0);
+  const toggleLabelParts = [
+    hasChecks ? (checkItem.checksLabel ?? `${checks.length} checks`) : '',
+    !proposalAccepted && problemCount > 0 ? `${problemCount} failed` : '',
+  ].filter(Boolean);
 
   const handleProposalAccept = () => {
     setProposalAccepted(true);
@@ -5594,14 +5425,18 @@ function AcCheckRow({
   const proposalOptions = Array.isArray(checkItem.proposalOptions) ? checkItem.proposalOptions : null;
   const showProposal = (Boolean(checkItem.proposal) || Boolean(proposalOptions)) && !proposalAccepted && !proposalRejected;
 
-  const displayText = proposalAccepted && checkItem.highlight?.match && checkItem.proposal
-    ? text.replace(checkItem.highlight.match, checkItem.proposal.replace(/^Proposal:\s*/i, ''))
+  const proposalText = typeof checkItem.proposal === 'string' ? checkItem.proposal : '';
+  const proposalBody = proposalText.replace(/^Proposal:\s*/i, '');
+  const displayText = proposalAccepted && checkItem.highlight?.match && checkItem.replacementText
+    ? checkItem.replacementText
     : text;
   const displayHighlight = proposalAccepted ? null : checkItem.highlight;
   const displayIssue = proposalAccepted ? null : checkItem.issue;
 
   const visualStatus = proposalAccepted
-    ? 'pending'
+    ? (checkItem.status === 'passed'
+        ? 'passed'
+        : (checkItem.status === 'stale' ? 'stale' : 'pending'))
     : ('checkboxStatus' in checkItem
         ? checkItem.checkboxStatus
         : (checkItem.status === 'passed'
@@ -5623,7 +5458,12 @@ function AcCheckRow({
         <span>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasToggle && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
-            {hasChecks ? `${checks.length} checks` : ''}{!proposalAccepted && problemCount > 0 ? `${hasChecks ? '/' : ''}${problemCount} problem` : ''}
+            {toggleLabelParts.map((part, index) => (
+              <Fragment key={part}>
+                {index > 0 && <span className="ac-checks-toggle-separator">·</span>}
+                <span>{part}</span>
+              </Fragment>
+            ))}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
               <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -5637,17 +5477,14 @@ function AcCheckRow({
             <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
               <span className="ac-subcheck-text">{renderDoneMarkdownInline(check.text ?? '')}</span>
-              {check.chip && <span className="ac-subcheck-chip">{check.chip}</span>}
+              {check.chip && <AcSubcheckChip value={check.chip} />}
               {check.note && <span className="ac-subcheck-note">{renderDoneMarkdownInline(check.note)}</span>}
             </div>
           ))}
           {showProposal && (
             <div className={`ac-proposal-row${proposalOptions ? ' ac-proposal-row-options' : ''}`}>
               <span className="ac-proposal-icon">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M6 13.5H10M7 15H9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  <path d="M5.5 10.5C4.5 9.5 4 8.5 4 7.5C4 5.29086 5.79086 3.5 8 3.5C10.2091 3.5 12 5.29086 12 7.5C12 8.5 11.5 9.5 10.5 10.5V11.5C10.5 11.7761 10.2761 12 10 12H6C5.72386 12 5.5 11.7761 5.5 11.5V10.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                </svg>
+                <Icon name="codeInsight/intentionBulb" size={16} />
               </span>
               {proposalOptions ? (
                 <div className="ac-proposal-options">
@@ -5667,9 +5504,13 @@ function AcCheckRow({
                 </div>
               ) : (
                 <>
-                  <span className="ac-proposal-text">{checkItem.proposal}</span>
-                  <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
-                  <button type="button" className="ac-proposal-btn" onClick={handleProposalAccept}>Accept</button>
+                  <span className="ac-proposal-text">
+                    <strong>Proposal:</strong> {proposalBody}
+                  </span>
+                  <span className="ac-proposal-actions">
+                    <button type="button" className="ac-proposal-btn ac-proposal-btn-primary" onClick={handleProposalAccept}>Accept</button>
+                    <button type="button" className="ac-proposal-btn" onClick={handleProposalReject}>Reject</button>
+                  </span>
                 </>
               )}
             </div>
@@ -5678,99 +5519,6 @@ function AcCheckRow({
       )}
     </div>
   );
-}
-
-const PLAN_DIFF_PREVIEW_REPLACEMENTS = {
-  0: 'Schema changes — add vet_id (FK), visit_time (TIME), and UNIQUE(vet_id, visit_date, visit_time) constraint',
-  1: 'Visit entity — add `ManyToOne` vet and `LocalTime` time with `NotNull`',
-  2: 'VisitRepository — add double-booking query + UNIQUE(vet_id, visit_date, visit_time) constraint',
-  3: 'VisitController — inject `VetRepository`, add `ModelAttribute("vets")` with `findAll()`',
-  4: 'Form template — add <select> for vet with VetFormatter (per PetTypeFormatter pattern) and time slot',
-  5: 'Owner details — add Vet and Time columns to visit history table',
-  6: 'Tests — vet list in model, successful booking, double-booking rejected',
-};
-
-function getPlanDiffReplacementText({ text, issueTarget }) {
-  if (issueTarget?.kind !== 'plan') {
-    return typeof text === 'string' ? text : '';
-  }
-
-  const quickFixConfig = getIssueQuickFixConfig('plan', issueTarget.index);
-  if (quickFixConfig?.replacementText) {
-    return quickFixConfig.replacementText;
-  }
-
-  const previewReplacement = PLAN_DIFF_PREVIEW_REPLACEMENTS[issueTarget.index];
-  if (typeof previewReplacement === 'string' && previewReplacement.trim().length > 0) {
-    return previewReplacement;
-  }
-
-  return typeof text === 'string' ? text : '';
-}
-
-function buildPlanDiffInlineFragments(sourceText = '', targetText = '') {
-  const normalizedSource = typeof sourceText === 'string' ? sourceText : '';
-  const normalizedTarget = typeof targetText === 'string' ? targetText : '';
-
-  if (normalizedSource === normalizedTarget) {
-    return {
-      removed: [{ text: normalizedSource || ' ', tone: 'removed' }],
-      added: [{ text: normalizedTarget || ' ', tone: 'added' }],
-    };
-  }
-
-  let commonPrefixLength = 0;
-  while (
-    commonPrefixLength < normalizedSource.length &&
-    commonPrefixLength < normalizedTarget.length &&
-    normalizedSource[commonPrefixLength] === normalizedTarget[commonPrefixLength]
-  ) {
-    commonPrefixLength += 1;
-  }
-
-  let sourceSuffixIndex = normalizedSource.length - 1;
-  let targetSuffixIndex = normalizedTarget.length - 1;
-
-  while (
-    sourceSuffixIndex >= commonPrefixLength &&
-    targetSuffixIndex >= commonPrefixLength &&
-    normalizedSource[sourceSuffixIndex] === normalizedTarget[targetSuffixIndex]
-  ) {
-    sourceSuffixIndex -= 1;
-    targetSuffixIndex -= 1;
-  }
-
-  const leadingText = normalizedSource.slice(0, commonPrefixLength);
-  const sourceChangedText = normalizedSource.slice(commonPrefixLength, sourceSuffixIndex + 1);
-  const targetChangedText = normalizedTarget.slice(commonPrefixLength, targetSuffixIndex + 1);
-  const trailingText = normalizedTarget.slice(targetSuffixIndex + 1);
-
-  const buildFragments = (changedText, tone, fallbackText) => {
-    const fragments = [];
-
-    if (changedText) {
-      if (leadingText) {
-        fragments.push({ text: leadingText, tone: 'plain' });
-      }
-      fragments.push({ text: changedText, tone });
-      if (trailingText) {
-        fragments.push({ text: trailingText, tone: 'plain' });
-      }
-    } else {
-      fragments.push({ text: fallbackText || ' ', tone });
-    }
-
-    return fragments;
-  };
-
-  return {
-    removed: buildFragments(sourceChangedText, 'removed', normalizedSource),
-    added: buildFragments(targetChangedText, 'added', normalizedTarget),
-  };
-}
-
-function buildPlainDiffFragments(text = '') {
-  return [{ text: text || ' ', tone: 'plain' }];
 }
 
 function normalizeDoneFileEntries(files = []) {
@@ -5806,903 +5554,6 @@ function getDoneAcceptanceHeadingFiles(sectionMeta = null, attachedFiles = []) {
   });
 
   return normalizeDoneFileEntries(initialFiles);
-}
-
-function buildPlanDiffViewerData({
-  documentSections = [],
-  planRunResult = null,
-  removedIssueIndices = null,
-  diffData = null,
-  diffTarget = null,
-} = {}) {
-  const planSection = (documentSections ?? []).find((section) => section?.title?.toLowerCase() === 'plan') ?? null;
-  const removedPlanIndices = removedIssueIndices?.plan ?? {};
-  const changedFiles = [
-    diffData?.sourceTabLabel,
-    ...((diffData?.rows ?? []).map((row) => row.file).filter((file) => typeof file === 'string' && file.trim().length > 0)),
-  ].filter((file, index, files) => typeof file === 'string' && file.trim().length > 0 && files.indexOf(file) === index);
-
-  if (!planSection) {
-    return {
-      planItems: [],
-      changedFiles,
-    };
-  }
-
-  const visiblePlanItemCount = (planSection.items ?? []).reduce((count, item, originalIndex) => (
-    item?.type === 'check' && !removedPlanIndices[originalIndex] ? count + 1 : count
-  ), 0);
-  const presetFileLabels = Object.values(PLAN_CODE_DIFF_PRESETS).map((preset) => preset.fileLabel);
-  const canUsePresetFileMapping =
-    visiblePlanItemCount === presetFileLabels.length
-    && changedFiles.some((file) => presetFileLabels.includes(file));
-
-  let visibleIndex = 0;
-  const planItems = (planSection.items ?? []).reduce((items, item, originalIndex) => {
-    if (item?.type !== 'check' || removedPlanIndices[originalIndex]) {
-      return items;
-    }
-
-    const isCurrent = diffTarget?.kind === 'plan' && diffTarget.index === originalIndex;
-    const currentDiffFiles = isCurrent && diffData?.sourceTabLabel ? [diffData.sourceTabLabel] : [];
-    const presetFile = canUsePresetFileMapping ? PLAN_CODE_DIFF_PRESETS[originalIndex]?.fileLabel ?? null : null;
-    const statusItem = planRunResult?.[visibleIndex] ?? null;
-    const status = statusItem?.status ?? null;
-
-    items.push({
-      id: item.id ?? `plan-viewer-item-${originalIndex}`,
-      text: item.text ?? '',
-      status,
-      statusItem,
-      isOutdated: isRunStatusItemOutdated(statusItem),
-      files: [presetFile, ...currentDiffFiles].filter((file, index, files) => typeof file === 'string' && file.trim().length > 0 && files.indexOf(file) === index),
-      isCurrent,
-      originalIndex,
-      visibleIndex,
-    });
-
-    visibleIndex += 1;
-    return items;
-  }, []);
-
-  return {
-    planItems,
-    changedFiles,
-  };
-}
-
-function getPlanCodeDiffPreset(issueTarget) {
-  return PLAN_CODE_DIFF_PRESETS[4];
-}
-
-const VISIT_CONTROLLER_RAW_DIFF = `diff --git a/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java b/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-index cc3e3ce..c654d38 100644
---- a/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-+++ b/src/main/java/org/springframework/samples/petclinic/owner/VisitController.java
-@@ -15,9 +15,21 @@
-  */
- package org.springframework.samples.petclinic.owner;
- 
-+import java.time.LocalDate;
-+import java.time.LocalTime;
-+import java.util.ArrayList;
-+import java.util.Collection;
-+import java.util.List;
- import java.util.Map;
- import java.util.Optional;
-+import java.util.Set;
-+import java.util.stream.Collectors;
- 
-+import org.springframework.beans.factory.annotation.Value;
-+import org.springframework.dao.DataIntegrityViolationException;
-+import org.springframework.format.annotation.DateTimeFormat;
-+import org.springframework.samples.petclinic.vet.Vet;
-+import org.springframework.samples.petclinic.vet.VetRepository;
- import org.springframework.stereotype.Controller;
- import org.springframework.validation.BindingResult;
- import org.springframework.web.bind.WebDataBinder;
-@@ -26,6 +38,7 @@ import org.springframework.web.bind.annotation.InitBinder;
- import org.springframework.web.bind.annotation.ModelAttribute;
- import org.springframework.web.bind.annotation.PathVariable;
- import org.springframework.web.bind.annotation.PostMapping;
-+import org.springframework.web.bind.annotation.RequestParam;
- 
- import jakarta.validation.Valid;
- import org.springframework.web.servlet.mvc.support.RedirectAttributes;
-@@ -43,8 +56,22 @@ class VisitController {
- 
- \tprivate final OwnerRepository owners;
- 
--\tpublic VisitController(OwnerRepository owners) {
-+\tprivate final VetRepository vetRepository;
-+
-+\tprivate final VisitRepository visitRepository;
-+
-+\tprivate final int startHour;
-+
-+\tprivate final int endHour;
-+
-+\tpublic VisitController(OwnerRepository owners, VetRepository vetRepository, VisitRepository visitRepository,
-+\t\t\t@Value("\${petclinic.visit.start-hour:9}") int startHour,
-+\t\t\t@Value("\${petclinic.visit.end-hour:16}") int endHour) {
- \t\tthis.owners = owners;
-+\t\tthis.vetRepository = vetRepository;
-+\t\tthis.visitRepository = visitRepository;
-+\t\tthis.startHour = startHour;
-+\t\tthis.endHour = endHour;
- \t}
- 
- \t@InitBinder
-@@ -79,6 +106,29 @@ class VisitController {
- \t\treturn visit;
- \t}
- 
-+\t@ModelAttribute("vets")
-+\tpublic Collection<Vet> populateVets(@RequestParam(required = false) LocalDate date,
-+\t\t\t@RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {
-+\t\tif (date != null && time != null) {
-+\t\t\tList<Visit> bookedVisits = visitRepository.findByDateAndTime(date, time);
-+\t\t\tSet<Integer> bookedVetIds = bookedVisits.stream().map(v -> v.getVet().getId()).collect(Collectors.toSet());
-+\t\t\treturn vetRepository.findAll()
-+\t\t\t\t.stream()
-+\t\t\t\t.filter(vet -> !bookedVetIds.contains(vet.getId()))
-+\t\t\t\t.collect(Collectors.toList());
-+\t\t}
-+\t\treturn vetRepository.findAll();
-+\t}
-+
-+\t@ModelAttribute("timeSlots")
-+\tpublic List<LocalTime> populateTimeSlots() {
-+\t\tList<LocalTime> slots = new ArrayList<>();
-+\t\tfor (int hour = startHour; hour <= endHour; hour++) {
-+\t\t\tslots.add(LocalTime.of(hour, 0));
-+\t\t}
-+\t\treturn slots;
-+\t}
-+
- \t// Spring MVC calls method loadPetWithVisit(...) before initNewVisitForm is
- \t// called
- \t@GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-@@ -95,8 +145,20 @@ class VisitController {
- \t\t\treturn "pets/createOrUpdateVisitForm";
- \t\t}
- 
-+\t\tif (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null && visitRepository
-+\t\t\t.existsByVetIdAndDateAndTime(visit.getVet().getId(), visit.getDate(), visit.getTime())) {
-+\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");
-+\t\t\treturn "pets/createOrUpdateVisitForm";
-+\t\t}
-+
- \t\towner.addVisit(petId, visit);
--\t\tthis.owners.save(owner);
-+\t\ttry {
-+\t\t\tthis.owners.save(owner);
-+\t\t}
-+\t\tcatch (DataIntegrityViolationException ex) {
-+\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");
-+\t\t\treturn "pets/createOrUpdateVisitForm";
-+\t\t}
- \t\tredirectAttributes.addFlashAttribute("message", "Your visit has been booked");
- \t\treturn "redirect:/owners/{ownerId}";
- \t}`;
-
-function parseUnifiedDiffRows(rawDiff = '', rowIdPrefix = 'visit-controller') {
-  const addRow = (rows, kind, oldNumber, newNumber, text) => {
-    const id = `${rowIdPrefix}-${kind}-${oldNumber ?? 'new'}-${newNumber ?? 'old'}-${rows.length}`;
-    rows.push({
-      id,
-      kind,
-      oldNumber,
-      newNumber,
-      text,
-      fragments: [{ text: text || ' ', tone: 'plain' }],
-    });
-  };
-  const addPlanMarkerRow = (rows, markerId, planKey, label, planItemId) => {
-    rows.push({
-      id: `${rowIdPrefix}-plan-marker-${markerId}`,
-      kind: 'plan-marker',
-      fileLabel: 'visit-booking.md',
-      planKey,
-      label,
-      text: label,
-      planItemId,
-      oldNumber: null,
-      newNumber: null,
-      isSynthetic: true,
-    });
-  };
-
-  const rows = [];
-  const contextRows = [
-    [1, 1, '/*'],
-    [2, 2, ' * Copyright 2012-2025 the original author or authors.'],
-    [3, 3, ' *'],
-    [4, 4, ' * Licensed under the Apache License, Version 2.0 (the "License");'],
-    [5, 5, ' * you may not use this file except in compliance with the License.'],
-    [6, 6, ' * You may obtain a copy of the License at'],
-    [7, 7, ' *'],
-    [8, 8, ' *      https://www.apache.org/licenses/LICENSE-2.0'],
-    [9, 9, ' *'],
-    [10, 10, ' * Unless required by applicable law or agreed to in writing, software'],
-    [11, 11, ' * distributed under the License is distributed on an "AS IS" BASIS,'],
-    [12, 12, ' * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.'],
-    [13, 13, ' * See the License for the specific language governing permissions and'],
-    [14, 14, ' * limitations under the License.'],
-    [15, 15, ' */'],
-    [16, 16, 'package org.springframework.samples.petclinic.owner;'],
-    [17, 17, ''],
-  ];
-  contextRows.forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  [
-    [18, 'import java.time.LocalDate;'],
-    [19, 'import java.time.LocalTime;'],
-    [20, 'import java.util.ArrayList;'],
-    [21, 'import java.util.Collection;'],
-    [22, 'import java.util.List;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [18, 23, 'import java.util.Map;'],
-    [19, 24, 'import java.util.Optional;'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  [
-    [25, 'import java.util.Set;'],
-    [26, 'import java.util.stream.Collectors;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addRow(rows, 'context', 20, 27, '');
-
-  [
-    [28, 'import org.springframework.beans.factory.annotation.Value;'],
-    [29, 'import org.springframework.dao.DataIntegrityViolationException;'],
-    [30, 'import org.springframework.format.annotation.DateTimeFormat;'],
-    [31, 'import org.springframework.samples.petclinic.vet.Vet;'],
-    [32, 'import org.springframework.samples.petclinic.vet.VetRepository;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [21, 33, 'import org.springframework.stereotype.Controller;'],
-    [22, 34, 'import org.springframework.validation.BindingResult;'],
-    [23, 35, 'import org.springframework.web.bind.WebDataBinder;'],
-    [24, 36, 'import org.springframework.web.bind.annotation.GetMapping;'],
-    [25, 37, 'import org.springframework.web.bind.annotation.InitBinder;'],
-    [26, 38, 'import org.springframework.web.bind.annotation.ModelAttribute;'],
-    [27, 39, 'import org.springframework.web.bind.annotation.PathVariable;'],
-    [28, 40, 'import org.springframework.web.bind.annotation.PostMapping;'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'added', null, 41, 'import org.springframework.web.bind.annotation.RequestParam;');
-
-  [
-    [29, 42, ''],
-    [30, 43, 'import jakarta.validation.Valid;'],
-    [31, 44, 'import org.springframework.web.servlet.mvc.support.RedirectAttributes;'],
-    [32, 45, ''],
-    [33, 46, '/**'],
-    [34, 47, ' * @author Juergen Hoeller'],
-    [35, 48, ' * @author Ken Krebs'],
-    [36, 49, ' * @author Arjen Poutsma'],
-    [37, 50, ' * @author Michael Isvy'],
-    [38, 51, ' * @author Dave Syer'],
-    [39, 52, ' * @author Wick Dy nex'],
-    [40, 53, ' */'],
-    [41, 54, '@Controller'],
-    [42, 55, 'class VisitController {'],
-    [43, 56, ''],
-    [44, 57, '\tprivate final OwnerRepository owners;'],
-    [45, 58, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'removed', 46, null, '\tpublic VisitController(OwnerRepository owners) {');
-  addPlanMarkerRow(rows, '5a', '5a', 'Inject VetRepository & VisitRepository', 'plan-5-1');
-  addPlanMarkerRow(rows, '6', '6', 'Read start/end-hour via @Value', 'plan-6-2');
-  [
-    [59, '\tprivate final VetRepository vetRepository;'],
-    [60, ''],
-    [61, '\tprivate final VisitRepository visitRepository;'],
-    [62, ''],
-    [63, '\tprivate final int startHour;'],
-    [64, ''],
-    [65, '\tprivate final int endHour;'],
-    [66, ''],
-    [67, '\tpublic VisitController(OwnerRepository owners, VetRepository vetRepository, VisitRepository visitRepository,'],
-    [68, '\t\t\t@Value("${petclinic.visit.start-hour:9}") int startHour,'],
-    [69, '\t\t\t@Value("${petclinic.visit.end-hour:16}") int endHour) {'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addRow(rows, 'context', 47, 70, '\t\tthis.owners = owners;');
-  [
-    [71, '\t\tthis.vetRepository = vetRepository;'],
-    [72, '\t\tthis.visitRepository = visitRepository;'],
-    [73, '\t\tthis.startHour = startHour;'],
-    [74, '\t\tthis.endHour = endHour;'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [48, 75, '\t}'],
-    [49, 76, ''],
-    [50, 77, '\t@InitBinder'],
-    [51, 78, '\tpublic void setAllowedFields(WebDataBinder dataBinder) {'],
-    [52, 79, '\t\tdataBinder.setDisallowedFields("id");'],
-    [53, 80, '\t}'],
-    [54, 81, ''],
-    [55, 82, '\t/**'],
-    [56, 83, '\t * Called before each and every @RequestMapping annotated method. 2 goals: - Make sure'],
-    [57, 84, '\t * we always have fresh data - Since we do not use the session scope, make sure that'],
-    [58, 85, '\t * Pet object always has an id (Even though id is not part of the form fields)'],
-    [59, 86, '\t * @param petId'],
-    [60, 87, '\t * @return Pet'],
-    [61, 88, '\t */'],
-    [62, 89, '\t@ModelAttribute("visit")'],
-    [63, 90, '\tpublic Visit loadPetWithVisit(@PathVariable("ownerId") int ownerId, @PathVariable("petId") int petId,'],
-    [64, 91, '\t\t\tMap<String, Object> model) {'],
-    [65, 92, '\t\tOptional<Owner> optionalOwner = owners.findById(ownerId);'],
-    [66, 93, '\t\tOwner owner = optionalOwner.orElseThrow(() -> new IllegalArgumentException('],
-    [67, 94, '\t\t\t\t"Owner not found with id: " + ownerId + ". Please ensure the ID is correct "));'],
-    [68, 95, ''],
-    [69, 96, '\t\tPet pet = owner.getPet(petId);'],
-    [70, 97, '\t\tif (pet == null) {'],
-    [71, 98, '\t\t\tthrow new IllegalArgumentException('],
-    [72, 99, '\t\t\t\t"Pet with id " + petId + " not found for owner with id " + ownerId + ".");'],
-    [73, 100, '\t\t}'],
-    [74, 101, '\t\tmodel.put("pet", pet);'],
-    [75, 102, '\t\tmodel.put("owner", owner);'],
-    [76, 103, ''],
-    [77, 104, '\t\tVisit visit = new Visit();'],
-    [78, 105, '\t\tpet.addVisit(visit);'],
-    [79, 106, '\t\treturn visit;'],
-    [80, 107, '\t}'],
-    [81, 108, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addPlanMarkerRow(rows, '5b', '5b', 'populateVets(): vets, filtered by slot on POST', 'plan-5-2');
-  [
-    [109, '\t@ModelAttribute("vets")'],
-    [110, '\tpublic Collection<Vet> populateVets(@RequestParam(required = false) LocalDate date,'],
-    [111, '\t\t\t@RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {'],
-    [112, '\t\tif (date != null && time != null) {'],
-    [113, '\t\t\tList<Visit> bookedVisits = visitRepository.findByDateAndTime(date, time);'],
-    [114, '\t\t\tSet<Integer> bookedVetIds = bookedVisits.stream().map(v -> v.getVet().getId()).collect(Collectors.toSet());'],
-    [115, '\t\t\treturn vetRepository.findAll()'],
-    [116, '\t\t\t\t.stream()'],
-    [117, '\t\t\t\t.filter(vet -> !bookedVetIds.contains(vet.getId()))'],
-    [118, '\t\t\t\t.collect(Collectors.toList());'],
-    [119, '\t\t}'],
-    [120, '\t\treturn vetRepository.findAll();'],
-    [121, '\t}'],
-    [122, ''],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  addPlanMarkerRow(rows, '5c', '5c', 'populateTimeSlots(): hourly slots from config', 'plan-5-3');
-  [
-    [123, '\t@ModelAttribute("timeSlots")'],
-    [124, '\tpublic List<LocalTime> populateTimeSlots() {'],
-    [125, '\t\tList<LocalTime> slots = new ArrayList<>();'],
-    [126, '\t\tfor (int hour = startHour; hour <= endHour; hour++) {'],
-    [127, '\t\t\tslots.add(LocalTime.of(hour, 0));'],
-    [128, '\t\t}'],
-    [129, '\t\treturn slots;'],
-    [130, '\t}'],
-    [131, ''],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [82, 132, '\t// Spring MVC calls method loadPetWithVisit(...) before initNewVisitForm is'],
-    [83, 133, '\t// called'],
-    [84, 134, '\t@GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")'],
-    [85, 135, '\tpublic String initNewVisitForm() {'],
-    [86, 136, '\t\treturn "pets/createOrUpdateVisitForm";'],
-    [87, 137, '\t}'],
-    [88, 138, ''],
-    [89, 139, '\t// Spring MVC calls method loadPetWithVisit(...) before processNewVisitForm is'],
-    [90, 140, '\t// called'],
-    [91, 141, '\t@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")'],
-    [92, 142, '\tpublic String processNewVisitForm(@ModelAttribute Owner owner, @PathVariable int petId, @Valid Visit visit,'],
-    [93, 143, '\t\t\tBindingResult result, RedirectAttributes redirectAttributes) {'],
-    [94, 144, '\t\tif (result.hasErrors()) {'],
-    [95, 145, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [96, 146, '\t\t}'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addPlanMarkerRow(rows, '5d', '5d', 'Double-booking check before save', 'plan-5-4');
-  [
-    [147, ''],
-    [148, '\t\tif (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null && visitRepository'],
-    [149, '\t\t\t.existsByVetIdAndDateAndTime(visit.getVet().getId(), visit.getDate(), visit.getTime())) {'],
-    [150, '\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");'],
-    [151, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [152, '\t\t}'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [97, 153, ''],
-    [98, 154, '\t\towner.addVisit(petId, visit);'],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  addRow(rows, 'removed', 99, null, '\t\tthis.owners.save(owner);');
-  addPlanMarkerRow(rows, '5e', '5e', 'Catch DataIntegrityViolationException on save', 'plan-5-5');
-  [
-    [155, '\t\ttry {'],
-    [156, '\t\t\tthis.owners.save(owner);'],
-    [157, '\t\t}'],
-    [158, '\t\tcatch (DataIntegrityViolationException ex) {'],
-    [159, '\t\t\tresult.rejectValue("vet", "duplicate", "This vet is already booked for the selected date and time.");'],
-    [160, '\t\t\treturn "pets/createOrUpdateVisitForm";'],
-    [161, '\t\t}'],
-  ].forEach(([newNumber, text]) => addRow(rows, 'added', null, newNumber, text));
-
-  [
-    [100, 162, '\t\tredirectAttributes.addFlashAttribute("message", "Your visit has been booked");'],
-    [101, 163, '\t\treturn "redirect:/owners/{ownerId}";'],
-    [102, 164, '\t}'],
-    [103, 165, ''],
-    [104, 166, '}'],
-    [105, 167, ''],
-  ].forEach(([oldNumber, newNumber, text]) => addRow(rows, 'context', oldNumber, newNumber, text));
-
-  return {
-    rows,
-    focusRowId: null,
-  };
-}
-
-function buildCodeDiffRows(beforeCode = '', afterCode = '', rowIdPrefix = 'code-diff', contextRadius = 4) {
-  const beforeLines = typeof beforeCode === 'string' ? beforeCode.split(/\r?\n/) : [''];
-  const afterLines = typeof afterCode === 'string' ? afterCode.split(/\r?\n/) : [''];
-
-  let commonPrefixLength = 0;
-  while (
-    commonPrefixLength < beforeLines.length &&
-    commonPrefixLength < afterLines.length &&
-    beforeLines[commonPrefixLength] === afterLines[commonPrefixLength]
-  ) {
-    commonPrefixLength += 1;
-  }
-
-  let beforeSuffixIndex = beforeLines.length - 1;
-  let afterSuffixIndex = afterLines.length - 1;
-  while (
-    beforeSuffixIndex >= commonPrefixLength &&
-    afterSuffixIndex >= commonPrefixLength &&
-    beforeLines[beforeSuffixIndex] === afterLines[afterSuffixIndex]
-  ) {
-    beforeSuffixIndex -= 1;
-    afterSuffixIndex -= 1;
-  }
-
-  const beforeChangedCount = Math.max(0, beforeSuffixIndex - commonPrefixLength + 1);
-  const afterChangedCount = Math.max(0, afterSuffixIndex - commonPrefixLength + 1);
-  const hasChanges = beforeChangedCount > 0 || afterChangedCount > 0;
-
-  if (!hasChanges) {
-    const rows = beforeLines.slice(0, Math.min(beforeLines.length, contextRadius * 2 + 1)).map((line, index) => ({
-      id: `${rowIdPrefix}-context-${index}`,
-      kind: 'context',
-      oldNumber: index + 1,
-      newNumber: index + 1,
-      text: line,
-      fragments: buildPlainDiffFragments(line),
-    }));
-    return {
-      differenceCount: 0,
-      rows,
-      focusRowId: rows[0]?.id ?? null,
-    };
-  }
-
-  const rows = [];
-  let focusRowId = null;
-  const contextStart = Math.max(0, commonPrefixLength - contextRadius);
-
-  for (let lineIndex = contextStart; lineIndex < commonPrefixLength; lineIndex += 1) {
-    const line = beforeLines[lineIndex] ?? '';
-    rows.push({
-      id: `${rowIdPrefix}-context-${lineIndex}`,
-      kind: 'context',
-      oldNumber: lineIndex + 1,
-      newNumber: lineIndex + 1,
-      text: line,
-      fragments: buildPlainDiffFragments(line),
-    });
-  }
-
-  const changedLineCount = Math.max(beforeChangedCount, afterChangedCount);
-  const removedRows = [];
-  const addedRows = [];
-
-  for (let offset = 0; offset < changedLineCount; offset += 1) {
-    const beforeLineIndex = commonPrefixLength + offset;
-    const afterLineIndex = commonPrefixLength + offset;
-    const beforeLineExists = offset < beforeChangedCount;
-    const afterLineExists = offset < afterChangedCount;
-    const beforeLine = beforeLineExists ? (beforeLines[beforeLineIndex] ?? '') : '';
-    const afterLine = afterLineExists ? (afterLines[afterLineIndex] ?? '') : '';
-    const inlineFragments = beforeLineExists && afterLineExists
-      ? buildPlanDiffInlineFragments(beforeLine, afterLine)
-      : null;
-
-    if (beforeLineExists) {
-      const rowId = `${rowIdPrefix}-removed-${beforeLineIndex}`;
-      removedRows.push({
-        id: rowId,
-        kind: 'removed',
-        oldNumber: beforeLineIndex + 1,
-        newNumber: null,
-        text: beforeLine,
-        fragments: inlineFragments?.removed ?? [{ text: beforeLine || ' ', tone: 'removed' }],
-      });
-      if (!focusRowId) {
-        focusRowId = rowId;
-      }
-    }
-
-    if (afterLineExists) {
-      const rowId = `${rowIdPrefix}-added-${afterLineIndex}`;
-      addedRows.push({
-        id: rowId,
-        kind: 'added',
-        oldNumber: null,
-        newNumber: afterLineIndex + 1,
-        text: afterLine,
-        fragments: inlineFragments?.added ?? [{ text: afterLine || ' ', tone: 'added' }],
-      });
-      if (!focusRowId || beforeLineExists) {
-        focusRowId = rowId;
-      }
-    }
-  }
-
-  rows.push(...removedRows, ...addedRows);
-
-  const trailingContextCount = Math.min(
-    contextRadius,
-    Math.max(0, beforeLines.length - (beforeSuffixIndex + 1)),
-    Math.max(0, afterLines.length - (afterSuffixIndex + 1))
-  );
-
-  for (let offset = 0; offset < trailingContextCount; offset += 1) {
-    const beforeLineIndex = beforeSuffixIndex + 1 + offset;
-    const afterLineIndex = afterSuffixIndex + 1 + offset;
-    const line = beforeLines[beforeLineIndex] ?? afterLines[afterLineIndex] ?? '';
-    rows.push({
-      id: `${rowIdPrefix}-context-tail-${beforeLineIndex}-${afterLineIndex}`,
-      kind: 'context',
-      oldNumber: beforeLineIndex + 1,
-      newNumber: afterLineIndex + 1,
-      text: line,
-      fragments: buildPlainDiffFragments(line),
-    });
-  }
-
-  return {
-    differenceCount: 1,
-    rows,
-    focusRowId,
-  };
-}
-
-function getPlanDiffEntries({ text, statusItem, issueTarget }) {
-  const quickFixConfig = issueTarget?.kind === 'plan' ? getIssueQuickFixConfig('plan', issueTarget.index) : null;
-
-  if (quickFixConfig?.replacementText && quickFixConfig.replacementText !== text) {
-    return [
-      {
-        kind: 'removed',
-        text,
-        highlight: statusItem.highlight ?? null,
-      },
-      {
-        kind: 'added',
-        text: quickFixConfig.replacementText,
-        highlight: null,
-      },
-    ];
-  }
-
-  return [];
-}
-
-function findSectionCheckLineIndex(code, kind, index) {
-  if (typeof code !== 'string' || !Number.isInteger(index) || index < 0) {
-    return -1;
-  }
-
-  const targetSectionTitle = kind === 'plan' ? 'plan' : 'acceptance criteria';
-  const lines = code.split(/\r?\n/);
-  let inTargetSection = false;
-  let checkIndex = 0;
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    const headingTitle = getDoneHeadingTitle(line);
-
-    if (headingTitle !== null) {
-      inTargetSection = headingTitle.toLowerCase() === targetSectionTitle;
-      if (!inTargetSection) {
-        checkIndex = 0;
-      }
-      continue;
-    }
-
-    if (!inTargetSection) continue;
-    if (!/^- \[[ x]\]\s+/i.test(line)) continue;
-
-    if (checkIndex === index) {
-      return lineIndex;
-    }
-
-    checkIndex += 1;
-  }
-
-  return -1;
-}
-
-function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel }) {
-  if (issueTarget?.kind === 'plan') {
-    const codeDiffPreset = getPlanCodeDiffPreset(issueTarget);
-    const codeDiff = parseUnifiedDiffRows(VISIT_CONTROLLER_RAW_DIFF, 'visit-controller-raw');
-
-    return {
-      sourceTabLabel: codeDiffPreset.fileLabel,
-      title: `Diff ${codeDiffPreset.fileLabel}`,
-      differenceCount: 9,
-      rows: codeDiff.rows,
-      focusRowId: codeDiff.focusRowId,
-      status: statusItem.status,
-      lineText: '',
-      language: codeDiffPreset.language,
-      filePath: 'src/main/java/org/springframework/samples/petclinic/owner/VisitController.java',
-      baseRevision: 'fc4f66b7',
-    };
-  }
-
-  const resolvedSourceCode = typeof sourceCode === 'string' ? sourceCode : '';
-  const lines = resolvedSourceCode.split(/\r?\n/);
-  const replacementText = getPlanDiffReplacementText({ text, issueTarget });
-  const targetLineIndex = issueTarget?.kind === 'plan'
-    ? findSectionCheckLineIndex(resolvedSourceCode, 'plan', issueTarget.index)
-    : lines.findIndex((line) => line.includes(text));
-  const nextCode = replacementText && issueTarget?.kind === 'plan'
-    ? applyIssueQuickFixToCode(resolvedSourceCode, {
-        kind: 'plan',
-        index: issueTarget.index,
-        replacementText,
-      })
-    : resolvedSourceCode;
-  const nextLines = nextCode.split(/\r?\n/);
-  const hasChangedLine =
-    targetLineIndex >= 0 &&
-    targetLineIndex < lines.length &&
-    targetLineIndex < nextLines.length &&
-    lines[targetLineIndex] !== nextLines[targetLineIndex];
-  const focusLineIndex = targetLineIndex >= 0
-    ? targetLineIndex
-    : Math.max(lines.findIndex((line) => line.includes(text)), 0);
-  const contextStart = Math.max(0, focusLineIndex - 4);
-  const contextEnd = Math.min(Math.max(lines.length, nextLines.length) - 1, focusLineIndex + 4);
-  const rows = [];
-
-  for (let lineIndex = contextStart; lineIndex <= contextEnd; lineIndex += 1) {
-    const oldText = lines[lineIndex] ?? '';
-    const newText = nextLines[lineIndex] ?? oldText;
-
-    if (hasChangedLine && lineIndex === targetLineIndex) {
-      const inlineDiff = buildPlanDiffInlineFragments(oldText, newText);
-      rows.push({
-        id: `removed-${lineIndex}`,
-        kind: 'removed',
-        oldNumber: lineIndex + 1,
-        newNumber: null,
-        text: oldText,
-        fragments: inlineDiff.removed,
-      });
-      rows.push({
-        id: `added-${lineIndex}`,
-        kind: 'added',
-        oldNumber: null,
-        newNumber: lineIndex + 1,
-        text: newText,
-        fragments: inlineDiff.added,
-      });
-      continue;
-    }
-
-    rows.push({
-      id: `context-${lineIndex}`,
-      kind: 'context',
-      oldNumber: lineIndex + 1,
-      newNumber: lineIndex + 1,
-      text: oldText,
-      fragments: [{ text: oldText || ' ', tone: 'plain' }],
-    });
-  }
-
-  return {
-    sourceTabLabel,
-    title: `Diff ${sourceTabLabel}`,
-    differenceCount: hasChangedLine ? 1 : 0,
-    rows,
-    focusRowId: hasChangedLine ? `added-${targetLineIndex}` : (focusLineIndex >= 0 ? `context-${focusLineIndex}` : null),
-    status: statusItem.status,
-    lineText: text,
-    language: 'text',
-  };
-}
-
-function orderDiffRowsForDisplay(rows = []) {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return [];
-  }
-
-  const orderedRows = [];
-  let index = 0;
-
-  while (index < rows.length) {
-    const row = rows[index];
-
-    if (row?.kind !== 'removed' && row?.kind !== 'added') {
-      orderedRows.push(row);
-      index += 1;
-      continue;
-    }
-
-    const changedRows = [];
-    while (index < rows.length && (rows[index]?.kind === 'removed' || rows[index]?.kind === 'added')) {
-      changedRows.push(rows[index]);
-      index += 1;
-    }
-
-    orderedRows.push(
-      ...changedRows.filter((changedRow) => changedRow.kind === 'removed'),
-      ...changedRows.filter((changedRow) => changedRow.kind === 'added'),
-    );
-  }
-
-  return orderedRows;
-}
-
-function buildPlanDiffTabContent({ sourceCode, text, statusItem, issueTarget, sourceTabLabel }) {
-  const diffData = buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel });
-
-  if (diffData.rows.length > 0) {
-    return orderDiffRowsForDisplay(diffData.rows).map((row) => {
-      const prefix = row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' ';
-      return `${prefix} ${row.text}`;
-    }).join('\n');
-  }
-
-  return [
-    `@@ plan step (${statusItem.status})`,
-    `  ${text}`,
-  ].join('\n');
-}
-
-function buildPlanDiffTabId(sourceTabId) {
-  return `plan-diff-${sourceTabId}`;
-}
-
-function buildSpecVersionDiffTabId(sourceTabId, fromVersionId, toVersionId) {
-  return `spec-version-diff-${sourceTabId}-${fromVersionId}-to-${toVersionId}`;
-}
-
-function mergeStoredDiffCommentsByRow(diffComments = {}, rowId = null, comments = []) {
-  if (typeof rowId !== 'string' || rowId.length === 0) {
-    return diffComments;
-  }
-
-  const nextComments = Array.isArray(comments)
-    ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
-    : [];
-  if (nextComments.length === 0) {
-    return diffComments;
-  }
-
-  const existingComments = Array.isArray(diffComments[rowId]) ? diffComments[rowId] : [];
-  const seenComments = new Set(existingComments.map((comment) => comment.trim().toLowerCase()));
-  const mergedComments = [...existingComments];
-
-  nextComments.forEach((comment) => {
-    const normalizedComment = comment.trim().toLowerCase();
-    if (seenComments.has(normalizedComment)) {
-      return;
-    }
-
-    seenComments.add(normalizedComment);
-    mergedComments.push(comment);
-  });
-
-  if (mergedComments.length === existingComments.length) {
-    return diffComments;
-  }
-
-  return {
-    ...diffComments,
-    [rowId]: mergedComments,
-  };
-}
-
-function findSpecVersionDiffRowId(rows = [], lineNumber = null, side = 'old', lineText = '') {
-  if (!Number.isInteger(lineNumber) || lineNumber <= 0) {
-    return null;
-  }
-
-  const lineKey = side === 'new' ? 'newNumber' : 'oldNumber';
-  const relevantRows = rows.filter((row) => row?.[lineKey] === lineNumber);
-  if (relevantRows.length === 0) {
-    return null;
-  }
-
-  const kindPriority = side === 'new'
-    ? ['added', 'context', 'removed']
-    : ['removed', 'context', 'added'];
-
-  const exactTextMatch = typeof lineText === 'string' && lineText.length > 0
-    ? relevantRows.find((row) => row.text === lineText)
-    : null;
-  if (exactTextMatch) {
-    return exactTextMatch.id;
-  }
-
-  for (const kind of kindPriority) {
-    const matchingRow = relevantRows.find((row) => row.kind === kind);
-    if (matchingRow) {
-      return matchingRow.id;
-    }
-  }
-
-  return relevantRows[0]?.id ?? null;
-}
-
-function buildSpecVersionDiffInitialComments({
-  diffData = null,
-} = {}) {
-  if (!Array.isArray(diffData?.rows) || diffData.rows.length === 0) {
-    return {};
-  }
-
-  return {};
-}
-
-function buildSpecVersionDiffData({
-  sourceCode = '',
-  targetCode = '',
-  sourceTabLabel = TERMINAL_TASK_TAB_BASE_LABEL,
-  fromVersion = null,
-  toVersion = null,
-} = {}) {
-  const diff = buildCodeDiffRows(
-    sourceCode,
-    buildSpecVersionCodeWithInlineComments(targetCode, toVersion?.commentEntries ?? []),
-    `spec-version-${fromVersion?.id ?? 'from'}-${toVersion?.id ?? 'to'}`,
-    6,
-  );
-  const fromLabel = fromVersion?.label ?? 'Previous Version';
-  const toLabel = toVersion?.label ?? 'Current Version';
-
-  return {
-    sourceTabLabel,
-    title: `Diff ${fromLabel} -> ${toLabel}`,
-    differenceCount: diff.differenceCount,
-    rows: diff.rows,
-    focusRowId: diff.focusRowId,
-    status: 'passed',
-    lineText: `${fromLabel} -> ${toLabel}`,
-    language: 'text',
-  };
-}
-
-function buildDiffTabContentFromRows(diffData = null) {
-  if (!Array.isArray(diffData?.rows) || diffData.rows.length === 0) {
-    return diffData?.title ?? '';
-  }
-
-  return orderDiffRowsForDisplay(diffData.rows).map((row) => {
-    const prefix = row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ' ';
-    return `${prefix} ${row.text}`;
-  }).join('\n');
 }
 
 function normalizePlanSubitemPreviewText(text = '') {
@@ -6934,11 +5785,8 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, isInRunningScope = false }) {
-  const diffTarget = issueTarget ?? checkTarget;
-  const demoTargetId = formatDemoTargetId(diffTarget);
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, isInRunningScope = false }) {
   const isOutdated = isRunStatusItemOutdated(statusItem);
-  const canShowDiff = Boolean(statusItem) && statusItem?.status !== 'pending';
   const isNested = nestingLevel > 0;
   const isParentScopePending = isInRunningScope && !isRunning && statusItem?.status === 'pending';
   const planLineStyle = isNested
@@ -6957,23 +5805,11 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       }
       <span className="spec-done-plan-text">{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
-      {canShowDiff && !isNested && (
-        <button
-          type="button"
-          className="ac-checks-toggle spec-plan-diff-toggle"
-          aria-label="Show diff"
-          title="Show diff"
-          data-demo-id={demoTargetId ? `plan-show-diff-${demoTargetId}` : undefined}
-          onClick={() => onOpenDiffTab?.({ text, statusItem, issueTarget: diffTarget })}
-        >
-          <Icon name={DIFF_TAB_ICON_NAME} size={16} />
-        </button>
-      )}
     </div>
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -7068,7 +5904,6 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           checkTarget={checkTarget}
           isIssueActive={isIssueActive}
           commentAdornment={commentAdornment}
-          onOpenDiffTab={onOpenDiffTab}
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
           isRunning={isRunning}
@@ -7846,7 +6681,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '', onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, specSessionKey = null, specTabLabel = '', onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
   const effectiveDocumentSections = useMemo(
     () => orderAcceptanceBeforePlanSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -9235,7 +8070,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 className="spec-done-row-content"
                 data-cleared={clearedRowKeys.has(stableKey) ? 'true' : undefined}
               >
-                {renderDoneLine(
+              {renderDoneLine(
                   effectiveLine,
                   `line-${stableKey}`,
                   addPopupFiles,
@@ -9246,12 +8081,18 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   showIssueLineHighlight,
                   commentAdornment,
                   effectiveIssueTarget,
-                  onOpenDiffTab,
                   effectiveCheckTarget,
                   currentSectionTitle,
                   activeRunRequest,
                   rowMeta.nestingLevel ?? 0,
-                  null,
+                  effectiveCheckTarget?.kind === 'ac'
+                    ? () => {
+                        onFixIssue?.({
+                          ...effectiveCheckTarget,
+                          commentText: getIssueQuickFixConfig(effectiveCheckTarget.kind, effectiveCheckTarget.index)?.actionLabel,
+                        });
+                      }
+                    : null,
                   () => {
                     if (effectiveCheckTarget?.kind === 'plan') {
                       onUserInput?.();
@@ -9498,7 +8339,7 @@ function AgentTaskTopBarIcon({ style, animated = false }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, updatedRowTarget = null, doneCommentEntries = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, specSessionKey = null, specTabLabel = '', pendingAcQuickFixCount = 0, onPlanWorkflowSelect = null, onPlanWorkflowOpen = null, onPlanWorkflowRemove = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -9535,19 +8376,19 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const hasToolbarText = value.trim().length > 0;
   const collapsedDoneToolbarText = hasToolbarText ? value.replace(/\s+/g, ' ').trim() : toolbarPlaceholder;
   const isDoneToolbarInputCollapsed = genState === 'done' && (!TOOLBAR_INPUT_IS_EDITABLE || !isDoneToolbarInputFocused);
-  const showLoadingState = false;
-  const showGeneratingState = false;
+  const showLoadingState = genState === 'loading';
+  const showGeneratingState = genState === 'generating';
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
-  const isTaskRunRunning = false;
+  const isTaskRunRunning = runState === 'running' || Boolean(activeRunRequest);
   const runningToolbarSummary = typeof activeRunRequest?.summary === 'string' && activeRunRequest.summary.trim().length > 0
     ? activeRunRequest.summary
     : 'Building...';
   const hasPendingQuickFixRerun = false;
-  const hasPendingSpecifyChanges = false;
-  const shouldShowDoneEnhanceHint = false;
-  const isDoneEnhanceEnabled = false;
+  const hasPendingSpecifyChanges = hasPendingDoneEnhanceChanges || pendingAcQuickFixCount > 0;
+  const shouldShowDoneEnhanceHint = hasPendingSpecifyChanges && !isDoneEnhanceLocked;
+  const isDoneEnhanceEnabled = hasPendingSpecifyChanges;
   const setDoneEnhanceLockedForSession = useCallback((locked) => {
     setDoneEnhanceLocksBySession((prev) => {
       const isCurrentlyLocked = Boolean(prev[doneEnhanceSessionKey]);
@@ -10124,7 +8965,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
         <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
           <div className="agent-task-toolbar-left">
-            <IconLoaderSpinner />
+            <AgentTaskTopBarIcon style={{ flexShrink: 0 }} animated />
             <span className="at-generating-label">{title}</span>
           </div>
 
@@ -10179,7 +9020,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
           doneOverlayHost
         )}
       </>
@@ -10194,7 +9035,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
           doneOverlayHost
         )}
       </>
@@ -10251,7 +9092,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     className={`at-send-btn at-send-btn-enhance${shouldShowDoneEnhanceHint ? ' has-attention' : ''}`}
                     ref={doneEnhanceBtnRef}
                     data-demo-id="agent-task-enhance"
-                    onClick={() => {}}
+                    onClick={handleDoneEnhance}
                   >
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
                       <path d="M13.5 1.5V5.5H12.9003M9.5 5.5H12.9003M12.9003 5.5C11.9899 3.71916 10.1373 2.5 8 2.5C4.96243 2.5 2.5 4.96243 2.5 8C2.5 11.0376 4.96243 13.5 8 13.5C10.1373 13.5 11.9899 12.2808 12.9003 10.5" stroke="#CED0D6" strokeLinecap="round"/>
@@ -10292,7 +9133,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} updatedRowTarget={updatedRowTarget} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} specSessionKey={specSessionKey} specTabLabel={specTabLabel} onPlanWorkflowSelect={onPlanWorkflowSelect} onPlanWorkflowOpen={onPlanWorkflowOpen} onPlanWorkflowRemove={onPlanWorkflowRemove} />,
           doneOverlayHost
         )}
       </>
@@ -10308,7 +9149,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {showGeneratingState ? <>
             {/* Generating state — left */}
             <div className="agent-task-toolbar-left">
-              <IconLoaderSpinner />
+              <AgentTaskTopBarIcon style={{ flexShrink: 0 }} animated />
               <span className="at-generating-label">Updating spec...</span>
             </div>
 
@@ -10999,7 +9840,7 @@ function AutonomousMarkdownEditor() {
 
 function buildInitialEditorTabs() {
   const visitBookingTab = getPresetAgentTaskDefinition('t1')?.tab;
-  return visitBookingTab ? [visitBookingTab, AUTONOMOUS_WORKFLOW_TAB] : [AUTONOMOUS_WORKFLOW_TAB];
+  return visitBookingTab ? [visitBookingTab] : [];
 }
 
 function buildInitialEditorTabContents() {
@@ -11010,11 +9851,6 @@ function buildInitialEditorTabContents() {
 
   return {
     [preset.tab.id]: preset.content,
-    [AUTONOMOUS_WORKFLOW_TAB.id]: {
-      language: 'markdown',
-      code: AUTONOMOUS_WORKFLOW_CONTENT,
-    },
-    ...MY_EDITOR_TAB_CONTENTS,
   };
 }
 
@@ -11114,8 +9950,6 @@ function getAgentTaskIdForEditorTab(tab, tasks = []) {
   const normalizedTabLabel = typeof tab.label === 'string' ? tab.label : '';
   const sourceTabId = (typeof tab.sourceTabId === 'string' && tab.sourceTabId)
     ? tab.sourceTabId
-    : normalizedTabId.startsWith('plan-diff-')
-    ? normalizedTabId.slice('plan-diff-'.length)
     : normalizedTabId;
 
   const matchingTask = tasks.find((task) => {
@@ -11232,15 +10066,6 @@ function resolveAgentTaskPlanFileIcon(fileName = '') {
   return candidateIconIds.find((iconId) => Boolean(getIcon(iconId))) ?? 'fileTypes/text';
 }
 
-function AgentTaskPlanFileChanges({ added = 0, removed = 0 }) {
-  return (
-    <span className="agent-task-plan-file-changes">
-      {added > 0 && <span className="agent-task-plan-file-added">+{added}</span>}
-      {removed > 0 && <span className="agent-task-plan-file-removed">-{removed}</span>}
-    </span>
-  );
-}
-
 const AGENT_TASK_TREE_ROOT_NODE_ID = 'agent-task-tree-root';
 
 const VISIT_BOOKING_REVIEW_CHANGES = [
@@ -11277,23 +10102,11 @@ function buildAgentTaskTreeTaskNodeId(taskId) {
 
 function buildVisitBookingReviewChangeNodes({
   task = null,
-  sourceTabId = null,
-  sourceCode = '',
-  planRunResult = null,
 } = {}) {
-  if (!task?.id || !sourceTabId) {
+  if (!task?.id) {
     return null;
   }
 
-  const issueTarget = { kind: 'plan', index: 4 };
-  const statusItem = planRunResult?.[4] ?? { status: 'passed' };
-  const diffData = buildPlanDiffData({
-    sourceCode,
-    text: '**5. VisitController** - `owner/VisitController.java`',
-    statusItem,
-    issueTarget,
-    sourceTabLabel: task.label,
-  });
   const navigationByNodeId = {};
 
   const fileNodes = VISIT_BOOKING_REVIEW_CHANGES.map((change) => {
@@ -11301,12 +10114,7 @@ function buildVisitBookingReviewChangeNodes({
     navigationByNodeId[nodeId] = {
       type: 'file',
       taskId: task.id,
-      sourceTabId,
-      sourceLabel: task.label,
-      text: '**5. VisitController** - `owner/VisitController.java`',
-      statusItem,
-      issueTarget,
-      activeRowId: diffData?.focusRowId ?? null,
+      file: change.file,
     };
 
     return {
@@ -11329,10 +10137,6 @@ function buildVisitBookingReviewChangeNodes({
 function buildAgentTaskPlanTreeModel({
   task = null,
   sourceTabId = null,
-  sourceCode = '',
-  documentSections = [],
-  planRunResult = null,
-  removedIssueIndices = null,
 } = {}) {
   if (!task?.id || !sourceTabId) {
     return {
@@ -11344,91 +10148,12 @@ function buildAgentTaskPlanTreeModel({
   if (task.id === 't1') {
     return buildVisitBookingReviewChangeNodes({
       task,
-      sourceTabId,
-      sourceCode,
-      planRunResult,
     });
   }
-
-  const viewerData = buildPlanDiffViewerData({
-    documentSections,
-    planRunResult,
-    removedIssueIndices,
-  });
-
-  if (!Array.isArray(viewerData.planItems) || viewerData.planItems.length === 0) {
-    return {
-      treeData: [],
-      navigationByNodeId: {},
-    };
-  }
-
-  const navigationByNodeId = {};
-  const fileNodes = viewerData.planItems.flatMap((item, itemIndex) => {
-    const originalIndex = Number.isInteger(item?.originalIndex) ? item.originalIndex : itemIndex;
-    const visibleIndex = Number.isInteger(item?.visibleIndex) ? item.visibleIndex : itemIndex;
-    const issueTarget = { kind: 'plan', index: originalIndex };
-    const statusItem = item?.statusItem ?? planRunResult?.[visibleIndex] ?? { status: item?.status ?? 'pending' };
-    const diffData = buildPlanDiffData({
-      sourceCode,
-      text: item?.text ?? '',
-      statusItem,
-      issueTarget,
-      sourceTabLabel: task.label,
-    });
-    const changedRows = (diffData?.rows ?? []).filter((row) => row?.kind === 'added' || row?.kind === 'removed');
-    const rowsByFile = changedRows.reduce((groups, row) => {
-      const fileName = row?.file ?? diffData?.sourceTabLabel ?? task.label;
-      if (!groups.has(fileName)) {
-        groups.set(fileName, {
-          rows: [],
-          added: 0,
-          removed: 0,
-        });
-      }
-      const bucket = groups.get(fileName);
-      bucket.rows.push(row);
-      if (row?.kind === 'added') bucket.added += 1;
-      if (row?.kind === 'removed') bucket.removed += 1;
-      return groups;
-    }, new Map());
-
-    const orderedFileNames = Array.from(new Set([
-      ...(Array.isArray(item?.files) ? item.files : []),
-      ...Array.from(rowsByFile.keys()),
-    ])).filter((fileName) => typeof fileName === 'string' && fileName.trim().length > 0);
-
-    return orderedFileNames.map((fileName, fileIndex) => {
-      const fileMeta = rowsByFile.get(fileName) ?? { rows: [], added: 0, removed: 0 };
-      const fileRows = Array.isArray(fileMeta?.rows) ? fileMeta.rows : [];
-      const fileNodeId = `agent-task-tree-file:${task.id}:${originalIndex}:${fileIndex}`;
-      navigationByNodeId[fileNodeId] = {
-        type: 'file',
-        taskId: task.id,
-        sourceTabId,
-        sourceLabel: task.label,
-        text: item?.text ?? '',
-        statusItem,
-        issueTarget,
-        activeRowId: fileRows[0]?.id ?? diffData?.focusRowId ?? null,
-      };
-
-      return {
-        id: fileNodeId,
-        label: (
-          <span className="agent-task-plan-file-label">
-            <span className="agent-task-plan-file-name">{fileName}</span>
-            <AgentTaskPlanFileChanges added={fileMeta?.added ?? 0} removed={fileMeta?.removed ?? 0} />
-          </span>
-          ),
-        icon: resolveAgentTaskPlanFileIcon(fileName),
-      };
-    });
-  });
 
   return {
-    treeData: fileNodes,
-    navigationByNodeId,
+    treeData: [],
+    navigationByNodeId: {},
   };
 }
 
@@ -11601,7 +10326,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -11621,6 +10346,7 @@ export default function App() {
     [],
   );
   const [runStatesByTab, setRunStatesByTab] = useState({});
+  const [activeAcVerificationRequest, setActiveAcVerificationRequest] = useState(null);
   const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
   const [pendingAcQuickFixCount, setPendingAcQuickFixCount] = useState(0);
   const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
@@ -11654,6 +10380,7 @@ export default function App() {
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
   const updatedSpecRowTimeoutRef = useRef(null);
+  const acVerificationTimeoutRef = useRef(null);
   const visitBookingProblemCommentFadeTimeoutRef = useRef(null);
 
   useEffect(() => {
@@ -11689,17 +10416,13 @@ export default function App() {
   const [attachedFilesByTab, setAttachedFilesByTab] = useState({});
   const [doneOverlayUiStates, setDoneOverlayUiStates] = useState({});
   const [specVersionsByTab, setSpecVersionsByTab] = useState({});
-  const [planDiffUiStates, setPlanDiffUiStates] = useState({});
   const addPopupFiles = buildAddPopupFiles(agentTasks);
   const ideWindowKey = ideOpenWindows.join('|');
   const activeEditorTabMeta = ideTabs[activeEditorTab ?? 0] ?? null;
   const activeEditorTabId = activeEditorTabMeta?.id ?? null;
   const activeEditorTabContentEntry = activeEditorTabId ? (ideTabContents[activeEditorTabId] ?? null) : null;
   const activeSourceEditorTabId = activeEditorTabMeta?.sourceTabId
-    ?? activeEditorTabContentEntry?.diffSourceTabId
-    ?? (activeEditorTabId?.startsWith('plan-diff-')
-      ? activeEditorTabId.slice('plan-diff-'.length)
-      : activeEditorTabId);
+    ?? activeEditorTabId;
   const visibleEditorStateTabId = activeSourceEditorTabId ?? activeEditorTabId;
   const runState = visibleEditorStateTabId ? (runStatesByTab[visibleEditorStateTabId] ?? 'default') : 'default';
   const attachedFiles = visibleEditorStateTabId && Array.isArray(attachedFilesByTab[visibleEditorStateTabId])
@@ -11788,35 +10511,6 @@ export default function App() {
       };
     });
   }, [resolveEditorStateTabId]);
-
-  const updatePlanDiffUiStateForTab = useCallback((uiState, tabId = null) => {
-    const resolvedTabId = tabId ?? activeEditorTabId;
-    if (!resolvedTabId) return;
-
-    const normalizedNextUiState = normalizePlanDiffUiState(uiState);
-
-    setPlanDiffUiStates((prev) => {
-      const previousUiState = prev[resolvedTabId] ?? null;
-
-      if (arePlanDiffUiStatesEqual(previousUiState, normalizedNextUiState)) {
-        return prev;
-      }
-
-      if (arePlanDiffUiStatesEqual(normalizedNextUiState, null)) {
-        if (!(resolvedTabId in prev)) {
-          return prev;
-        }
-
-        const { [resolvedTabId]: _removedUiState, ...rest } = prev;
-        return rest;
-      }
-
-      return {
-        ...prev,
-        [resolvedTabId]: normalizedNextUiState,
-      };
-    });
-  }, [activeEditorTabId]);
 
   const restoreSpecDoneScrollForTab = useCallback((tabId) => {
     if (!tabId) return;
@@ -12097,6 +10791,14 @@ export default function App() {
     setAcWarningBannerForTab(null);
   }, [setAcWarningBannerForTab]);
 
+  const clearAcVerificationFlow = useCallback(() => {
+    if (acVerificationTimeoutRef.current) {
+      window.clearTimeout(acVerificationTimeoutRef.current);
+      acVerificationTimeoutRef.current = null;
+    }
+    setActiveAcVerificationRequest(null);
+  }, []);
+
   const resetRunUiForTab = useCallback((sourceTabId) => {
     if (!sourceTabId) return;
     const terminalTabId = buildTerminalSessionTabId(sourceTabId);
@@ -12184,6 +10886,7 @@ export default function App() {
     clearStatusReveal('ac');
     clearPlanBuildClip();
     clearAcWarningFlow();
+    clearAcVerificationFlow();
     clearTerminalRunAnimation();
     setPendingTerminalRunForTab(null);
     setTerminalPermissionPromptForTab(null);
@@ -12198,6 +10901,7 @@ export default function App() {
     resetDoneComments();
   }, [
     clearAcWarningFlow,
+    clearAcVerificationFlow,
     clearChainedRunTimeout,
     clearPlanBuildClip,
     clearStatusReveal,
@@ -13257,176 +11961,6 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null }) => {
-    const sourceTab = source?.tabId
-      ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
-      : (ideTabs[activeEditorTab ?? 0] ?? null);
-    const sourceTabId = source?.tabId ?? sourceTab?.id ?? null;
-    const sourceTabLabel = source?.label ?? sourceTab?.label ?? null;
-    if (!sourceTabId || !sourceTabLabel) return;
-
-    if (sourceTabId === activeSourceEditorTabId || sourceTabId === activeEditorTabId) {
-      const scrollSnapshot = captureSpecDoneScrollSnapshot();
-      if (scrollSnapshot) {
-        specDoneScrollSnapshotsRef.current[sourceTabId] = scrollSnapshot;
-      }
-    }
-
-    const diffTarget = normalizeCommentTarget(issueTarget);
-    const sourceViewState = getCommentDrivenViewStateForTaskTab(sourceTabId);
-    const sourceCode = typeof source?.code === 'string'
-      ? source.code
-      : (sourceViewState?.code ?? ideTabContents[sourceTabId]?.code ?? '');
-    const diffTabId = buildPlanDiffTabId(sourceTabId);
-    const diffData = buildPlanDiffData({
-      sourceCode,
-      text,
-      statusItem,
-      issueTarget,
-      sourceTabLabel,
-    });
-    const diffCode = buildPlanDiffTabContent({
-      sourceCode,
-      text,
-      statusItem,
-      issueTarget,
-      sourceTabLabel,
-    });
-    const diffTabLabel = diffData.title || `Diff ${diffData.sourceTabLabel || sourceTabLabel}`;
-    const currentTaskCommentEntries = getCommentEntriesForTaskTab(sourceTabId);
-    const initialDiffComments = buildPlanDiffInitialComments(
-      currentTaskCommentEntries,
-      diffData,
-      diffTarget,
-    );
-
-    const sourceTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
-    const existingDiffTabIndex = ideTabs.findIndex((tab) => tab.id === diffTabId);
-    const insertIndex = sourceTabIndex >= 0
-      ? sourceTabIndex + 1
-      : Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
-    const nextActiveTabIndex = existingDiffTabIndex >= 0 ? existingDiffTabIndex : insertIndex;
-    const diffTab = {
-      id: diffTabId,
-      label: diffTabLabel,
-      icon: DIFF_TAB_ICON_NAME,
-      closable: true,
-      sourceTabId,
-    };
-
-    setIdeTabs(existingDiffTabIndex >= 0
-      ? ideTabs.map((tab, index) => (index === existingDiffTabIndex ? diffTab : tab))
-      : [
-          ...ideTabs.slice(0, insertIndex),
-          diffTab,
-          ...ideTabs.slice(insertIndex),
-        ]);
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [diffTabId]: {
-        language: diffData.language || 'text',
-        code: diffCode,
-        diffData,
-        diffSourceTabId: sourceTabId,
-        diffTarget,
-        diffLineText: text,
-        initialDiffComments,
-      },
-    }));
-    if (navigation?.activeRowId) {
-      updatePlanDiffUiStateForTab(
-        {
-          activeRowId: navigation.activeRowId,
-          commentRowId: null,
-          commentValue: '',
-          commentEditingIndex: null,
-          caretState: {
-            rowId: navigation.activeRowId,
-            left: 12,
-          },
-        },
-        diffTabId,
-      );
-    }
-    const resolvedTaskId = source?.taskId
-      ?? getAgentTaskIdForEditorTab({ id: sourceTabId, label: sourceTabLabel }, agentTasks);
-    if (resolvedTaskId) {
-      setSelectedTask(resolvedTaskId);
-      if (issueTarget?.kind === 'plan' && Number.isInteger(issueTarget.index)) {
-        setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:visit-controller`);
-      }
-    }
-    setScreen('ide');
-    setActiveEditorTab(nextActiveTabIndex);
-  }, [
-    activeEditorTab,
-    activeEditorTabId,
-    activeSourceEditorTabId,
-    agentTasks,
-    getCommentDrivenViewStateForTaskTab,
-    getCommentEntriesForTaskTab,
-    ideTabContents,
-    ideTabs,
-    updatePlanDiffUiStateForTab,
-  ]);
-
-  const openSpecVersionDiffTab = useCallback(({
-    sourceTabId,
-    fromVersion,
-    toVersion,
-  }) => {
-    if (!sourceTabId || !fromVersion?.id || !toVersion?.id || fromVersion.id === toVersion.id) {
-      return;
-    }
-
-    const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
-    const sourceTabIndex = Math.max(ideTabs.findIndex((tab) => tab.id === sourceTabId), 0);
-    const diffTabId = buildSpecVersionDiffTabId(sourceTabId, fromVersion.id, toVersion.id);
-  const diffData = buildSpecVersionDiffData({
-      sourceCode: fromVersion.code,
-      targetCode: toVersion.code,
-      sourceTabLabel: sourceTab?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
-      fromVersion,
-      toVersion,
-    });
-    const diffCode = buildDiffTabContentFromRows(diffData);
-    const initialDiffComments = buildSpecVersionDiffInitialComments({
-      diffData,
-      fromVersion,
-      toVersion,
-    });
-    const existingDiffTabIndex = ideTabs.findIndex((tab) => tab.id === diffTabId);
-    const nextActiveTabIndex = existingDiffTabIndex >= 0 ? existingDiffTabIndex : sourceTabIndex + 1;
-    const diffTab = {
-      id: diffTabId,
-      label: diffData.title,
-      icon: DIFF_TAB_ICON_NAME,
-      closable: true,
-      sourceTabId,
-    };
-
-    setIdeTabs(existingDiffTabIndex >= 0
-      ? ideTabs.map((tab, index) => (index === existingDiffTabIndex ? diffTab : tab))
-      : [
-          ...ideTabs.slice(0, sourceTabIndex + 1),
-          diffTab,
-          ...ideTabs.slice(sourceTabIndex + 1),
-        ]);
-    setIdeTabContents((prev) => ({
-      ...prev,
-      [diffTabId]: {
-        language: diffData.language || 'text',
-        code: diffCode,
-        diffData,
-        diffSourceTabId: sourceTabId,
-        diffTarget: null,
-        diffLineText: diffData.lineText,
-        initialDiffComments,
-      },
-    }));
-    setActiveEditorTab(nextActiveTabIndex);
-  }, [ideTabs]);
-
   const revealRunStatuses = useCallback((kind, statuses, options = {}) => {
     const {
       initialResult = [],
@@ -13784,7 +12318,6 @@ export default function App() {
     setAttachedFilesByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
     setDoneOverlayUiStates((prev) => removeTabStateEntry(prev, closingTab?.id));
     setSpecVersionsByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
-    setPlanDiffUiStates((prev) => removeTabStateEntry(prev, closingTab?.id));
     setRunStatesByTab((prev) => removeTabStateEntry(prev, closingTab?.id));
 
     if (highlightedProblemLocation?.tabId === closingTab.id) {
@@ -14349,7 +12882,7 @@ export default function App() {
       (Array.isArray(commentEntries) && commentEntries.length > 0) ||
       pendingAcQuickFixCount > 0;
     const updatedRowTargetForSpecRegeneration =
-      pendingAcQuickFixCount > 0 ? VISIT_BOOKING_CONFLICT_PROBLEM_TARGET : null;
+      pendingAcQuickFixCount > 0 ? VISIT_BOOKING_AC_REWORD_TARGET : null;
     if (!hasSpecChanges && !hasPendingComments && !effectiveHasPendingReruns) {
       return;
     }
@@ -14438,8 +12971,23 @@ export default function App() {
         ? sourceResults.map((statusItem) => resolveRuntimeInspectionItem(statusItem))
         : sourceResults;
     };
-    const resolvedNextAcRunResult = resolveVisibleRunResults(currentAcRunResult, nextAcRunResult);
+    let resolvedNextAcRunResult = resolveVisibleRunResults(currentAcRunResult, nextAcRunResult);
     const resolvedNextPlanRunResult = resolveVisibleRunResults(currentPlanRunResult, nextPlanRunResult);
+    if (updatedRowTargetForSpecRegeneration?.kind === 'ac' && Array.isArray(resolvedNextAcRunResult)) {
+      const staleVisibleIndex = mapOriginalIssueIndexToVisible(
+        'ac',
+        updatedRowTargetForSpecRegeneration.index,
+        nextRemovedIssueIndices,
+      );
+      const staleStatus = getIssueQuickFixConfig('ac', updatedRowTargetForSpecRegeneration.index)?.resolvedStatus;
+      if (Number.isInteger(staleVisibleIndex) && staleVisibleIndex >= 0 && staleStatus?.status === 'stale') {
+        resolvedNextAcRunResult = resolvedNextAcRunResult.map((statusItem, statusIndex) => (
+          statusIndex === staleVisibleIndex
+            ? cloneRunStatusItem(staleStatus)
+            : statusItem
+        ));
+      }
+    }
 
     clearChainedRunTimeout();
     clearStatusReveal('plan');
@@ -14552,8 +13100,11 @@ export default function App() {
         rawIndex: targetMetadata.rawIndex,
         rowStableKey: targetMetadata.rowStableKey,
       };
+      const pendingResolvedStatus = fixConfig.resolvedStatus?.status === 'stale'
+        ? cloneRunStatusItem(fixConfig.resolvedStatus)
+        : null;
       const nextAcRunResult = kind === 'ac' && Array.isArray(acRunResult)
-        ? acRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
+        ? acRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? pendingResolvedStatus : statusItem))
         : acRunResult;
       const nextPlanRunResult = kind === 'plan' && Array.isArray(planRunResult)
         ? planRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
@@ -14577,7 +13128,7 @@ export default function App() {
         const baseAcRunResult = previousTaskState.acRunResult ?? acRunResult;
         const basePlanRunResult = previousTaskState.planRunResult ?? planRunResult;
         const storedAcRunResult = kind === 'ac' && Array.isArray(baseAcRunResult)
-          ? baseAcRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
+          ? baseAcRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? pendingResolvedStatus : statusItem))
           : baseAcRunResult;
         const storedPlanRunResult = kind === 'plan' && Array.isArray(basePlanRunResult)
           ? basePlanRunResult.map((statusItem, statusIndex) => (statusIndex === visibleIndex ? null : statusItem))
@@ -14655,6 +13206,10 @@ export default function App() {
     if (updatedSpecRowTimeoutRef.current) {
       window.clearTimeout(updatedSpecRowTimeoutRef.current);
       updatedSpecRowTimeoutRef.current = null;
+    }
+    if (acVerificationTimeoutRef.current) {
+      window.clearTimeout(acVerificationTimeoutRef.current);
+      acVerificationTimeoutRef.current = null;
     }
     if (visitBookingProblemCommentFadeTimeoutRef.current) {
       window.clearTimeout(visitBookingProblemCommentFadeTimeoutRef.current);
@@ -16055,20 +14610,9 @@ export default function App() {
     const navigationEntry = agentTaskPlanTreesByTaskId?.[taskId]?.navigationByNodeId?.[nodeId] ?? null;
     if (!navigationEntry) return;
 
-    openPlanDiffTab({
-      text: navigationEntry.text,
-      statusItem: navigationEntry.statusItem,
-      issueTarget: navigationEntry.issueTarget,
-      source: {
-        taskId: navigationEntry.taskId,
-        tabId: navigationEntry.sourceTabId,
-        label: navigationEntry.sourceLabel,
-      },
-      navigation: {
-        activeRowId: navigationEntry.activeRowId,
-      },
-    });
-  }, [agentTaskPlanTreesByTaskId, openPlanDiffTab]);
+    setSelectedTask(navigationEntry.taskId ?? taskId);
+    setScreen('ide');
+  }, [agentTaskPlanTreesByTaskId]);
   useEffect(() => {
     const now = Date.now();
 
@@ -16154,7 +14698,7 @@ export default function App() {
   const visibleTerminalPermissionPrompt = hasLocalTerminalTabs ? (activeTerminalSession?.permissionPrompt ?? null) : terminalPermissionPrompt;
   const visibleAcWarningBanner = hasLocalTerminalTabs ? (activeTerminalSession?.acWarningBanner ?? null) : acWarningBanner;
   const activePlanBuildClipRequest = activeEditorTabId ? (planBuildClipRequestsByTab[activeEditorTabId] ?? null) : null;
-  const activeEditorRunRequest = activePlanBuildClipRequest ?? (
+  const activeEditorRunRequest = activeAcVerificationRequest ?? activePlanBuildClipRequest ?? (
     runState === 'running' ? (visiblePendingTerminalRun ?? lastTerminalRunRequestRef.current ?? null) : null
   );
   const handleTerminalTabChange = useCallback((nextIndex) => {
@@ -16397,6 +14941,82 @@ export default function App() {
     updateSpecVersionsForTab,
   ]);
 
+  const startAcceptanceCriteriaVerification = useCallback((sourceTabId) => {
+    const resolvedSourceTabId = sourceTabId ?? generationTabId ?? activeEditorTabId;
+    if (!resolvedSourceTabId) return true;
+
+    clearAcVerificationFlow();
+    clearStatusReveal('ac');
+    currentRunSourceTabIdRef.current = resolvedSourceTabId;
+
+    const currentStatuses = Array.isArray(activeAgentTaskAcRunResult)
+      ? activeAgentTaskAcRunResult.map((status) => cloneRunStatusItem(status))
+      : buildResolvedRunStatuses(
+          getCurrentAgentTaskScenario(resolvedSourceTabId).acBaseStatuses,
+          'ac',
+          appliedIssueFixes,
+          removedIssueIndices,
+        );
+    const runningStatuses = [...currentStatuses];
+    runningStatuses[0] = {
+      status: 'pending',
+      checks: [],
+    };
+
+    const runRequest = {
+      mode: 'section',
+      sourceTabId: resolvedSourceTabId,
+      sectionTitle: 'Acceptance Criteria',
+      checkTarget: { kind: 'ac', index: 0 },
+      summary: 'Verifying Acceptance Criteria...',
+    };
+
+    setActiveAcVerificationRequest(runRequest);
+    setRunStateForTab('running', resolvedSourceTabId);
+    setAcRunResult(runningStatuses);
+    setInteractiveTaskStates((prev) => ({
+      ...prev,
+      [resolvedSourceTabId]: {
+        ...(prev[resolvedSourceTabId] ?? {}),
+        acRunResult: runningStatuses,
+      },
+    }));
+
+    acVerificationTimeoutRef.current = window.setTimeout(() => {
+      acVerificationTimeoutRef.current = null;
+      const verifiedStatuses = runningStatuses.map((status) => cloneRunStatusItem(status));
+      verifiedStatuses[0] = cloneRunStatusItem(VISIT_BOOKING_AC1_VERIFIED_STATUS);
+
+      setAcRunResult(verifiedStatuses);
+      setInteractiveTaskStates((prev) => ({
+        ...prev,
+        [resolvedSourceTabId]: {
+          ...(prev[resolvedSourceTabId] ?? {}),
+          acRunResult: verifiedStatuses,
+        },
+      }));
+      setActiveAcVerificationRequest(null);
+      setRunStateForTab('default', resolvedSourceTabId);
+      if (currentRunSourceTabIdRef.current === resolvedSourceTabId) {
+        currentRunSourceTabIdRef.current = null;
+      }
+      triggerUpdatedSpecRowAnimation({ kind: 'ac', index: 0 });
+    }, 5600);
+
+    return true;
+  }, [
+    activeAgentTaskAcRunResult,
+    activeEditorTabId,
+    appliedIssueFixes,
+    clearAcVerificationFlow,
+    clearStatusReveal,
+    generationTabId,
+    getCurrentAgentTaskScenario,
+    removedIssueIndices,
+    setRunStateForTab,
+    triggerUpdatedSpecRowAnimation,
+  ]);
+
   const handleDoneOpenTerminal = (input) => {
     const runTarget = normalizeCommentTarget(typeof input === 'object' ? input?.runTarget ?? input?.checkTarget : null);
     const sectionTitle = typeof input === 'string'
@@ -16410,6 +15030,10 @@ export default function App() {
     const resolvedRunSectionTitle = typeof sectionTitle === 'string' && sectionTitle.trim().length > 0
       ? sectionTitle
       : 'Plan';
+    if (resolvedRunSectionTitle.trim().toLowerCase() === 'acceptance criteria') {
+      startAcceptanceCriteriaVerification(generationTabId ?? activeEditorTabId);
+      return;
+    }
     const commitResult = commitDoneSpecUpdate({
       applyPendingComments: false,
       runSectionTitle: resolvedRunSectionTitle,
@@ -16660,49 +15284,9 @@ export default function App() {
     return panel;
   }
 
-  // These useMemo hooks must be declared before any early return to satisfy
-  // the Rules of Hooks (hook call order must be identical across renders).
-  const activePlanDiffSourceTabIdForMemo = (() => {
-    if (screen === 'welcome') return null;
-    const tabId = (activeEditorTabMeta?.id ?? null);
-    const tabContent = activeEditorTabContentEntry;
-    const isDiff = Boolean(tabContent?.diffData);
-    return isDiff ? (tabContent?.diffSourceTabId ?? (activeSourceEditorTabId)) : null;
-  })();
-  const activePlanDiffSourceViewState = useMemo(
-    () => (
-      activePlanDiffSourceTabIdForMemo
-        ? getCommentDrivenViewStateForTaskTab(activePlanDiffSourceTabIdForMemo)
-        : null
-    ),
-    [activePlanDiffSourceTabIdForMemo, getCommentDrivenViewStateForTaskTab],
-  );
-  const activePlanDiffDataForMemo = (() => {
-    if (screen === 'welcome') return null;
-    const tabContent = activeEditorTabContentEntry;
-    const isDiff = Boolean(tabContent?.diffData);
-    return isDiff ? (tabContent?.diffData ?? null) : null;
-  })();
-  const activePlanDiffTargetForMemo = (() => {
-    if (screen === 'welcome') return null;
-    const tabContent = activeEditorTabContentEntry;
-    const isDiff = Boolean(tabContent?.diffData);
-    return isDiff ? normalizeCommentTarget(tabContent?.diffTarget) : null;
-  })();
-  const activePlanDiffViewerData = useMemo(
-    () => buildPlanDiffViewerData({
-      documentSections: activePlanDiffSourceViewState?.documentSections ?? [],
-      planRunResult: activePlanDiffSourceViewState?.planRunResult ?? null,
-      removedIssueIndices: activePlanDiffSourceViewState?.removedIssueIndices ?? null,
-      diffData: activePlanDiffDataForMemo,
-      diffTarget: activePlanDiffTargetForMemo,
-    }),
-    [activePlanDiffDataForMemo, activePlanDiffSourceViewState, activePlanDiffTargetForMemo],
-  );
   const activeTabId = activeEditorTabMeta?.id ?? null;
   const activeTabContent = activeEditorTabContentEntry;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
-  const isDiffTab = Boolean(activeTabContent?.diffData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
   const currentPersistedSpecCode = visibleEditorStateTabId
     ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
@@ -16721,149 +15305,8 @@ export default function App() {
   const activeDoneOverlayUiState = visibleEditorStateTabId
     ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
     : null;
-  const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
-  const activePlanDiffTarget = isDiffTab
-    ? normalizeCommentTarget(activeTabContent?.diffTarget)
-    : null;
-  const activePlanDiffSourceTabId = isDiffTab
-    ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
-    : null;
-  const activePlanDiffComments =
-    isDiffTab && activePlanDiffData
-      ? normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
-      : {};
-  const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
-  const activePlanDiffLineText = isDiffTab ? (activeTabContent?.diffLineText ?? '') : '';
-  const handleDoneVersionSelect = (version) => {
-    if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
-      return;
-    }
-
-    const currentVersion = activeVersionHistory.versions[activeVersionHistory.versions.length - 1] ?? null;
-    if (!currentVersion || version.id === currentVersion.id) {
-      return;
-    }
-
-    openSpecVersionDiffTab({
-      sourceTabId: visibleEditorStateTabId,
-      fromVersion: version,
-      toVersion: currentVersion,
-    });
-  };
-  const handleActivePlanDiffCommentsChange = useCallback((comments) => {
-    if (activeTabId) {
-      setIdeTabContents((prev) => {
-        const existing = prev[activeTabId];
-        if (!existing) return prev;
-        return { ...prev, [activeTabId]: { ...existing, initialDiffComments: comments } };
-      });
-    }
-
-    const commentTarget = activePlanDiffTarget ?? { kind: 'plan', index: 4 };
-    if (!activePlanDiffSourceTabId) return;
-
-    syncDiffCommentsToTaskTarget({
-      sourceTabId: activePlanDiffSourceTabId,
-      target: commentTarget,
-      comments,
-      sectionTitle: commentTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-      line: activePlanDiffLineText,
-    });
-  }, [
-    activeTabId,
-    activePlanDiffLineText,
-    activePlanDiffSourceTabId,
-    activePlanDiffTarget,
-    syncDiffCommentsToTaskTarget,
-  ]);
-  const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
-    updatePlanDiffUiStateForTab(uiState, activeTabId);
-  }, [activeTabId, updatePlanDiffUiStateForTab]);
-  const navigateActivePlanDiffAgentTask = useCallback((direction) => {
-    if (!activePlanDiffSourceTabId) return;
-
-    const sourceTab = ideTabs.find((tab) => tab.id === activePlanDiffSourceTabId) ?? null;
-    const taskId = getAgentTaskIdForEditorTab(sourceTab, agentTasks)
-      ?? (activePlanDiffSourceTabId.startsWith('agent-task-') ? activePlanDiffSourceTabId.slice('agent-task-'.length) : null);
-    const taskTree = taskId ? agentTaskPlanTreesByTaskId?.[taskId] : null;
-    const navigationEntries = Object.entries(taskTree?.navigationByNodeId ?? {})
-      .filter(([, entry]) => entry?.type === 'file')
-      .map(([nodeId, entry]) => ({ nodeId, entry }));
-
-    if (navigationEntries.length === 0) return;
-
-    const activeTarget = normalizeCommentTarget(activePlanDiffTarget);
-    const activeRowId = activePlanDiffUiState?.activeRowId ?? activePlanDiffData?.focusRowId ?? null;
-    const currentIndex = navigationEntries.findIndex(({ entry }) => {
-      const entryTarget = normalizeCommentTarget(entry?.issueTarget);
-      if (!entryTarget || !activeTarget || entryTarget.kind !== activeTarget.kind || entryTarget.index !== activeTarget.index) {
-        return false;
-      }
-
-      return !activeRowId || entry.activeRowId === activeRowId;
-    });
-    const fallbackIndex = navigationEntries.findIndex(({ entry }) => {
-      const entryTarget = normalizeCommentTarget(entry?.issueTarget);
-      return Boolean(entryTarget && activeTarget && entryTarget.kind === activeTarget.kind && entryTarget.index === activeTarget.index);
-    });
-    const resolvedCurrentIndex = currentIndex >= 0 ? currentIndex : fallbackIndex;
-    const baseIndex = resolvedCurrentIndex >= 0 ? resolvedCurrentIndex : (direction > 0 ? -1 : navigationEntries.length);
-    const nextIndex = Math.min(Math.max(baseIndex + direction, 0), navigationEntries.length - 1);
-    const nextNavigation = navigationEntries[nextIndex];
-    if (!nextNavigation || nextIndex === resolvedCurrentIndex) return;
-
-    setAgentTasksFocusedNodeId(nextNavigation.nodeId);
-    handleAgentTaskPlanTreeNodeSelect(taskId, nextNavigation.nodeId);
-  }, [
-    activePlanDiffData?.focusRowId,
-    activePlanDiffSourceTabId,
-    activePlanDiffTarget,
-    activePlanDiffUiState?.activeRowId,
-    agentTaskPlanTreesByTaskId,
-    agentTasks,
-    handleAgentTaskPlanTreeNodeSelect,
-    ideTabs,
-  ]);
-  const handleActivePlanMarkerClick = useCallback(() => {
-    if (!activePlanDiffSourceTabId) return;
-
-    const sourceTabIndex = ideTabs.findIndex((tab) => tab.id === activePlanDiffSourceTabId);
-    const sourceTab = sourceTabIndex >= 0
-      ? ideTabs[sourceTabIndex]
-      : { id: activePlanDiffSourceTabId, label: '' };
-    const taskId = getAgentTaskIdForEditorTab(sourceTab, agentTasks)
-      ?? (activePlanDiffSourceTabId.startsWith('agent-task-') ? activePlanDiffSourceTabId.slice('agent-task-'.length) : null);
-
-    setScreen('ide');
-
-    if (sourceTabIndex >= 0) {
-      setActiveEditorTab(sourceTabIndex);
-      scheduleSpecDoneRowCenter('section-item:plan-5', {
-        topOffset: 94,
-        highlightPlanBlock: true,
-      });
-    }
-
-    if (taskId) {
-      setSelectedTask(taskId);
-
-      setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
-    }
-  }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs]);
-  const renderedIdeTabs = useMemo(() => (
-    ideTabs.map((tab) => {
-      const shouldUseDiffIcon =
-        Boolean(ideTabContents[tab.id]?.diffData) ||
-        tab.id?.startsWith('plan-diff-') ||
-        tab.id?.startsWith('spec-version-diff-');
-
-      if (shouldUseDiffIcon && tab.icon !== DIFF_TAB_ICON_NAME) {
-        return { ...tab, icon: DIFF_TAB_ICON_NAME };
-      }
-
-      return tab;
-    })
-  ), [ideTabContents, ideTabs]);
+  const handleDoneVersionSelect = () => {};
+  const renderedIdeTabs = ideTabs;
   const activeStatusBarTab = activeEditorTabMeta ?? ideTabs[activeEditorTab ?? 0] ?? null;
   const activeRenderedStatusBarTab = activeStatusBarTab
     ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTab.id) ?? activeStatusBarTab)
@@ -16886,9 +15329,6 @@ export default function App() {
     ? (renderedIdeTabs.find((tab) => tab.id === activeStatusBarTaskTab.id) ?? activeStatusBarTaskTab)
     : null;
   const activeStatusBarProjectFileName = (() => {
-    if (isDiffTab && typeof activePlanDiffData?.sourceTabLabel === 'string' && activePlanDiffData.sourceTabLabel.trim().length > 0) {
-      return activePlanDiffData.sourceTabLabel.trim();
-    }
     if (activeStatusBarTab?.id?.startsWith('agent-task-') || activeStatusBarTab?.label?.endsWith('.md')) {
       return null;
     }
@@ -16999,59 +15439,6 @@ export default function App() {
       </ThemeProvider>
     );
   }
-  const handlePlanDiffRowDelete = (rowId, comment) => {
-    if (!activeTabId || !isDiffTab) return;
-
-    const deletedRow = activePlanDiffData?.rows?.find((row) => row.id === rowId);
-    const deletedLineText = deletedRow?.text ?? '';
-
-    setIdeTabContents((prev) => {
-      const tabContent = prev[activeTabId];
-      if (!tabContent?.diffData?.rows) return prev;
-      const nextRows = tabContent.diffData.rows.filter((row) => row.id !== rowId);
-      return {
-        ...prev,
-        [activeTabId]: {
-          ...tabContent,
-          diffData: {
-            ...tabContent.diffData,
-            rows: nextRows,
-          },
-        },
-      };
-    });
-
-    if (activePlanDiffTarget && activePlanDiffSourceTabId) {
-      syncDiffCommentsToTaskTarget({
-        sourceTabId: activePlanDiffSourceTabId,
-        target: activePlanDiffTarget,
-        comments: { [rowId]: [comment || 'delete'] },
-        sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-        line: deletedLineText,
-      });
-    }
-  };
-  const handlePlanDiffRowFix = (rowId, comment) => {
-    if (!activePlanDiffTarget) return;
-
-    const fixedRow = activePlanDiffData?.rows?.find((row) => row.id === rowId);
-    const fixedLineText = fixedRow?.text ?? '';
-
-    if (activePlanDiffSourceTabId) {
-      syncDiffCommentsToTaskTarget({
-        sourceTabId: activePlanDiffSourceTabId,
-        target: activePlanDiffTarget,
-        comments: { [rowId]: [comment || 'fix'] },
-        sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-        line: fixedLineText,
-      });
-    }
-
-    handleDoneIssueFix({
-      kind: activePlanDiffTarget.kind,
-      index: activePlanDiffTarget.index,
-    });
-  };
   const projectTreeData = [{
     ...MY_PROJECT_TREE[0],
     children: [
@@ -17117,14 +15504,13 @@ export default function App() {
         editorTopBar={
           isAgentTaskTab
             ? <AgentTaskEditorArea
-                genState="done"
-                genProgress={1}
+                genState={genState}
+                genProgress={genProgress}
                 onSend={() => {}}
                 onStop={() => {}}
                 onRegenerate={() => {}}
-                onDoneRegenerate={() => {}}
+                onDoneRegenerate={handleDoneRegenerate}
                 onFixIssue={handleDoneIssueFix}
-                onOpenDiffTab={openPlanDiffTab}
                 onOpenVersionDiff={handleDoneVersionSelect}
                 attachedFiles={attachedFiles}
                 onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))}
@@ -17132,7 +15518,7 @@ export default function App() {
                 currentCode={activeAgentTaskCode}
                 documentSections={activeAgentTaskDocumentSections}
                 onOpenProblems={openAndFocusIdeProblemsToolWindow}
-                onOpenTerminal={() => {}}
+                onOpenTerminal={handleDoneOpenTerminal}
                 addPopupFiles={addPopupFiles}
                 acRunResult={activeAgentTaskAcRunResult}
                 planRunResult={activeAgentTaskPlanRunResult}
@@ -17145,32 +15531,16 @@ export default function App() {
                 doneCommentEntries={agentTaskCommentEntries}
                 onDoneCommentsChange={handleDoneCommentsChange}
                 commentResetToken={doneCommentResetToken}
-                preserveDoneOverlayDuringBusy={false}
-                runState="idle"
-                activeRunRequest={null}
+                preserveDoneOverlayDuringBusy
+                runState={runState}
+                activeRunRequest={activeEditorRunRequest}
                 doneOverlayUiState={activeDoneOverlayUiState}
                 onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange}
                 specSessionKey={activeEditorTabId}
                 specTabLabel={activeEditorTabMeta?.label ?? ''}
-                pendingAcQuickFixCount={0}
+                pendingAcQuickFixCount={pendingAcQuickFixCount}
               />
-            : (isDiffTab && activePlanDiffData
-                ? (
-                  <PlanDiffEditorArea
-                    diffData={activePlanDiffData}
-                    viewerData={activePlanDiffViewerData}
-                    initialDiffComments={activePlanDiffComments}
-                    onDiffCommentsChange={handleActivePlanDiffCommentsChange}
-                    onRowDelete={handlePlanDiffRowDelete}
-                    onRowFix={handlePlanDiffRowFix}
-                    onPlanMarkerClick={handleActivePlanMarkerClick}
-                    onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
-                    onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
-                    uiState={activePlanDiffUiState}
-                    onUiStateChange={handleActivePlanDiffUiStateChange}
-                  />
-                )
-                : undefined)
+            : undefined
         }
 
         projectTreeData={projectTreeData}
