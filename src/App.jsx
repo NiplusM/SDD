@@ -8819,11 +8819,11 @@ function AttachedFileChip({ label, onRemove, className = '' }) {
   );
 }
 
-function AgentTaskTopBarIcon({ style }) {
+function AgentTaskTopBarIcon({ style, animated = false }) {
   const gradientId = useId();
 
   return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
+    <svg className={animated ? 'agent-task-topbar-icon is-animated' : 'agent-task-topbar-icon'} width="16" height="16" viewBox="0 0 20 20" fill="none" style={style}>
       <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill={`url(#${gradientId})`} />
       <path d="M10.4202 17.71C6.0202 17.71 2.4502 14.26 2.4502 10C2.4502 5.74004 6.0202 2.29004 10.4202 2.29004" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
       <path d="M17.34 7.87004C17.34 10.86 14.35 13.45 10.43 13.45C6.51002 13.45 3.52002 10.86 3.52002 7.87004C3.52002 4.88004 6.51002 2.29004 10.43 2.29004C14.35 2.29004 17.34 4.88004 17.34 7.87004Z" stroke={`url(#${gradientId})`} strokeWidth="1.5" />
@@ -9466,7 +9466,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
         <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
           <div className="agent-task-toolbar-left">
-            <IconLoaderSpinner />
+            <AgentTaskTopBarIcon animated style={{ flexShrink: 0 }} />
             <span className="at-generating-label">{title}</span>
           </div>
 
@@ -9553,7 +9553,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
                 {runState === 'running' ? (<>
-                  <IconLoaderSpinner />
+                  <AgentTaskTopBarIcon animated style={{ flexShrink: 0 }} />
                   <span className="at-generating-label">Building...</span>
                 </>) : (<>
                   <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
@@ -9666,7 +9666,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {showGeneratingState ? <>
             {/* Generating state — left */}
             <div className="agent-task-toolbar-left">
-              <IconLoaderSpinner />
+              <AgentTaskTopBarIcon animated style={{ flexShrink: 0 }} />
               <span className="at-generating-label">Updating spec...</span>
             </div>
 
