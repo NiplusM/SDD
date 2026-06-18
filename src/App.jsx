@@ -31,8 +31,9 @@ import {
   Input,
   Checkbox,
   Badge,
-  GotItTooltip,
   Tree,
+  TreeNode,
+  Search,
   getIcon,
   DEFAULT_EDITOR_TABS,
   DEFAULT_EDITOR_TAB_CONTENTS,
@@ -3028,7 +3029,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
     return (entry.comments ?? []).map((comment, commentIndex) => ({
       id: `comment-${entry.rowIndex ?? entryIndex}-${commentIndex}`,
       severity: 'comment',
-      label: comment,
+      label: getStoredCommentText(comment),
       icon,
       navigationTabId,
       rawIndex,
@@ -3116,7 +3117,7 @@ function buildCommentIssuesFromDiffTabs(ideTabContents = {}, ideTabs = [], optio
         id: `diff-comment-${tabId}-${source.kind}-${rowId}-${commentIndex}`,
         sourceKind: 'diff',
         severity: 'comment',
-          label: comment,
+          label: getStoredCommentText(comment),
           icon: renderProblemsSourceIcon(sourceIcon),
           navigationTabId: tabId,
           navigationRowId: rowId,
@@ -3149,7 +3150,7 @@ function buildCommentIssuesFromEntryDiffComments(commentEntries = [], sourceLabe
         id: `entry-diff-comment-${entry.id ?? entryIndex}-${rowId}-${commentIndex}`,
         sourceKind: 'diff',
         severity: 'comment',
-        label: comment,
+        label: getStoredCommentText(comment),
         icon: renderProblemsSourceIcon(entrySourceIcon),
         secondaryText: entrySourceLabel,
         navigationTabId: entry?.sourceNavigationTabId ?? null,
@@ -3229,9 +3230,26 @@ function countDirectCommentEntries(commentEntries = []) {
 }
 
 function buildMergedExternalCommentIssues(commentEntries = [], relatedCommentIssues = []) {
+  const normalizedRelatedIssues = Array.isArray(relatedCommentIssues) ? relatedCommentIssues : [];
+  const relatedSourceKeys = new Set(
+    normalizedRelatedIssues
+      .map((issue) => {
+        const navigationTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+        const sourceLabel = getCommentIssueSourceLabel(issue).trim().toLowerCase();
+        return navigationTabId && sourceLabel ? `${navigationTabId}|${sourceLabel}` : '';
+      })
+      .filter(Boolean),
+  );
+  const entryDiffIssues = buildCommentIssuesFromEntryDiffComments(commentEntries).filter((issue) => {
+    const navigationTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+    const sourceLabel = getCommentIssueSourceLabel(issue).trim().toLowerCase();
+    const sourceKey = navigationTabId && sourceLabel ? `${navigationTabId}|${sourceLabel}` : '';
+    return !sourceKey || !relatedSourceKeys.has(sourceKey);
+  });
+
   return mergeCommentIssuesBySourceKey(
-    buildCommentIssuesFromEntryDiffComments(commentEntries),
-    Array.isArray(relatedCommentIssues) ? relatedCommentIssues : [],
+    entryDiffIssues,
+    normalizedRelatedIssues,
   );
 }
 
@@ -3332,6 +3350,13 @@ function getCommentIssueLineLabel(issue = null) {
   if (sourceLineMatch) return `Line ${sourceLineMatch[1]}`;
 
   return '';
+}
+
+function getCommentIssueSourceLabelWithoutLine(issue = null) {
+  return getCommentIssueSourceLabel(issue)
+    .replace(/\s*·\s*Line\s+\d+\s*$/iu, '')
+    .replace(/:\d+\s*$/u, '')
+    .trim();
 }
 
 function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'Comment') {
@@ -3481,7 +3506,28 @@ function normalizeStoredDiffCommentsState(diffComments = {}) {
 
   return Object.entries(diffComments).reduce((nextState, [rowId, comments]) => {
     const nextComments = Array.isArray(comments)
-      ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? comments.reduce((entries, comment) => {
+          if (typeof comment === 'string') {
+            const text = comment.trim();
+            return text.length > 0 ? [...entries, text] : entries;
+          }
+
+          if (comment && typeof comment === 'object') {
+            const text = typeof comment.text === 'string' ? comment.text.trim() : '';
+            if (text.length === 0) return entries;
+            const lineLabel = typeof comment.lineLabel === 'string' ? comment.lineLabel.trim() : '';
+            return [
+              ...entries,
+              {
+                ...comment,
+                text,
+                ...(lineLabel.length > 0 ? { lineLabel } : {}),
+              },
+            ];
+          }
+
+          return entries;
+        }, [])
       : [];
 
     if (nextComments.length > 0) {
@@ -3492,11 +3538,21 @@ function normalizeStoredDiffCommentsState(diffComments = {}) {
   }, {});
 }
 
+function getStoredCommentText(comment) {
+  if (typeof comment === 'string') return comment;
+  return typeof comment?.text === 'string' ? comment.text : '';
+}
+
+function getStoredCommentLineLabel(comment) {
+  return typeof comment?.lineLabel === 'string' ? comment.lineLabel.trim() : '';
+}
+
 function flattenStoredDiffCommentsState(diffComments = {}) {
   const seenComments = new Set();
 
   return Object.values(normalizeStoredDiffCommentsState(diffComments))
     .flat()
+    .map(getStoredCommentText)
     .filter((comment) => {
       const normalizedComment = comment.trim().toLowerCase();
       if (seenComments.has(normalizedComment)) {
@@ -3505,6 +3561,54 @@ function flattenStoredDiffCommentsState(diffComments = {}) {
       seenComments.add(normalizedComment);
       return true;
     });
+}
+
+function mergeStoredDiffCommentsStates(...states) {
+  return states.reduce((mergedComments, state) => {
+    Object.entries(normalizeStoredDiffCommentsState(state)).forEach(([rowId, comments]) => {
+      const existingComments = Array.isArray(mergedComments[rowId]) ? mergedComments[rowId] : [];
+      const seenComments = new Set(existingComments.map((comment) => getStoredCommentText(comment).trim().toLowerCase()));
+      const nextComments = [...existingComments];
+
+      comments.forEach((comment) => {
+        const text = getStoredCommentText(comment).trim();
+        if (!text) return;
+        const dedupeKey = text.toLowerCase();
+        if (seenComments.has(dedupeKey)) {
+          if (comment && typeof comment === 'object' && comment.pending) {
+            const existingIndex = nextComments.findIndex((existingComment) => (
+              getStoredCommentText(existingComment).trim().toLowerCase() === dedupeKey
+            ));
+            if (existingIndex >= 0) {
+              const existingComment = nextComments[existingIndex];
+              nextComments[existingIndex] = {
+                ...((existingComment && typeof existingComment === 'object') ? existingComment : {}),
+                ...comment,
+                text,
+                pending: true,
+              };
+            }
+          }
+          return;
+        }
+        seenComments.add(dedupeKey);
+        const lineLabel = getStoredCommentLineLabel(comment);
+        nextComments.push(comment && typeof comment === 'object'
+          ? {
+              ...comment,
+              text,
+              ...(lineLabel.length > 0 ? { lineLabel } : {}),
+            }
+          : (lineLabel.length > 0 ? { text, lineLabel } : text));
+      });
+
+      if (nextComments.length > 0) {
+        mergedComments[rowId] = nextComments;
+      }
+    });
+
+    return mergedComments;
+  }, {});
 }
 
 function getAiChatListItem(chatId) {
@@ -3552,17 +3656,17 @@ function mergeDiffCommentsFromSessions(sessionCommentsByChatId = {}) {
   return Object.values(normalizedSessions).reduce((mergedComments, session) => {
     Object.entries(session.comments ?? {}).forEach(([rowId, comments]) => {
       const existingComments = Array.isArray(mergedComments[rowId]) ? mergedComments[rowId] : [];
-      const seenComments = new Set(existingComments.map((comment) => comment.trim().toLowerCase()));
+      const seenComments = new Set(existingComments.map((comment) => getStoredCommentText(comment).trim().toLowerCase()));
       const nextRowComments = [...existingComments];
 
       (comments ?? []).forEach((comment) => {
-        if (typeof comment !== 'string') return;
-        const normalizedComment = comment.trim();
+        const normalizedComment = getStoredCommentText(comment).trim();
         if (!normalizedComment) return;
         const dedupeKey = normalizedComment.toLowerCase();
         if (seenComments.has(dedupeKey)) return;
         seenComments.add(dedupeKey);
-        nextRowComments.push(normalizedComment);
+        const lineLabel = getStoredCommentLineLabel(comment);
+        nextRowComments.push(lineLabel.length > 0 ? { text: normalizedComment, lineLabel } : normalizedComment);
       });
 
       if (nextRowComments.length > 0) {
@@ -3580,7 +3684,7 @@ function getCommentsForCommentTarget(commentEntries = [], target) {
 
   return (commentEntries ?? []).flatMap((entry) => (
     doesEntryMatchCommentTarget(entry, normalizedTarget)
-      ? (entry.comments ?? []).filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? (entry.comments ?? []).filter((comment) => getStoredCommentText(comment).trim().length > 0)
       : []
   ));
 }
@@ -3592,7 +3696,7 @@ function replaceCommentEntriesForTarget(commentEntries = [], target, comments = 
   }
 
   const nextComments = Array.isArray(comments)
-    ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+    ? comments.filter((comment) => getStoredCommentText(comment).trim().length > 0)
     : [];
   const existingEntries = Array.isArray(commentEntries) ? commentEntries : [];
   const existingEntry = existingEntries.find((entry) => doesEntryMatchCommentTarget(entry, normalizedTarget)) ?? null;
@@ -3836,7 +3940,12 @@ function buildRowCommentsStateFromEntries(rowMetaList = [], commentEntries = [])
     if (entry?.hideInlineInDocument) return;
 
     const comments = Array.isArray(entry?.comments)
-      ? entry.comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? entry.comments.reduce((entries, comment) => {
+          const text = getStoredCommentText(comment).trim();
+          if (text.length === 0) return entries;
+          const lineLabel = getStoredCommentLineLabel(comment);
+          return [...entries, lineLabel.length > 0 ? { text, lineLabel } : text];
+        }, [])
       : [];
     if (comments.length === 0) return;
 
@@ -4108,8 +4217,8 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
       }
     : null;
   const treeChildren = [
-    ...problemNodes,
     ...(commentsGroupNode ? [commentsGroupNode] : []),
+    ...problemNodes,
   ];
 
   return [
@@ -5016,7 +5125,7 @@ function normalizeSpecVersionCommentEntries(commentEntries = []) {
   return commentEntries.reduce((entries, entry, entryIndex) => {
     const diffComments = normalizeStoredDiffCommentsState(entry?.diffComments);
     const directComments = Array.isArray(entry?.comments)
-      ? entry.comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? entry.comments.filter((comment) => getStoredCommentText(comment).trim().length > 0)
       : [];
     const comments = directComments.length > 0
       ? directComments
@@ -5626,6 +5735,7 @@ function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 
 
 function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = null }) {
   const hasComments = commentCount > 0;
+  const preservedSelectionSnapshotRef = useRef(null);
 
   return (
     <span className={`spec-done-comment-slot${hasComments ? ' has-comments' : ''}${isOpen ? ' is-open' : ''}`}>
@@ -5639,11 +5749,17 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
         onMouseDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          preservedSelectionSnapshotRef.current = captureActiveEditorSelectionSnapshot();
         }}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          onOpen?.(event.currentTarget.getBoundingClientRect());
+          const selectionSnapshot = preservedSelectionSnapshotRef.current ?? captureActiveEditorSelectionSnapshot();
+          preservedSelectionSnapshotRef.current = null;
+          onOpen?.(event.currentTarget.getBoundingClientRect(), {
+            preserveEditorSelection: Boolean(selectionSnapshot),
+            selectionSnapshot,
+          });
         }}
       >
         {hasComments ? <PlanDiffCommentBadge count={commentCount} /> : <Icon name="general/balloon" size={16} />}
@@ -5726,22 +5842,32 @@ function DoneCommentPopup({
   onSubmit,
   onStartEdit,
   onDelete,
+  preserveEditorSelection = false,
+  selectionSnapshot = null,
+  footerMetaLabel = '',
 }) {
   const isEditing = Number.isInteger(editingIndex);
-  const showCompose = comments.length === 0 || isEditing;
+  const showCompose = true;
   const commentGroups = comments.length > 0
     ? [{
         label: commentContextLabel,
         icon: commentContextIcon,
-        sessionLabel: commentContextSessionLabel,
+        sessionLabel: 'Document',
         showHeaderWhenEmpty: true,
         comments: comments.map((text, index) => ({
-          text,
+          ...((text && typeof text === 'object') ? text : {}),
+          text: getStoredCommentText(text),
+          lineLabel: '',
           editable: true,
           localIndex: index,
         })),
       }]
     : null;
+
+  useLayoutEffect(() => {
+    if (!preserveEditorSelection || !selectionSnapshot) return;
+    scheduleEditorSelectionSnapshotRestore(selectionSnapshot);
+  }, [preserveEditorSelection, selectionSnapshot]);
 
   return (
     <DiffInlineCommentPopup
@@ -5750,6 +5876,7 @@ function DoneCommentPopup({
       commentContextLabel={commentContextLabel}
       commentContextIcon={commentContextIcon}
       commentContextSessionLabel={commentContextSessionLabel}
+      footerMetaLabel=""
       value={value}
       editingIndex={editingIndex}
       showCompose={showCompose}
@@ -5762,6 +5889,7 @@ function DoneCommentPopup({
       onSubmit={onSubmit}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
+      preserveEditorSelection={preserveEditorSelection}
     />
   );
 }
@@ -6548,18 +6676,18 @@ function mergeStoredDiffCommentsByRow(diffComments = {}, rowId = null, comments 
   }
 
   const nextComments = Array.isArray(comments)
-    ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+    ? comments.filter((comment) => getStoredCommentText(comment).trim().length > 0)
     : [];
   if (nextComments.length === 0) {
     return diffComments;
   }
 
   const existingComments = Array.isArray(diffComments[rowId]) ? diffComments[rowId] : [];
-  const seenComments = new Set(existingComments.map((comment) => comment.trim().toLowerCase()));
+  const seenComments = new Set(existingComments.map((comment) => getStoredCommentText(comment).trim().toLowerCase()));
   const mergedComments = [...existingComments];
 
   nextComments.forEach((comment) => {
-    const normalizedComment = comment.trim().toLowerCase();
+    const normalizedComment = getStoredCommentText(comment).trim().toLowerCase();
     if (seenComments.has(normalizedComment)) {
       return;
     }
@@ -7060,6 +7188,7 @@ function DoneInspectionWidget({
   warningCount = 0,
   errorCount = 0,
   commentCount = 0,
+  hasExternalComments = false,
   versions = [],
   onVersionSelect = null,
   className = '',
@@ -7129,9 +7258,14 @@ function DoneInspectionWidget({
             onClick={() => onOpenProblems?.()}
           >
             {hasComments && (
-              <span className="spec-done-inspection-group">
-                <DoneCommentCountIcon />
+              <span className={`spec-done-inspection-group spec-done-inspection-comment-group${hasExternalComments ? ' has-external-comments' : ''}`}>
+                <span className="spec-done-inspection-comment-icon">
+                  <DoneCommentCountIcon />
+                </span>
                 <span className="spec-done-inspection-text">{commentCount}</span>
+                {hasExternalComments && (
+                  <span className="spec-done-inspection-comment-dot" aria-hidden="true" />
+                )}
               </span>
             )}
             {hasWarnings && (
@@ -7389,6 +7523,130 @@ function getTextareaSelectionViewportRect(textarea) {
   };
 }
 
+function hasTextareaMultilineSelection(textarea) {
+  if (!(textarea instanceof HTMLTextAreaElement)) return false;
+
+  const selectionStart = textarea.selectionStart ?? 0;
+  const selectionEnd = textarea.selectionEnd ?? 0;
+  if (selectionStart === selectionEnd) return false;
+
+  return true;
+}
+
+function hasActiveMultilineEditorSelection() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLTextAreaElement) {
+    return hasTextareaMultilineSelection(activeElement);
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  if (selection.toString().trim()) return true;
+
+  const rects = Array.from(selection.getRangeAt(0).getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  if (rects.length <= 1) return false;
+
+  const firstTop = Math.round(rects[0].top);
+  return rects.some((rect) => Math.abs(Math.round(rect.top) - firstTop) > 2);
+}
+
+function captureActiveEditorSelectionSnapshot() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLTextAreaElement) {
+    const start = activeElement.selectionStart ?? 0;
+    const end = activeElement.selectionEnd ?? 0;
+    if (start === end) {
+      return null;
+    }
+
+    return {
+      type: 'textarea',
+      element: activeElement,
+      start,
+      end,
+      direction: activeElement.selectionDirection ?? 'none',
+    };
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !hasActiveMultilineEditorSelection()) {
+    return null;
+  }
+
+  return {
+    type: 'range',
+    range: selection.getRangeAt(0).cloneRange(),
+  };
+}
+
+function restoreEditorSelectionSnapshot(snapshot) {
+  if (!snapshot || typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  if (snapshot.type === 'textarea' && snapshot.element instanceof HTMLTextAreaElement) {
+    snapshot.element.focus({ preventScroll: true });
+    snapshot.element.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
+    return;
+  }
+
+  if (snapshot.type === 'range' && snapshot.range) {
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(snapshot.range);
+  }
+}
+
+function scheduleEditorSelectionSnapshotRestore(snapshot) {
+  if (!snapshot || typeof window === 'undefined') return;
+
+  const restore = () => restoreEditorSelectionSnapshot(snapshot);
+  restore();
+  window.requestAnimationFrame(() => {
+    restore();
+    window.requestAnimationFrame(restore);
+  });
+}
+
+function formatEditorCommentLineLabel(lineNumbers = []) {
+  const normalizedLineNumbers = Array.from(new Set(
+    lineNumbers
+      .map((lineNumber) => Number(lineNumber))
+      .filter((lineNumber) => Number.isFinite(lineNumber))
+      .map((lineNumber) => Math.trunc(lineNumber))
+      .filter((lineNumber) => lineNumber > 0)
+  )).sort((a, b) => a - b);
+
+  if (normalizedLineNumbers.length === 0) return '';
+
+  const firstLineNumber = normalizedLineNumbers[0];
+  const lastLineNumber = normalizedLineNumbers[normalizedLineNumbers.length - 1];
+
+  return firstLineNumber === lastLineNumber
+    ? `Comment to line ${firstLineNumber}`
+    : `Comment to lines from ${firstLineNumber} to ${lastLineNumber}`;
+}
+
+function getTextareaEditorCommentLineLabel(snapshot = null) {
+  if (snapshot?.type !== 'textarea' || !(snapshot.element instanceof HTMLTextAreaElement)) {
+    return '';
+  }
+
+  const value = snapshot.element.value ?? '';
+  const start = Math.min(snapshot.start ?? 0, snapshot.end ?? 0);
+  const end = Math.max(snapshot.start ?? 0, snapshot.end ?? 0);
+  if (start === end) return '';
+
+  const lineNumberAtOffset = (offset) => value.slice(0, Math.max(0, offset)).split('\n').length;
+  const startLineNumber = lineNumberAtOffset(start);
+  const endLineNumber = lineNumberAtOffset(Math.max(start, end - 1));
+
+  return formatEditorCommentLineLabel([startLineNumber, endLineNumber]);
+}
+
 const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'suggest', label: 'Suggest action', accent: 'warning', iconName: 'codeInsight/intentionBulb' },
   { id: 'comment', label: 'Comment', iconName: 'general/balloon' },
@@ -7611,7 +7869,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -7945,6 +8203,45 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
   );
+  const getDoneRowLineNumber = useCallback((rowMeta) => {
+    if (!rowMeta) return null;
+    if (Number.isInteger(rowMeta.rawIndex)) return rowMeta.rawIndex + 1;
+    if (Number.isInteger(rowMeta.rowIndex)) return rowMeta.rowIndex + 1;
+    return null;
+  }, []);
+  const getDoneCommentFooterMetaLabel = useCallback((rowMeta, selectionSnapshot = null) => {
+    const fallbackLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
+
+    if (selectionSnapshot?.type === 'textarea') {
+      return getTextareaEditorCommentLineLabel(selectionSnapshot) || fallbackLabel;
+    }
+
+    if (selectionSnapshot?.type !== 'range' || !selectionSnapshot.range || !scrollRef.current) {
+      return fallbackLabel;
+    }
+
+    const selectedLineNumbers = [];
+    const rowElements = Array.from(scrollRef.current.querySelectorAll('.spec-done-row[data-row-key]'));
+
+    rowElements.forEach((rowElement) => {
+      if (!(rowElement instanceof HTMLElement)) return;
+
+      const rowKey = rowElement.dataset.rowKey;
+      const selectedRowMeta = rowKey ? rowMetaByKey.get(rowKey) : null;
+      if (!selectedRowMeta) return;
+
+      const targetElement = rowElement.querySelector('.spec-done-row-content') ?? rowElement;
+      try {
+        if (selectionSnapshot.range.intersectsNode(targetElement)) {
+          selectedLineNumbers.push(getDoneRowLineNumber(selectedRowMeta));
+        }
+      } catch {
+        // The stored Range can become detached if the editor rerenders between mouse events.
+      }
+    });
+
+    return formatEditorCommentLineLabel(selectedLineNumbers) || fallbackLabel;
+  }, [getDoneRowLineNumber, rowMetaByKey]);
   const hydratedRowComments = useMemo(
     () => buildRowCommentsStateFromEntries(rowMetaList, persistedCommentEntries),
     [persistedCommentEntries, rowMetaList]
@@ -8080,6 +8377,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!rowMeta) return;
 
     if (actionId === 'comment') {
+      const selectionSnapshot = captureActiveEditorSelectionSnapshot();
       setIntentionPopup(null);
       setSelectionToolbarPos(null);
       setCommentPopup((prev) => (
@@ -8092,6 +8390,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               rect: triggerRect,
               value: '',
               editingIndex: null,
+              footerMetaLabel: '',
             }
       ));
       return;
@@ -8116,6 +8415,62 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       ));
     }
   }, [getSelectionToolbarRowMeta]);
+
+  const getShortcutCommentRowMeta = useCallback(() => {
+    const selectionRowMeta = getSelectionToolbarRowMeta();
+    if (selectionRowMeta) return selectionRowMeta;
+
+    const activeElement = document.activeElement;
+    if (activeElement instanceof Element && scrollRef.current?.contains(activeElement)) {
+      const rowEl = activeElement.closest('.spec-done-row');
+      const rowKey = rowEl instanceof HTMLElement ? rowEl.dataset.rowKey : null;
+      if (rowKey && rowMetaByKey.has(rowKey)) {
+        return rowMetaByKey.get(rowKey);
+      }
+    }
+
+    const fallbackRowKey = focusedCommentRowKey ?? navigatedIssueRowKey ?? activeIssueRowKey ?? hoveredRowKey;
+    return fallbackRowKey ? (rowMetaByKey.get(fallbackRowKey) ?? null) : null;
+  }, [activeIssueRowKey, focusedCommentRowKey, getSelectionToolbarRowMeta, hoveredRowKey, navigatedIssueRowKey, rowMetaByKey]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!event.altKey || !event.shiftKey || (event.code !== 'KeyK' && event.key.toLowerCase() !== 'k')) return;
+      if (event.target instanceof Element && event.target.closest('.spec-done-comment-popup, .cmp-popup')) return;
+
+      const rowMeta = getShortcutCommentRowMeta();
+      if (!rowMeta?.stableKey) return;
+
+      const rowEl = Array.from(scrollRef.current?.querySelectorAll('.spec-done-row') ?? [])
+        .find((node) => node instanceof HTMLElement && node.dataset.rowKey === rowMeta.stableKey);
+      const rect = rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect() : null;
+      if (!rect) return;
+
+      const selectionSnapshot = captureActiveEditorSelectionSnapshot();
+      event.preventDefault();
+      event.stopPropagation();
+      setIntentionPopup(null);
+      setSelectionToolbarPos(null);
+      setCommentPopup((prev) => (
+        prev?.rowKey === rowMeta.stableKey
+          ? null
+          : {
+              rowKey: rowMeta.stableKey,
+              rowCommentKey: getRowMetaCommentStorageKey(rowMeta),
+              rowIndex: rowMeta.rowIndex,
+              rect,
+              value: '',
+              editingIndex: null,
+              preserveEditorSelection: Boolean(selectionSnapshot),
+              selectionSnapshot,
+              footerMetaLabel: '',
+            }
+      ));
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [getShortcutCommentRowMeta]);
 
   const closeCommentPopup = useCallback((rowIndex = null) => {
     setCommentPopup(null);
@@ -8158,17 +8513,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
-    const existingComments = rowComments[rowCommentKey] ?? [];
-
+    const buildCommentEntry = (text) => text;
     if (Number.isInteger(editingIndex)) {
       updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
-        index === editingIndex ? nextValue : comment
+        index === editingIndex ? buildCommentEntry(nextValue, comment) : comment
       )));
-    } else if (existingComments.length > 0) {
-      closeCommentPopup(rowIndex);
-      return;
     } else {
-      updateRowComments(rowCommentKey, (comments) => [...comments, nextValue]);
+      updateRowComments(rowCommentKey, (comments) => [...comments, buildCommentEntry(nextValue)]);
     }
 
     closeCommentPopup(rowIndex);
@@ -8193,8 +8544,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       if (!prev || prev.rowKey !== rowKey) return prev;
       return {
         ...prev,
-        value: rowComments[rowCommentKey]?.[commentIndex] ?? '',
+        value: getStoredCommentText(rowComments[rowCommentKey]?.[commentIndex] ?? ''),
         editingIndex: commentIndex,
+        footerMetaLabel: '',
       };
     });
   }, [rowComments]);
@@ -8211,8 +8563,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       rowCommentKey,
       rowIndex: rowMeta.rowIndex,
       rect,
-      value: rowComments[rowCommentKey]?.[commentIndex] ?? '',
+      value: getStoredCommentText(rowComments[rowCommentKey]?.[commentIndex] ?? ''),
       editingIndex: commentIndex,
+      footerMetaLabel: '',
     });
   }, [rowComments]);
 
@@ -8639,8 +8992,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     [commentEntries],
   );
   const inspectionCommentCount = useMemo(() => (
-    getAggregatedCommentIssueCount(commentEntries)
-  ), [commentEntries]);
+    getAggregatedCommentIssueCount(commentEntries, relatedCommentIssues)
+  ), [commentEntries, relatedCommentIssues]);
+  const externalSpecCommentIssues = useMemo(
+    () => buildCommentIssuesFromEntryDiffComments(commentEntries),
+    [commentEntries],
+  );
+  const hasExternalSpecComments = externalSpecCommentIssues.length > 0;
   const lastEmittedCommentsSignatureRef = useRef(null);
   const commentedPlanOriginalIndices = useMemo(() => {
     const nextIndices = new Set();
@@ -8813,6 +9171,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         warningCount={inspectionSummary?.warningCount ?? 0}
         errorCount={inspectionSummary?.errorCount ?? 0}
         commentCount={inspectionCommentCount}
+        hasExternalComments={hasExternalSpecComments}
         versions={versionHistory?.versions ?? []}
         onVersionSelect={onOpenVersionDiff}
       />
@@ -8868,6 +9227,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isHoveredIssueRow || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
             const commentCount = commentsForRow.length;
+            const rowLineLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
@@ -8883,7 +9243,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 comments={commentsForRow}
                 isOpen={isCommentPopupOpen}
                 demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
-                onOpen={(rect) => {
+                onOpen={(rect, options = {}) => {
                   setCommentPopup((prev) => (
                     prev?.rowKey === stableKey
                       ? null
@@ -8894,6 +9254,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           rect,
                           value: '',
                           editingIndex: null,
+                          preserveEditorSelection: Boolean(options.preserveEditorSelection),
+                          selectionSnapshot: options.selectionSnapshot ?? null,
+                          footerMetaLabel: '',
                         }
                   ));
                 }}
@@ -8903,11 +9266,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               ? [{
                   label: commentContextLabel,
                   icon: 'fileTypes/markdown',
-                  sessionLabel: commentContextSessionLabel,
+                  sessionLabel: 'Document',
                   messageId: null,
                   chatId: null,
                   comments: commentsForRow.map((comment, commentIndex) => ({
-                    text: comment,
+                    ...((comment && typeof comment === 'object') ? comment : {}),
+                    text: getStoredCommentText(comment),
+                    lineLabel: '',
                     editable: true,
                     localIndex: commentIndex,
                   })),
@@ -9132,6 +9497,47 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           </Fragment>
         );
         })}
+        {externalSpecCommentIssues.length > 0 && (
+          <div className="spec-external-comments-section">
+            <div className="spec-external-comments-header">
+              <ProblemsCommentNodeIcon />
+              <span className="spec-external-comments-title">Comments</span>
+              <span className="spec-external-comments-count">{externalSpecCommentIssues.length}</span>
+            </div>
+            <div className="spec-external-comments-list">
+              {externalSpecCommentIssues.map((issue, index) => {
+                const normalizedIssue = {
+                  ...issue,
+                  rawIndex: Number.isInteger(issue?.rawIndex)
+                    ? issue.rawIndex
+                    : (Number.isInteger(issue?.lineNumber) && issue.lineNumber > 0 ? issue.lineNumber - 1 : null),
+                };
+                const display = getProblemsCommentNodeDisplay(normalizedIssue, commentContextLabel);
+                const sourceLabel = getCommentIssueSourceLabelWithoutLine(normalizedIssue);
+                const itemKey = normalizedIssue.id ?? `external-comment-${index}`;
+
+                return (
+                  <button
+                    type="button"
+                    key={itemKey}
+                    className="spec-external-comments-item"
+                    onClick={() => onOpenCommentSource?.(normalizedIssue)}
+                  >
+                    <span className="spec-external-comments-item-icon">
+                      {normalizedIssue.icon ?? <ProblemsCommentNodeIcon />}
+                    </span>
+                    <span className="spec-external-comments-item-body">
+                      <span className="spec-external-comments-item-title">{display.label}</span>
+                      {sourceLabel && (
+                        <span className="spec-external-comments-item-meta">{sourceLabel}</span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
     {refPopupPos && createPortal(
@@ -9174,6 +9580,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           commentContextSessionLabel={commentContextSessionLabel}
           value={commentPopup.value}
           editingIndex={commentPopup.editingIndex ?? null}
+          preserveEditorSelection={Boolean(commentPopup.preserveEditorSelection)}
+          selectionSnapshot={commentPopup.selectionSnapshot ?? null}
+          footerMetaLabel={commentPopup.footerMetaLabel ?? ''}
           onChange={(nextValue) => {
             setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
           }}
@@ -9351,7 +9760,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -10091,7 +10500,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -10106,7 +10515,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -10233,7 +10642,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -10532,16 +10941,8 @@ function getAgentTaskTabId(taskId) {
 
 function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
-  const visitBookingPreset = getPresetAgentTaskDefinition('t1');
-  const visitBookingTab = visitBookingPreset?.tab ?? {
-    id: 'agent-task-t1',
-    label: 'Visit-Booking.md',
-    icon: 'fileTypes/markdown',
-    closable: true,
-  };
 
   return [
-    visitBookingTab,
     visitControllerTab,
     {
       id: INITIAL_PLAN_DIFF_TAB_ID,
@@ -11128,25 +11529,6 @@ function getAiChatAttachmentSourcePreviewItems(attachment = null) {
     }));
 }
 
-function resolveCommentSettingsGotItTooltipPlacement(triggerRect = null) {
-  if (!triggerRect) return null;
-  const width = 280;
-  const arrowCenterOffset = 24;
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
-  const left = Math.max(8, Math.min(triggerRect.left - width - 8, viewportWidth - width - 8));
-  const top = Math.max(8, triggerRect.top + (triggerRect.height / 2) - arrowCenterOffset);
-
-  return {
-    style: {
-      position: 'fixed',
-      left,
-      top,
-      zIndex: 10050,
-    },
-    arrowPosition: 'right',
-  };
-}
-
 function ChatToolWindow({
   ctx,
   onOpenDiffTab = null,
@@ -11181,8 +11563,11 @@ function ChatToolWindow({
   diffCommentsOptionIsNew = false,
   onFileCommentsOptionSeen = null,
   onDiffCommentsOptionSeen = null,
-  showCommentSettingsGotIt = false,
-  onCommentSettingsGotItDismiss = null,
+  showFileCommentsSuggestionBanner = false,
+  onEnableFileCommentsFromBanner = null,
+  onDismissFileCommentsSuggestionBanner = null,
+  onCommentAttachmentResponseStart = null,
+  onCommentAttachmentResponseComplete = null,
 }) {
   const [selectedChatId, setSelectedChatId] = useState(controlledSelectedChatId);
   const [composerText, setComposerText] = useState('');
@@ -11210,8 +11595,7 @@ function ChatToolWindow({
   const chatTitleChevronRef = useRef(null);
   const chatListPopupRef = useRef(null);
   const composerTextareaRef = useRef(null);
-  const addContextButtonRef = useRef(null);
-  const [commentSettingsGotItRect, setCommentSettingsGotItRect] = useState(null);
+  const commentResponseTimersRef = useRef({});
   const selectedChat = chatScenarios[currentChatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
   const latestSddCommentEntries = useMemo(
     () => normalizeSpecVersionCommentEntries(sddCommentEntries),
@@ -11237,25 +11621,13 @@ function ChatToolWindow({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [addContextPopupRect]);
 
-  useLayoutEffect(() => {
-    if (!showCommentSettingsGotIt) {
-      setCommentSettingsGotItRect(null);
-      return;
-    }
-    const updateRect = () => {
-      setCommentSettingsGotItRect(addContextButtonRef.current?.getBoundingClientRect() ?? null);
-    };
-    updateRect();
-    window.addEventListener('resize', updateRect);
-    window.addEventListener('scroll', updateRect, true);
-    return () => {
-      window.removeEventListener('resize', updateRect);
-      window.removeEventListener('scroll', updateRect, true);
-    };
-  }, [showCommentSettingsGotIt]);
-  const commentSettingsGotItPlacement = showCommentSettingsGotIt
-    ? resolveCommentSettingsGotItTooltipPlacement(commentSettingsGotItRect)
-    : null;
+  useEffect(() => () => {
+    Object.values(commentResponseTimersRef.current).forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    commentResponseTimersRef.current = {};
+  }, []);
+
   const normalizeSddAttachment = useCallback((attachment) => {
     if (!attachment?.isSddDocument) {
       return attachment;
@@ -11294,6 +11666,12 @@ function ChatToolWindow({
   const chatComposerAttachments = (selectedChat.emptyState || selectedChat.showAttachmentsInComposer) && Array.isArray(selectedChatMessageAttachments)
     ? selectedChatMessageAttachments
     : [];
+  const composerAttachmentIdSignature = useMemo(() => {
+    const attachmentIds = [...chatComposerAttachments, ...(Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])]
+      .map((attachment) => attachment?.id)
+      .filter((id) => typeof id === 'string' && id.length > 0);
+    return Array.from(new Set(attachmentIds)).sort().join('\n');
+  }, [chatComposerAttachments, composerDiffAttachments]);
   const visibleComposerAttachments = [...chatComposerAttachments, ...(Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])]
     .map(normalizeSddAttachment)
     .filter((attachment, index, attachments) => (
@@ -11308,6 +11686,34 @@ function ChatToolWindow({
     if (visibleComposerAttachments.some((attachment) => attachment?.id === expandedAttachmentSourceId)) return;
     setExpandedAttachmentSourceId(null);
   }, [expandedAttachmentSourceId, visibleComposerAttachments]);
+
+  useEffect(() => {
+    const activeAttachmentIds = new Set(composerAttachmentIdSignature.split('\n').filter(Boolean));
+
+    setDismissedComposerAttachmentIdsByChatId((prev) => {
+      const dismissedForChat = prev[currentChatId] ?? {};
+      const dismissedEntries = Object.entries(dismissedForChat);
+      if (dismissedEntries.length === 0) return prev;
+
+      const nextDismissedForChat = dismissedEntries.reduce((next, [attachmentId, value]) => {
+        if (activeAttachmentIds.has(attachmentId)) {
+          next[attachmentId] = value;
+        }
+        return next;
+      }, {});
+
+      if (Object.keys(nextDismissedForChat).length === dismissedEntries.length) return prev;
+      if (Object.keys(nextDismissedForChat).length === 0) {
+        const { [currentChatId]: _removed, ...remainingDismissedByChatId } = prev;
+        return remainingDismissedByChatId;
+      }
+
+      return {
+        ...prev,
+        [currentChatId]: nextDismissedForChat,
+      };
+    });
+  }, [composerAttachmentIdSignature, currentChatId]);
 
   useEffect(() => {
     setSelectedChatId(controlledSelectedChatId);
@@ -11448,25 +11854,48 @@ function ChatToolWindow({
     const messageAttachments = hasComposerAttachment
       ? visibleComposerAttachments.map((attachment) => snapshotAiChatMessageAttachment(attachment))
       : [];
+    const commentAttachments = messageAttachments.filter((attachment) => (
+      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+    const shouldStreamCommentResponse = commentAttachments.length > 0;
 
     const newMessage = {
       id: `${targetChatId}-${Date.now()}-${sentChatMessages.length}`,
       text: messageText,
       attachments: messageAttachments,
     };
-    const appendMessage = (prev) => [...prev, newMessage];
+    const assistantMessageId = `${targetChatId}-assistant-${Date.now()}-${sentChatMessages.length}`;
+    const assistantMessage = shouldStreamCommentResponse
+      ? {
+          id: assistantMessageId,
+          role: 'assistant',
+          text: '',
+          streaming: true,
+        }
+      : null;
+    const appendMessage = (prev) => assistantMessage
+      ? [...prev, newMessage, assistantMessage]
+      : [...prev, newMessage];
+    const updateMessages = (updater) => {
+      if (onSentChatMessagesChange) {
+        onSentChatMessagesChange(updater, targetChatId);
+      } else {
+        setLocalSentChatMessages(updater);
+      }
+    };
 
+    updateMessages(appendMessage);
     if (onSentChatMessagesChange) {
-      onSentChatMessagesChange(appendMessage, targetChatId);
       setOptimisticSentMessagesByChatId((prev) => ({
         ...prev,
         [targetChatId]: [
-          ...(prev[targetChatId] ?? []).filter((message) => message.id !== newMessage.id),
+          ...(prev[targetChatId] ?? []).filter((message) => (
+            message.id !== newMessage.id && message.id !== assistantMessageId
+          )),
           newMessage,
+          ...(assistantMessage ? [assistantMessage] : []),
         ],
       }));
-    } else {
-      setLocalSentChatMessages(appendMessage);
     }
     setComposerText('');
     if (hasComposerAttachment) {
@@ -11478,15 +11907,58 @@ function ChatToolWindow({
         ...prev,
         [targetChatId]: { ...(prev[targetChatId] ?? {}), ...dismissedIds },
       }));
-      onClearAllDiffAttachments?.();
+      if (!shouldStreamCommentResponse) {
+        onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: messageAttachments });
+      }
+    }
+
+    if (shouldStreamCommentResponse) {
+      onCommentAttachmentResponseStart?.({ chatId: targetChatId, attachments: commentAttachments });
+      onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: commentAttachments });
+      const fullResponse = commentAttachments.length === 1
+        ? 'I reviewed the attached comment and will use it as context for this response.'
+        : `I reviewed ${commentAttachments.length} attached comment threads and will use them as context for this response.`;
+      const timerKey = `${targetChatId}:${assistantMessageId}`;
+      let index = 0;
+      const streamNextChunk = () => {
+        delete commentResponseTimersRef.current[timerKey];
+        index = Math.min(fullResponse.length, index + 2);
+        const nextText = fullResponse.slice(0, index);
+        const isComplete = index >= fullResponse.length;
+
+        updateMessages((prev) => prev.map((message) => (
+          message.id === assistantMessageId
+            ? { ...message, text: nextText, streaming: !isComplete }
+            : message
+        )));
+
+        setOptimisticSentMessagesByChatId((prev) => ({
+          ...prev,
+          [targetChatId]: (prev[targetChatId] ?? []).map((message) => (
+            message.id === assistantMessageId
+              ? { ...message, text: nextText, streaming: !isComplete }
+              : message
+          )),
+        }));
+
+        if (isComplete) {
+          onCommentAttachmentResponseComplete?.({ chatId: targetChatId, attachments: commentAttachments });
+          return;
+        }
+
+        commentResponseTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 96);
+      };
+
+      commentResponseTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 240);
     }
     onChatMessageSent?.({ chatId: targetChatId, message: newMessage });
-  }, [composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
+  }, [composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onCommentAttachmentResponseComplete, onCommentAttachmentResponseStart, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
 
-  const handleContextAttachmentOpen = useCallback((messageId, attachment) => {
+  const handleContextAttachmentOpen = useCallback((messageId, attachment, { archived = true } = {}) => {
     const restoredRowId = Object.keys(attachment?.diffComments ?? {})[0] ?? null;
     if (attachment?.isSddDocument) {
       onOpenSddDocument?.({
+        attachment,
         commentEntries: attachment.sddCommentEntries ?? [],
         isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
         contextMessageId: messageId,
@@ -11501,6 +11973,8 @@ function ChatToolWindow({
         attachment.diffComments ?? {},
         messageId,
         currentChatId,
+        restoredRowId,
+        { archived },
       );
       return;
     }
@@ -11508,7 +11982,7 @@ function ChatToolWindow({
     onOpenDiffTab?.({
       ...diffRequest,
       initialDiffCommentsOverride: attachment?.diffComments ?? {},
-      commentsReadOnly: true,
+      commentsReadOnly: archived,
       contextMessageId: messageId,
       contextChatId: currentChatId,
       navigation: {
@@ -11517,7 +11991,7 @@ function ChatToolWindow({
     });
   }, [currentChatId, onOpenDiffTab, onOpenPlainFileArchive, onOpenSddDocument]);
 
-  const handleAttachmentSourceOpen = useCallback((event, attachment, source) => {
+  const handleAttachmentSourceOpen = useCallback((event, attachment, source, { archived = true } = {}) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -11527,12 +12001,14 @@ function ChatToolWindow({
         source,
         messageId: selectedChatMessageId,
         chatId: currentChatId,
+        archived,
       });
       return;
     }
 
     if (attachment?.isSddDocument) {
       onOpenSddDocument?.({
+        attachment,
         commentEntries: attachment.sddCommentEntries ?? [],
         isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
         contextMessageId: selectedChatMessageId,
@@ -11601,14 +12077,16 @@ function ChatToolWindow({
       className="ai-chat-window main-window-tool-window main-window-tool-window-right"
     >
       {isChatListOpen && chatListPopupStyle && typeof document !== 'undefined' && createPortal(
-	        <ChatListPopup
-	          ref={chatListPopupRef}
-	          style={chatListPopupStyle}
-	          selectedChatId={currentChatId}
-	          onSelectChat={handleChatSelect}
-	          onOpenDocument={handleChatListDocumentOpen}
+	          <ChatListPopup
+	            ref={chatListPopupRef}
+	            style={chatListPopupStyle}
+	            selectedChatId={currentChatId}
+              activeChatId={currentChatId}
+	            onSelectChat={handleChatSelect}
+	            onOpenDocument={handleChatListDocumentOpen}
 	          recentItems={recentChatItems}
 	          olderItems={olderChatItems}
+            showActiveBadge={false}
 	        />,
 	        document.body,
 	      )}
@@ -11698,17 +12176,34 @@ function ChatToolWindow({
                 </ChatAssistantMessage>
               )
               : (
-                <ChatUserCard
-                  key={message.id}
-                  messageId={message.id}
-                  attachments={message.attachments}
-                  onAttachmentOpen={(attachment) => handleContextAttachmentOpen(message.id, attachment)}
-                >
+	                <ChatUserCard
+	                  key={message.id}
+	                  messageId={message.id}
+	                  attachments={message.attachments}
+	                  onAttachmentOpen={(attachment) => handleContextAttachmentOpen(message.id, attachment, { archived: true })}
+	                >
                   {message.text}
                 </ChatUserCard>
               )
           ))}
         </div>
+
+        {showFileCommentsSuggestionBanner && !plainFileGutterCommentsEnabled && (
+          <Banner
+            className="ai-chat-file-comments-banner"
+            type="info"
+            showIcon
+            showCloseButton
+            onClose={onDismissFileCommentsSuggestionBanner}
+            actions={[{
+              label: 'Enable File Comments',
+              type: 'primary',
+              onClick: onEnableFileCommentsFromBanner,
+            }]}
+          >
+            You can now leave comments directly on editor files.
+          </Banner>
+        )}
 
         <div className="ai-chat-composer">
 	          <textarea
@@ -11733,26 +12228,12 @@ function ChatToolWindow({
                 ));
                 const canShowCommentSources = hasNestedCommentSources;
                 const isSourceListOpen = expandedAttachmentSourceId === attachment.id;
+                const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+                const visibleCommentPreviewItems = commentPreviewItems.slice(0, 3);
+                const hiddenCommentPreviewCount = Math.max(0, commentPreviewItems.length - visibleCommentPreviewItems.length);
 
                 return (
-                <span key={attachment.id} className={`ai-chat-attachment-chip${isSourceListOpen ? ' is-source-list-open' : ''}`} role="button" tabIndex={0} onClick={() => {
-                    if (attachment.isSddDocument) {
-                      onOpenSddDocument?.({
-                        commentEntries: attachment.sddCommentEntries ?? [],
-                        isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
-                        contextMessageId: selectedChatMessageId,
-                        contextChatId: currentChatId,
-                        sourceTabId: attachment.sourceTabId,
-                      });
-                      return;
-                    }
-                    onOpenDiffTab?.({
-                      ...(attachment.diffRequest ?? selectedChat.diffRequest ?? AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST),
-                      initialDiffCommentsOverride: attachment.diffComments ?? {},
-                      contextMessageId: selectedChatMessageId,
-                      contextChatId: currentChatId,
-                    });
-                  }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
+	                <span key={attachment.id} className={`ai-chat-attachment-chip${isSourceListOpen ? ' is-source-list-open' : ''}`} role="button" tabIndex={0} onClick={() => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
                   <AiChatAttachmentIcon icon={attachment.icon} />
                   <span className="ai-chat-attachment-name">{attachment.label}</span>
                   {attachment.commentCount > 0 && (
@@ -11786,7 +12267,7 @@ function ChatToolWindow({
                           type="button"
                           className="ai-chat-attachment-source-row"
                           role="menuitem"
-                          onClick={(event) => handleAttachmentSourceOpen(event, attachment, source)}
+	                          onClick={(event) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
                         >
                           <span className="ai-chat-attachment-source-icon">
                             {typeof source.icon === 'string'
@@ -11800,6 +12281,23 @@ function ChatToolWindow({
                           </span>
                         </button>
                       ))}
+                    </span>
+                  )}
+                  {commentPreviewItems.length > 0 && !isSourceListOpen && (
+                    <span className="ai-chat-attachment-comment-preview ai-chat-composer-comment-preview" role="tooltip">
+                      <span className="ai-chat-attachment-comment-preview-title">
+                        {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
+                      </span>
+                      {visibleCommentPreviewItems.map((comment, index) => (
+                        <span key={`${attachment.id}-composer-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
+                          {comment}
+                        </span>
+                      ))}
+                      {hiddenCommentPreviewCount > 0 && (
+                        <span className="ai-chat-attachment-comment-preview-more">
+                          {`+${hiddenCommentPreviewCount} more`}
+                        </span>
+                      )}
                     </span>
                   )}
                   <button
@@ -11828,13 +12326,11 @@ function ChatToolWindow({
 	          <div className="ai-chat-composer-toolbar">
 	            <div className="ai-chat-composer-left">
 	              <button
-                  ref={addContextButtonRef}
                   className={`ai-chat-plus-button${fileCommentsOptionIsNew || diffCommentsOptionIsNew ? ' has-new-context-options' : ''}`}
                   type="button"
                   aria-label="Add context"
                   aria-expanded={Boolean(addContextPopupRect)}
                   onClick={(event) => {
-                    onCommentSettingsGotItDismiss?.();
                     const rect = event.currentTarget.getBoundingClientRect();
                     setAddContextPopupRect((prev) => (prev ? null : rect));
                   }}
@@ -11877,20 +12373,6 @@ function ChatToolWindow({
             onFileCommentsOptionSeen={onFileCommentsOptionSeen}
             onDiffCommentsOptionSeen={onDiffCommentsOptionSeen}
           />
-        )}
-        {commentSettingsGotItPlacement && createPortal(
-          <div className="theme-dark" style={commentSettingsGotItPlacement.style}>
-            <GotItTooltip
-              className="ai-chat-comment-settings-got-it"
-              buttonText="Got It"
-              arrowPosition={commentSettingsGotItPlacement.arrowPosition}
-              onGotIt={onCommentSettingsGotItDismiss}
-              onSkip={onCommentSettingsGotItDismiss}
-            >
-              Add precise code context with comments in files and diffs.
-            </GotItTooltip>
-          </div>,
-          document.body,
         )}
 	    </ToolWindow>
   );
@@ -12251,10 +12733,22 @@ public Vet getVet() {
   },
 };
 
-function ChatListRow({ item, selected = false, onSelect = null, nested = false, hideMeta = false }) {
+function ChatListRow({ item, selected = false, active = false, onSelect = null, nested = false, hideMeta = false, showActiveBadge = true }) {
   return (
     <button className={`ai-chat-list-row${nested ? ' is-nested' : ''}${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
-      <AiChatListLeading title={item.title} icon={item.icon} />
+      <span className="ai-chat-list-agent-icon">
+        <AiChatAgentIcon icon={item.icon} title={item.title} />
+      </span>
+      <span className="ai-chat-list-main">
+        <span className="ai-chat-list-title">{item.title}</span>
+        {active && showActiveBadge && (
+          <Badge
+            className="ai-chat-list-active-badge"
+            text="Active Chat"
+            color="blue-secondary"
+          />
+        )}
+      </span>
       {!hideMeta && (
         <span className="ai-chat-list-trailing">
           <span className="ai-chat-list-diff">
@@ -12303,6 +12797,17 @@ function ChatListDocumentTargetRow({ group, selected = false, onOpen = null }) {
   return (
     <button className={`ai-chat-list-row${selected ? ' is-selected' : ''}`} type="button" onClick={() => onOpen?.(group)}>
       <AiChatListLeading title={group.label} icon={group.icon} />
+    </button>
+  );
+}
+
+function ChatListFooterAction({ label, icon = 'general/add', onClick = null }) {
+  return (
+    <button className="ai-chat-list-footer-action" type="button" onClick={() => onClick?.()}>
+      <span className="ai-chat-list-agent-icon">
+        <Icon name={icon} size={16} />
+      </span>
+      <span className="ai-chat-list-title">{label}</span>
     </button>
   );
 }
@@ -12395,6 +12900,7 @@ const ChatListPopup = forwardRef(function ChatListPopup({
   className = '',
   style = null,
   selectedChatId = 'visit-model-attributes',
+  activeChatId = null,
   selectedDocumentSourceTabId = null,
   onSelectChat = null,
   onOpenDocument = null,
@@ -12405,6 +12911,8 @@ const ChatListPopup = forwardRef(function ChatListPopup({
   flattenDocuments = false,
   showOlderSections = true,
   hideMeta = false,
+  showActiveBadge = true,
+  footerAction = null,
 }, ref) {
   const recentNodes = flattenDocuments
     ? recentItems.map((item) => ({ type: 'chat', item }))
@@ -12434,12 +12942,12 @@ const ChatListPopup = forwardRef(function ChatListPopup({
                 <ChatListDocumentRow group={node} selected={node.sourceTabId === selectedDocumentSourceTabId} onOpen={onOpenDocument} hideMeta={hideMeta} />
                 <div className="ai-chat-list-document-children">
                   {node.items.map((item) => (
-                    <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} nested hideMeta={hideMeta} />
+                    <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} active={item.id === activeChatId} onSelect={onSelectChat} nested hideMeta={hideMeta} showActiveBadge={showActiveBadge} />
                   ))}
                 </div>
               </div>
             )
-            : <ChatListRow key={node.item.id} item={node.item} selected={node.item.id === selectedChatId} onSelect={onSelectChat} hideMeta={hideMeta} />
+            : <ChatListRow key={node.item.id} item={node.item} selected={node.item.id === selectedChatId} active={node.item.id === activeChatId} onSelect={onSelectChat} hideMeta={hideMeta} showActiveBadge={showActiveBadge} />
         ))}
       </div>
       {showOlderSections && (
@@ -12447,10 +12955,20 @@ const ChatListPopup = forwardRef(function ChatListPopup({
           <ChatListGroupHeader>Older than 7 days</ChatListGroupHeader>
           <div className="ai-chat-list-section">
             {olderItems.map((item) => (
-              <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} onSelect={onSelectChat} hideMeta={hideMeta} />
+              <ChatListRow key={item.id} item={item} selected={item.id === selectedChatId} active={item.id === activeChatId} onSelect={onSelectChat} hideMeta={hideMeta} showActiveBadge={showActiveBadge} />
             ))}
           </div>
           <ChatListGroupHeader expanded={false}>Older than 30 days</ChatListGroupHeader>
+        </>
+      )}
+      {footerAction && (
+        <>
+          <div className="ai-chat-list-footer-separator" aria-hidden="true" />
+          <ChatListFooterAction
+            label={footerAction.label}
+            icon={footerAction.icon}
+            onClick={footerAction.onClick}
+          />
         </>
       )}
     </div>
@@ -12506,7 +13024,23 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                         {attachment.commentCount}
                       </span>
                     )}
-                    {sourcePreviewItems.length > 0 ? (
+                    {commentPreviewItems.length > 0 ? (
+                      <span className="ai-chat-attachment-comment-preview ai-chat-sent-comment-preview" role="tooltip">
+                        <span className="ai-chat-attachment-comment-preview-title">
+                          {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
+                        </span>
+                        {visibleCommentPreviewItems.map((comment, index) => (
+                          <span key={`${attachment.id}-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
+                            {comment}
+                          </span>
+                        ))}
+                        {hiddenCommentPreviewCount > 0 && (
+                          <span className="ai-chat-attachment-comment-preview-more">
+                            {`+${hiddenCommentPreviewCount} more`}
+                          </span>
+                        )}
+                      </span>
+                    ) : sourcePreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-preview" role="tooltip">
                         {visibleSourcePreviewItems.map((source) => (
                           <span key={`${attachment.id}-source-preview-${source.key}`} className="ai-chat-attachment-source-preview-item">
@@ -12528,20 +13062,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                           </span>
                         )}
                       </span>
-                    ) : commentPreviewItems.length > 0 && (
-                      <span className="ai-chat-attachment-comment-preview" role="tooltip">
-                        {visibleCommentPreviewItems.map((comment, index) => (
-                          <span key={`${attachment.id}-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
-                            {comment}
-                          </span>
-                        ))}
-                        {hiddenCommentPreviewCount > 0 && (
-                          <span className="ai-chat-attachment-comment-preview-more">
-                            {`+${hiddenCommentPreviewCount} more`}
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    ) : null}
                   </span>
                 );
               })}
@@ -12641,6 +13162,450 @@ function SyntaxCode({ code, language = 'java' }) {
   );
 }
 
+const AI_ASSISTANT_SETTINGS_SECTIONS = [
+  {
+    id: 'ai-assistant-general',
+    label: 'General',
+    icon: 'general/settings',
+    description: 'Assistant availability, confirmations, and notifications.',
+  },
+  {
+    id: 'ai-assistant-chat',
+    label: 'Chat',
+    icon: 'toolwindows/aiAssistant',
+    description: 'Conversation behavior and chat session handling.',
+  },
+  {
+    id: 'ai-assistant-context',
+    label: 'Context',
+    icon: 'general/filter',
+    description: 'What project and IDE context can be attached automatically.',
+  },
+  {
+    id: 'ai-assistant-code-review',
+    label: 'Code Review',
+    icon: 'vcs/diff',
+    description: 'Review summaries, suggested fixes, and diff explanations.',
+  },
+  {
+    id: 'ai-assistant-comments',
+    label: 'Comments',
+    icon: 'general/balloon',
+    description: 'Comment entry points in files and diffs.',
+  },
+];
+
+const SETTINGS_TREE_WITH_AI_ASSISTANT = DEFAULT_SETTINGS_TREE_ITEMS.map((item) => (
+  item.id === 'tools'
+    ? {
+        ...item,
+        expanded: true,
+        children: [
+          {
+            id: 'ai-assistant',
+            label: 'AI Assistant',
+            expanded: true,
+            children: AI_ASSISTANT_SETTINGS_SECTIONS.map(({ id, label }) => ({ id, label })),
+          },
+        ],
+      }
+    : item
+));
+
+function findSettingsTreeItemPath(items, selectedId, path = []) {
+  for (const item of items) {
+    const nextPath = [...path, item];
+    if (item.id === selectedId) return nextPath;
+    const childPath = findSettingsTreeItemPath(item.children ?? [], selectedId, nextPath);
+    if (childPath) return childPath;
+  }
+
+  return null;
+}
+
+function AppSettingsTreeNodes({ items, selectedId, onSelect, level = 1 }) {
+  return items.map((item) => {
+    const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+
+    return (
+      <TreeNode
+        key={item.id}
+        label={item.label}
+        level={level}
+        hasChildren={item.hasChildren || hasChildren}
+        isExpanded={Boolean(item.expanded)}
+        isSelected={selectedId === item.id}
+        onSelect={() => onSelect(item.id)}
+      >
+        {hasChildren && (
+          <AppSettingsTreeNodes
+            items={item.children}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            level={level + 1}
+          />
+        )}
+      </TreeNode>
+    );
+  });
+}
+
+function AppSettingsBreadcrumb({ path }) {
+  return (
+    <div className="settings-breadcrumb">
+      {path.map((item, index) => (
+        <Fragment key={item.id}>
+          {index > 0 && <Icon name="general/chevronRight" size={16} />}
+          <span className="text-ui-default-semibold">{item.label}</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function AppSettingsDefaultContent({ path }) {
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group app-settings-dialog-placeholder">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">{path[path.length - 1]?.label ?? 'Settings'}</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Select Tools, AI Assistant, or Comments to configure AI comment workflows.
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AppSettingsToolsContent({ path, onSelectAiAssistant }) {
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Tools</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Configure integrations and assistant-driven workflows available from the IDE.
+        </div>
+      </div>
+      <div className="settings-group app-settings-dialog-card-group">
+        <button className="app-settings-dialog-nav-card" type="button" onClick={onSelectAiAssistant}>
+          <span className="app-settings-dialog-nav-card-icon">
+            <Icon name="aiAssistant/aiAssistantColored" size={16} />
+          </span>
+          <span className="app-settings-dialog-nav-card-body">
+            <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">AI Assistant</span>
+            <span className="app-settings-dialog-nav-card-description text-ui-small">
+              Chat, comments, and code-review context settings.
+            </span>
+          </span>
+          <Icon name="general/chevronRight" size={16} className="app-settings-dialog-nav-card-chevron" />
+        </button>
+      </div>
+    </>
+  );
+}
+
+function AppSettingsAiAssistantContent({ path, onSelectSection }) {
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Assistant</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Manage how assistant features collect context and connect code comments to chat sessions.
+        </div>
+      </div>
+      <div className="settings-group app-settings-dialog-card-group">
+        {AI_ASSISTANT_SETTINGS_SECTIONS.map((section) => (
+          <button
+            key={section.id}
+            className="app-settings-dialog-nav-card"
+            type="button"
+            onClick={() => onSelectSection(section.id)}
+          >
+            <span className="app-settings-dialog-nav-card-icon">
+              <Icon name={section.icon} size={16} />
+            </span>
+            <span className="app-settings-dialog-nav-card-body">
+              <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">{section.label}</span>
+              <span className="app-settings-dialog-nav-card-description text-ui-small">
+                {section.description}
+              </span>
+            </span>
+            <Icon name="general/chevronRight" size={16} className="app-settings-dialog-nav-card-chevron" />
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function AppSettingsOptionGroup({ children }) {
+  return (
+    <div className="settings-group app-settings-dialog-options-group">
+      {children}
+    </div>
+  );
+}
+
+function AppSettingsGeneralContent({ path }) {
+  const [showAssistantInToolbar, setShowAssistantInToolbar] = useState(true);
+  const [confirmBeforeApplyingChanges, setConfirmBeforeApplyingChanges] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(true);
+
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">General</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Configure how AI Assistant appears in the IDE and when it asks for confirmation.
+        </div>
+      </div>
+      <AppSettingsOptionGroup>
+        <Checkbox
+          label="Show AI Assistant in Toolbar"
+          hint="Keep quick access to the assistant in the main toolbar."
+          checked={showAssistantInToolbar}
+          onChange={setShowAssistantInToolbar}
+        />
+        <Checkbox
+          label="Confirm Before Applying Changes"
+          hint="Review generated edits before they are applied to files."
+          checked={confirmBeforeApplyingChanges}
+          onChange={setConfirmBeforeApplyingChanges}
+        />
+        <Checkbox
+          label="Show Assistant Notifications"
+          hint="Display completion and follow-up notifications from assistant workflows."
+          checked={showNotifications}
+          onChange={setShowNotifications}
+        />
+      </AppSettingsOptionGroup>
+    </>
+  );
+}
+
+function AppSettingsChatContent({ path }) {
+  const [streamResponses, setStreamResponses] = useState(true);
+  const [restoreLastChat, setRestoreLastChat] = useState(true);
+  const [suggestFollowUps, setSuggestFollowUps] = useState(false);
+
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Chat</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Adjust chat session behavior for assistant conversations.
+        </div>
+      </div>
+      <AppSettingsOptionGroup>
+        <Checkbox
+          label="Stream Responses"
+          hint="Show assistant answers as they are generated."
+          checked={streamResponses}
+          onChange={setStreamResponses}
+        />
+        <Checkbox
+          label="Restore Last Chat Session"
+          hint="Open the most recent chat when the AI Assistant tool window is shown."
+          checked={restoreLastChat}
+          onChange={setRestoreLastChat}
+        />
+        <Checkbox
+          label="Suggest Follow-Up Prompts"
+          hint="Show suggested next questions after assistant responses."
+          checked={suggestFollowUps}
+          onChange={setSuggestFollowUps}
+        />
+      </AppSettingsOptionGroup>
+    </>
+  );
+}
+
+function AppSettingsContextContent({ path }) {
+  const [includeOpenFiles, setIncludeOpenFiles] = useState(true);
+  const [includeProblems, setIncludeProblems] = useState(true);
+  const [includeRecentChanges, setIncludeRecentChanges] = useState(false);
+
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Context</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Control which IDE signals can be used as context for assistant prompts.
+        </div>
+      </div>
+      <AppSettingsOptionGroup>
+        <Checkbox
+          label="Include Open Files"
+          hint="Let prompts reference currently opened editor tabs when context is selected."
+          checked={includeOpenFiles}
+          onChange={setIncludeOpenFiles}
+        />
+        <Checkbox
+          label="Include Problems"
+          hint="Attach warnings, errors, and inspection results relevant to the active file."
+          checked={includeProblems}
+          onChange={setIncludeProblems}
+        />
+        <Checkbox
+          label="Include Recent Changes"
+          hint="Allow the assistant to use recent local edits when preparing answers."
+          checked={includeRecentChanges}
+          onChange={setIncludeRecentChanges}
+        />
+      </AppSettingsOptionGroup>
+    </>
+  );
+}
+
+function AppSettingsCodeReviewContent({ path }) {
+  const [summarizeDiffs, setSummarizeDiffs] = useState(true);
+  const [suggestFixes, setSuggestFixes] = useState(true);
+  const [groupReviewFindings, setGroupReviewFindings] = useState(false);
+
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Code Review</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Configure assistant help for reviewing diffs and applying feedback.
+        </div>
+      </div>
+      <AppSettingsOptionGroup>
+        <Checkbox
+          label="Summarize Diffs"
+          hint="Generate a compact explanation of changed files before review."
+          checked={summarizeDiffs}
+          onChange={setSummarizeDiffs}
+        />
+        <Checkbox
+          label="Suggest Fixes for Review Comments"
+          hint="Offer concrete code edits when a review comment describes a problem."
+          checked={suggestFixes}
+          onChange={setSuggestFixes}
+        />
+        <Checkbox
+          label="Group Related Findings"
+          hint="Combine repeated review findings into a smaller set of actionable items."
+          checked={groupReviewFindings}
+          onChange={setGroupReviewFindings}
+        />
+      </AppSettingsOptionGroup>
+    </>
+  );
+}
+
+function AppSettingsCommentsContent({
+  path,
+  plainFileGutterCommentsEnabled,
+  onPlainFileGutterCommentsEnabledChange,
+  diffGutterCommentsEnabled,
+  onDiffGutterCommentsEnabledChange,
+}) {
+  return (
+    <>
+      <AppSettingsBreadcrumb path={path} />
+      <div className="settings-group">
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Comments</div>
+        <div className="app-settings-dialog-page-description text-ui-default">
+          Choose where the AI Assistant can collect code comments as chat context.
+        </div>
+      </div>
+      <div className="settings-group app-settings-dialog-options-group">
+        <Checkbox
+          label="Enable Comments in Files"
+          hint="Show gutter comment controls in editor files and attach those comments to the selected chat."
+          checked={plainFileGutterCommentsEnabled}
+          onChange={onPlainFileGutterCommentsEnabledChange}
+        />
+        <Checkbox
+          label="Enable Comments in Diffs"
+          hint="Show gutter comment controls in diff views and attach those comments to the selected chat."
+          checked={diffGutterCommentsEnabled}
+          onChange={onDiffGutterCommentsEnabledChange}
+        />
+      </div>
+    </>
+  );
+}
+
+function AppSettingsDialogContent({
+  plainFileGutterCommentsEnabled,
+  onPlainFileGutterCommentsEnabledChange,
+  diffGutterCommentsEnabled,
+  onDiffGutterCommentsEnabledChange,
+}) {
+  const [selectedId, setSelectedId] = useState('ai-assistant-comments');
+  const [searchQuery, setSearchQuery] = useState('');
+  const selectedPath = findSettingsTreeItemPath(SETTINGS_TREE_WITH_AI_ASSISTANT, selectedId)
+    ?? findSettingsTreeItemPath(SETTINGS_TREE_WITH_AI_ASSISTANT, 'ai-assistant-comments');
+
+  const renderContent = () => {
+    if (selectedId === 'tools') {
+      return <AppSettingsToolsContent path={selectedPath} onSelectAiAssistant={() => setSelectedId('ai-assistant')} />;
+    }
+
+    if (selectedId === 'ai-assistant') {
+      return <AppSettingsAiAssistantContent path={selectedPath} onSelectSection={setSelectedId} />;
+    }
+
+    if (selectedId === 'ai-assistant-general') {
+      return <AppSettingsGeneralContent path={selectedPath} />;
+    }
+
+    if (selectedId === 'ai-assistant-chat') {
+      return <AppSettingsChatContent path={selectedPath} />;
+    }
+
+    if (selectedId === 'ai-assistant-context') {
+      return <AppSettingsContextContent path={selectedPath} />;
+    }
+
+    if (selectedId === 'ai-assistant-code-review') {
+      return <AppSettingsCodeReviewContent path={selectedPath} />;
+    }
+
+    if (selectedId === 'ai-assistant-comments') {
+      return (
+        <AppSettingsCommentsContent
+          path={selectedPath}
+          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
+          diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+          onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
+        />
+      );
+    }
+
+    return <AppSettingsDefaultContent path={selectedPath} />;
+  };
+
+  return (
+    <div className="settings-layout app-settings-dialog-content">
+      <div className="settings-tree-panel">
+        <div className="settings-tree-search">
+          <Search value={searchQuery} onChange={setSearchQuery} placeholder="" aria-label="Search settings" />
+        </div>
+        <div className="settings-tree-nodes">
+          <AppSettingsTreeNodes
+            items={SETTINGS_TREE_WITH_AI_ASSISTANT}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
+        </div>
+      </div>
+      <div className="settings-content-panel">
+        {renderContent()}
+      </div>
+    </div>
+  );
+}
+
 function ChatChangeCard({ icon, name, added, removed, children, onClick = null }) {
   return (
     <section className="ai-chat-change-card">
@@ -12660,14 +13625,15 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide' | 'settings'
+  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide'
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
-    const visitBookingTabIndex = initialTabs.findIndex((tab) => tab.id === 'agent-task-t1');
-    return visitBookingTabIndex >= 0 ? visitBookingTabIndex : 0;
+    const visitControllerTabIndex = initialTabs.findIndex((tab) => tab.id === '1');
+    return visitControllerTabIndex >= 0 ? visitControllerTabIndex : 0;
   });
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
@@ -12680,27 +13646,28 @@ export default function App() {
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
   const [diffCommentsOptionIsNew, setDiffCommentsOptionIsNew] = useState(true);
-  const [diffCommentSettingsGotItSeen, setDiffCommentSettingsGotItSeen] = useState(false);
-  const [showDiffCommentSettingsGotIt, setShowDiffCommentSettingsGotIt] = useState(false);
-  useEffect(() => {
-    if (!showDiffCommentSettingsGotIt) return undefined;
-
-    const timeoutId = window.setTimeout(() => {
-      setShowDiffCommentSettingsGotIt(false);
-    }, 15000);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [showDiffCommentSettingsGotIt]);
+  const [showFileCommentsSuggestionBanner, setShowFileCommentsSuggestionBanner] = useState(false);
   const [chatScrollTarget, setChatScrollTarget] = useState(null);
-  const [selectedAiChatId, setSelectedAiChatId] = useState('visit-model-attributes');
+  const [selectedAiChatId, setSelectedAiChatId] = useState('refactor-time-slots');
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  const [commentShortcutHintTarget, setCommentShortcutHintTarget] = useState(null);
+  const [hasShownCommentShortcutHint, setHasShownCommentShortcutHint] = useState(false);
   const aiChatStreamingTimersRef = useRef({});
   const specActionDocStateTimersRef = useRef({});
   const suppressDoneCommentsChangeRef = useRef(false);
   const suppressDoneCommentsChangeTimerRef = useRef(null);
   const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
   const aiChatDraftSessionCounterRef = useRef(0);
+  const [pendingDiffCommentRowsByTabId, setPendingDiffCommentRowsByTabId] = useState({});
+  const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
+  useEffect(() => {
+    if (!commentShortcutHintTarget) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      setCommentShortcutHintTarget(null);
+    }, 7000);
+    return () => window.clearTimeout(timeoutId);
+  }, [commentShortcutHintTarget]);
   const openAiToolWindow = useCallback(() => {
     setScreen('ide');
     setIdeOpenWindows((prev) => (
@@ -13685,7 +14652,7 @@ export default function App() {
       ? undefined
       : normalizeStoredDiffCommentsState(comments);
     const nextComments = Array.isArray(comments)
-      ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? comments.filter((comment) => getStoredCommentText(comment).trim().length > 0)
       : flattenStoredDiffCommentsState(nextDiffComments);
     const targetMetadata = buildCommentTargetEntryMetadata(
       runtimeState?.taskState?.documentSections ?? runtimeState?.scenario?.defaultDocument ?? [],
@@ -15504,8 +16471,12 @@ export default function App() {
         const hasVisibleCaret =
           document.activeElement === node &&
           node.selectionStart === node.selectionEnd;
+        const hasMultilineSelection =
+          document.activeElement === node &&
+          hasTextareaMultilineSelection(node);
 
         editorEl.classList.toggle('editor-caret-visible', hasVisibleCaret);
+        editorEl.classList.toggle('editor-has-multiline-selection', hasMultilineSelection);
       });
     };
 
@@ -15537,6 +16508,9 @@ export default function App() {
 
       document.querySelectorAll('.editor.editor-caret-visible').forEach((editorEl) => {
         editorEl.classList.remove('editor-caret-visible');
+      });
+      document.querySelectorAll('.editor.editor-has-multiline-selection').forEach((editorEl) => {
+        editorEl.classList.remove('editor-has-multiline-selection');
       });
     };
   }, []);
@@ -17682,11 +18656,15 @@ export default function App() {
     startSpecSpecifyDocumentState,
     startSpecStatusChatStreamingTurn,
   ]);
-  const handleAiChatMessageSent = useCallback(({ chatId } = {}) => {
+  const handleAiChatMessageSent = useCallback(({ chatId, message = null } = {}) => {
     if (!chatId) return;
 
     const statusChatMatch = String(chatId).match(/^spec-chat-(.+)-(build|specified)$/u);
     if (!statusChatMatch) return;
+    const hasCommentAttachments = Array.isArray(message?.attachments) && message.attachments.some((attachment) => (
+      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+    if (hasCommentAttachments) return;
 
     clearTaskCommentsForTab(statusChatMatch[1]);
   }, [clearTaskCommentsForTab]);
@@ -17730,6 +18708,13 @@ export default function App() {
             : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
         )
       : {};
+  const activePendingDiffCommentSnapshot = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
+    ? normalizeStoredDiffCommentsState(pendingDiffCommentSnapshotsByTabId[activeTabId])
+    : {};
+  const activePlanDiffCommentsWithPending = mergeStoredDiffCommentsStates(
+    activePendingDiffCommentSnapshot,
+    activePlanDiffComments,
+  );
   const activePlanDiffDocumentComments = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
     ? normalizeStoredDiffCommentsState(activeTabContent?.documentDiffComments)
     : {};
@@ -17773,16 +18758,51 @@ export default function App() {
     : planDiffContextChatId === selectedAiChatId
       ? 'Active'
       : 'Inactive';
-  const activePlanDiffDocumentSourceTabId = 'agent-task-t1';
-  const activePlanDiffDocumentTabMeta = activePlanDiffDocumentSourceTabId
-    ? (ideTabs.find((tab) => tab.id === activePlanDiffDocumentSourceTabId) ?? null)
-    : null;
+  const openMarkdownDocumentTabs = ideTabs.filter((tab) => (
+    tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
+  ));
+  const activeMarkdownDocumentTab =
+    (activeEditorTabMeta?.id?.startsWith('agent-task-') || activeEditorTabMeta?.label?.endsWith('.md'))
+      ? activeEditorTabMeta
+      : null;
+  const activePlanDiffDocumentTabMeta =
+    activeMarkdownDocumentTab
+    ?? openMarkdownDocumentTabs[0]
+    ?? null;
+  const activePlanDiffDocumentSourceTabId = activePlanDiffDocumentTabMeta?.id ?? null;
   const activePlanDiffDocumentContextLabel =
     activePlanDiffDocumentTabMeta?.label
     ?? currentAgentTaskLabel
     ?? TERMINAL_TASK_TAB_BASE_LABEL;
+  const activePlanDiffDefaultSubmitAttachMode = activePlanDiffDocumentSourceTabId ? 'document' : 'current';
+  const activePlanDiffDefaultSubmitTargetLabel = activePlanDiffDocumentSourceTabId
+    ? activePlanDiffDocumentContextLabel
+    : planDiffContextChatTitle;
+  const activePlanDiffDefaultSubmitTargetIcon = activePlanDiffDocumentSourceTabId
+    ? (activePlanDiffDocumentTabMeta?.icon ?? 'fileTypes/markdown')
+    : planDiffContextChatIcon;
+  const activePlanDiffDefaultSubmitTargetKey = activePlanDiffDocumentSourceTabId ?? selectedAiChatId;
+  const selectedChatDocumentAttachments = Array.isArray(getAiChatScenarioById(selectedAiChatId)?.attachments)
+    ? getAiChatScenarioById(selectedAiChatId).attachments
+    : [];
+  const isSelectedChatRelatedToActivePlanDiffDocument = Boolean(
+    activePlanDiffDocumentSourceTabId
+    && selectedChatDocumentAttachments.some((attachment) => (
+      attachment?.isSddDocument
+      && (
+        attachment.sourceTabId === activePlanDiffDocumentSourceTabId
+        || attachment.id === `sdd-document-${activePlanDiffDocumentSourceTabId}-current`
+        || attachment.id === `sdd-document-${activePlanDiffDocumentSourceTabId}-build`
+        || attachment.id === `sdd-document-${activePlanDiffDocumentSourceTabId}-specified`
+      )
+    ))
+  );
+  const activePlanDiffDocumentContextSessionLabel = activePlanDiffCommentsReadOnly
+    ? 'Archive'
+    : (isSelectedChatRelatedToActivePlanDiffDocument ? 'Active' : 'Related Chats');
   const renderCommentSubmitTargetPicker = useCallback(({
     triggerRect,
+  width = null,
   selectedTarget = null,
   onSelectTarget = null,
   onDismiss = null,
@@ -17829,13 +18849,32 @@ export default function App() {
       });
     };
 
+    const handleCreateNewChat = () => {
+      const session = createEmptyAiChatSession({
+        title: 'New Chat',
+        icon: 'claude',
+        emptyState: true,
+        select: true,
+      });
+      const label = session?.title ?? 'New Chat';
+      onSelectTarget?.({
+        attachMode: 'current',
+        targetChatId: session.id,
+        targetDocumentTabId: null,
+        label,
+        icon: session.icon ?? 'claude',
+        buttonLabel: `Add to ${label}`,
+      });
+    };
+
     return (
       <div className="theme-dark">
         <PositionedPopup triggerRect={triggerRect} onDismiss={onDismiss} gap={4}>
           <ChatListPopup
             className="diff-comment-submit-target-popup"
-            style={{ position: 'static', width: 360, maxWidth: 'calc(100vw - 16px)' }}
+            style={{ position: 'static', width: Number.isFinite(width) ? width : 420, maxWidth: 'calc(100vw - 16px)' }}
             selectedChatId={selectedChatId}
+            activeChatId={selectedAiChatId}
             selectedDocumentSourceTabId={selectedDocumentSourceTabId}
             onSelectChat={handleSelectChat}
             onOpenDocument={handleOpenDocument}
@@ -17846,6 +18885,11 @@ export default function App() {
             flattenDocuments
             showOlderSections={false}
             hideMeta
+            footerAction={{
+              label: 'Create New Chat',
+              icon: 'general/add',
+              onClick: handleCreateNewChat,
+            }}
           />
         </PositionedPopup>
       </div>
@@ -17853,16 +18897,12 @@ export default function App() {
   }, [
     activePlanDiffDocumentSourceTabId,
     aiChatRecentItems,
+    createEmptyAiChatSession,
     getAiChatListItemById,
     getAiChatScenarioById,
     ideTabs,
     selectedAiChatId,
   ]);
-  const handleDiffGutterCommentToggle = useCallback(() => {
-    if (diffCommentSettingsGotItSeen) return;
-    setDiffCommentSettingsGotItSeen(true);
-    setShowDiffCommentSettingsGotIt(true);
-  }, [diffCommentSettingsGotItSeen]);
   const selectedAiChatScenario = getAiChatScenarioById(selectedAiChatId);
   const upsertSddAttachmentForChat = useCallback((chatId, attachment) => {
     if (!chatId || !attachment?.isSddDocument) return;
@@ -18025,6 +19065,17 @@ export default function App() {
     }
 
     const nextComments = normalizeStoredDiffCommentsState(comments);
+    const maybeShowCommentShortcutHint = () => {
+      if (hasShownCommentShortcutHint || metadata?.isEditing || typeof metadata?.rowId !== 'string' || metadata.rowId.length === 0) {
+        return;
+      }
+      setHasShownCommentShortcutHint(true);
+      setCommentShortcutHintTarget({
+        tabId: activeTabId,
+        rowId: metadata.rowId,
+        nonce: Date.now(),
+      });
+    };
     const shouldCreateNewChat =
       metadata?.attachMode === 'new'
       && !metadata?.isEditing
@@ -18164,6 +19215,7 @@ export default function App() {
           sddCommentEntries: nextDocumentEntries,
         });
       }
+      maybeShowCommentShortcutHint();
       return;
     }
 
@@ -18178,16 +19230,38 @@ export default function App() {
       : null;
     const targetChatId = newChatSession?.id ?? explicitTargetChatId ?? selectedAiChatId;
     const isExplicitDifferentChatTarget = Boolean(explicitTargetChatId && explicitTargetChatId !== selectedAiChatId);
+    const metadataRowIds = Array.isArray(metadata?.rowIds) && metadata.rowIds.length > 0
+      ? metadata.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+      : (typeof metadata?.rowId === 'string' ? [metadata.rowId] : []);
+    const buildSubmittedCommentState = (baseComments = {}) => {
+      if (metadataRowIds.length === 0 || typeof metadata?.comment !== 'string' || metadata.comment.trim().length === 0) {
+        return normalizeStoredDiffCommentsState(baseComments);
+      }
+
+      const normalizedSubmittedText = metadata.comment.trim();
+      const submittedCommentFromNextState = metadataRowIds
+        .flatMap((rowId) => normalizeStoredDiffCommentsState(nextComments)[rowId] ?? [])
+        .find((comment) => getStoredCommentText(comment).trim() === normalizedSubmittedText);
+      const submittedLineLabel = getStoredCommentLineLabel(submittedCommentFromNextState);
+      const commentEntry = {
+        text: normalizedSubmittedText,
+        ...(submittedLineLabel.length > 0 ? { lineLabel: submittedLineLabel } : {}),
+        ...(typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim().length > 0
+          ? { chatId: metadata.targetChatId.trim() }
+          : {}),
+      };
+      return normalizeStoredDiffCommentsState(metadataRowIds.reduce((nextComments, rowId) => ({
+        ...nextComments,
+        [rowId]: [commentEntry],
+      }), { ...normalizeStoredDiffCommentsState(baseComments) }));
+    };
     const targetSessionComments = (() => {
-      if (shouldCreateNewChat && typeof metadata?.rowId === 'string') {
-        return normalizeStoredDiffCommentsState({
-          [metadata.rowId]: [metadata.comment],
-        });
+      if (shouldCreateNewChat) {
+        return buildSubmittedCommentState({});
       }
 
       if (
         isExplicitDifferentChatTarget
-        && typeof metadata?.rowId === 'string'
         && typeof metadata?.comment === 'string'
         && metadata.comment.trim().length > 0
         && !metadata?.isEditing
@@ -18196,14 +19270,25 @@ export default function App() {
           activePlanDiffSessionCommentsByChatId[explicitTargetChatId]?.comments,
         );
 
-        return normalizeStoredDiffCommentsState({
-          ...previousTargetComments,
-          [metadata.rowId]: [metadata.comment],
-        });
+        return buildSubmittedCommentState(previousTargetComments);
       }
 
       return nextComments;
     })();
+    const targetChatHasSentMessages = (aiChatSentMessagesByChatId[targetChatId] ?? []).some((message) => (
+      message && message.role !== 'assistant'
+    ));
+    const nextTargetCommentCount = flattenStoredDiffCommentsState(targetSessionComments).length;
+    if (
+      !plainFileGutterCommentsEnabled
+      && !isPlainFileOverlayTab
+      && !metadata?.isEditing
+      && targetChatHasSentMessages
+      && nextTargetCommentCount > 0
+    ) {
+      setShowFileCommentsSuggestionBanner(true);
+    }
+    maybeShowCommentShortcutHint();
     const hasNextComments = Object.keys(targetSessionComments).length > 0;
     if (activeTabId) {
       setAiChatComposerDiffTabByChatId((prev) => {
@@ -18300,13 +19385,17 @@ export default function App() {
 	    activePlanDiffSessionCommentsByChatId,
 	    activePlanDiffLineText,
 	    activePlanDiffData,
+      activePlanDiffComments,
       activePlanDiffDocumentSourceTabId,
 	    activePlanDiffSourceTabId,
-	    activePlanDiffTarget,
-	    activePlanDiffCommentsReadOnly,
+      activePlanDiffTarget,
+      activePlanDiffCommentsReadOnly,
+      hasShownCommentShortcutHint,
       activeSourceEditorTabId,
-      activeRelatedDiffCommentIssues,
+	    activeRelatedDiffCommentIssues,
+      aiChatSentMessagesByChatId,
       isPlainFileOverlayTab,
+      plainFileGutterCommentsEnabled,
 	    createEmptyAiChatSession,
       currentAgentTaskLabel,
       generationTabId,
@@ -18320,7 +19409,7 @@ export default function App() {
 	    syncDiffCommentsToTaskTarget,
       upsertSddAttachmentForChat,
       visibleEditorStateTabId,
-	  ]);
+		  ]);
   const handlePlanDiffReturnToChat = useCallback((context = {}) => {
     if (context?.source === 'diff-comment-document-context') {
       const sourceTabId = context?.sourceTabId ?? activePlanDiffDocumentSourceTabId;
@@ -18419,9 +19508,20 @@ export default function App() {
       return attachment.sourceTabId;
     }
     const rawId = typeof attachment?.id === 'string' ? attachment.id : '';
-    const match = rawId.match(/^sdd-document-(.+)-(?:build|specified)$/u);
-    return match?.[1] ?? visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId;
-  }, [activeEditorTabId, generationTabId, visibleEditorStateTabId]);
+    const match = rawId.match(/^sdd-document-(.+)-(?:build|specified|current)$/u);
+    if (match?.[1]) return match[1];
+
+    const attachmentLabel = typeof attachment?.label === 'string' ? attachment.label.trim() : '';
+    if (attachmentLabel.length > 0) {
+      const tabMatch = ideTabs.find((tab) => (
+        (tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
+        && tab?.label === attachmentLabel
+      ));
+      if (tabMatch?.id) return tabMatch.id;
+    }
+
+    return visibleEditorStateTabId ?? activeEditorTabId ?? generationTabId;
+  }, [activeEditorTabId, generationTabId, ideTabs, visibleEditorStateTabId]);
 
   const handleRemoveComposerAttachment = useCallback((attachment = null, context = {}) => {
     if (!attachment || typeof attachment !== 'object') return;
@@ -18640,16 +19740,33 @@ export default function App() {
     updatePlanDiffUiStateForTab,
   ]);
 
-  const handleClearAllComposerDiffAttachments = useCallback(() => {
-    if (aiChatComposerDiffAttachments.length === 0) return;
+  const handleClearAllComposerDiffAttachments = useCallback((context = {}) => {
+    const targetChatId = typeof context?.chatId === 'string' && context.chatId.trim().length > 0
+      ? context.chatId
+      : selectedAiChatId;
+    const attachmentsToClear = Array.isArray(context?.attachments) && context.attachments.length > 0
+      ? context.attachments
+      : aiChatComposerDiffAttachments;
+    const diffAttachmentsToClear = attachmentsToClear.filter((attachment) => (
+      attachment?.diffTabId
+      && Number.isFinite(attachment?.commentCount)
+      && attachment.commentCount > 0
+    ));
+    const sddAttachmentsToClear = attachmentsToClear.filter((attachment) => (
+      attachment?.isSddDocument
+      && Number.isFinite(attachment?.commentCount)
+      && attachment.commentCount > 0
+    ));
+    if (diffAttachmentsToClear.length === 0 && sddAttachmentsToClear.length === 0) return;
+
     setIdeTabContents((prev) => {
       const next = { ...prev };
-      for (const attachment of aiChatComposerDiffAttachments) {
+      for (const attachment of diffAttachmentsToClear) {
         const tabId = attachment.diffTabId;
         const existing = next[tabId];
         if (!existing) continue;
         const previousSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
-        const { [selectedAiChatId]: _removed, ...remaining } = previousSessions;
+        const { [targetChatId]: _removed, ...remaining } = previousSessions;
         next[tabId] = {
           ...existing,
           initialDiffComments: {},
@@ -18659,13 +19776,135 @@ export default function App() {
       return next;
     });
     setAiChatComposerDiffTabByChatId((prev) => {
-      const { [selectedAiChatId]: _removed, ...rest } = prev;
+      const { [targetChatId]: _removed, ...rest } = prev;
       return rest;
+    });
+    sddAttachmentsToClear.forEach((attachment) => {
+      handleRemoveComposerAttachment(attachment, { chatId: targetChatId });
     });
   }, [
     aiChatComposerDiffAttachments,
+    handleRemoveComposerAttachment,
     selectedAiChatId,
   ]);
+
+  const getPendingCommentRowsByTabIdFromAttachments = useCallback((attachments = []) => (
+    (Array.isArray(attachments) ? attachments : []).reduce((entries, attachment) => {
+      const addRows = (tabId, rowIds = []) => {
+        if (!tabId || rowIds.length === 0) return entries;
+        entries[tabId] = Array.from(new Set([
+          ...(entries[tabId] ?? []),
+          ...rowIds,
+        ]));
+        return entries;
+      };
+
+      if (attachment?.diffTabId) {
+        addRows(attachment.diffTabId, Object.keys(normalizeStoredDiffCommentsState(attachment.diffComments)));
+      }
+
+      normalizeSpecVersionCommentEntries(attachment?.sddCommentEntries).forEach((entry) => {
+        const sourceTabId = typeof entry?.sourceNavigationTabId === 'string' && entry.sourceNavigationTabId.length > 0
+          ? entry.sourceNavigationTabId
+          : null;
+        const rowIds = Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments));
+        const sourceRowId = typeof entry?.sourceNavigationRowId === 'string' && entry.sourceNavigationRowId.length > 0
+          ? entry.sourceNavigationRowId
+          : null;
+        addRows(sourceTabId, rowIds.length > 0 ? rowIds : (sourceRowId ? [sourceRowId] : []));
+      });
+
+      return entries;
+    }, {})
+  ), []);
+
+  const getPendingCommentSnapshotsByTabIdFromAttachments = useCallback((attachments = []) => (
+    (Array.isArray(attachments) ? attachments : []).reduce((entries, attachment) => {
+      const addComments = (tabId, comments = {}) => {
+        if (!tabId) return entries;
+        const normalizedComments = normalizeStoredDiffCommentsState(comments);
+        if (Object.keys(normalizedComments).length === 0) return entries;
+        const pendingComments = Object.entries(normalizedComments).reduce((nextComments, [rowId, rowComments]) => ({
+          ...nextComments,
+          [rowId]: rowComments.map((comment) => ({
+            ...((comment && typeof comment === 'object') ? comment : {}),
+            text: getStoredCommentText(comment),
+            pending: true,
+          })),
+        }), {});
+        entries[tabId] = mergeStoredDiffCommentsStates(entries[tabId], pendingComments);
+        return entries;
+      };
+
+      if (attachment?.diffTabId) {
+        addComments(attachment.diffTabId, attachment.diffComments);
+      }
+
+      normalizeSpecVersionCommentEntries(attachment?.sddCommentEntries).forEach((entry) => {
+        const sourceTabId = typeof entry?.sourceNavigationTabId === 'string' && entry.sourceNavigationTabId.length > 0
+          ? entry.sourceNavigationTabId
+          : null;
+        addComments(sourceTabId, entry?.diffComments);
+      });
+
+      return entries;
+    }, {})
+  ), []);
+
+  const handleCommentAttachmentResponseStart = useCallback(({ attachments = [] } = {}) => {
+    const nextPendingRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
+    const nextPendingSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
+
+    if (Object.keys(nextPendingRowsByTabId).length === 0 && Object.keys(nextPendingSnapshotsByTabId).length === 0) return;
+
+    if (Object.keys(nextPendingRowsByTabId).length > 0) {
+      setPendingDiffCommentRowsByTabId((prev) => ({
+        ...prev,
+        ...nextPendingRowsByTabId,
+      }));
+    }
+    if (Object.keys(nextPendingSnapshotsByTabId).length > 0) {
+      setPendingDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.entries(nextPendingSnapshotsByTabId).forEach(([tabId, comments]) => {
+          next[tabId] = mergeStoredDiffCommentsStates(next[tabId], comments);
+        });
+        return next;
+      });
+    }
+  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments]);
+
+  const handleCommentAttachmentResponseComplete = useCallback(({ attachments = [] } = {}) => {
+    const completedRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
+    const completedSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
+
+    if (Object.keys(completedRowsByTabId).length === 0 && Object.keys(completedSnapshotsByTabId).length === 0) return;
+
+    if (Object.keys(completedRowsByTabId).length > 0) {
+      setPendingDiffCommentRowsByTabId((prev) => {
+        const next = { ...prev };
+        Object.entries(completedRowsByTabId).forEach(([diffTabId, completedRowIds]) => {
+          const completedRowIdSet = new Set(completedRowIds);
+          const remainingRowIds = (next[diffTabId] ?? []).filter((rowId) => !completedRowIdSet.has(rowId));
+          if (remainingRowIds.length > 0) {
+            next[diffTabId] = remainingRowIds;
+            return;
+          }
+          delete next[diffTabId];
+        });
+        return next;
+      });
+    }
+    if (Object.keys(completedSnapshotsByTabId).length > 0) {
+      setPendingDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.keys(completedSnapshotsByTabId).forEach((tabId) => {
+          delete next[tabId];
+        });
+        return next;
+      });
+    }
+  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments]);
 
   const handleOpenSddDocument = useCallback((context = {}) => {
     const sourceTabId = context?.sourceTabId
@@ -18674,6 +19913,9 @@ export default function App() {
       ?? activeEditorTabId
       ?? generationTabId;
     const sourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+    const attachmentLabel = typeof context?.attachment?.label === 'string'
+      ? context.attachment.label.trim()
+      : '';
 
     if (sourceTabId) {
       const existingTabIndex = ideTabs.findIndex((tab) => tab.id === sourceTabId);
@@ -18682,28 +19924,53 @@ export default function App() {
         setActiveEditorTab(existingTabIndex);
         return;
       }
+      if (sourceTabId.startsWith('agent-task-')) {
+        handleAgentTaskSelect(sourceTabId.slice('agent-task-'.length));
+        return;
+      }
     }
-    openEditorTabByLabel(sourceTab?.label ?? TERMINAL_TASK_TAB_BASE_LABEL);
+    openEditorTabByLabel(sourceTab?.label || attachmentLabel || TERMINAL_TASK_TAB_BASE_LABEL);
   }, [
     activeEditorTabId,
     generationTabId,
     getSourceTabIdFromSddAttachment,
+    handleAgentTaskSelect,
     ideTabs,
     openEditorTabByLabel,
     visibleEditorStateTabId,
   ]);
 
-  const handleOpenAttachmentSource = useCallback(({ attachment = null, source = null } = {}) => {
+  const handleOpenAttachmentSource = useCallback(({ attachment = null, source = null, messageId = null, chatId = null, archived = true } = {}) => {
     const targetTabId = source?.navigationTabId ?? null;
     if (!targetTabId) return;
     const targetRawIndex = Number.isInteger(source?.rawIndex)
       ? source.rawIndex
       : (Number.isInteger(source?.lineNumber) && source.lineNumber > 0 ? source.lineNumber - 1 : null);
 
+    if (
+      targetTabId === attachment?.diffTabId
+      && !attachment?.isPlainFile
+      && attachment?.diffRequest
+    ) {
+      openPlanDiffTab({
+        ...attachment.diffRequest,
+        initialDiffCommentsOverride: attachment.diffComments ?? {},
+        commentsReadOnly: archived,
+        contextMessageId: messageId,
+        contextChatId: chatId,
+        navigation: {
+          activeRowId: source?.navigationRowId ?? Object.keys(attachment.diffComments ?? {})[0] ?? null,
+        },
+      });
+      return;
+    }
+
     const targetTabIndex = ideTabs.findIndex((tab) => tab?.id === targetTabId);
     if (targetTabIndex >= 0) {
       setScreen('ide');
       setActiveEditorTab(targetTabIndex);
+    } else if (typeof source?.label === 'string' && source.label.trim().length > 0) {
+      openEditorTabByLabel(source.label);
     }
 
     if (source?.navigationRowId) {
@@ -18730,9 +19997,45 @@ export default function App() {
     if (Number.isInteger(targetRawIndex)) {
       requestProblemHighlight(targetRawIndex, targetTabId);
     }
-  }, [handleOpenSddDocument, ideTabs, requestProblemHighlight, updatePlanDiffUiStateForTab]);
+  }, [handleOpenSddDocument, ideTabs, openEditorTabByLabel, openPlanDiffTab, requestProblemHighlight, updatePlanDiffUiStateForTab]);
 
-  const handleOpenPlainFileArchive = useCallback((tabId, diffComments, contextMessageId, contextChatId) => {
+  const handleOpenSpecCommentSource = useCallback((issue = null) => {
+    const targetTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : null;
+    if (!targetTabId) return;
+
+    const targetTabIndex = ideTabs.findIndex((tab) => tab?.id === targetTabId);
+    if (targetTabIndex >= 0) {
+      setScreen('ide');
+      setActiveEditorTab(targetTabIndex);
+    } else {
+      const sourceLabel = getCommentIssueSourceLabel(issue);
+      if (sourceLabel) {
+        openEditorTabByLabel(sourceLabel);
+      }
+    }
+
+    if (issue?.navigationRowId) {
+      updatePlanDiffUiStateForTab({
+        activeRowId: issue.navigationRowId,
+        commentRowId: null,
+        commentValue: '',
+        commentEditingIndex: null,
+        caretState: {
+          rowId: issue.navigationRowId,
+          left: 12,
+        },
+      }, targetTabId);
+    }
+
+    const targetRawIndex = Number.isInteger(issue?.rawIndex)
+      ? issue.rawIndex
+      : (Number.isInteger(issue?.lineNumber) && issue.lineNumber > 0 ? issue.lineNumber - 1 : null);
+    if (Number.isInteger(targetRawIndex)) {
+      requestProblemHighlight(targetRawIndex, targetTabId);
+    }
+  }, [ideTabs, openEditorTabByLabel, requestProblemHighlight, updatePlanDiffUiStateForTab]);
+
+  const handleOpenPlainFileArchive = useCallback((tabId, diffComments, contextMessageId, contextChatId, activeRowId = null, { archived = true } = {}) => {
     const tabIndex = ideTabs.findIndex((tab) => tab.id === tabId);
     if (tabIndex < 0) return;
     const scenario = getAiChatScenarioById(contextChatId);
@@ -18758,16 +20061,29 @@ export default function App() {
         ...prev,
         [tabId]: {
           ...existing,
-          initialDiffComments: {},
+          initialDiffComments: archived ? {} : normalizedComments,
           diffSessionCommentsByChatId: nextSessions,
-          diffCommentsReadOnly: true,
-          diffContextMessageId: contextMessageId,
-          diffContextChatId: contextChatId,
+          diffCommentsReadOnly: Boolean(archived),
+          diffContextMessageId: archived ? contextMessageId : null,
+          diffContextChatId: archived ? contextChatId : null,
         },
       };
     });
+    setScreen('ide');
     setActiveEditorTab(tabIndex);
-  }, [getAiChatListItemById, getAiChatScenarioById, ideTabs]);
+    if (activeRowId) {
+      updatePlanDiffUiStateForTab({
+        activeRowId,
+        commentRowId: null,
+        commentValue: '',
+        commentEditingIndex: null,
+        caretState: {
+          rowId: activeRowId,
+          left: 12,
+        },
+      }, tabId);
+    }
+  }, [getAiChatListItemById, getAiChatScenarioById, ideTabs, updatePlanDiffUiStateForTab]);
 
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
@@ -18992,6 +20308,33 @@ export default function App() {
             }]
           : [])),
   ];
+  const settingsDialogPortal = isSettingsDialogOpen && typeof document !== 'undefined'
+    ? createPortal(
+        <div className="theme-dark main-window-overlay main-window-overlay-modal app-settings-dialog-layer" onMouseDown={() => setIsSettingsDialogOpen(false)}>
+          <div className="main-window-overlay-dialog" onMouseDown={(event) => event.stopPropagation()}>
+            <SettingsDialog
+              title="Settings"
+              width={900}
+              height={600}
+              treeItems={DEFAULT_SETTINGS_TREE_ITEMS}
+              buttons={[
+                { children: 'Cancel', onClick: () => setIsSettingsDialogOpen(false) },
+                { children: 'OK', type: 'primary', onClick: () => setIsSettingsDialogOpen(false) },
+              ]}
+              onClose={() => setIsSettingsDialogOpen(false)}
+            >
+              <AppSettingsDialogContent
+                plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+                onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
+                diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+                onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
+              />
+            </SettingsDialog>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
 
   if (screen === 'welcome') {
     return (
@@ -19015,7 +20358,7 @@ export default function App() {
                 <>
                   <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
                   <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
-                  <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" />
+                  <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
                 </>
               )}
             />
@@ -19047,7 +20390,7 @@ export default function App() {
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
-	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showCommentSettingsGotIt={showDiffCommentSettingsGotIt} onCommentSettingsGotItDismiss={() => setShowDiffCommentSettingsGotIt(false)} /> : defaultRightPanelContent(id, ctx))}
+	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
           bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
           statusBarProps={{
@@ -19063,6 +20406,7 @@ export default function App() {
             ],
           }}
         />
+        {settingsDialogPortal}
         {editorTabsMorePortal}
         {terminalPermissionPortal}
       </ThemeProvider>
@@ -19179,12 +20523,12 @@ export default function App() {
             projectColor="blue"
             branchName={BRANCH_NAME}
             runConfig="Current File"
-            onSettings={() => setScreen('settings')}
+            onSettings={() => setIsSettingsDialogOpen(true)}
             rightActions={(
               <>
                 <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
                 <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
-                <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setScreen('settings')} />
+                <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
               </>
             )}
           />
@@ -19209,30 +20553,31 @@ export default function App() {
         }}
         editorTopBar={
           isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
             : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
                     viewerData={activePlanDiffViewerData}
-                    initialDiffComments={activePlanDiffComments}
+                    initialDiffComments={activePlanDiffCommentsWithPending}
                     documentDiffComments={activePlanDiffDocumentComments}
                     documentContextLabel={activePlanDiffDocumentContextLabel}
                     documentContextIcon="fileTypes/markdown"
-                    documentContextSessionLabel="Related Chats"
+                    documentContextSessionLabel={activePlanDiffDocumentContextSessionLabel}
                     documentContextSourceTabId={activePlanDiffDocumentSourceTabId}
-                    defaultSubmitTargetLabel={activePlanDiffDocumentContextLabel}
-                    defaultSubmitTargetIcon="fileTypes/markdown"
-                    defaultSubmitTargetKey={selectedAiChatId}
+                    defaultSubmitAttachMode={activePlanDiffDefaultSubmitAttachMode}
+                    defaultSubmitTargetLabel={activePlanDiffDefaultSubmitTargetLabel}
+                    defaultSubmitTargetIcon={activePlanDiffDefaultSubmitTargetIcon}
+                    defaultSubmitTargetKey={activePlanDiffDefaultSubmitTargetKey}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     commentContextLabel={planDiffContextChatTitle}
                     commentContextIcon={planDiffContextChatIcon}
                     commentContextSessionLabel={planDiffContextSessionLabel}
-                    commentSessions={activePlanDiffSessionComments}
-                    commentSessionActiveChatId={selectedAiChatId}
-                    renderSubmitTargetPicker={renderCommentSubmitTargetPicker}
+	                    commentSessions={activePlanDiffSessionComments}
+	                    commentSessionActiveChatId={selectedAiChatId}
+	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
+	                    renderSubmitTargetPicker={renderCommentSubmitTargetPicker}
                     onDiffCommentsChange={handleActivePlanDiffCommentsChange}
-                    onGutterCommentToggle={isPlainFileOverlayTab ? null : handleDiffGutterCommentToggle}
                     onRowDelete={handlePlanDiffRowDelete}
                     onRowFix={handlePlanDiffRowFix}
                     onPlanMarkerClick={handleActivePlanMarkerClick}
@@ -19247,6 +20592,7 @@ export default function App() {
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}
                     onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
+                    pendingCommentRowIds={pendingDiffCommentRowsByTabId[activeTabId] ?? []}
                     inspectionWidget={isPlainFileOverlayTab ? (
                       <DoneInspectionWidget
                         className="plan-diff-inspection-widget"
@@ -19293,7 +20639,7 @@ export default function App() {
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
-	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showCommentSettingsGotIt={showDiffCommentSettingsGotIt} onCommentSettingsGotItDismiss={() => setShowDiffCommentSettingsGotIt(false)} /> : defaultRightPanelContent(id, ctx))}
+	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
@@ -19305,24 +20651,9 @@ export default function App() {
           ],
         }}
 
-        overlays={
-          screen === 'settings'
-            ? (
-              <SettingsDialog
-                title="Settings"
-                width={900}
-                height={600}
-                treeItems={DEFAULT_SETTINGS_TREE_ITEMS}
-                buttons={[
-                  { children: 'Cancel', onClick: () => setScreen('ide') },
-                  { children: 'OK', type: 'primary', onClick: () => setScreen('ide') },
-                ]}
-                onClose={() => setScreen('ide')}
-              />
-            )
-            : null
-        }
+        overlays={null}
       />
+      {settingsDialogPortal}
       {editorTabsMorePortal}
       {terminalPermissionPortal}
       <SpecSelectionToolbar position={idleSelectionToolbarPos} />

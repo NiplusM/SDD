@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Button, PositionedPopup, Popup, PopupCell, ToolbarButton, Badge } from '@jetbrains/int-ui-kit';
+import { Icon, Button, PositionedPopup, Popup, PopupCell, Badge, Loader } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 
 const PLAN_DIFF_DEFAULT_CARET_LEFT = 12;
@@ -15,6 +15,127 @@ const JAVA_SCRIPT_KEYWORDS = [
 
 const YAML_CONSTANTS = ['true', 'false', 'null'];
 const CODE_CONSTANTS = ['true', 'false', 'null', 'undefined'];
+
+function hasActiveMultilineSelection() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLTextAreaElement) {
+    const start = activeElement.selectionStart ?? 0;
+    const end = activeElement.selectionEnd ?? 0;
+    return start !== end;
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  if (selection.toString().trim()) return true;
+
+  const range = selection.getRangeAt(0);
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  if (rects.length <= 1) return false;
+
+  const firstTop = Math.round(rects[0].top);
+  return rects.some((rect) => Math.abs(Math.round(rect.top) - firstTop) > 2);
+}
+
+function captureActiveSelectionSnapshot() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+
+  const activeElement = document.activeElement;
+  if (activeElement instanceof HTMLTextAreaElement) {
+    const start = activeElement.selectionStart ?? 0;
+    const end = activeElement.selectionEnd ?? 0;
+    if (start === end) {
+      return null;
+    }
+
+    return {
+      type: 'textarea',
+      element: activeElement,
+      start,
+      end,
+      direction: activeElement.selectionDirection ?? 'none',
+    };
+  }
+
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !hasActiveMultilineSelection()) {
+    return null;
+  }
+
+  return {
+    type: 'range',
+    range: selection.getRangeAt(0).cloneRange(),
+  };
+}
+
+function restoreSelectionSnapshot(snapshot) {
+  if (!snapshot || typeof window === 'undefined' || typeof document === 'undefined') return;
+
+  if (snapshot.type === 'textarea' && snapshot.element instanceof HTMLTextAreaElement) {
+    snapshot.element.focus({ preventScroll: true });
+    snapshot.element.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
+    return;
+  }
+
+  if (snapshot.type === 'range' && snapshot.range) {
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(snapshot.range);
+  }
+}
+
+function scheduleSelectionSnapshotRestore(snapshot) {
+  if (!snapshot || typeof window === 'undefined') return;
+
+  const restore = () => restoreSelectionSnapshot(snapshot);
+  restore();
+  window.requestAnimationFrame(() => {
+    restore();
+    window.requestAnimationFrame(restore);
+  });
+}
+
+function formatCommentLineLabel(lineNumbers = []) {
+  const normalizedLineNumbers = Array.from(new Set(
+    lineNumbers
+      .map((lineNumber) => Number(lineNumber))
+      .filter((lineNumber) => Number.isFinite(lineNumber))
+      .map((lineNumber) => Math.trunc(lineNumber))
+      .filter((lineNumber) => lineNumber > 0)
+  )).sort((a, b) => a - b);
+
+  if (normalizedLineNumbers.length === 0) return '';
+
+  const firstLineNumber = normalizedLineNumbers[0];
+  const lastLineNumber = normalizedLineNumbers[normalizedLineNumbers.length - 1];
+
+  return firstLineNumber === lastLineNumber
+    ? `Comment on line ${firstLineNumber}`
+    : `Comments on lines ${firstLineNumber} to ${lastLineNumber}`;
+}
+
+function getTextareaSelectionCommentLineLabel(snapshot = null) {
+  const lineRange = getTextareaSelectionLineRange(snapshot);
+  return lineRange ? formatCommentLineLabel([lineRange.startLineNumber, lineRange.endLineNumber]) : '';
+}
+
+function getTextareaSelectionLineRange(snapshot = null) {
+  if (snapshot?.type !== 'textarea' || !(snapshot.element instanceof HTMLTextAreaElement)) {
+    return null;
+  }
+  const value = snapshot.element.value ?? '';
+  const start = Math.min(snapshot.start ?? 0, snapshot.end ?? 0);
+  const end = Math.max(snapshot.start ?? 0, snapshot.end ?? 0);
+  if (start === end) return null;
+
+  const lineNumberAtOffset = (offset) => value.slice(0, Math.max(0, offset)).split('\n').length;
+  const startLineNumber = lineNumberAtOffset(start);
+  const endLineNumber = lineNumberAtOffset(Math.max(start, end - 1));
+
+  return { startLineNumber, endLineNumber };
+}
 
 function buildKeywordRegex(words) {
   return new RegExp(`\\b(?:${words.join('|')})\\b`, 'y');
@@ -390,22 +511,27 @@ export function DiffInlineCommentPopup({
   defaultSubmitTargetLabel = '',
   defaultSubmitTargetIcon = '',
   defaultSubmitTargetKey = '',
+  activeChatTargetKey = '',
   showSubmitTargetLabel = true,
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
+  footerMetaLabel = '',
   onChange,
   onCancel,
   onSubmit,
   onStartEdit,
   onDelete,
   onReturnToChat,
+  preserveEditorSelection = false,
 }) {
   const ref = useRef(null);
   const textareaRef = useRef(null);
   const submitTargetRef = useRef(null);
+  const skippedInitialFocusRef = useRef(false);
   const [submitOptionsRect, setSubmitOptionsRect] = useState(null);
+  const [submitOptionsWidth, setSubmitOptionsWidth] = useState(null);
   const [actionMenu, setActionMenu] = useState(null);
   const [submitAttachTarget, setSubmitAttachTarget] = useState(null);
   const normalizedSubmitAttachModes = useMemo(() => {
@@ -422,10 +548,15 @@ export function DiffInlineCommentPopup({
   const normalizedDefaultSubmitTargetKey = typeof defaultSubmitTargetKey === 'string'
     ? defaultSubmitTargetKey.trim()
     : '';
+  const normalizedActiveChatTargetKey = typeof activeChatTargetKey === 'string'
+    ? activeChatTargetKey.trim()
+    : '';
+  const previousActiveChatTargetKeyRef = useRef(normalizedActiveChatTargetKey);
   const isEditing = Number.isInteger(editingIndex);
   const normalizedCommentGroups = Array.isArray(commentGroups) ? commentGroups : null;
   const hasGroupedComments = Boolean(normalizedCommentGroups?.length);
   const hasComments = comments.length > 0 || hasGroupedComments;
+  const hasUngroupedPendingComments = comments.some((comment) => Boolean(comment && typeof comment === 'object' && comment.pending));
   const canChooseSubmitAttachMode = normalizedSubmitAttachModes.length > 1;
   const getSubmitAttachModeLabel = (attachMode) => {
     if (attachMode === 'new') return 'Add to New Chat Session';
@@ -435,6 +566,7 @@ export function DiffInlineCommentPopup({
   const normalizedCommentContextLabel = typeof commentContextLabel === 'string'
     ? commentContextLabel.trim()
     : '';
+  const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = isEditing ? 'Save Comment' : (normalizedSubmitButtonLabel || 'Add a Comment');
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
@@ -456,6 +588,13 @@ export function DiffInlineCommentPopup({
     if (submitAttachMode === 'new') return 'claude';
     return '';
   })();
+  const selectedSubmitTargetChatId = submitAttachMode === 'current'
+    ? (submitAttachTarget?.targetChatId ?? normalizedDefaultSubmitTargetKey)
+    : null;
+  const isSelectedSubmitTargetActiveChat =
+    submitAttachMode === 'current'
+    && normalizedDefaultSubmitTargetKey.length > 0
+    && selectedSubmitTargetChatId === normalizedDefaultSubmitTargetKey;
   const renderSelectedSubmitTargetIcon = () => {
     if (!selectedSubmitTargetIcon) return null;
     if (selectedSubmitTargetIcon === 'fileTypes/markdown') {
@@ -474,21 +613,42 @@ export function DiffInlineCommentPopup({
     chatId = null,
     sourceTabId = null,
     contextType = 'chat',
+    pending = false,
   } = {}) => {
     const normalizedSessionLabel = typeof sessionLabel === 'string' ? sessionLabel.trim() : '';
-    const isActiveSessionLabel = normalizedSessionLabel === 'Active';
-    const visibleSessionLabel = isActiveSessionLabel ? 'Current Chat Session' : normalizedSessionLabel;
-    const shouldShowSessionLabel = visibleSessionLabel.length > 0
+    const isDocumentContext = contextType === 'document';
+    const isDocumentActiveSessionLabel = normalizedSessionLabel === 'Document';
+    const isActiveSessionLabel = normalizedSessionLabel === 'Active' || isDocumentActiveSessionLabel;
+    const visibleSessionLabel = isActiveSessionLabel ? 'Active Chat' : normalizedSessionLabel;
+    const sessionToneClassName = isActiveSessionLabel ? 'is-active-session' : 'is-muted-session';
+    const shouldShowSessionLabel = !isDocumentContext
+      && !isDocumentActiveSessionLabel
+      && visibleSessionLabel.length > 0
       && visibleSessionLabel !== 'Related Chats'
       && visibleSessionLabel !== 'Inactive';
 
     return label.length > 0
       ? (
-          <ToolbarButton
-            className="spec-done-comment-popup-context-header text-ui-small"
-            icon={(
+          <button
+            type="button"
+            className={`diff-comment-submit-target-label spec-done-comment-popup-context-header text-ui-small ${sessionToneClassName}`}
+            data-demo-id="diff-comment-context-message"
+            aria-label={`Open chat context: ${label}`}
+            title={label}
+            onClick={() => onReturnToChat?.({
+              messageId,
+              chatId,
+              sourceTabId,
+              source: contextType === 'document' ? 'diff-comment-document-context' : 'diff-comment-context',
+            })}
+            disabled={!onReturnToChat}
+          >
               <span className="spec-done-comment-popup-context-prefix">
-                <AiChatAgentIcon icon={icon} />
+                <span className={`spec-done-comment-popup-context-icon-slot${pending ? ' is-pending' : ''}`} aria-hidden="true">
+                  {pending
+                    ? <Loader className="spec-done-comment-popup-context-loader" size={16} />
+                    : <AiChatAgentIcon icon={icon} />}
+                </span>
                 <span className="spec-done-comment-popup-context-title">
                   {label}
                 </span>
@@ -500,17 +660,7 @@ export function DiffInlineCommentPopup({
                   />
                 )}
               </span>
-            )}
-            data-demo-id="diff-comment-context-message"
-            aria-label={`Open chat context: ${label}`}
-            title={label}
-            onClick={() => onReturnToChat?.({
-              messageId,
-              chatId,
-              sourceTabId,
-              source: contextType === 'document' ? 'diff-comment-document-context' : 'diff-comment-context',
-            })}
-          />
+          </button>
         )
       : null
   };
@@ -523,10 +673,20 @@ export function DiffInlineCommentPopup({
   }, [showCompose, value]);
 
   useEffect(() => {
+    if (!showCompose || !preserveEditorSelection) {
+      skippedInitialFocusRef.current = false;
+    }
+  }, [preserveEditorSelection, showCompose]);
+
+  useEffect(() => {
     if (!showCompose) return;
+    if (preserveEditorSelection && !skippedInitialFocusRef.current) {
+      skippedInitialFocusRef.current = true;
+      return;
+    }
     const input = textareaRef.current;
     if (input) { input.focus({ preventScroll: true }); if (isEditing) input.select(); }
-  }, [hasComments, isEditing, showCompose]);
+  }, [hasComments, isEditing, preserveEditorSelection, showCompose]);
 
   useEffect(() => {
     if (!normalizedSubmitAttachModes.includes(submitAttachMode)) {
@@ -541,6 +701,16 @@ export function DiffInlineCommentPopup({
   }, [normalizedSubmitAttachModes, submitAttachTarget]);
 
   useEffect(() => {
+    const previousActiveChatTargetKey = previousActiveChatTargetKeyRef.current;
+    previousActiveChatTargetKeyRef.current = normalizedActiveChatTargetKey;
+    if (!normalizedActiveChatTargetKey || previousActiveChatTargetKey === normalizedActiveChatTargetKey) return;
+    if (submitAttachTarget?.attachMode !== 'current') return;
+    if (submitAttachTarget.targetChatId === normalizedActiveChatTargetKey) return;
+    setSubmitAttachTarget(null);
+    setSubmitAttachMode('current');
+  }, [normalizedActiveChatTargetKey, submitAttachTarget]);
+
+  useEffect(() => {
     if (!normalizedDefaultSubmitTargetKey) return;
     setSubmitAttachMode(normalizedDefaultSubmitAttachMode);
     setSubmitAttachTarget(null);
@@ -548,6 +718,7 @@ export function DiffInlineCommentPopup({
 
   const handleSubmit = (attachMode = submitAttachMode) => {
     setSubmitOptionsRect(null);
+    setSubmitOptionsWidth(null);
     onSubmit?.({
       attachMode,
       targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
@@ -559,6 +730,7 @@ export function DiffInlineCommentPopup({
     setSubmitAttachMode(attachMode);
     setSubmitAttachTarget(null);
     setSubmitOptionsRect(null);
+    setSubmitOptionsWidth(null);
     textareaRef.current?.focus({ preventScroll: true });
   };
 
@@ -569,7 +741,21 @@ export function DiffInlineCommentPopup({
     setSubmitAttachMode(target.attachMode);
     setSubmitAttachTarget(target);
     setSubmitOptionsRect(null);
+    setSubmitOptionsWidth(null);
     textareaRef.current?.focus({ preventScroll: true });
+  };
+
+  const resolveSubmitOptionsWidth = (triggerRect) => {
+    if (!triggerRect || typeof window === 'undefined') return null;
+
+    const submitButton = ref.current?.querySelector('[data-demo-id="diff-comment-submit"], .spec-done-comment-popup-actions button:last-child');
+    const submitButtonRect = submitButton instanceof HTMLElement ? submitButton.getBoundingClientRect() : null;
+    const popupRect = ref.current?.getBoundingClientRect();
+    const targetRight = submitButtonRect?.right ?? popupRect?.right ?? triggerRect.right;
+    const viewportMaxWidth = window.innerWidth - 16;
+    const width = Math.round(targetRight - triggerRect.left);
+
+    return Math.max(320, Math.min(width, viewportMaxWidth));
   };
 
   const toggleSubmitOptions = (event) => {
@@ -577,7 +763,13 @@ export function DiffInlineCommentPopup({
     event.stopPropagation();
     if (!canChooseSubmitAttachMode) return;
     const rect = submitTargetRef.current?.getBoundingClientRect();
-    setSubmitOptionsRect((prev) => (prev ? null : rect));
+    if (submitOptionsRect) {
+      setSubmitOptionsRect(null);
+      setSubmitOptionsWidth(null);
+      return;
+    }
+    setSubmitOptionsWidth(resolveSubmitOptionsWidth(rect));
+    setSubmitOptionsRect(rect);
   };
 
   const openActionMenu = (event, actions = []) => {
@@ -610,6 +802,41 @@ export function DiffInlineCommentPopup({
       : null
   );
 
+  const renderSubmitTargetButton = () => (
+    showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0
+      ? (
+          <button
+            type="button"
+            ref={submitTargetRef}
+            className={`diff-comment-submit-target-label text-ui-small${submitOptionsRect ? ' is-selected' : ''}`}
+            title={selectedSubmitTargetLabel}
+            aria-label={`Choose comment attachment target: ${selectedSubmitTargetLabel}`}
+            aria-haspopup="menu"
+            aria-expanded={Boolean(submitOptionsRect)}
+            onClick={canChooseSubmitAttachMode ? toggleSubmitOptions : undefined}
+            disabled={!canChooseSubmitAttachMode}
+          >
+            <span className="diff-comment-submit-target-icon" aria-hidden="true">
+              {renderSelectedSubmitTargetIcon()}
+            </span>
+            <span className="diff-comment-submit-target-text">
+              {selectedSubmitTargetLabel}
+            </span>
+            {isSelectedSubmitTargetActiveChat && (
+              <Badge
+                className="diff-comment-submit-target-active-badge"
+                text="Active Chat"
+                color="blue-secondary"
+              />
+            )}
+            {canChooseSubmitAttachMode && (
+              <Icon name="general/chevronDown" size={16} className="diff-comment-submit-target-chevron" />
+            )}
+          </button>
+        )
+      : null
+  );
+
   const getEditableCommentActions = (index, source = 'diff') => [
     { label: 'Edit', icon: 'general/edit', onSelect: () => onStartEdit?.(index, source) },
     { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index, source) },
@@ -633,26 +860,54 @@ export function DiffInlineCommentPopup({
 
   return (
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
-      {!hasGroupedComments && (!showCompose || hasComments) && renderCommentContextHeader()}
+      {!hasGroupedComments && (!showCompose || hasComments) && renderCommentContextHeader({ pending: hasUngroupedPendingComments })}
       {hasGroupedComments && (
         <div className="spec-done-comment-popup-groups">
           {normalizedCommentGroups.map((group) => {
             const showGroupHeader = !group.hideHeader && (group.comments.length > 0 || group.showHeaderWhenEmpty);
+            const hasPendingGroupComments = group.comments.some((comment) => Boolean(comment && typeof comment === 'object' && comment.pending));
+            const normalizedGroupSessionLabel = typeof group.sessionLabel === 'string' ? group.sessionLabel.trim() : '';
+            const groupSessionToneClassName = normalizedGroupSessionLabel === 'Active' || normalizedGroupSessionLabel === 'Document'
+              ? 'is-active-session'
+              : 'is-muted-session';
+            const canSwitchToGroupChat = groupSessionToneClassName === 'is-muted-session'
+              && typeof group.chatId === 'string'
+              && group.chatId.trim().length > 0;
+            const hasMultipleGroupComments = group.comments.length > 1;
+            const handleGroupClick = (event) => {
+              if (!canSwitchToGroupChat) return;
+              const target = event.target;
+              if (target instanceof HTMLElement && target.closest('button, a, [role="button"]')) return;
+
+              onReturnToChat?.({
+                messageId: group.messageId,
+                chatId: group.chatId,
+                source: 'diff-comment-context',
+              });
+            };
 
             return (
-            <div className="spec-done-comment-popup-group" key={`${group.chatId || group.label}-${group.messageId || group.label}`}>
-              {showGroupHeader && renderCommentContextHeader(group)}
+            <div
+              className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}`}
+              key={`${group.chatId || group.label}-${group.messageId || group.label}`}
+              onClick={handleGroupClick}
+            >
+              {showGroupHeader && renderCommentContextHeader({ ...group, pending: hasPendingGroupComments })}
               {group.comments.length > 0 && (
                 <div className="spec-done-comment-popup-list">
                   {group.comments.map((commentEntry, i) => {
                     const actions = commentEntry.editable
                       ? getEditableCommentActions(commentEntry.localIndex, commentEntry.source)
                       : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId });
+                    const entryLineLabel = getCommentEntryLineLabel(commentEntry) || normalizedFooterMetaLabel;
 
                     return (
-                      <div key={`${group.chatId || 'comment'}-${i}`} className="spec-done-comment-popup-item">
+                      <div key={`${group.chatId || 'comment'}-${i}`} className={`spec-done-comment-popup-item${commentEntry.pending ? ' is-pending' : ''}`}>
                         <div className="spec-done-comment-popup-item-body">
                           <div className="spec-done-comment-popup-item-text text-ui-default">{commentEntry.text}</div>
+                          {entryLineLabel.length > 0 && (
+                            <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
+                          )}
                         </div>
                         {renderMoreButton(actions)}
                       </div>
@@ -671,11 +926,17 @@ export function DiffInlineCommentPopup({
             const actions = commentsReadOnly
               ? getReturnToContextActions()
               : getEditableCommentActions(i);
+            const commentText = getCommentEntryText(comment);
+            const entryLineLabel = getCommentEntryLineLabel(comment) || normalizedFooterMetaLabel;
+            const isPending = Boolean(comment && typeof comment === 'object' && comment.pending);
 
             return (
-              <div key={i} className="spec-done-comment-popup-item">
+              <div key={i} className={`spec-done-comment-popup-item${isPending ? ' is-pending' : ''}`}>
                 <div className="spec-done-comment-popup-item-body">
-                  <div className="spec-done-comment-popup-item-text text-ui-default">{comment}</div>
+                  <div className="spec-done-comment-popup-item-text text-ui-default">{commentText}</div>
+                  {entryLineLabel.length > 0 && (
+                    <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
+                  )}
                 </div>
                 {renderMoreButton(actions)}
               </div>
@@ -691,6 +952,11 @@ export function DiffInlineCommentPopup({
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
           }}
         >
+          {showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
+            <div className="spec-done-comment-popup-compose-header">
+              {renderSubmitTargetButton()}
+            </div>
+          )}
           <div className="spec-done-comment-popup-input-wrap">
             <textarea
               ref={textareaRef}
@@ -703,28 +969,10 @@ export function DiffInlineCommentPopup({
             />
           </div>
           <div className="spec-done-comment-popup-footer">
-            {showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
-              <button
-                type="button"
-                ref={submitTargetRef}
-                className="diff-comment-submit-target-label text-ui-small"
-                title={selectedSubmitTargetLabel}
-                aria-label={`Choose comment attachment target: ${selectedSubmitTargetLabel}`}
-                aria-haspopup="menu"
-                aria-expanded={Boolean(submitOptionsRect)}
-                onClick={canChooseSubmitAttachMode ? toggleSubmitOptions : undefined}
-                disabled={!canChooseSubmitAttachMode}
-              >
-                <span className="diff-comment-submit-target-icon" aria-hidden="true">
-                  {renderSelectedSubmitTargetIcon()}
-                </span>
-                <span className="diff-comment-submit-target-text">
-                  {selectedSubmitTargetLabel}
-                </span>
-                {canChooseSubmitAttachMode && (
-                  <Icon name="general/chevronDown" size={16} className="diff-comment-submit-target-chevron" />
-                )}
-              </button>
+            {normalizedFooterMetaLabel.length > 0 && (
+              <div className="spec-done-comment-popup-footer-meta text-ui-small">
+                {normalizedFooterMetaLabel}
+              </div>
             )}
             <div className="spec-done-comment-popup-actions">
               <Button
@@ -732,6 +980,7 @@ export function DiffInlineCommentPopup({
                 data-demo-id="diff-comment-cancel"
                 onClick={() => {
                   setSubmitOptionsRect(null);
+                  setSubmitOptionsWidth(null);
                   onCancel?.();
                 }}
               >
@@ -752,9 +1001,13 @@ export function DiffInlineCommentPopup({
             typeof renderSubmitTargetPicker === 'function'
               ? renderSubmitTargetPicker({
                   triggerRect: submitOptionsRect,
+                  width: submitOptionsWidth,
                   selectedTarget: submitAttachTarget ?? { attachMode: submitAttachMode },
                   onSelectTarget: handleSubmitTargetSelect,
-                  onDismiss: () => setSubmitOptionsRect(null),
+                  onDismiss: () => {
+                    setSubmitOptionsRect(null);
+                    setSubmitOptionsWidth(null);
+                  },
                 })
               : (
                 <div className="theme-dark">
@@ -806,7 +1059,28 @@ function normalizeDiffCommentsState(diffComments = {}) {
 
   return Object.entries(diffComments).reduce((nextState, [rowId, comments]) => {
     const nextComments = Array.isArray(comments)
-      ? comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+      ? comments.reduce((entries, comment) => {
+          if (typeof comment === 'string') {
+            const text = comment.trim();
+            return text.length > 0 ? [...entries, text] : entries;
+          }
+
+          if (comment && typeof comment === 'object') {
+            const text = typeof comment.text === 'string' ? comment.text.trim() : '';
+            if (text.length === 0) return entries;
+            const lineLabel = typeof comment.lineLabel === 'string' ? comment.lineLabel.trim() : '';
+            return [
+              ...entries,
+              {
+                ...comment,
+                text,
+                ...(lineLabel.length > 0 ? { lineLabel } : {}),
+              },
+            ];
+          }
+
+          return entries;
+        }, [])
       : [];
 
     if (nextComments.length > 0) {
@@ -817,8 +1091,17 @@ function normalizeDiffCommentsState(diffComments = {}) {
   }, {});
 }
 
+function getCommentEntryText(comment) {
+  if (typeof comment === 'string') return comment;
+  return typeof comment?.text === 'string' ? comment.text : '';
+}
+
+function getCommentEntryLineLabel(comment) {
+  return typeof comment?.lineLabel === 'string' ? comment.lineLabel.trim() : '';
+}
+
 function flattenDiffCommentsState(diffComments = {}) {
-  return Object.values(normalizeDiffCommentsState(diffComments)).flat();
+  return Object.values(normalizeDiffCommentsState(diffComments)).flat().map(getCommentEntryText);
 }
 
 function areCommentTextArraysEqual(left = [], right = []) {
@@ -826,7 +1109,7 @@ function areCommentTextArraysEqual(left = [], right = []) {
     return false;
   }
 
-  return left.every((comment, index) => comment === right[index]);
+  return left.every((comment, index) => getCommentEntryText(comment) === getCommentEntryText(right[index]));
 }
 
 function isMirroredLocalCommentSession({
@@ -960,6 +1243,7 @@ export function PlanDiffOverlay({
   documentContextIcon = 'fileTypes/markdown',
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
+  defaultSubmitAttachMode = 'current',
   defaultSubmitTargetLabel = '',
   defaultSubmitTargetIcon = '',
   defaultSubmitTargetKey = '',
@@ -969,6 +1253,8 @@ export function PlanDiffOverlay({
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
+  pendingCommentRowIds = [],
+  commentShortcutHintRowId = null,
   onDiffCommentsChange = null,
   onDiffCommentSubmit = null,
   onGutterCommentToggle = null,
@@ -1030,6 +1316,20 @@ export function PlanDiffOverlay({
   });
   const [caretKey, setCaretKey] = useState(0);
   const [gutterContextMenu, setGutterContextMenu] = useState(null);
+  const [preserveSelectionCommentRowId, setPreserveSelectionCommentRowId] = useState(null);
+  const [commentFooterMetaLabel, setCommentFooterMetaLabel] = useState('');
+  const [commentTargetRowIds, setCommentTargetRowIds] = useState([]);
+  const [shortcutHintPosition, setShortcutHintPosition] = useState(null);
+  const preservedSelectionSnapshotRef = useRef(null);
+  const preservedSelectionTargetRowIdsRef = useRef([]);
+  const latestSelectionSnapshotRef = useRef(null);
+  const latestSelectionTargetRowIdsRef = useRef([]);
+  const latestTextareaSelectionTargetRowIdsRef = useRef([]);
+  const pointerSelectionRef = useRef(null);
+  const pendingCommentRowIdSet = useMemo(
+    () => new Set(Array.isArray(pendingCommentRowIds) ? pendingCommentRowIds : []),
+    [pendingCommentRowIds],
+  );
   const diffResetKey = JSON.stringify({
     title: diffData?.title ?? '',
     focusRowId: diffData?.focusRowId ?? null,
@@ -1053,6 +1353,15 @@ export function PlanDiffOverlay({
     setCommentValue('');
     setCommentEditingIndex(null);
     setCommentEditingSource('diff');
+    setPreserveSelectionCommentRowId(null);
+    setCommentFooterMetaLabel('');
+    setCommentTargetRowIds([]);
+    preservedSelectionSnapshotRef.current = null;
+    preservedSelectionTargetRowIdsRef.current = [];
+    latestSelectionSnapshotRef.current = null;
+    latestSelectionTargetRowIdsRef.current = [];
+    latestTextareaSelectionTargetRowIdsRef.current = [];
+    pointerSelectionRef.current = null;
     onUiStateChangeRef.current?.({
       activeRowId: nextActiveRowId,
       commentRowId: null,
@@ -1066,7 +1375,85 @@ export function PlanDiffOverlay({
     onUiStateChangeRef.current = onUiStateChange;
   }, [onUiStateChange]);
 
+  useLayoutEffect(() => {
+    if (!preserveSelectionCommentRowId || commentRowId !== preserveSelectionCommentRowId) return;
+    const snapshot = preservedSelectionSnapshotRef.current;
+    if (!snapshot) return;
+    scheduleSelectionSnapshotRestore(snapshot);
+    preservedSelectionSnapshotRef.current = null;
+  }, [commentRowId, preserveSelectionCommentRowId]);
+
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const updateShortcutHintPosition = useCallback(() => {
+    if (!commentShortcutHintRowId || typeof window === 'undefined' || typeof document === 'undefined') {
+      setShortcutHintPosition(null);
+      return;
+    }
+
+    const anchor = scrollRef.current?.querySelector('[data-comment-shortcut-anchor="true"]');
+    if (!anchor) {
+      setShortcutHintPosition(null);
+      return;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const tooltipWidth = 231;
+    const tooltipHeight = 72;
+    const viewportPadding = 12;
+    const anchorCenterX = rect.left + rect.width / 2;
+    const anchorCenterY = rect.top + rect.height / 2;
+    const preferredLeft = anchorCenterX - 18;
+    const preferredTop = rect.top - tooltipHeight - 10;
+    const fallbackTop = rect.bottom + 10;
+    const nextLeft = clamp(preferredLeft, viewportPadding, window.innerWidth - tooltipWidth - viewportPadding);
+    const placement = preferredTop >= viewportPadding ? 'above' : 'below';
+    const nextTop = clamp(
+      placement === 'above' ? preferredTop : fallbackTop,
+      viewportPadding,
+      window.innerHeight - tooltipHeight - viewportPadding,
+    );
+    const nextArrowX = clamp(anchorCenterX - nextLeft, 16, tooltipWidth - 16);
+
+    setShortcutHintPosition((prev) => {
+      if (
+        prev
+        && Math.abs(prev.left - nextLeft) < 0.5
+        && Math.abs(prev.top - nextTop) < 0.5
+        && Math.abs(prev.arrowX - nextArrowX) < 0.5
+        && prev.placement === placement
+      ) {
+        return prev;
+      }
+
+      return {
+        left: nextLeft,
+        top: nextTop,
+        arrowX: nextArrowX,
+        placement,
+      };
+    });
+  }, [clamp, commentShortcutHintRowId]);
+
+  useLayoutEffect(() => {
+    updateShortcutHintPosition();
+    if (!commentShortcutHintRowId || typeof window === 'undefined') return undefined;
+
+    const scrollEl = scrollRef.current;
+    const handlePositionChange = () => {
+      window.requestAnimationFrame(updateShortcutHintPosition);
+    };
+
+    window.addEventListener('resize', handlePositionChange);
+    window.addEventListener('scroll', handlePositionChange, true);
+    scrollEl?.addEventListener('scroll', handlePositionChange);
+
+    return () => {
+      window.removeEventListener('resize', handlePositionChange);
+      window.removeEventListener('scroll', handlePositionChange, true);
+      scrollEl?.removeEventListener('scroll', handlePositionChange);
+    };
+  }, [commentShortcutHintRowId, updateShortcutHintPosition]);
 
   const resolveCaretLeft = (codeEl, clientX = null) => {
     if (!(codeEl instanceof HTMLElement)) {
@@ -1113,17 +1500,406 @@ export function PlanDiffOverlay({
     setCaretKey((prev) => prev + 1);
   };
 
-  const toggleCommentForRow = (rowId) => {
+  const getDiffRowLineNumber = useCallback((row) => {
+    if (!row) return null;
+    const normalizeLineNumber = (value) => {
+      if (value === null || value === undefined || value === '') return null;
+      const lineNumber = Number(value);
+      return Number.isInteger(lineNumber) && lineNumber > 0 ? lineNumber : null;
+    };
+    return normalizeLineNumber(row.newNumber) ?? normalizeLineNumber(row.oldNumber);
+  }, []);
+
+  const getDiffCommentLineLabelForRowIds = useCallback((rowIds = [], fallbackRowId = null) => {
+    const normalizedRowIds = Array.isArray(rowIds) && rowIds.length > 0
+      ? rowIds
+      : (fallbackRowId ? [fallbackRowId] : []);
+    const rowById = new Map(displayRows.map((displayRow) => [displayRow.id, displayRow]));
+    const lineNumbers = normalizedRowIds.map((rowId) => getDiffRowLineNumber(rowById.get(rowId)));
+
+    return formatCommentLineLabel(lineNumbers);
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getDiffCommentFooterMetaLabel = useCallback((rowId, selectionSnapshot = null) => {
+    const fallbackRow = displayRows.find((row) => row.id === rowId);
+    const fallbackLineNumber = getDiffRowLineNumber(fallbackRow);
+    const fallbackLabel = formatCommentLineLabel([fallbackLineNumber]);
+
+    if (selectionSnapshot?.type === 'textarea') {
+      const lineRange = getTextareaSelectionLineRange(selectionSnapshot);
+      if (!lineRange) return fallbackLabel;
+
+      const selectedLineNumbers = displayRows
+        .slice(Math.max(0, lineRange.startLineNumber - 1), Math.max(0, lineRange.endLineNumber))
+        .map((displayRow) => getDiffRowLineNumber(displayRow));
+
+      return formatCommentLineLabel(selectedLineNumbers) || getTextareaSelectionCommentLineLabel(selectionSnapshot) || fallbackLabel;
+    }
+
+    if (selectionSnapshot?.type !== 'range' || !selectionSnapshot.range || !scrollRef.current) {
+      return fallbackLabel;
+    }
+
+    const selectedLineNumbers = [];
+    const rowNumberById = new Map(displayRows.map((row) => [row.id, getDiffRowLineNumber(row)]));
+    const rowElements = Array.from(scrollRef.current.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
+
+    rowElements.forEach((rowElement) => {
+      if (!(rowElement instanceof HTMLElement)) return;
+      const rowIdFromElement = rowElement.dataset.diffRowId;
+      if (!rowIdFromElement) return;
+
+      const targetElement = rowElement.querySelector('.plan-diff-row-code') ?? rowElement;
+      try {
+        if (selectionSnapshot.range.intersectsNode(targetElement)) {
+          selectedLineNumbers.push(rowNumberById.get(rowIdFromElement));
+        }
+      } catch {
+        // The stored Range can become detached if the diff rerenders between mouse events.
+      }
+    });
+
+    return formatCommentLineLabel(selectedLineNumbers) || fallbackLabel;
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getDiffCommentTargetRowIds = useCallback((rowId, selectionSnapshot = null) => {
+    const fallbackRowIds = rowId ? [rowId] : [];
+
+    if (selectionSnapshot?.type === 'textarea') {
+      const lineRange = getTextareaSelectionLineRange(selectionSnapshot);
+      if (!lineRange) return fallbackRowIds;
+
+      const selectedRowIds = displayRows
+        .slice(Math.max(0, lineRange.startLineNumber - 1), Math.max(0, lineRange.endLineNumber))
+        .filter((displayRow) => Number.isFinite(getDiffRowLineNumber(displayRow)))
+        .map((displayRow) => displayRow.id);
+
+      return selectedRowIds.length > 0 ? selectedRowIds : fallbackRowIds;
+    }
+
+    if (selectionSnapshot?.type !== 'range' || !selectionSnapshot.range || !scrollRef.current) {
+      return fallbackRowIds;
+    }
+
+    const selectedRowIds = [];
+    const rowElements = Array.from(scrollRef.current.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
+    rowElements.forEach((rowElement) => {
+      if (!(rowElement instanceof HTMLElement)) return;
+
+      const rowIdFromElement = rowElement.dataset.diffRowId;
+      if (!rowIdFromElement) return;
+
+      const targetElement = rowElement.querySelector('.plan-diff-row-code') ?? rowElement;
+      try {
+        if (selectionSnapshot.range.intersectsNode(targetElement)) {
+          selectedRowIds.push(rowIdFromElement);
+        }
+      } catch {
+        // The stored Range can become detached if the diff rerenders between mouse events.
+      }
+    });
+
+    return selectedRowIds.length > 0 ? selectedRowIds : fallbackRowIds;
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getDiffCommentAnchorRowId = useCallback((fallbackRowId, targetRowIds = []) => {
+    if (!Array.isArray(targetRowIds) || targetRowIds.length <= 1) {
+      return fallbackRowId;
+    }
+
+    const targetRowIdSet = new Set(targetRowIds);
+    const orderedTargetRowIds = displayRows
+      .filter((displayRow) => targetRowIdSet.has(displayRow.id))
+      .map((displayRow) => displayRow.id);
+
+    return orderedTargetRowIds[orderedTargetRowIds.length - 1] ?? fallbackRowId;
+  }, [displayRows]);
+
+  const getDiffRowRangeIds = useCallback((startRowId, endRowId) => {
+    if (!startRowId || !endRowId) return [];
+
+    const startIndex = displayRows.findIndex((displayRow) => displayRow.id === startRowId);
+    const endIndex = displayRows.findIndex((displayRow) => displayRow.id === endRowId);
+    if (startIndex < 0 || endIndex < 0) return [];
+
+    const fromIndex = Math.min(startIndex, endIndex);
+    const toIndex = Math.max(startIndex, endIndex);
+
+    return displayRows
+      .slice(fromIndex, toIndex + 1)
+      .filter((displayRow) => Number.isFinite(getDiffRowLineNumber(displayRow)))
+      .map((displayRow) => displayRow.id);
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getTextareaSelectionTargetRowIds = useCallback((textarea = null) => {
+    if (!(textarea instanceof HTMLTextAreaElement)) return [];
+
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    if (start === end) return [];
+
+    const lineRange = getTextareaSelectionLineRange({
+      type: 'textarea',
+      element: textarea,
+      start,
+      end,
+      direction: textarea.selectionDirection ?? 'none',
+    });
+    if (!lineRange) return [];
+
+    return displayRows
+      .slice(Math.max(0, lineRange.startLineNumber - 1), Math.max(0, lineRange.endLineNumber))
+      .filter((displayRow) => Number.isFinite(getDiffRowLineNumber(displayRow)))
+      .map((displayRow) => displayRow.id);
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getVisibleEditorTextareas = useCallback(() => {
+    const editorEl = scrollRef.current?.closest('.editor');
+    const rootEl = editorEl ?? scrollRef.current;
+    if (!(rootEl instanceof HTMLElement)) return [];
+
+    return Array.from(rootEl.querySelectorAll('.pce-textarea'))
+      .filter((node) => node instanceof HTMLTextAreaElement);
+  }, []);
+
+  const captureTextareaSelectionTargetRowIds = useCallback(() => {
+    const textareas = getVisibleEditorTextareas();
+    const activeTextarea = document.activeElement instanceof HTMLTextAreaElement
+      && textareas.includes(document.activeElement)
+      ? document.activeElement
+      : null;
+    const orderedTextareas = activeTextarea
+      ? [activeTextarea, ...textareas.filter((textarea) => textarea !== activeTextarea)]
+      : textareas;
+
+    for (const textarea of orderedTextareas) {
+      const rowIds = getTextareaSelectionTargetRowIds(textarea);
+      if (rowIds.length > 0) return rowIds;
+    }
+
+    return [];
+  }, [getTextareaSelectionTargetRowIds, getVisibleEditorTextareas]);
+
+  const getDiffRowIdAtViewportPoint = useCallback((clientX, clientY) => {
+    const scrollEl = scrollRef.current;
+    if (!(scrollEl instanceof HTMLElement)) return null;
+
+    const scrollRect = scrollEl.getBoundingClientRect();
+    if (
+      clientX < scrollRect.left
+      || clientX > scrollRect.right
+      || clientY < scrollRect.top
+      || clientY > scrollRect.bottom
+    ) {
+      return null;
+    }
+
+    const rowElements = Array.from(scrollEl.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
+    for (const rowElement of rowElements) {
+      if (!(rowElement instanceof HTMLElement)) continue;
+      const rect = rowElement.getBoundingClientRect();
+      if (clientY >= rect.top && clientY <= rect.bottom) {
+        return rowElement.dataset.diffRowId || null;
+      }
+    }
+
+    return null;
+  }, []);
+
+  const captureCommentSelectionSnapshot = useCallback(() => {
+    const activeSnapshot = captureActiveSelectionSnapshot();
+    if (activeSnapshot) return activeSnapshot;
+
+    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0 && scrollRef.current) {
+      const range = selection.getRangeAt(0);
+      const selectedOverlayRowCount = Array.from(scrollRef.current.querySelectorAll('.plan-diff-row[data-diff-row-id]'))
+        .reduce((count, rowElement) => {
+          if (!(rowElement instanceof HTMLElement)) return count;
+          const targetElement = rowElement.querySelector('.plan-diff-row-code') ?? rowElement;
+          try {
+            return range.intersectsNode(targetElement) ? count + 1 : count;
+          } catch {
+            return count;
+          }
+        }, 0);
+
+      if (selectedOverlayRowCount > 0) {
+        return {
+          type: 'range',
+          range: range.cloneRange(),
+        };
+      }
+    }
+
+    const editorEl = scrollRef.current?.closest('.editor');
+    const textarea = editorEl?.querySelector('.pce-textarea');
+    if (!(textarea instanceof HTMLTextAreaElement)) return null;
+
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    const normalizedStart = Math.min(start, end);
+    const normalizedEnd = Math.max(start, end);
+    if (normalizedStart === normalizedEnd) return null;
+
+    return {
+      type: 'textarea',
+      element: textarea,
+      start,
+      end,
+      direction: textarea.selectionDirection ?? 'none',
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return undefined;
+
+    let frameId = 0;
+
+    const syncLatestSelectionSnapshot = () => {
+      frameId = 0;
+      const snapshot = captureCommentSelectionSnapshot();
+      if (snapshot) {
+        latestSelectionSnapshotRef.current = snapshot;
+      }
+      const textareaTargetRowIds = captureTextareaSelectionTargetRowIds();
+      if (textareaTargetRowIds.length > 0) {
+        latestTextareaSelectionTargetRowIdsRef.current = textareaTargetRowIds;
+      }
+    };
+
+    const scheduleSync = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(syncLatestSelectionSnapshot);
+    };
+
+    document.addEventListener('selectionchange', scheduleSync);
+    document.addEventListener('select', scheduleSync, true);
+    window.addEventListener('mouseup', scheduleSync);
+    window.addEventListener('keyup', scheduleSync);
+
+    return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+      document.removeEventListener('selectionchange', scheduleSync);
+      document.removeEventListener('select', scheduleSync, true);
+      window.removeEventListener('mouseup', scheduleSync);
+      window.removeEventListener('keyup', scheduleSync);
+    };
+  }, [captureCommentSelectionSnapshot, captureTextareaSelectionTargetRowIds]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const finishPointerSelection = () => {
+      const pointerSelection = pointerSelectionRef.current;
+      pointerSelectionRef.current = null;
+      if (!pointerSelection?.rowIds || pointerSelection.rowIds.length === 0) return;
+      latestSelectionTargetRowIdsRef.current = pointerSelection.rowIds;
+    };
+
+    window.addEventListener('mouseup', finishPointerSelection);
+
+    return () => {
+      window.removeEventListener('mouseup', finishPointerSelection);
+    };
+  }, []);
+
+  const trackPointerSelectionRow = useCallback((rowId, { start = false } = {}) => {
+    if (!rowId) return;
+
+    const currentPointerSelection = pointerSelectionRef.current;
+    if (start || !currentPointerSelection) {
+      const rowIds = getDiffRowRangeIds(rowId, rowId);
+      pointerSelectionRef.current = {
+        startRowId: rowId,
+        currentRowId: rowId,
+        rowIds,
+      };
+      latestSelectionTargetRowIdsRef.current = rowIds;
+      return;
+    }
+
+    const rowIds = getDiffRowRangeIds(currentPointerSelection.startRowId, rowId);
+    pointerSelectionRef.current = {
+      ...currentPointerSelection,
+      currentRowId: rowId,
+      rowIds,
+    };
+    latestSelectionTargetRowIdsRef.current = rowIds;
+  }, [getDiffRowRangeIds]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const shouldIgnorePointerTarget = (target) => (
+      target instanceof Element
+      && Boolean(target.closest('.plan-diff-gutter-icon-slot, button, [role="menu"], .popup, .cmp-popup'))
+    );
+
+    const handlePointerMouseDown = (event) => {
+      if (event.button !== 0 || shouldIgnorePointerTarget(event.target)) return;
+
+      const rowId = getDiffRowIdAtViewportPoint(event.clientX, event.clientY);
+      if (!rowId) return;
+
+      trackPointerSelectionRow(rowId, { start: true });
+    };
+
+    const handlePointerMouseMove = (event) => {
+      if ((event.buttons & 1) !== 1 || !pointerSelectionRef.current) return;
+
+      const rowId = getDiffRowIdAtViewportPoint(event.clientX, event.clientY);
+      if (!rowId) return;
+
+      trackPointerSelectionRow(rowId);
+    };
+
+    const handlePointerMouseUp = (event) => {
+      if (!pointerSelectionRef.current) return;
+
+      const rowId = getDiffRowIdAtViewportPoint(event.clientX, event.clientY);
+      if (rowId) {
+        trackPointerSelectionRow(rowId);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerMouseDown, true);
+    document.addEventListener('mousemove', handlePointerMouseMove, true);
+    document.addEventListener('mouseup', handlePointerMouseUp, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerMouseDown, true);
+      document.removeEventListener('mousemove', handlePointerMouseMove, true);
+      document.removeEventListener('mouseup', handlePointerMouseUp, true);
+    };
+  }, [getDiffRowIdAtViewportPoint, trackPointerSelectionRow]);
+
+  const toggleCommentForRow = (rowId, { selectionSnapshot = null, targetRowIds = null } = {}) => {
+    const resolvedSelectionSnapshot = selectionSnapshot ?? null;
+    const nextTargetRowIds = Array.isArray(targetRowIds) && targetRowIds.length > 0
+      ? targetRowIds
+      : getDiffCommentTargetRowIds(rowId, resolvedSelectionSnapshot);
+    const anchorRowId = getDiffCommentAnchorRowId(rowId, nextTargetRowIds);
     onGutterCommentToggle?.({ rowId });
-    activateRow(rowId);
+    activateRow(anchorRowId);
     if (commentsReadOnly) {
       return;
     }
-    if (commentRowId === rowId) {
-      clearCommentComposeState(rowId);
+    if (commentRowId === anchorRowId) {
+      clearCommentComposeState(anchorRowId);
       return;
     }
-    setCommentRowId(rowId);
+    setCommentFooterMetaLabel(
+      getDiffCommentLineLabelForRowIds(nextTargetRowIds, rowId)
+      || getDiffCommentFooterMetaLabel(rowId, resolvedSelectionSnapshot)
+    );
+    setCommentTargetRowIds(nextTargetRowIds);
+    setPreserveSelectionCommentRowId(resolvedSelectionSnapshot ? anchorRowId : null);
+    setCommentRowId(anchorRowId);
     setCommentValue('');
     setCommentEditingIndex(null);
     setCommentEditingSource('diff');
@@ -1155,6 +1931,10 @@ export function PlanDiffOverlay({
     setCommentValue(normalizedUiState.commentValue);
     setCommentEditingIndex(normalizedUiState.commentEditingIndex);
     setCommentEditingSource('diff');
+    setCommentFooterMetaLabel(normalizedUiState.commentRowId
+      ? getDiffCommentFooterMetaLabel(normalizedUiState.commentRowId)
+      : '');
+    setCommentTargetRowIds(normalizedUiState.commentRowId ? [normalizedUiState.commentRowId] : []);
     setDiffComments(normalizedInitialDiffComments);
     setCaretState({
       rowId: nextCaretRowId,
@@ -1191,6 +1971,33 @@ export function PlanDiffOverlay({
     if (!Number.isInteger(normalizedUiState.commentEditingIndex)) {
       setCommentEditingSource('diff');
     }
+    setCommentFooterMetaLabel((prev) => {
+      if (
+        normalizedUiState.commentRowId
+        && commentRowId === normalizedUiState.commentRowId
+        && commentTargetRowIds.length > 1
+      ) {
+        const preservedLabel = getDiffCommentLineLabelForRowIds(commentTargetRowIds, normalizedUiState.commentRowId);
+        return preservedLabel || prev;
+      }
+
+      const nextLabel = normalizedUiState.commentRowId
+        ? getDiffCommentFooterMetaLabel(normalizedUiState.commentRowId)
+        : '';
+      return prev === nextLabel ? prev : nextLabel;
+    });
+    setCommentTargetRowIds((prev) => {
+      if (
+        normalizedUiState.commentRowId
+        && commentRowId === normalizedUiState.commentRowId
+        && prev.length > 1
+      ) {
+        return prev;
+      }
+
+      const nextTargetRowIds = normalizedUiState.commentRowId ? [normalizedUiState.commentRowId] : [];
+      return JSON.stringify(prev) === JSON.stringify(nextTargetRowIds) ? prev : nextTargetRowIds;
+    });
     setCaretState((prev) => (
       prev.rowId === nextCaretRowId && prev.left === normalizedUiState.caretState.left
         ? prev
@@ -1276,19 +2083,32 @@ export function PlanDiffOverlay({
 
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      if (event.altKey && event.shiftKey && (event.code === 'KeyK' || event.key.toLowerCase() === 'k')) {
         if (commentsReadOnly) return;
-        if (!activeRowId) return;
+        const selectionSnapshot = captureCommentSelectionSnapshot() ?? latestSelectionSnapshotRef.current;
+        const capturedTextareaTargetRowIds = captureTextareaSelectionTargetRowIds();
+        const shortcutTargetRowIds = capturedTextareaTargetRowIds.length > 0
+          ? capturedTextareaTargetRowIds
+          : (latestTextareaSelectionTargetRowIdsRef.current.length > 0
+              ? latestTextareaSelectionTargetRowIdsRef.current
+              : latestSelectionTargetRowIdsRef.current);
+        const shortcutRowId = shortcutTargetRowIds[shortcutTargetRowIds.length - 1]
+          ?? activeRowId
+          ?? null;
+        if (!shortcutRowId) return;
+
         event.preventDefault();
-        setCommentRowId((prev) => (prev === activeRowId ? null : activeRowId));
-        setCommentValue('');
-        setCommentEditingIndex(null);
+        event.stopPropagation();
+        toggleCommentForRow(shortcutRowId, {
+          selectionSnapshot,
+          targetRowIds: shortcutTargetRowIds,
+        });
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [activeRowId, commentsReadOnly]);
+  }, [activeRowId, captureCommentSelectionSnapshot, captureTextareaSelectionTargetRowIds, commentsReadOnly, toggleCommentForRow]);
 
   return (
     <>
@@ -1299,7 +2119,9 @@ export function PlanDiffOverlay({
           {displayRows.map((row) => {
             const hasInlineHighlight = row.kind === 'added' || row.kind === 'removed';
             const rowComments = diffComments[row.id] ?? [];
+            const isRowCommentPending = pendingCommentRowIdSet.has(row.id);
             const documentRowComments = normalizedDocumentDiffComments[row.id] ?? [];
+            const rowLineLabel = getDiffCommentLineLabelForRowIds([row.id], row.id);
             const documentGroup = documentRowComments.length > 0
               ? {
                   label: documentContextLabel,
@@ -1310,11 +2132,14 @@ export function PlanDiffOverlay({
                   messageId: null,
                   chatId: null,
                   comments: documentRowComments.map((comment, commentIndex) => ({
-                    text: comment,
-                    editable: !commentsReadOnly,
-                    localIndex: commentIndex,
-                    source: 'document',
-                  })),
+                    ...((comment && typeof comment === 'object') ? comment : {}),
+                    text: getCommentEntryText(comment),
+	                    lineLabel: getCommentEntryLineLabel(comment) || rowLineLabel,
+	                    editable: !commentsReadOnly,
+	                    localIndex: commentIndex,
+	                    source: 'document',
+	                    pending: isRowCommentPending,
+	                  })),
                 }
               : null;
             const sessionGroups = normalizedCommentSessions
@@ -1331,8 +2156,11 @@ export function PlanDiffOverlay({
                   messageId: session.messageId,
                   chatId: session.chatId,
                   comments: sessionComments.map((comment) => ({
-                    text: comment,
+                    ...((comment && typeof comment === 'object') ? comment : {}),
+                    text: getCommentEntryText(comment),
+                    lineLabel: getCommentEntryLineLabel(comment) || rowLineLabel,
                     editable: false,
+                    pending: isRowCommentPending,
                   })),
                 };
               })
@@ -1342,22 +2170,29 @@ export function PlanDiffOverlay({
                   commentsReadOnly,
                   sessionTitle: group.label,
                   commentContextLabel,
-                  sessionComments: group.comments.map((entry) => entry.text),
+                  sessionComments: group.comments.map((entry) => getCommentEntryText(entry)),
                   rowComments,
                 })
               ));
-            const localGroup = !commentsReadOnly && (rowComments.length > 0 || commentRowId === row.id)
+            const localRowComments = rowComments.filter((comment) => {
+              const commentChatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
+              return commentChatId.length === 0 || commentChatId === commentSessionActiveChatId;
+            });
+            const localGroup = !commentsReadOnly && (localRowComments.length > 0 || commentRowId === row.id)
               ? {
                   label: commentContextLabel,
                   icon: commentContextIcon,
                   sessionLabel: commentContextSessionLabel,
                   messageId: null,
                   chatId: null,
-                  hideHeader: commentRowId === row.id && rowComments.length === 0,
-                  comments: rowComments.map((comment, index) => ({
-                    text: comment,
+                  hideHeader: commentRowId === row.id && localRowComments.length === 0,
+                  comments: localRowComments.map((comment, index) => ({
+                    ...((comment && typeof comment === 'object') ? comment : {}),
+                    text: getCommentEntryText(comment),
+                    lineLabel: getCommentEntryLineLabel(comment) || rowLineLabel,
                     editable: true,
-                    localIndex: index,
+                    localIndex: rowComments.indexOf(comment),
+                    pending: isRowCommentPending,
                   })),
                 }
               : null;
@@ -1375,14 +2210,160 @@ export function PlanDiffOverlay({
                 ];
             const hasVisibleRowComments = rowComments.length > 0 || documentRowComments.length > 0 || rowCommentGroups.some((group) => group.comments.length > 0);
             const isCommentComposeOpen = commentRowId === row.id;
+            const isCommentTargetRangeRow = commentTargetRowIds.length > 1 && commentTargetRowIds.includes(row.id);
+            const isCommentTargetRow = isCommentComposeOpen;
+            const isFirstCommentTargetRow = isCommentTargetRangeRow && commentTargetRowIds[0] === row.id;
+            const isLastCommentTargetRow = isCommentTargetRangeRow && commentTargetRowIds[commentTargetRowIds.length - 1] === row.id;
+            const isEditingRowComment = commentRowId === row.id && Number.isInteger(commentEditingIndex);
+            const hasExistingRowCommentGroups = rowCommentGroups.some((group) => group.comments.length > 0);
+            const shouldRenderSeparateCompose = !commentsReadOnly && isCommentComposeOpen && !isEditingRowComment && hasExistingRowCommentGroups;
+            const shouldShowPrimaryCompose = !commentsReadOnly && isCommentComposeOpen && !shouldRenderSeparateCompose;
+            const isPrimaryComposeGroup = (group) => {
+              if (!shouldShowPrimaryCompose) return false;
+              if (!isEditingRowComment) return group === localGroup;
+              if (commentEditingSource === 'document') return group?.contextType === 'document';
+              return group === localGroup;
+            };
+            const visibleCommentGroups = rowCommentGroups.filter((group) => (
+              group
+              && (
+                group.comments.length > 0
+                || isPrimaryComposeGroup(group)
+              )
+            ));
+            const handleRowCommentSubmit = ({ attachMode = 'current', targetChatId = null, targetDocumentTabId = null } = {}) => {
+              if (commentsReadOnly) return;
+              const trimmed = (commentRowId === row.id ? commentValue : '').trim();
+              if (!trimmed) return;
+
+              if (shouldDeleteRow(trimmed)) {
+                onRowDelete?.(row.id, trimmed);
+                const { [row.id]: _, ...rest } = diffComments;
+                commitDiffComments(rest);
+                if (activeRowId === row.id) {
+                  setActiveRowId(null);
+                }
+                clearCommentComposeState(activeRowId === row.id ? null : activeRowId);
+                return;
+              }
+
+              if (shouldFixRow(trimmed)) {
+                onRowFix?.(row.id, trimmed);
+                clearCommentComposeState();
+                return;
+              }
+
+              const isEditingComment = Number.isInteger(commentEditingIndex);
+              const isEditingDocumentComment = commentEditingSource === 'document' && isEditingComment;
+              const isDocumentAttachMode = isEditingDocumentComment || (attachMode === 'document' && !isEditingComment);
+              const isNewChatAttachMode = attachMode === 'new' && !isEditingComment;
+              const targetRowIds = isEditingComment
+                ? [row.id]
+                : (commentTargetRowIds.length > 0 ? commentTargetRowIds : [row.id]);
+              const commentStorageRowIds = [row.id];
+              const submittedLineLabel = (
+                getDiffCommentLineLabelForRowIds(targetRowIds, row.id)
+                || commentFooterMetaLabel
+                || getDiffCommentFooterMetaLabel(row.id)
+              ).trim();
+              const buildSubmittedComment = (text, previousComment = null) => {
+                const previousLineLabel = getCommentEntryLineLabel(previousComment);
+                const lineLabel = submittedLineLabel || previousLineLabel;
+                const commentMetadata = {
+                  ...((previousComment && typeof previousComment === 'object') ? previousComment : {}),
+                  text,
+                  ...(lineLabel.length > 0 ? { lineLabel } : {}),
+                };
+                if (!isDocumentAttachMode && typeof targetChatId === 'string' && targetChatId.trim().length > 0) {
+                  commentMetadata.chatId = targetChatId.trim();
+                }
+                return commentMetadata;
+              };
+              const sourceComments = isDocumentAttachMode
+                ? normalizedDocumentDiffComments
+                : (isNewChatAttachMode ? {} : diffComments);
+              const nextSubmittedComments = isDocumentAttachMode
+                ? commentStorageRowIds.reduce((nextComments, targetRowId) => {
+                    const existing = nextComments[targetRowId] ?? [];
+                    return {
+                      ...nextComments,
+                      [targetRowId]: isEditingComment && targetRowId === row.id
+                        ? existing.map((comment, index) => (
+                            index === commentEditingIndex ? buildSubmittedComment(trimmed, comment) : comment
+                          ))
+                        : [...existing, buildSubmittedComment(trimmed)],
+                    };
+                  }, { ...normalizedDocumentDiffComments })
+                : commentStorageRowIds.reduce((nextComments, targetRowId) => {
+                    const existing = nextComments[targetRowId] ?? [];
+                    return {
+                      ...nextComments,
+                      [targetRowId]: isEditingComment && targetRowId === row.id
+                        ? existing.map((comment, index) => (
+                            index === commentEditingIndex ? buildSubmittedComment(trimmed, comment) : comment
+                          ))
+                        : [...existing, buildSubmittedComment(trimmed)],
+                    };
+                  }, { ...sourceComments });
+              const submitMetadata = {
+                attachMode: isDocumentAttachMode ? 'document' : attachMode,
+                targetChatId,
+                targetDocumentTabId,
+                rowId: row.id,
+                rowIds: targetRowIds,
+                comment: trimmed,
+                isEditing: Number.isInteger(commentEditingIndex),
+              };
+              const isExplicitChatTarget = !isDocumentAttachMode
+                && typeof targetChatId === 'string'
+                && targetChatId.trim().length > 0;
+              const nextDiffComments = isDocumentAttachMode
+                ? (
+                    onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
+                    normalizeDiffCommentsState(nextSubmittedComments)
+                  )
+                : isExplicitChatTarget
+                ? (
+                    onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
+                    normalizeDiffCommentsState(nextSubmittedComments)
+                  )
+                : commitDiffComments(
+                    nextSubmittedComments,
+                    submitMetadata,
+                  );
+              onDiffCommentSubmit?.({
+                attachMode: isDocumentAttachMode ? 'document' : attachMode,
+                targetChatId,
+                targetDocumentTabId,
+                rowId: row.id,
+                rowIds: targetRowIds,
+                comment: trimmed,
+                comments: nextDiffComments,
+                isEditing: Number.isInteger(commentEditingIndex),
+              });
+              clearCommentComposeState();
+            };
 
             return (<Fragment key={row.id}>
               <div
-                className={`plan-diff-row plan-diff-row-${row.kind}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}`}
+                className={`plan-diff-row plan-diff-row-${row.kind}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentTargetRangeRow ? ' is-comment-compose-target' : ''}${isFirstCommentTargetRow ? ' is-comment-compose-target-start' : ''}${isLastCommentTargetRow ? ' is-comment-compose-target-end' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
                 role="button"
                 tabIndex={0}
+                onMouseDown={(event) => {
+                  if (event.button !== 0) return;
+                  if (event.target instanceof Element && event.target.closest('button, .plan-diff-gutter-icon-slot')) return;
+                  trackPointerSelectionRow(row.id, { start: true });
+                }}
+                onMouseEnter={(event) => {
+                  if ((event.buttons & 1) !== 1) return;
+                  trackPointerSelectionRow(row.id);
+                }}
+                onMouseMove={(event) => {
+                  if ((event.buttons & 1) !== 1) return;
+                  trackPointerSelectionRow(row.id);
+                }}
                 onClick={() => activateRow(row.id)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1394,13 +2375,45 @@ export function PlanDiffOverlay({
                   <span className="plan-diff-line-number">{row.oldNumber ?? ''}</span>
                   {!singleLineNumbers && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
                   <span
-                    className={`plan-diff-gutter-icon-slot${isCommentComposeOpen ? ' is-open' : ''}`}
+                    className={`plan-diff-gutter-icon-slot${isCommentComposeOpen || isCommentTargetRow ? ' is-open' : ''}${hasVisibleRowComments ? ' has-comments' : ''}`}
                     data-demo-id={`diff-comment-toggle-${row.id}`}
+                    data-comment-shortcut-anchor={commentShortcutHintRowId === row.id ? 'true' : undefined}
                     role="button"
                     tabIndex={0}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const capturedSelectionSnapshot = captureCommentSelectionSnapshot();
+                      const latestSelectionSnapshot = latestSelectionSnapshotRef.current;
+                      const capturedTargetRowIds = capturedSelectionSnapshot
+                        ? getDiffCommentTargetRowIds(row.id, capturedSelectionSnapshot)
+                        : [];
+                      const latestTargetRowIds = latestSelectionSnapshot
+                        ? getDiffCommentTargetRowIds(row.id, latestSelectionSnapshot)
+                        : [];
+                      const pointerTargetRowIds = latestSelectionTargetRowIdsRef.current ?? [];
+                      const currentTextareaTargetRowIds = captureTextareaSelectionTargetRowIds();
+                      const textareaTargetRowIds = currentTextareaTargetRowIds.length > 0
+                        ? currentTextareaTargetRowIds
+                        : (latestTextareaSelectionTargetRowIdsRef.current ?? []);
+                      const selectionSnapshot = latestTargetRowIds.length > capturedTargetRowIds.length
+                        ? latestSelectionSnapshot
+                        : capturedSelectionSnapshot;
+                      preservedSelectionSnapshotRef.current = selectionSnapshot;
+                      preservedSelectionTargetRowIdsRef.current = textareaTargetRowIds.length > 1
+                        ? textareaTargetRowIds
+                        : pointerTargetRowIds.length > 1
+                        || pointerTargetRowIds.length > Math.max(capturedTargetRowIds.length, latestTargetRowIds.length)
+                        ? pointerTargetRowIds
+                        : [];
+                      setPreserveSelectionCommentRowId(selectionSnapshot ? row.id : null);
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      toggleCommentForRow(row.id);
+                      toggleCommentForRow(row.id, {
+                        selectionSnapshot: preservedSelectionSnapshotRef.current,
+                        targetRowIds: preservedSelectionTargetRowIdsRef.current,
+                      });
                     }}
                     onKeyDown={(event) => {
                       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -1461,142 +2474,128 @@ export function PlanDiffOverlay({
                     <span className="plan-diff-gutter-icon-slot" />
                   </div>
                   <div className="plan-diff-inline-comment">
-                    <DiffInlineCommentPopup
-                      comments={rowComments}
-                      commentGroups={rowCommentGroups.length > 0 ? rowCommentGroups : null}
-                      value={commentRowId === row.id ? commentValue : ''}
-                      editingIndex={commentRowId === row.id ? commentEditingIndex : null}
-                      showCompose={!commentsReadOnly && commentRowId === row.id}
-                      commentsReadOnly={commentsReadOnly}
-                      defaultSubmitAttachMode="current"
-                      commentContextLabel={commentContextLabel}
-                      commentContextIcon={commentContextIcon}
-                      commentContextSessionLabel={commentContextSessionLabel}
-                      defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
-                      defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
-                      defaultSubmitTargetKey={defaultSubmitTargetKey}
-                      renderSubmitTargetPicker={renderSubmitTargetPicker}
-                      onChange={setCommentValue}
-                      onStartEdit={(idx, source = 'diff') => {
-                        if (commentsReadOnly) return;
-                        const sourceComments = source === 'document'
-                          ? (normalizedDocumentDiffComments[row.id] ?? [])
-                          : rowComments;
-                        setCommentRowId(row.id);
-                        setCommentValue(sourceComments[idx] ?? '');
-                        setCommentEditingIndex(idx);
-                        setCommentEditingSource(source === 'document' ? 'document' : 'diff');
-                      }}
-                      onDelete={(idx, source = 'diff') => {
-                        if (commentsReadOnly) return;
-                        if (source === 'document') {
-                          const existing = normalizedDocumentDiffComments[row.id] ?? [];
-                          const nextDocumentComments = normalizeDiffCommentsState({
-                            ...normalizedDocumentDiffComments,
-                            [row.id]: existing.filter((_, i) => i !== idx),
-                          });
-                          onDiffCommentsChangeRef.current?.(nextDocumentComments, {
-                            attachMode: 'document',
-                            rowId: row.id,
-                            isEditing: true,
-                          });
-                          return;
-                        }
+                    {visibleCommentGroups.map((group) => {
+                      const showGroupCompose = isPrimaryComposeGroup(group);
 
-                        const existing = diffComments[row.id] ?? [];
-                        commitDiffComments({
-                          ...diffComments,
-                          [row.id]: existing.filter((_, i) => i !== idx),
-                        });
-                      }}
-                      onCancel={() => clearCommentComposeState()}
-                      onSubmit={({ attachMode = 'current', targetChatId = null, targetDocumentTabId = null } = {}) => {
-                        if (commentsReadOnly) return;
-                        const trimmed = (commentRowId === row.id ? commentValue : '').trim();
-                        if (!trimmed) return;
-
-                        if (shouldDeleteRow(trimmed)) {
-                          onRowDelete?.(row.id, trimmed);
-                          const { [row.id]: _, ...rest } = diffComments;
-                          commitDiffComments(rest);
-                          if (activeRowId === row.id) {
-                            setActiveRowId(null);
-                          }
-                          clearCommentComposeState(activeRowId === row.id ? null : activeRowId);
-                          return;
-                        }
-
-                        if (shouldFixRow(trimmed)) {
-                          onRowFix?.(row.id, trimmed);
-                          clearCommentComposeState();
-                          return;
-                        }
-
-                        const isEditingDocumentComment = commentEditingSource === 'document' && Number.isInteger(commentEditingIndex);
-                        const isDocumentAttachMode = isEditingDocumentComment || (attachMode === 'document' && !Number.isInteger(commentEditingIndex));
-                        const existing = isDocumentAttachMode
-                          ? (normalizedDocumentDiffComments[row.id] ?? [])
-                          : (diffComments[row.id] ?? []);
-                        const nextRowComments = Number.isInteger(commentEditingIndex)
-                          ? existing.map((comment, index) => (index === commentEditingIndex ? trimmed : comment))
-                          : [trimmed];
-                        const nextSubmittedComments = isDocumentAttachMode
-                          ? {
-                              ...normalizedDocumentDiffComments,
-                              [row.id]: nextRowComments,
-                            }
-                          : attachMode === 'new' && !Number.isInteger(commentEditingIndex)
-                          ? { [row.id]: [trimmed] }
-                          : {
-                              ...diffComments,
-                              [row.id]: nextRowComments,
-                            };
-                        const submitMetadata = {
-                          attachMode: isDocumentAttachMode ? 'document' : attachMode,
-                          targetChatId,
-                          targetDocumentTabId,
-                          rowId: row.id,
-                          comment: trimmed,
-                          isEditing: Number.isInteger(commentEditingIndex),
-                        };
-                        const isExplicitChatTarget = !isDocumentAttachMode
-                          && typeof targetChatId === 'string'
-                          && targetChatId.trim().length > 0;
-                        const nextDiffComments = isDocumentAttachMode
-                          ? (
-                              onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
-                              normalizeDiffCommentsState(nextSubmittedComments)
-                            )
-                          : isExplicitChatTarget
-                          ? (
-                              onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
-                              normalizeDiffCommentsState(nextSubmittedComments)
-                            )
-                          : commitDiffComments(
-                              nextSubmittedComments,
-                              submitMetadata,
+                      return (
+                        <DiffInlineCommentPopup
+                          key={`${group.contextType || 'chat'}-${group.chatId || group.sourceTabId || group.label}-${group.messageId || row.id}`}
+                          comments={[]}
+                          commentGroups={[group]}
+                          value={showGroupCompose ? commentValue : ''}
+                          editingIndex={showGroupCompose ? commentEditingIndex : null}
+                          showCompose={showGroupCompose}
+                          commentsReadOnly={commentsReadOnly}
+                          defaultSubmitAttachMode={defaultSubmitAttachMode}
+                          commentContextLabel={commentContextLabel}
+                          commentContextIcon={commentContextIcon}
+                          commentContextSessionLabel={commentContextSessionLabel}
+                          footerMetaLabel={commentFooterMetaLabel || getDiffCommentFooterMetaLabel(row.id)}
+                          defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
+                          defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
+                          defaultSubmitTargetKey={defaultSubmitTargetKey}
+                          activeChatTargetKey={commentSessionActiveChatId}
+                          renderSubmitTargetPicker={renderSubmitTargetPicker}
+                          preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
+                          onChange={setCommentValue}
+                          onStartEdit={(idx, source = 'diff') => {
+                            if (commentsReadOnly) return;
+                            const sourceComments = source === 'document'
+                              ? (normalizedDocumentDiffComments[row.id] ?? [])
+                              : rowComments;
+                            setCommentRowId(row.id);
+                            setCommentValue(getCommentEntryText(sourceComments[idx] ?? ''));
+                            setCommentEditingIndex(idx);
+                            setCommentEditingSource(source === 'document' ? 'document' : 'diff');
+                            setCommentFooterMetaLabel(
+                              getCommentEntryLineLabel(sourceComments[idx] ?? '') || getDiffCommentFooterMetaLabel(row.id)
                             );
-                        onDiffCommentSubmit?.({
-                          attachMode: isDocumentAttachMode ? 'document' : attachMode,
-                          targetChatId,
-                          targetDocumentTabId,
-                          rowId: row.id,
-                          comment: trimmed,
-                          comments: nextDiffComments,
-                          isEditing: Number.isInteger(commentEditingIndex),
-                        });
-                        clearCommentComposeState();
-                      }}
-                      onReturnToChat={onReturnToChat}
-                    />
-                  </div>
-                </div>
-              )}
+                          }}
+                          onDelete={(idx, source = 'diff') => {
+                            if (commentsReadOnly) return;
+                            if (source === 'document') {
+                              const existing = normalizedDocumentDiffComments[row.id] ?? [];
+                              const nextDocumentComments = normalizeDiffCommentsState({
+                                ...normalizedDocumentDiffComments,
+                                [row.id]: existing.filter((_, i) => i !== idx),
+                              });
+                              onDiffCommentsChangeRef.current?.(nextDocumentComments, {
+                                attachMode: 'document',
+                                rowId: row.id,
+                                isEditing: true,
+                              });
+                              return;
+                            }
+
+                            const existing = diffComments[row.id] ?? [];
+                            commitDiffComments({
+                              ...diffComments,
+                              [row.id]: existing.filter((_, i) => i !== idx),
+                            });
+                          }}
+                          onCancel={() => clearCommentComposeState()}
+                          onSubmit={handleRowCommentSubmit}
+                          onReturnToChat={onReturnToChat}
+                        />
+                      );
+                    })}
+                    {shouldRenderSeparateCompose && (
+                      <DiffInlineCommentPopup
+                        comments={[]}
+                        commentGroups={null}
+                        value={commentValue}
+                        editingIndex={null}
+                        showCompose
+                        commentsReadOnly={commentsReadOnly}
+                        defaultSubmitAttachMode={defaultSubmitAttachMode}
+                        commentContextLabel={commentContextLabel}
+                        commentContextIcon={commentContextIcon}
+                        commentContextSessionLabel={commentContextSessionLabel}
+                        footerMetaLabel={commentFooterMetaLabel || getDiffCommentFooterMetaLabel(row.id)}
+                        defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
+                        defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
+                        defaultSubmitTargetKey={defaultSubmitTargetKey}
+                        activeChatTargetKey={commentSessionActiveChatId}
+                        renderSubmitTargetPicker={renderSubmitTargetPicker}
+                        preserveEditorSelection={preserveSelectionCommentRowId === row.id}
+                        onChange={setCommentValue}
+                        onCancel={() => clearCommentComposeState()}
+                        onSubmit={handleRowCommentSubmit}
+                        onReturnToChat={onReturnToChat}
+	                      />
+	                    )}
+	                  </div>
+	                </div>
+	              )}
             </Fragment>);
           })}
           </div>
         </div>
       </div>
+      {shortcutHintPosition && createPortal(
+        <div
+          className="plan-diff-comment-shortcut-hint"
+          role="tooltip"
+          style={{
+            left: `${shortcutHintPosition.left}px`,
+            top: `${shortcutHintPosition.top}px`,
+            '--plan-diff-comment-shortcut-arrow-x': `${shortcutHintPosition.arrowX}px`,
+          }}
+          data-placement={shortcutHintPosition.placement}
+        >
+          <span className="plan-diff-comment-shortcut-title">Add comments faster</span>
+          <span className="plan-diff-comment-shortcut-copy">
+            <span>Press</span>
+            <span className="plan-diff-comment-shortcut-keys" aria-label="Option Shift K">
+              <kbd>⌥</kbd>
+              <kbd>⇧</kbd>
+              <kbd>K</kbd>
+            </span>
+            <span>from the editor</span>
+          </span>
+        </div>,
+        document.body,
+      )}
       {gutterContextMenu && (
         <PlanDiffGutterContextMenu
           point={gutterContextMenu.point}
@@ -1658,6 +2657,7 @@ export function PlanDiffEditorArea({
   documentContextIcon = 'fileTypes/markdown',
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
+  defaultSubmitAttachMode = 'current',
   defaultSubmitTargetLabel = '',
   defaultSubmitTargetIcon = '',
   defaultSubmitTargetKey = '',
@@ -1684,6 +2684,8 @@ export function PlanDiffEditorArea({
   onPlainFileGutterCommentsEnabledChange = null,
   diffGutterCommentsEnabled = true,
   onDiffGutterCommentsEnabledChange = null,
+  pendingCommentRowIds = [],
+  commentShortcutHintRowId = null,
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
 }) {
@@ -1766,6 +2768,7 @@ export function PlanDiffEditorArea({
           documentContextIcon={documentContextIcon}
           documentContextSessionLabel={documentContextSessionLabel}
           documentContextSourceTabId={documentContextSourceTabId}
+          defaultSubmitAttachMode={defaultSubmitAttachMode}
           defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
           defaultSubmitTargetKey={defaultSubmitTargetKey}
@@ -1792,7 +2795,9 @@ export function PlanDiffEditorArea({
           onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
           inspectionWidget={inspectionWidget}
           renderSubmitTargetPicker={renderSubmitTargetPicker}
-        />,
+	          pendingCommentRowIds={pendingCommentRowIds}
+	          commentShortcutHintRowId={commentShortcutHintRowId}
+	        />,
         overlayHost
       )}
       {showViewerPopup && (

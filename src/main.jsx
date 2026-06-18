@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import PlanDiffPage from './PlanDiffPage.jsx';
 import { isPlanDiffPagePath } from './planDiffPageState.js';
+import { FlowRecorder } from './FlowRecorder.jsx';
 
 // The library calls React.createElement without importing React by that name in
 // some bundled paths. Expose it when the host window allows globals, but do not
@@ -20,6 +21,9 @@ const RootComponent = isPlanDiffPagePath(window.location.pathname) ? PlanDiffPag
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <RootComponent />
+    <>
+      <RootComponent />
+      {import.meta.env.DEV && <FlowRecorder />}
+    </>
   </StrictMode>
 );
