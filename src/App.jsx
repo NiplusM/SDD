@@ -19243,9 +19243,13 @@ export default function App() {
         .flatMap((rowId) => normalizeStoredDiffCommentsState(nextComments)[rowId] ?? [])
         .find((comment) => getStoredCommentText(comment).trim() === normalizedSubmittedText);
       const submittedLineLabel = getStoredCommentLineLabel(submittedCommentFromNextState);
+      const submittedRowIds = Array.isArray(submittedCommentFromNextState?.rowIds) && submittedCommentFromNextState.rowIds.length > 0
+        ? submittedCommentFromNextState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+        : metadataRowIds;
       const commentEntry = {
         text: normalizedSubmittedText,
         ...(submittedLineLabel.length > 0 ? { lineLabel: submittedLineLabel } : {}),
+        ...(submittedRowIds.length > 0 ? { rowIds: submittedRowIds } : {}),
         ...(typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim().length > 0
           ? { chatId: metadata.targetChatId.trim() }
           : {}),

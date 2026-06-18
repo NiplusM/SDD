@@ -1100,6 +1100,16 @@ function getCommentEntryLineLabel(comment) {
   return typeof comment?.lineLabel === 'string' ? comment.lineLabel.trim() : '';
 }
 
+function getCommentEntryRowIds(comment) {
+  if (!comment || typeof comment !== 'object') return [];
+
+  const rowIds = Array.isArray(comment.rowIds)
+    ? comment.rowIds
+    : (Array.isArray(comment.targetRowIds) ? comment.targetRowIds : []);
+
+  return rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0);
+}
+
 function flattenDiffCommentsState(diffComments = {}) {
   return Object.values(normalizeDiffCommentsState(diffComments)).flat().map(getCommentEntryText);
 }
@@ -1630,6 +1640,43 @@ export function PlanDiffOverlay({
       .filter((displayRow) => Number.isFinite(getDiffRowLineNumber(displayRow)))
       .map((displayRow) => displayRow.id);
   }, [displayRows, getDiffRowLineNumber]);
+
+  const getDiffCommentRowIdsForLineLabel = useCallback((lineLabel = '') => {
+    const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
+    if (!normalizedLineLabel) return [];
+
+    const rangeMatch = normalizedLineLabel.match(/^Comments on lines (\d+) to (\d+)$/u);
+    const singleMatch = normalizedLineLabel.match(/^Comment on line (\d+)$/u);
+    const startLineNumber = rangeMatch ? Number(rangeMatch[1]) : (singleMatch ? Number(singleMatch[1]) : null);
+    const endLineNumber = rangeMatch ? Number(rangeMatch[2]) : startLineNumber;
+    if (!Number.isInteger(startLineNumber) || !Number.isInteger(endLineNumber)) return [];
+
+    const fromLineNumber = Math.min(startLineNumber, endLineNumber);
+    const toLineNumber = Math.max(startLineNumber, endLineNumber);
+
+    return displayRows
+      .filter((displayRow) => {
+        const lineNumber = getDiffRowLineNumber(displayRow);
+        return Number.isInteger(lineNumber) && lineNumber >= fromLineNumber && lineNumber <= toLineNumber;
+      })
+      .map((displayRow) => displayRow.id);
+  }, [displayRows, getDiffRowLineNumber]);
+
+  const getDiffCommentTargetRowIdsForComment = useCallback((comment = null, fallbackRowId = null) => {
+    const storedRowIds = getCommentEntryRowIds(comment);
+    if (storedRowIds.length > 0) {
+      const storedRowIdSet = new Set(storedRowIds);
+      const orderedStoredRowIds = displayRows
+        .filter((displayRow) => storedRowIdSet.has(displayRow.id))
+        .map((displayRow) => displayRow.id);
+      if (orderedStoredRowIds.length > 0) return orderedStoredRowIds;
+    }
+
+    const rowIdsFromLineLabel = getDiffCommentRowIdsForLineLabel(getCommentEntryLineLabel(comment));
+    if (rowIdsFromLineLabel.length > 0) return rowIdsFromLineLabel;
+
+    return fallbackRowId ? [fallbackRowId] : [];
+  }, [displayRows, getDiffCommentRowIdsForLineLabel]);
 
   const getTextareaSelectionTargetRowIds = useCallback((textarea = null) => {
     if (!(textarea instanceof HTMLTextAreaElement)) return [];
@@ -2257,8 +2304,14 @@ export function PlanDiffOverlay({
               const isEditingDocumentComment = commentEditingSource === 'document' && isEditingComment;
               const isDocumentAttachMode = isEditingDocumentComment || (attachMode === 'document' && !isEditingComment);
               const isNewChatAttachMode = attachMode === 'new' && !isEditingComment;
+              const editingSourceComments = isEditingDocumentComment
+                ? (normalizedDocumentDiffComments[row.id] ?? [])
+                : rowComments;
+              const editingComment = isEditingComment
+                ? (editingSourceComments[commentEditingIndex] ?? null)
+                : null;
               const targetRowIds = isEditingComment
-                ? [row.id]
+                ? getDiffCommentTargetRowIdsForComment(editingComment, row.id)
                 : (commentTargetRowIds.length > 0 ? commentTargetRowIds : [row.id]);
               const commentStorageRowIds = [row.id];
               const submittedLineLabel = (
@@ -2273,6 +2326,7 @@ export function PlanDiffOverlay({
                   ...((previousComment && typeof previousComment === 'object') ? previousComment : {}),
                   text,
                   ...(lineLabel.length > 0 ? { lineLabel } : {}),
+                  rowIds: targetRowIds,
                 };
                 if (!isDocumentAttachMode && typeof targetChatId === 'string' && targetChatId.trim().length > 0) {
                   commentMetadata.chatId = targetChatId.trim();
@@ -2503,12 +2557,17 @@ export function PlanDiffOverlay({
                             const sourceComments = source === 'document'
                               ? (normalizedDocumentDiffComments[row.id] ?? [])
                               : rowComments;
+                            const editedComment = sourceComments[idx] ?? '';
+                            const editedTargetRowIds = getDiffCommentTargetRowIdsForComment(editedComment, row.id);
                             setCommentRowId(row.id);
-                            setCommentValue(getCommentEntryText(sourceComments[idx] ?? ''));
+                            setCommentValue(getCommentEntryText(editedComment));
                             setCommentEditingIndex(idx);
                             setCommentEditingSource(source === 'document' ? 'document' : 'diff');
+                            setCommentTargetRowIds(editedTargetRowIds);
                             setCommentFooterMetaLabel(
-                              getCommentEntryLineLabel(sourceComments[idx] ?? '') || getDiffCommentFooterMetaLabel(row.id)
+                              getCommentEntryLineLabel(editedComment)
+                              || getDiffCommentLineLabelForRowIds(editedTargetRowIds, row.id)
+                              || getDiffCommentFooterMetaLabel(row.id)
                             );
                           }}
                           onDelete={(idx, source = 'diff') => {
