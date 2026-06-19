@@ -4079,8 +4079,37 @@ body {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 1px;
+  min-width: 25px;
   padding: 2px;
+}
+
+.plan-diff-comment-badge-main,
+.plan-diff-comment-badge-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plan-diff-comment-badge-main {
+  gap: 1px;
+}
+
+.plan-diff-comment-badge-add {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-main,
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-main {
+  opacity: 0;
+}
+
+.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-add,
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-add {
+  opacity: 1;
 }
 
 .plan-diff-comment-count {

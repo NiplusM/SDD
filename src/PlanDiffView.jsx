@@ -234,8 +234,13 @@ export function DiffTabIcon() {
 export function PlanDiffCommentBadge({ count }) {
   return (
     <span className="plan-diff-comment-badge">
-      <Icon name="general/balloon" size={16} />
-      <span className="plan-diff-comment-count">{count}</span>
+      <span className="plan-diff-comment-badge-main">
+        <Icon name="general/balloon" size={16} />
+        <span className="plan-diff-comment-count">{count}</span>
+      </span>
+      <span className="plan-diff-comment-badge-add" aria-hidden="true">
+        <Icon name="general/add" size={16} />
+      </span>
     </span>
   );
 }
@@ -2278,6 +2283,19 @@ export function PlanDiffOverlay({
                 || isPrimaryComposeGroup(group)
               )
             ));
+            const visibleCommentPopups = visibleCommentGroups.flatMap((group, groupIndex) => {
+              if (!group || isPrimaryComposeGroup(group) || !Array.isArray(group.comments) || group.comments.length <= 1) {
+                return group ? [{ group, key: `${groupIndex}-group` }] : [];
+              }
+
+              return group.comments.map((comment, commentIndex) => ({
+                group: {
+                  ...group,
+                  comments: [comment],
+                },
+                key: `${groupIndex}-${commentIndex}`,
+              }));
+            });
             const handleRowCommentSubmit = ({ attachMode = 'current', targetChatId = null, targetDocumentTabId = null } = {}) => {
               if (commentsReadOnly) return;
               const trimmed = (commentRowId === row.id ? commentValue : '').trim();
@@ -2528,12 +2546,12 @@ export function PlanDiffOverlay({
                     <span className="plan-diff-gutter-icon-slot" />
                   </div>
                   <div className="plan-diff-inline-comment">
-                    {visibleCommentGroups.map((group) => {
+                    {visibleCommentPopups.map(({ group, key }) => {
                       const showGroupCompose = isPrimaryComposeGroup(group);
 
                       return (
                         <DiffInlineCommentPopup
-                          key={`${group.contextType || 'chat'}-${group.chatId || group.sourceTabId || group.label}-${group.messageId || row.id}`}
+                          key={`${group.contextType || 'chat'}-${group.chatId || group.sourceTabId || group.label}-${group.messageId || row.id}-${key}`}
                           comments={[]}
                           commentGroups={[group]}
                           value={showGroupCompose ? commentValue : ''}
