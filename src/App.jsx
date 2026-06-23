@@ -3383,18 +3383,36 @@ function buildCommentSourceSummaries({
   relatedCommentIssues = [],
 } = {}) {
   const summariesByKey = new Map();
-  const addSource = ({ key, label, icon = null, count = 0, navigationTabId = null, navigationRowId = null, rawIndex = null, lineNumber = null }) => {
+  const normalizeSourceComments = (comments = []) => {
+    const seen = new Set();
+    return (Array.isArray(comments) ? comments : []).reduce((items, comment) => {
+      const text = getStoredCommentText(comment).trim();
+      if (!text) return items;
+      const key = text.toLowerCase();
+      if (seen.has(key)) return items;
+      seen.add(key);
+      items.push(text);
+      return items;
+    }, []);
+  };
+  const addSource = ({ key, label, icon = null, count = 0, comments = [], navigationTabId = null, navigationRowId = null, rawIndex = null, lineNumber = null }) => {
     const normalizedKey = key || label;
     const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'Comment';
     const normalizedCount = Number.isFinite(count) ? count : 0;
     if (!normalizedKey || normalizedCount <= 0) return;
 
     const existing = summariesByKey.get(normalizedKey);
+    const existingComments = Array.isArray(existing?.comments) ? existing.comments : [];
+    const normalizedComments = normalizeSourceComments([
+      ...existingComments,
+      ...normalizeSourceComments(comments),
+    ]);
     summariesByKey.set(normalizedKey, {
       key: normalizedKey,
       label: existing?.label ?? normalizedLabel,
       icon: existing?.icon ?? icon,
       count: (existing?.count ?? 0) + normalizedCount,
+      comments: normalizedComments,
       navigationTabId: existing?.navigationTabId ?? navigationTabId,
       navigationRowId: existing?.navigationRowId ?? navigationRowId,
       rawIndex: Number.isInteger(existing?.rawIndex) ? existing.rawIndex : rawIndex,
@@ -3421,6 +3439,11 @@ function buildCommentSourceSummaries({
     label: attachment?.label ?? TERMINAL_TASK_TAB_BASE_LABEL,
     icon: attachment?.icon ?? 'fileTypes/markdown',
     count: documentCommentCount,
+    comments: normalizedCommentEntries.flatMap((entry) => (
+      Object.keys(normalizeStoredDiffCommentsState(entry?.diffComments)).length > 0
+        ? []
+        : (entry.comments ?? [])
+    )),
     navigationTabId: attachment?.sourceTabId ?? null,
     rawIndex: Number.isInteger(documentCommentLineNumber) ? documentCommentLineNumber : null,
     lineNumber: Number.isInteger(documentCommentLineNumber) ? documentCommentLineNumber + 1 : null,
@@ -3433,6 +3456,7 @@ function buildCommentSourceSummaries({
       label: sourceLabel,
       icon: issue?.icon ?? renderProblemsSourceIcon(DIFF_TAB_ICON_NAME),
       count: 1,
+      comments: [issue?.label],
       navigationTabId: issue?.navigationTabId ?? null,
       navigationRowId: issue?.navigationRowId ?? null,
       rawIndex: Number.isInteger(issue?.rawIndex) ? issue.rawIndex : null,
@@ -11470,6 +11494,9 @@ function snapshotAiChatMessageAttachment(attachment = null) {
 
   const diffComments = normalizeStoredDiffCommentsState(attachment.diffComments);
   const sddCommentEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
+  const sddRelatedCommentIssues = Array.isArray(attachment.sddRelatedCommentIssues)
+    ? attachment.sddRelatedCommentIssues
+    : [];
   const sddCommentCount = sddCommentEntries.reduce((sum, entry) => (
     sum + (Array.isArray(entry.comments) ? entry.comments.length : 0)
   ), 0);
@@ -11478,6 +11505,7 @@ function snapshotAiChatMessageAttachment(attachment = null) {
     ...attachment,
     diffComments: Object.keys(diffComments).length > 0 ? diffComments : attachment.diffComments ?? null,
     sddCommentEntries,
+    sddRelatedCommentIssues,
     commentCount: Number.isFinite(attachment.commentCount)
       ? attachment.commentCount
       : Math.max(flattenStoredDiffCommentsState(diffComments).length, sddCommentCount),
@@ -11490,22 +11518,41 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   }
 
   const seenComments = new Set();
-  const addComment = (items, comment) => {
-    if (typeof comment !== 'string') return items;
-    const trimmedComment = comment.trim();
+  const normalizePreviewSourceLabel = (sourceLabel = '') => (
+    typeof sourceLabel === 'string'
+      ? sourceLabel
+        .replace(/\s*·\s*Line\s+\d+\s*$/iu, '')
+        .replace(/:\d+\s*$/u, '')
+        .trim()
+      : ''
+  );
+  const addComment = (items, comment, sourceLabel = '') => {
+    const trimmedComment = getStoredCommentText(comment).trim();
     if (!trimmedComment) return items;
 
-    const normalizedComment = trimmedComment.toLowerCase();
+    const normalizedSourceLabel = normalizePreviewSourceLabel(sourceLabel);
+    const normalizedComment = `${normalizedSourceLabel.toLowerCase()}|${trimmedComment.toLowerCase()}`;
     if (seenComments.has(normalizedComment)) return items;
     seenComments.add(normalizedComment);
-    items.push(trimmedComment);
+    items.push({
+      text: trimmedComment,
+      sourceLabel: normalizedSourceLabel,
+    });
     return items;
   };
 
   const items = [];
-  flattenStoredDiffCommentsState(attachment.diffComments).forEach((comment) => addComment(items, comment));
+  flattenStoredDiffCommentsState(attachment.diffComments).forEach((comment) => {
+    addComment(items, comment, attachment.label);
+  });
   normalizeSpecVersionCommentEntries(attachment.sddCommentEntries).forEach((entry) => {
-    (entry.comments ?? []).forEach((comment) => addComment(items, comment));
+    const documentSourceLabel = attachment.isSddDocument ? attachment.label : entry.sourceLabel;
+    (entry.comments ?? []).forEach((comment) => addComment(items, comment, documentSourceLabel));
+    const entrySourceLabel = entry.sourceLabel || entry.sectionTitle || entry.sourceNavigationTabId || attachment.label;
+    flattenStoredDiffCommentsState(entry.diffComments).forEach((comment) => addComment(items, comment, entrySourceLabel));
+  });
+  (Array.isArray(attachment.sddRelatedCommentIssues) ? attachment.sddRelatedCommentIssues : []).forEach((issue) => {
+    addComment(items, issue?.label, getCommentIssueSourceLabelWithoutLine(issue));
   });
 
   return items;
@@ -11523,6 +11570,9 @@ function getAiChatAttachmentSourcePreviewItems(attachment = null) {
       label: source.label.trim(),
       icon: source.icon ?? 'general/balloon',
       count: Number.isFinite(source.count) ? source.count : 0,
+      comments: Array.isArray(source.comments)
+        ? source.comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+        : [],
       navigationTabId: source.navigationTabId ?? null,
       navigationRowId: source.navigationRowId ?? null,
       rawIndex: Number.isInteger(source.rawIndex) ? source.rawIndex : null,
@@ -11635,8 +11685,11 @@ function ChatToolWindow({
 
     const hasOwnCommentEntries = Object.prototype.hasOwnProperty.call(attachment, 'sddCommentEntries');
     const attachmentCommentEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
+    const mergedAttachmentCommentEntries = hasOwnCommentEntries
+      ? mergeCommentEntriesWithExistingDiffAnchors(latestSddCommentEntries, attachmentCommentEntries)
+      : latestSddCommentEntries;
     const effectiveCommentEntries = hasOwnCommentEntries
-      ? attachmentCommentEntries
+      ? mergedAttachmentCommentEntries
       : latestSddCommentEntries;
     const effectiveRelatedCommentIssues = latestSddRelatedCommentIssues;
     const entryCommentCount = getCommentEntryTotalCount(effectiveCommentEntries, effectiveRelatedCommentIssues);
@@ -11647,6 +11700,7 @@ function ChatToolWindow({
       commentCount: effectiveCommentCount,
       isSddCommentAttachment: effectiveCommentCount > 0,
       sddCommentEntries: effectiveCommentEntries,
+      sddRelatedCommentIssues: effectiveRelatedCommentIssues,
       commentSources: buildCommentSourceSummaries({
         attachment,
         commentEntries: effectiveCommentEntries,
@@ -11679,7 +11733,10 @@ function ChatToolWindow({
     ))
     .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
   const hasComposerAttachment = visibleComposerAttachments.length > 0;
-  const canSendMessage = composerText.trim().length > 0;
+  const hasComposerCommentAttachment = visibleComposerAttachments.some((attachment) => (
+    Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+  ));
+  const canSendMessage = composerText.trim().length > 0 || hasComposerCommentAttachment;
 
   useEffect(() => {
     if (!expandedAttachmentSourceId) return;
@@ -11848,15 +11905,15 @@ function ChatToolWindow({
 
   const handleSendMessage = useCallback(() => {
     const messageText = (composerTextareaRef.current?.value ?? composerText).trim();
-    if (!messageText) return;
-    const targetChatId = currentChatId;
-
     const messageAttachments = hasComposerAttachment
       ? visibleComposerAttachments.map((attachment) => snapshotAiChatMessageAttachment(attachment))
       : [];
     const commentAttachments = messageAttachments.filter((attachment) => (
       Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
     ));
+    if (!messageText && commentAttachments.length === 0) return;
+    const targetChatId = currentChatId;
+
     const shouldStreamCommentResponse = commentAttachments.length > 0;
 
     const newMessage = {
@@ -12261,26 +12318,51 @@ function ChatToolWindow({
                   )}
                   {canShowCommentSources && isSourceListOpen && (
                     <span className="ai-chat-attachment-source-list" role="menu">
-                      {commentSources.map((source) => (
-                        <button
-                          key={source.key}
-                          type="button"
-                          className="ai-chat-attachment-source-row"
-                          role="menuitem"
-	                          onClick={(event) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
-                        >
-                          <span className="ai-chat-attachment-source-icon">
-                            {typeof source.icon === 'string'
-                              ? <Icon name={source.icon} size={16} className="tab-icon" />
-                              : (source.icon ?? <Icon name="general/balloon" size={16} />)}
-                          </span>
-                          <span className="ai-chat-attachment-source-name">{source.label}</span>
-                          <span className="ai-chat-attachment-source-count">
-                            <Icon name="general/balloon" size={16} />
-                            {Number.isFinite(source.count) ? source.count : 0}
-                          </span>
-                        </button>
-                      ))}
+                      {commentSources.map((source) => {
+                        const sourceComments = Array.isArray(source.comments)
+                          ? source.comments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0)
+                          : [];
+                        const visibleSourceComments = sourceComments.slice(0, 3);
+                        const hiddenSourceCommentCount = Math.max(0, sourceComments.length - visibleSourceComments.length);
+
+                        return (
+                          <button
+                            key={source.key}
+                            type="button"
+                            className="ai-chat-attachment-source-row"
+                            role="menuitem"
+                            onClick={(event) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
+                          >
+                            <span className="ai-chat-attachment-source-icon">
+                              {typeof source.icon === 'string'
+                                ? <Icon name={source.icon} size={16} className="tab-icon" />
+                                : (source.icon ?? <Icon name="general/balloon" size={16} />)}
+                            </span>
+                            <span className="ai-chat-attachment-source-name">{source.label}</span>
+                            <span className="ai-chat-attachment-source-count">
+                              <Icon name="general/balloon" size={16} />
+                              {Number.isFinite(source.count) ? source.count : 0}
+                            </span>
+                            {sourceComments.length > 0 && (
+                              <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-row-comment-preview" role="tooltip">
+                                <span className="ai-chat-attachment-comment-preview-title">
+                                  {sourceComments.length === 1 ? 'Comment' : `Comments · ${sourceComments.length}`}
+                                </span>
+                                {visibleSourceComments.map((comment, index) => (
+                                  <span key={`${source.key}-source-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
+                                    {comment}
+                                  </span>
+                                ))}
+                                {hiddenSourceCommentCount > 0 && (
+                                  <span className="ai-chat-attachment-comment-preview-more">
+                                    {`+${hiddenSourceCommentCount} more`}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </span>
                   )}
                   {commentPreviewItems.length > 0 && !isSourceListOpen && (
@@ -12288,11 +12370,21 @@ function ChatToolWindow({
                       <span className="ai-chat-attachment-comment-preview-title">
                         {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
                       </span>
-                      {visibleCommentPreviewItems.map((comment, index) => (
-                        <span key={`${attachment.id}-composer-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
-                          {comment}
-                        </span>
-                      ))}
+	                      {visibleCommentPreviewItems.map((comment, index) => (
+	                        <span
+                            key={`${attachment.id}-composer-comment-preview-${index}`}
+                            className={`ai-chat-attachment-comment-preview-item${comment.sourceLabel ? ' has-source-label' : ''}`}
+                          >
+                            {comment.sourceLabel && (
+                              <span className="ai-chat-attachment-comment-preview-source">
+                                {comment.sourceLabel}
+                              </span>
+                            )}
+                            <span className="ai-chat-attachment-comment-preview-text">
+	                            {comment.text}
+                            </span>
+	                        </span>
+	                      ))}
                       {hiddenCommentPreviewCount > 0 && (
                         <span className="ai-chat-attachment-comment-preview-more">
                           {`+${hiddenCommentPreviewCount} more`}
@@ -12978,10 +13070,13 @@ const ChatListPopup = forwardRef(function ChatListPopup({
 function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null }) {
   const [isContextExpanded, setIsContextExpanded] = useState(false);
   const attachmentCount = attachments.length;
+  const hasMessageText = typeof children === 'string'
+    ? children.trim().length > 0
+    : Boolean(children);
 
   return (
     <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
-      <p>{children}</p>
+      {hasMessageText && <p>{children}</p>}
       {attachmentCount > 0 && (
         <div className="ai-chat-sent-context">
           <button
@@ -13029,11 +13124,21 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                         <span className="ai-chat-attachment-comment-preview-title">
                           {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
                         </span>
-                        {visibleCommentPreviewItems.map((comment, index) => (
-                          <span key={`${attachment.id}-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
-                            {comment}
-                          </span>
-                        ))}
+	                        {visibleCommentPreviewItems.map((comment, index) => (
+	                          <span
+                              key={`${attachment.id}-comment-preview-${index}`}
+                              className={`ai-chat-attachment-comment-preview-item${comment.sourceLabel ? ' has-source-label' : ''}`}
+                            >
+                              {comment.sourceLabel && (
+                                <span className="ai-chat-attachment-comment-preview-source">
+                                  {comment.sourceLabel}
+                                </span>
+                              )}
+                              <span className="ai-chat-attachment-comment-preview-text">
+	                              {comment.text}
+                              </span>
+	                          </span>
+	                        ))}
                         {hiddenCommentPreviewCount > 0 && (
                           <span className="ai-chat-attachment-comment-preview-more">
                             {`+${hiddenCommentPreviewCount} more`}
@@ -13661,6 +13766,7 @@ export default function App() {
   const aiChatDraftSessionCounterRef = useRef(0);
   const [pendingDiffCommentRowsByTabId, setPendingDiffCommentRowsByTabId] = useState({});
   const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
+  const [pendingDocumentDiffCommentSnapshotsByTabId, setPendingDocumentDiffCommentSnapshotsByTabId] = useState({});
   useEffect(() => {
     if (!commentShortcutHintTarget) return undefined;
     const timeoutId = window.setTimeout(() => {
@@ -18718,6 +18824,13 @@ export default function App() {
   const activePlanDiffDocumentComments = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
     ? normalizeStoredDiffCommentsState(activeTabContent?.documentDiffComments)
     : {};
+  const activePendingDocumentDiffCommentSnapshot = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
+    ? normalizeStoredDiffCommentsState(pendingDocumentDiffCommentSnapshotsByTabId[activeTabId])
+    : {};
+  const activePlanDiffDocumentCommentsWithPending = mergeStoredDiffCommentsStates(
+    activePendingDocumentDiffCommentSnapshot,
+    activePlanDiffDocumentComments,
+  );
   const activePlainFileCommentIssues = useMemo(
     () => {
       if (!isPlainFileOverlayTab) return [];
@@ -19655,7 +19768,6 @@ export default function App() {
         };
       });
 
-      setDoneCommentResetToken((prev) => prev + 1);
       return;
     }
 
@@ -19844,6 +19956,28 @@ export default function App() {
         addComments(attachment.diffTabId, attachment.diffComments);
       }
 
+      return entries;
+    }, {})
+  ), []);
+
+  const getPendingDocumentCommentSnapshotsByTabIdFromAttachments = useCallback((attachments = []) => (
+    (Array.isArray(attachments) ? attachments : []).reduce((entries, attachment) => {
+      const addComments = (tabId, comments = {}) => {
+        if (!tabId) return entries;
+        const normalizedComments = normalizeStoredDiffCommentsState(comments);
+        if (Object.keys(normalizedComments).length === 0) return entries;
+        const pendingComments = Object.entries(normalizedComments).reduce((nextComments, [rowId, rowComments]) => ({
+          ...nextComments,
+          [rowId]: rowComments.map((comment) => ({
+            ...((comment && typeof comment === 'object') ? comment : {}),
+            text: getStoredCommentText(comment),
+            pending: true,
+          })),
+        }), {});
+        entries[tabId] = mergeStoredDiffCommentsStates(entries[tabId], pendingComments);
+        return entries;
+      };
+
       normalizeSpecVersionCommentEntries(attachment?.sddCommentEntries).forEach((entry) => {
         const sourceTabId = typeof entry?.sourceNavigationTabId === 'string' && entry.sourceNavigationTabId.length > 0
           ? entry.sourceNavigationTabId
@@ -19858,8 +19992,13 @@ export default function App() {
   const handleCommentAttachmentResponseStart = useCallback(({ attachments = [] } = {}) => {
     const nextPendingRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
     const nextPendingSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
+    const nextPendingDocumentSnapshotsByTabId = getPendingDocumentCommentSnapshotsByTabIdFromAttachments(attachments);
 
-    if (Object.keys(nextPendingRowsByTabId).length === 0 && Object.keys(nextPendingSnapshotsByTabId).length === 0) return;
+    if (
+      Object.keys(nextPendingRowsByTabId).length === 0
+      && Object.keys(nextPendingSnapshotsByTabId).length === 0
+      && Object.keys(nextPendingDocumentSnapshotsByTabId).length === 0
+    ) return;
 
     if (Object.keys(nextPendingRowsByTabId).length > 0) {
       setPendingDiffCommentRowsByTabId((prev) => ({
@@ -19876,13 +20015,27 @@ export default function App() {
         return next;
       });
     }
-  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments]);
+    if (Object.keys(nextPendingDocumentSnapshotsByTabId).length > 0) {
+      setPendingDocumentDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.entries(nextPendingDocumentSnapshotsByTabId).forEach(([tabId, comments]) => {
+          next[tabId] = mergeStoredDiffCommentsStates(next[tabId], comments);
+        });
+        return next;
+      });
+    }
+  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments, getPendingDocumentCommentSnapshotsByTabIdFromAttachments]);
 
   const handleCommentAttachmentResponseComplete = useCallback(({ attachments = [] } = {}) => {
     const completedRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
     const completedSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
+    const completedDocumentSnapshotsByTabId = getPendingDocumentCommentSnapshotsByTabIdFromAttachments(attachments);
 
-    if (Object.keys(completedRowsByTabId).length === 0 && Object.keys(completedSnapshotsByTabId).length === 0) return;
+    if (
+      Object.keys(completedRowsByTabId).length === 0
+      && Object.keys(completedSnapshotsByTabId).length === 0
+      && Object.keys(completedDocumentSnapshotsByTabId).length === 0
+    ) return;
 
     if (Object.keys(completedRowsByTabId).length > 0) {
       setPendingDiffCommentRowsByTabId((prev) => {
@@ -19908,7 +20061,16 @@ export default function App() {
         return next;
       });
     }
-  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments]);
+    if (Object.keys(completedDocumentSnapshotsByTabId).length > 0) {
+      setPendingDocumentDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.keys(completedDocumentSnapshotsByTabId).forEach((tabId) => {
+          delete next[tabId];
+        });
+        return next;
+      });
+    }
+  }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments, getPendingDocumentCommentSnapshotsByTabIdFromAttachments]);
 
   const handleOpenSddDocument = useCallback((context = {}) => {
     const sourceTabId = context?.sourceTabId
@@ -20564,7 +20726,7 @@ export default function App() {
                     diffData={activePlanDiffData}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffCommentsWithPending}
-                    documentDiffComments={activePlanDiffDocumentComments}
+                    documentDiffComments={activePlanDiffDocumentCommentsWithPending}
                     documentContextLabel={activePlanDiffDocumentContextLabel}
                     documentContextIcon="fileTypes/markdown"
                     documentContextSessionLabel={activePlanDiffDocumentContextSessionLabel}

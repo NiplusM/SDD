@@ -40,6 +40,59 @@ function describeClickTarget(el) {
   };
 }
 
+const HOVER_TARGET_SELECTOR = [
+  '[data-demo-id]',
+  'button',
+  'a',
+  '[role="button"]',
+  '[role="menuitem"]',
+  '[role="tab"]',
+  '.plan-diff-gutter-icon-slot',
+  '.plan-diff-comment-badge',
+  '.ai-chat-attachment-chip',
+  '.ai-chat-attachment-source-row',
+  '.diff-comment-submit-target-label',
+  '.spec-done-comment-popup-context-header',
+].join(', ');
+
+const OVERLAY_SELECTOR = [
+  '[role="tooltip"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[role="dialog"]',
+  '[role="alert"]',
+  '[role="status"]',
+  '.popup',
+  '[class*="Popup"]',
+  '[class*="popup"]',
+  '[class*="Tooltip"]',
+  '[class*="tooltip"]',
+  '[class*="Banner"]',
+  '[class*="banner"]',
+  '[class*="hint"]',
+  '[class*="menu-popup"]',
+  '.ai-chat-attachment-comment-preview',
+  '.ai-chat-attachment-source-list',
+  '.ai-chat-file-comments-banner',
+  '.diff-comment-submit-options-popup',
+  '.diff-comment-actions-popup',
+  '.plan-diff-gutter-context-menu',
+  '.plan-diff-comment-shortcut-hint',
+  '.editor-selection-toolbar',
+].join(', ');
+
+function describeOverlayNode(node) {
+  if (!(node instanceof Element)) return null;
+  const role = node.getAttribute?.('role') || '';
+  const classes = (node.className?.toString?.() || '').trim().split(/\s+/).slice(0, 3).join('.');
+  const text = (node.innerText || node.getAttribute?.('aria-label') || '').trim().slice(0, 80);
+  return {
+    role: role || null,
+    className: classes || null,
+    text: text || null,
+  };
+}
+
 function downloadBlob(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -231,15 +284,116 @@ export function FlowRecorder() {
       }
     }
 
+    // --- Hover snapshots ------------------------------------------------
+    const HOVER_DELAY_MS = 650;
+    const HOVER_DEDUPE_MS = 1200;
+    let hoverTimer = null;
+    let hoverEl = null;
+    const recentHoverKeys = new Map();
+
+    const hoverKeyForElement = (el) => {
+      if (!(el instanceof Element)) return '';
+      const demoId = el.dataset?.demoId || '';
+      const role = el.getAttribute?.('role') || '';
+      const classes = (el.className?.toString?.() || '').trim().split(/\s+/).slice(0, 2).join('.');
+      const tag = el.tagName.toLowerCase();
+      return `${tag}|${demoId}|${role}|${classes}`;
+    };
+
+    function clearHoverTimer() {
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      hoverEl = null;
+    }
+
+    function onPointerOver(e) {
+      if (!(e.target instanceof Element)) return;
+      if (e.target.closest('[data-flow-recorder]')) return;
+      const target = e.target.closest(HOVER_TARGET_SELECTOR);
+      if (!target) return;
+      if (target === hoverEl) return;
+
+      clearHoverTimer();
+      hoverEl = target;
+      hoverTimer = setTimeout(() => {
+        if (!recordingRef.current || hoverEl !== target) return;
+        const key = hoverKeyForElement(target);
+        const now = Date.now();
+        const lastAt = recentHoverKeys.get(key);
+        if (lastAt && now - lastAt < HOVER_DEDUPE_MS) return;
+        recentHoverKeys.set(key, now);
+
+        const desc = describeClickTarget(target);
+        const label = `Hover "${desc?.text || desc?.demoId || desc?.selector || 'element'}"`;
+        snap(label, desc ? { hover: desc } : {});
+      }, HOVER_DELAY_MS);
+    }
+
+    function onPointerOut(e) {
+      if (!(e.target instanceof Element)) return;
+      if (hoverEl && (e.target === hoverEl || hoverEl.contains(e.target))) {
+        if (!hoverEl.contains(e.relatedTarget)) clearHoverTimer();
+      }
+    }
+
+    // --- Overlay appearance snapshots -----------------------------------
+    const OVERLAY_DEDUPE_MS = 800;
+    const recentOverlayKeys = new Map();
+
+    const overlayKeyForNode = (node) => {
+      if (!(node instanceof Element)) return '';
+      const role = node.getAttribute?.('role') || '';
+      const classes = (node.className?.toString?.() || '').trim().split(/\s+/).slice(0, 3).join('.');
+      return `${role}|${classes}`;
+    };
+
+    function handleOverlayCandidate(node) {
+      if (!(node instanceof Element)) return;
+      if (node.closest?.('[data-flow-recorder]')) return;
+      const overlay = node.matches?.(OVERLAY_SELECTOR)
+        ? node
+        : node.querySelector?.(OVERLAY_SELECTOR);
+      if (!overlay) return;
+      if (!overlay.isConnected) return;
+
+      const key = overlayKeyForNode(overlay);
+      const now = Date.now();
+      const lastAt = recentOverlayKeys.get(key);
+      if (lastAt && now - lastAt < OVERLAY_DEDUPE_MS) return;
+      recentOverlayKeys.set(key, now);
+
+      setTimeout(() => {
+        if (!recordingRef.current) return;
+        const desc = describeOverlayNode(overlay);
+        const label = `Overlay${desc?.role ? ` [${desc.role}]` : ''}${desc?.text ? ` "${desc.text}"` : ''}`;
+        snap(label.trim() || 'Overlay appeared', { floating: desc });
+      }, 80);
+    }
+
+    const overlayObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach(handleOverlayCandidate);
+      }
+    });
+    overlayObserver.observe(document.body, { childList: true, subtree: true });
+
     document.addEventListener('click', onClick, true);
+    document.addEventListener('pointerover', onPointerOver, true);
+    document.addEventListener('pointerout', onPointerOut, true);
     window.addEventListener('keydown', onKeydown);
     window.addEventListener('keyup', onKeyup);
     return () => {
+      clearHoverTimer();
+      overlayObserver.disconnect();
       document.removeEventListener('click', onClick, true);
+      document.removeEventListener('pointerover', onPointerOver, true);
+      document.removeEventListener('pointerout', onPointerOut, true);
       window.removeEventListener('keydown', onKeydown);
       window.removeEventListener('keyup', onKeyup);
     };
-  }, [recording, manualSnap, handleStop]);
+  }, [recording, manualSnap, handleStop, snap]);
 
   return (
     <div data-flow-recorder style={styles.root}>

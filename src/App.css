@@ -4103,12 +4103,16 @@ body {
 }
 
 .plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-main,
-.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-main {
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-main,
+.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge-main,
+.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge-main {
   opacity: 0;
 }
 
 .plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-add,
-.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-add {
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-add,
+.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge-add,
+.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge-add {
   opacity: 1;
 }
 
@@ -6704,6 +6708,30 @@ body {
   overflow-wrap: anywhere;
 }
 
+.ai-chat-attachment-comment-preview-item.has-source-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  -webkit-line-clamp: unset;
+}
+
+.ai-chat-attachment-comment-preview-source {
+  overflow: hidden;
+  color: #8E939D;
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-attachment-comment-preview-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
 .ai-chat-attachment-comment-preview-title {
   color: #A8ADB7;
   font-size: 11px;
@@ -7112,6 +7140,7 @@ body {
 }
 
 .ai-chat-attachment-source-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -7131,6 +7160,20 @@ body {
 
 .ai-chat-attachment-source-row:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.ai-chat-attachment-source-row-comment-preview {
+  top: 0;
+  bottom: auto;
+  left: calc(100% + 8px);
+  min-width: 220px;
+  text-align: left;
+}
+
+.ai-chat-attachment-source-row:hover .ai-chat-attachment-source-row-comment-preview,
+.ai-chat-attachment-source-row:focus-visible .ai-chat-attachment-source-row-comment-preview {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .ai-chat-attachment-source-icon {
