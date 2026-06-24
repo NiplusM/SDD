@@ -148,10 +148,15 @@ The user is working inside an already active agent session. The session can be s
 
 Within this active session, the user can leave comments for the agent directly inside the agent-generated diff.
 
-The diff opens from:
+The diff can open from any review entry point, not only from the AI chat. Examples:
+
 - the Commit tool window;
+- the editor tab strip or an already-open diff tab;
 - the agent message card in the AI chat that describes the change;
-- an attachment chip in message history that leads back to the comment.
+- an attachment chip in message history that leads back to the comment;
+- a plan, SDD, problem, or other navigation item that points to a diff.
+
+The comment behavior is the same regardless of where the diff was opened from. Historical/read-only diffs are the exception: they can display existing comments, but users cannot add new comments there.
 
 Entry points into commenting itself:
 
@@ -228,14 +233,22 @@ Disabling the feature is about the **visual UI on the surface**, not about data.
 
 The `+` button next to the AI chat input opens an add-context menu. It includes the items:
 
-- `Comments in Diffs`
-- `Comments in Files`
+- `Enable Diff Comments`
+- `Enable File Comments`
 
 Each item toggles the corresponding surface on/off — an alternative path to the same action available from the gutter menu and from Settings.
 
+Naming is intentionally surface-specific:
+
+- Settings use `Enable Comments in Files` and `Enable Comments in Diffs`.
+- The `+` menu and gutter menu use `Enable File Comments` and `Enable Diff Comments`.
+
 Discoverability:
 
-- The `+` button shows a **blue dot** until the user opens the menu at least once.
+- The `+` button shows a **blue dot** while there is unseen comment-context functionality.
+- The blue dot disappears after either:
+  - the add-context menu has been opened 6 times;
+  - every menu item with a `New` label has been clicked once.
 - Each menu item shows a `New` label. The label on a specific item disappears after the user clicks it; labels on the other items remain.
 
 #### Shortcut tooltip
@@ -249,7 +262,7 @@ The tooltip is shown once and does not return.
 The shortcut itself works in two modes:
 
 - with no selection in the editor/diff and the caret on a line — opens the composer with the caption `Comment on line N`;
-- with a selected line range — opens the composer with the caption `Comments on lines A to B`, and the range stays highlighted in blue while the composer is open.
+- with a selected line range — opens the composer with the caption `Comments on lines A to B`, and the native text selection stays visible while focus remains in the composer.
 
 In both modes the behavior matches clicking the gutter icon — these are equivalent entry points.
 
@@ -268,13 +281,13 @@ Icon behavior next to a line depends on whether the line has comments.
 - The icon is always visible and shows a badge: balloon + the count of comments on this line.
 - On row hover, the badge visually transforms into a `+` (plus) icon: the count and the balloon are hidden and a plus is shown instead.
 - Clicking the plus is the short path to add another comment to the same line/range without closing the existing popups.
-- The active icon (composer open on this line) is highlighted with a pressed style; the line itself and the range it belongs to receive a soft blue highlight indicating which range the new comment will be attached to.
+- The active icon (composer open on this line) is highlighted with a pressed style. Opening the composer must not replace a native text selection with a synthetic full-row highlight.
 
 **When the surface is disabled:** the gutter icon is hidden in all states.
 
 ### Composer: General Behavior
 
-- Opens inline directly under the target line/range without shifting the code.
+- Opens inline directly under the target line/range and shifts the code below it down. The comment UI participates in editor layout; it must not float over code text.
 - Composition:
   - context header — chat icon and name; for the Active session a textual `Active Chat` badge; for Inactive — no badge, only a muted header tone;
   - text field with the placeholder `Write a comment`;
@@ -286,6 +299,7 @@ Icon behavior next to a line depends on whether the line has comments.
 - `Cancel` or a click outside the composer closes it without saving.
 - Esc closes the composer; Enter with a modifier submits.
 - While focus stays inside the composer, the line selection in the editor is not reset — the range that the future comment will attach to remains visible.
+- If the user clicks back into the editor, the native selection may reset as normal editor behavior. The comment keeps its stored line/range target even after the visual selection disappears.
 - When the text is empty, the primary submit button is disabled; empty comments are not submitted.
 
 ### Creating a Comment
@@ -301,12 +315,13 @@ Icon behavior next to a line depends on whether the line has comments.
 
 1. The user selects several lines (with the mouse or with Shift).
 2. Invokes the gutter control on one of the selected lines or presses `⌥⇧K` — the composer opens with the caption `Comments on lines A to B`.
-3. The editor selection is preserved for the entire composer session — even when focus is in the text field, the selected lines remain highlighted.
-4. After saving, the comment is anchored to the whole range: badges appear in the gutter at every line of the range, but logically it is one comment.
+3. The editor selection is preserved while the user is in the composer — even when focus is in the text field, the selected text remains highlighted.
+4. If the user clicks in the editor, the visual selection resets; the composer still targets the originally captured line range.
+5. After saving, the comment is anchored to the whole range: one gutter badge appears next to the last line of the range, but logically it is one comment attached to the whole range.
 
 **Target (chat-picker):**
 
-In the composer the user chooses which chat the comment is attached to. By default it’s the currently open chat; the primary submit label in this state is `Add to Current Chat Session`.
+In the composer the user chooses which chat the comment is attached to. By default it’s the currently open chat; the primary submit label in this state is `Add a Comment`.
 
 The target can be changed right while writing the comment. Next to the primary submit there is a target picker. Clicking it opens a popup with:
 
@@ -314,22 +329,29 @@ The target can be changed right while writing the comment. Next to the primary s
 - a footer action `Create New Chat` that creates a new chat and switches the comment’s target to it;
 - the currently open chat is marked active; the currently selected target is marked selected.
 
-Selecting any item:
+Only one new chat can be created from one open composer. After the user clicks `Create New Chat`, the same picker removes that footer action; the newly created chat remains selectable as the current target.
+
+`Create New Chat` is also hidden when the selected target is already a newly created draft chat. In that state the user can still choose existing chats, but cannot create a second new chat from the same composer.
+
+Selecting any item while creating a new comment:
 
 - updates the comment’s target to the selected chat;
-- changes the primary submit label to `Add to {Chat Name}`;
 - updates the icon/name in the composer’s context header to match the selected chat;
 - closes the picker popup.
 
 After saving, the comment is considered owned by the selected chat — even if a different session is currently open in the right panel. In that case the comment immediately appears as **Inactive**.
 
-In edit mode the primary submit is always labeled `Save Comment`, but the target picker remains available: you can move the comment to another chat while editing its text.
+In edit mode the primary submit is always labeled `Save Comment`; the target picker is not shown. Editing updates the text of the comment in the session that already owns it.
+
+Edit mode remains active until the user explicitly clicks `Save Comment` or cancels the composer. It must not exit edit mode just because the text changed, the textarea lost focus, or the comment belongs to an Inactive session.
 
 ### Displaying Comments
 
 **One comment on a line.** In the gutter — a badge with the icon and count `1`. Under the line a popup opens with the context header, the comment text, the line caption, and a `...` menu.
 
-**One comment on a range.** A badge with count `1` is shown at every line of the range. The caption inside the comment is `Comments on lines A to B`. There is one popup regardless of which line of the range it was opened from.
+**One comment on a range.** A badge with count `1` is shown next to the last line of the range. The caption inside the comment is `Comments on lines A to B`. There is one popup for the whole range.
+
+Range comments must never render one gutter icon per line. The only visible gutter affordance for the range is the single icon/badge at the bottom of the range.
 
 **Multiple comments on the same line or range:**
 
@@ -339,6 +361,8 @@ In edit mode the primary submit is always labeled `Save Comment`, but the target
 - Comments that belong to the same chat session are still shown as separate popups — they do not merge into one list.
 
 **Multiple comments from different chats.** A line can carry comments from different chat sessions. They are rendered as separate popups with different icons and context headers; each is marked with its corresponding Active/Inactive state.
+
+Diff comments and regular-file comments are separate surfaces. A comment created in a diff does not appear in the regular file editor for the same file, and a comment created in a regular file does not appear in a diff for that file. Attachments and chips also keep the source surface identity separate.
 
 ### Session-Aware Comments
 
@@ -357,7 +381,7 @@ Every comment belongs to a specific chat session and at any moment is in one of 
 - has no explicit textual badge — the Inactive state is recognizable only by the muted header tone (in contrast to the active `Active Chat` badge on Active comments);
 - the name and icon of the chat the comment is attached to are still shown;
 - clicking the header switches the right-side AI chat panel to that session — the comment immediately becomes Active and the popup re-renders with the active tone and the `Active Chat` text badge;
-- the `...` menu is read-only (`Edit` and `Delete` are not allowed — the comment belongs to another chat).
+- the `...` menu is available: `Edit` and `Delete` operate on the chat session that owns this Inactive comment, not on the currently active session.
 
 As a result:
 
@@ -375,11 +399,14 @@ As a result:
 
 ### Editing
 
-- `...` → `Edit` is available only for comments of the active session.
+- Editing is available for Active and Inactive comments.
+- The user can enter edit mode by clicking the comment text directly or via `...` → `Edit`.
 - The same composer opens as on creation; the text and line/range caption are restored.
 - A multiline comment preserves its original line range — it does not collapse to a single line, even if the user is currently standing on one of the lines of the range.
 - On save, the gutter count and the attachment do not change — only the comment text does.
-- The target can be changed via the target picker — the comment will move to another session.
+- If an Inactive comment is edited, the update is written to the original owning chat session.
+- The target picker is not shown in edit mode; editing does not move a comment between chat sessions.
+- The user remains in edit mode until `Save Comment` or an explicit cancel. Opening menus, typing, or focus changes do not implicitly leave edit mode.
 - Canceling the edit does not change the comment.
 
 ### Deleting Comments
@@ -388,8 +415,9 @@ Comments can be deleted in two ways — both behave identically and lead to the 
 
 **1. One by one, via the `...` menu of the comment:**
 
-- `...` → `Delete` is available only for comments of the active session.
+- `...` → `Delete` is available for Active and Inactive comments.
 - Exactly one selected comment is removed.
+- If the selected comment is Inactive, deletion is applied to its owning chat session.
 - The gutter count is recomputed; if it was the last one — the badge disappears.
 - The attachment chip count at the input is recomputed; if it was the last one — the chip disappears.
 
@@ -407,12 +435,13 @@ In both cases deleted comments **cannot be restored** — they must be re-create
 ### Switching Between Sessions
 
 - The currently active chat session is the one selected in the right-side AI chat panel.
+- The primary chat switcher is in the AI chat header: clicking the chat title in the header opens the chat list and lets the user switch sessions.
 - On session switch:
   - comments of the new session become Active on their lines;
   - comments of the previous session become Inactive;
-  - popups on lines are re-rendered with the new tone and the new Edit/Delete permissions;
+  - popups on lines are re-rendered with the new tone while preserving Edit/Delete actions for both Active and Inactive comments;
   - attachment chips at the input are taken from the new session — old draft comments do not leak into the new chat.
-- Clicking the header of an Inactive comment is a shortcut to switch the session without opening the chat list.
+- Clicking the header of an Inactive comment is a shortcut to switch the session without opening the chat list manually.
 
 ### Opening the Chat by Clicking a Comment
 
@@ -542,7 +571,7 @@ End-to-end scenarios as they are executed in the prototype today.
 2. Hovers over a line → a balloon icon appears in the gutter.
 3. Clicks the icon → the composer opens; focus is automatically in the text field; caption is `Comment on line N`.
 4. Types a short comment; the field grows in height as needed.
-5. Clicks `Add to Current Chat Session` (the default primary submit).
+5. Clicks `Add a Comment` (the default primary submit).
 6. The gutter icon transforms from a balloon into a badge with the count `1`.
 7. An attachment chip appears at the AI chat input with the diff icon, file name, and count `1`.
 8. After the first comment is created, the `⌥⇧K` shortcut tooltip is shown once.
@@ -562,9 +591,10 @@ End-to-end scenarios as they are executed in the prototype today.
 
 1. The user selects several lines in the diff (with the mouse or with Shift).
 2. Clicks the gutter icon on one of the selected lines or presses `⌥⇧K`.
-3. The composer opens with caption `Comments on lines A to B`; the selected range stays highlighted in blue while the composer is open.
-4. Types the comment, saves.
-5. A badge with count `1` appears at every line of the range; logically it is one comment.
+3. The composer opens with caption `Comments on lines A to B`; the original native text selection stays visible while focus remains in the composer.
+4. If the user clicks in the editor, the visual selection resets; the composer keeps the originally captured range.
+5. Types the comment, saves.
+6. A single gutter badge with count `1` appears next to the last line of the selected range; logically it is one comment attached to the whole range.
 
 ### Flow 4. Several Comments on a Single Line
 
@@ -580,9 +610,10 @@ End-to-end scenarios as they are executed in the prototype today.
 2. Clicks the target picker next to the primary submit.
 3. A popup opens with up to 5 recent chats and a `Create New Chat` button.
 4. Selects one of the other chats (not the current one).
-5. The primary submit label changes to `Add to {Chat Name}`; in the composer’s context header the icon and name of the chat change.
-6. Saves the comment.
-7. The comment immediately appears as Inactive on its line — because its chat is not open in the right panel; it does not appear in the attachment chips of the current chat.
+5. Saves the comment.
+6. The comment immediately appears as Inactive on its line — because its chat is not open in the right panel; it does not appear in the attachment chips of the current chat.
+7. If `Create New Chat` was clicked and a new chat target was created, the picker must not show `Create New Chat` again for the same open composer. Only one new chat can be created from one comment composer.
+8. If the selected target is already a newly created draft chat, `Create New Chat` is hidden from the picker.
 
 ### Flow 6. Returning to Another Chat by Clicking an Inactive Comment
 
@@ -591,6 +622,13 @@ End-to-end scenarios as they are executed in the prototype today.
 3. If the AI chat tool window was closed — it opens; the right panel switches to that chat session.
 4. The same comment is re-rendered as Active: blue-toned header, `Active Chat` badge, Edit/Delete available.
 5. Attachment chips for this session now appear at the input (including, if applicable, a draft chip for this comment if it has not yet been sent).
+
+### Flow 6a. Switching Chats from the AI Chat Header
+
+1. The user clicks the chat title in the AI chat header.
+2. The chat list opens from the header.
+3. The user selects another chat session.
+4. The selected chat becomes active; comments owned by that session become Active, and comments from other sessions become Inactive.
 
 ### Flow 7. Returning to a Comment via an Attachment in History
 
@@ -603,21 +641,30 @@ End-to-end scenarios as they are executed in the prototype today.
 
 ### Flow 8. Editing a Comment
 
-1. The user opens the popup of the comment they want (Active).
-2. Clicks `...` → `Edit`.
+1. The user opens the popup of the comment they want.
+2. Starts editing either by clicking the comment text directly or by clicking `...` → `Edit`.
 3. The same composer as on creation opens; the text and the line/range caption are restored; a multiline comment does not collapse the range.
 4. Edits the text (the field grows in height if needed).
-5. Optionally — opens the target picker and moves the comment to another chat.
+5. The popup remains in edit mode while the user types or changes focus.
 6. Clicks `Save Comment` (the primary submit label is fixed in edit mode).
-7. If the target didn’t change — gutter count and attachment stay the same, only the text is updated. If the target changed — the comment moves to another session (becomes Inactive in the current one), and the attachment chip at the input is recomputed.
+7. The gutter count and attachment ownership stay the same; only the text is updated.
+8. Inactive comments can also be edited; saving updates the original inactive chat session, not the currently active session.
+
+### Flow 8a. Old / Historical Diff Is Read-Only
+
+1. The user opens an old or historical diff from history or another archived entry point.
+2. Existing comments can be displayed for review.
+3. Gutter affordances for creating new comments are not shown, and `⌥⇧K` does not open a composer.
+4. The user cannot add a new comment in this old diff.
 
 ### Flow 9. Deleting a Comment
 
-1. The user opens `...` on an Active comment.
+1. The user opens `...` on an Active or Inactive comment.
 2. Selects `Delete`.
 3. The popup disappears; the gutter count is recomputed, the badge disappears if it was the last comment on the line.
 4. The attachment chip at the input is recomputed; if the comment was the last one in the attachment, the chip disappears entirely.
 5. If the popup of this comment was open in several places, all instances are updated.
+6. Deleting an Inactive comment removes it from its original chat session and does not mutate the currently active chat session.
 
 ### Flow 10. Enabling File Comments via the Banner
 
@@ -626,16 +673,17 @@ End-to-end scenarios as they are executed in the prototype today.
 3. Clicking `Enable File Comments`:
    - the banner disappears;
    - regular files start showing gutter controls;
-   - in the `+` menu the `Comments in Files` item loses its `New` label if it still had it.
+   - in the `+` menu the `Enable File Comments` item loses its `New` label if it still had it.
 4. The user switches to a regular file, hovers over a line, sees the balloon in the gutter, and continues with Flow 1.
 
 ### Flow 11. Enabling or Disabling the Feature via the `+` Menu
 
 1. The user sees a blue dot on the `+` button next to the chat input.
-2. Clicks `+` → the menu opens, the blue dot disappears.
-3. The menu shows `Comments in Diffs` and `Comments in Files`, each with a `New` label next to it.
-4. Clicks `Comments in Files` → the item becomes enabled, the `New` label disappears from this item only; the one next to `Comments in Diffs` remains.
+2. Clicks `+` → the menu opens.
+3. The menu shows `Enable Diff Comments` and `Enable File Comments`, each with a `New` label until that specific item is clicked.
+4. Clicks `Enable File Comments` → the item becomes enabled, the `New` label disappears from this item only; the one next to `Enable Diff Comments` remains.
 5. After closing the menu, gutter controls appear in regular files; the `Tools > AI Assistant > Comments → Enable Comments in Files` setting is synchronously turned on as well.
+6. The blue dot stays on `+` until either the context popup has been opened 6 times, or every item with a `New` label has been clicked once.
 
 ### Flow 12. A Second Comment After One Was Already Sent
 
@@ -673,29 +721,38 @@ End-to-end scenarios as they are executed in the prototype today.
 |---|---|
 | Diff, no comments on the line | Balloon icon in the gutter is hidden; appears only on row hover. |
 | Diff, ≥1 comment on the line | The gutter always shows a badge: balloon + count. |
+| Diff, range comment | The gutter shows one badge next to the last line of the range; the badge represents the whole range comment. |
 | Diff, ≥1 comment, row hover | The badge transforms into a `+` icon — short path to add another comment. |
-| Composer open on a line | The icon is in pressed style; the line and its range are highlighted in soft blue. |
+| Historical/read-only diff | Existing comments can be shown; new comment creation is disabled. |
+| Composer open on a line | The icon is in pressed style; the composer is shown under the target line and shifts code below it down. |
 | File, feature disabled | No comment icons in the gutter; already existing comments are hidden. |
-| File, feature enabled | Same icons and behavior as in a diff. |
+| File, feature enabled | Same gutter controls as in a diff, but file comments remain separate from diff comments. |
 | Composer, short text | Single-line input. |
 | Composer, long text | The field grows up to the limit, then internal scrolling appears. |
 | Composer open | Focus is automatically in the text field; line selection in the editor is preserved. |
+| Composer, empty text | Primary submit is disabled; whitespace-only text is treated as empty. |
 | `+` next to the input, feature new | A blue dot on `+`. |
-| `+` menu opened for the first time | The blue dot disappears; items show `New`. |
+| `+` menu opened fewer than 6 times | The blue dot remains if at least one `New` item is still unseen. |
+| `+` menu opened 6 times | The blue dot disappears even if menu items still show `New`. |
 | `+` menu item clicked | The `New` label on this item disappears; others remain. |
+| All `+` menu `New` items clicked | The blue dot disappears. |
 | First comment created | One-time tooltip with the `⌥⇧K` shortcut. |
 | Composer open on a single line | Caption `Comment on line N`. |
-| Composer open on a range | Caption `Comments on lines A to B`; editor selection preserved. |
-| Composer, target picker closed | Primary submit shows the `Add to {Chat Name}` label for the selected target. |
+| Composer open on a range | Caption `Comments on lines A to B`; the native selected text remains selected while focus remains in the composer; there is no synthetic full-row highlight. |
+| Composer open on a range, editor clicked | Native selection may reset; the stored comment target remains the originally captured range. |
+| Composer, target picker closed | Primary submit shows the `Add a Comment` label for the selected target. |
 | Composer, target picker open | Popup with up to 5 recent chats + `Create New Chat`; selected = currently selected target. |
+| Composer, `Create New Chat` already used | The same target picker no longer shows `Create New Chat`; one open composer can create only one new chat. |
+| Composer target is a newly created draft chat | `Create New Chat` is hidden from the target picker. |
 | Target is not the current chat | After saving, the comment immediately enters the Inactive state. |
+| Chat title clicked in AI chat header | Opens the chat list from the header; selecting a chat switches the active session. |
 | Multiple comments in a single session | Separate popups, one per comment. |
 | Multiple comments across different sessions | Separate popups with different context headers. |
 | Active comment | Header in active tone, `Active Chat` badge, Edit/Delete available. |
-| Inactive comment | Header in muted tone; no textual badge (distinguishable by tone vs. Active); clicking the header switches the session. |
+| Inactive comment | Header in muted tone; no textual badge (distinguishable by tone vs. Active); clicking the header switches the session; Edit/Delete are available and operate on the original session. |
 | AI chat closed, click on a comment | The AI chat tool window opens; if the comment is from another session, that session is selected automatically. |
 | AI chat closed, click on a history attachment | The AI chat tool window opens, the corresponding diff/file opens, focus is set on the comment. |
-| Editing | The original line range and text are restored. |
+| Editing | The original line/range caption and text are restored; clicking editable comment text is equivalent to `...` → `Edit`; edit mode stays active until `Save Comment` or explicit cancel. |
 | Draft chip at the input | Icon + name + balloon counter; `×` button for batch-deletion of all comments in the chip. |
 | Draft chip, hover | Tooltip with title `Comment` / `Comments · N`, up to 3 texts, and `+N more`. |
 | Draft chip, multi-source | Chevron `↓` on the chip; clicking expands the inline source list. |
@@ -720,26 +777,38 @@ End-to-end scenarios as they are executed in the prototype today.
 ## Acceptance Criteria
 
 - Gutter controls are available by default in agent-generated diffs.
+- A diff can be opened from any review entry point; comment behavior is not tied to opening the diff from AI chat.
+- Old/historical/read-only diffs do not allow adding new comments.
 - In a regular file there are no gutter controls until the user enables the feature.
+- Diff comments and regular-file comments are isolated; a comment from one surface must not appear on the other surface for the same file.
 - The gutter icon is not visible on an empty line without hover; on hover a balloon is shown.
 - On a line with comments the badge with the counter is always visible; on hover it transforms into `+` for quickly adding another comment.
+- Range comments show exactly one gutter icon/badge at the bottom of the range, not one icon per line.
 - The composer’s text field grows in height as the user types up to a fixed limit, after which internal scrolling appears.
-- When the composer opens, focus automatically goes into the text field; the editor line selection is not reset.
+- When the composer opens, focus automatically goes into the text field; the editor line selection is not reset while focus remains in the composer.
+- Clicking back into the editor can reset the native selection, but the comment keeps its captured line/range target.
+- The inline composer shifts the code below it down; it must not overlay code text.
 - After the first sent diff comment, the chat shows the `Enable File Comments` promo banner.
 - Enabling/disabling comments is possible from the gutter menu, from the `+` menu next to the chat input, and from `Tools > AI Assistant > Comments` settings.
 - `Tools > AI Assistant > Comments` contains independent toggles `Enable Comments in Files` and `Enable Comments in Diffs`, synchronized with the gutter menu and the `+` menu.
-- A blue dot is shown on `+` until its menu is opened for the first time.
+- A blue dot is shown on `+` while at least one context-menu item is still marked `New`, until either the popup has been opened 6 times or every `New` item has been clicked once.
 - Each new item in the `+` menu shows a `New` label until that specific item is clicked.
 - After the first comment is created, a one-time tooltip with the `⌥⇧K` shortcut is shown.
 - The user can create a comment on a single line (caption `Comment on line N`) or on a range (caption `Comments on lines A to B`); `⌥⇧K` supports both modes.
+- Range comment creation preserves the native selected text highlight while the composer is open; the UI must not replace it with full-row highlighting.
 - Multiple comments can be created on a single line/range; they are shown as separate popups, including within the same session.
 - A multiline comment preserves its range when edited.
-- The composer offers a target picker: a list of recent chats (up to 5) and a `Create New Chat` action. The user can pick any of them as a target both when creating and when editing a comment.
-- Selecting a target in the composer updates the primary submit label (`Add to {Chat Name}`), the icon/name in the context header, and the comment’s state after saving (Active if the current chat is selected, otherwise Inactive).
+- The composer offers a target picker: a list of recent chats (up to 5) and a `Create New Chat` action. One open composer can create only one new chat; after `Create New Chat` is used, that action is removed from the picker for that composer.
+- `Create New Chat` is hidden when the selected target is already a newly created draft chat.
+- Selecting a target in the composer updates the primary submit label (`Add a Comment`), the icon/name in the context header, and the comment’s state after saving (Active if the current chat is selected, otherwise Inactive).
+- In edit mode, the target picker is hidden and `Save Comment` updates the existing comment in its owning session.
 - Each comment is clearly distinguishable as Active or Inactive: Active has a header in active tone with the textual `Active Chat` badge; Inactive has a header in muted tone with no badge.
 - Clicking the header of an Inactive comment switches the chat session.
+- Clicking the chat title in the AI chat header opens the chat list and switches sessions from the header.
 - If the AI chat is closed, clicking a comment or an attachment in history automatically opens the tool window and, when needed, selects the right session and the right diff/file tab.
-- Edit and Delete are available only for Active comments.
+- Edit and Delete are available for Active and Inactive comments. Editing or deleting an Inactive comment updates the chat session that owns that comment, not the currently active session.
+- Clicking the text of an editable comment opens edit mode, same as `...` → `Edit`.
+- Edit mode remains active until `Save Comment` or explicit cancel.
 - Attachment chips at the input show only comments of the active session; on session switch, draft chips of the previous session are hidden.
 - Hovering a draft chip shows a tooltip preview with a title, the first 3 comment texts, and a `+N more` indicator.
 - Hovering a sent chip shows the same kind of preview as a draft chip, or — if the message had only multi-source attachments without texts — a compact source list.
@@ -753,7 +822,7 @@ End-to-end scenarios as they are executed in the prototype today.
 - With empty text, the primary submit button in the composer is disabled; empty comments are not sent.
 - Canceling the composer via `Cancel`, Esc, or a click outside does not create a comment and does not change the attachment chips at the input.
 - Attachment chips at the input and in history visually distinguish a diff source from a file source (by icon/name).
-- Comments preserve their attachment to the line/range when switching between diff and regular file tabs.
+- Comments preserve their attachment to the line/range within their own surface. Diff comments and regular-file comments do not cross-render between surfaces.
 
 ---
 
@@ -803,7 +872,6 @@ This is still an exploration area, but it is especially important for VCS and SD
 
 - Can a single comment be attached to multiple chats at the same time, or strictly to one?
 - Should the scope of `Enable/Disable Diff/File Comments` be project-specific, IDE-wide, or chat-specific?
-- How do comments behave when the same file is open both in a regular editor tab and in a diff tab — which surface owns the comment, where is it displayed, what does the gutter show?
 - What happens if a surface is enabled/disabled while a composer is open on it?
 - Should the promo banner appear once, once per project, or every time the feature is off?
 - How is comment context represented in the prompt sent to the model (format, ordering, line citation)?

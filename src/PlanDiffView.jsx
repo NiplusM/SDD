@@ -73,7 +73,6 @@ function restoreSelectionSnapshot(snapshot) {
   if (!snapshot || typeof window === 'undefined' || typeof document === 'undefined') return;
 
   if (snapshot.type === 'textarea' && snapshot.element instanceof HTMLTextAreaElement) {
-    snapshot.element.focus({ preventScroll: true });
     snapshot.element.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
     return;
   }
@@ -530,15 +529,16 @@ export function DiffInlineCommentPopup({
   onDelete,
   onReturnToChat,
   preserveEditorSelection = false,
+  preservedEditorSelectionSnapshot = null,
 }) {
   const ref = useRef(null);
   const textareaRef = useRef(null);
   const submitTargetRef = useRef(null);
-  const skippedInitialFocusRef = useRef(false);
   const [submitOptionsRect, setSubmitOptionsRect] = useState(null);
   const [submitOptionsWidth, setSubmitOptionsWidth] = useState(null);
   const [actionMenu, setActionMenu] = useState(null);
   const [submitAttachTarget, setSubmitAttachTarget] = useState(null);
+  const [hasCreatedNewChatTarget, setHasCreatedNewChatTarget] = useState(false);
   const normalizedSubmitAttachModes = useMemo(() => {
     const nextModes = Array.isArray(submitAttachModes)
       ? submitAttachModes.filter((mode) => mode === 'current' || mode === 'new' || mode === 'document')
@@ -574,6 +574,7 @@ export function DiffInlineCommentPopup({
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = isEditing ? 'Save Comment' : (normalizedSubmitButtonLabel || 'Add a Comment');
+  const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -678,20 +679,16 @@ export function DiffInlineCommentPopup({
   }, [showCompose, value]);
 
   useEffect(() => {
-    if (!showCompose || !preserveEditorSelection) {
-      skippedInitialFocusRef.current = false;
-    }
-  }, [preserveEditorSelection, showCompose]);
-
-  useEffect(() => {
     if (!showCompose) return;
-    if (preserveEditorSelection && !skippedInitialFocusRef.current) {
-      skippedInitialFocusRef.current = true;
-      return;
-    }
     const input = textareaRef.current;
-    if (input) { input.focus({ preventScroll: true }); if (isEditing) input.select(); }
-  }, [hasComments, isEditing, preserveEditorSelection, showCompose]);
+    if (input) {
+      input.focus({ preventScroll: true });
+      if (isEditing) input.select();
+    }
+    if (preserveEditorSelection && preservedEditorSelectionSnapshot) {
+      scheduleSelectionSnapshotRestore(preservedEditorSelectionSnapshot);
+    }
+  }, [hasComments, isEditing, preserveEditorSelection, preservedEditorSelectionSnapshot, showCompose]);
 
   useEffect(() => {
     if (!normalizedSubmitAttachModes.includes(submitAttachMode)) {
@@ -724,6 +721,7 @@ export function DiffInlineCommentPopup({
   const handleSubmit = (attachMode = submitAttachMode) => {
     setSubmitOptionsRect(null);
     setSubmitOptionsWidth(null);
+    if (!canSubmitComment) return;
     onSubmit?.({
       attachMode,
       targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
@@ -745,6 +743,9 @@ export function DiffInlineCommentPopup({
     }
     setSubmitAttachMode(target.attachMode);
     setSubmitAttachTarget(target);
+    if (target.createdNewChat) {
+      setHasCreatedNewChatTarget(true);
+    }
     setSubmitOptionsRect(null);
     setSubmitOptionsWidth(null);
     textareaRef.current?.focus({ preventScroll: true });
@@ -842,9 +843,9 @@ export function DiffInlineCommentPopup({
       : null
   );
 
-  const getEditableCommentActions = (index, source = 'diff') => [
-    { label: 'Edit', icon: 'general/edit', onSelect: () => onStartEdit?.(index, source) },
-    { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index, source) },
+  const getEditableCommentActions = (index, source = 'diff', context = null) => [
+    { label: 'Edit', icon: 'general/edit', onSelect: () => onStartEdit?.(index, source, context) },
+    { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index, source, context) },
   ];
 
   const getReturnToContextActions = (context = null) => (
@@ -856,6 +857,18 @@ export function DiffInlineCommentPopup({
         }]
       : []
   );
+
+  const startCommentTextEdit = (event, index, source = 'diff', context = null) => {
+    event.stopPropagation();
+    if (!Number.isInteger(index) || commentsReadOnly) return;
+    onStartEdit?.(index, source, context);
+  };
+
+  const handleCommentTextKeyDown = (event, index, source = 'diff', context = null) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    startCommentTextEdit(event, index, source, context);
+  };
 
   const popupClassName = [
     'cmp-popup',
@@ -901,15 +914,24 @@ export function DiffInlineCommentPopup({
               {group.comments.length > 0 && (
                 <div className="spec-done-comment-popup-list">
                   {group.comments.map((commentEntry, i) => {
+                    const commentActionContext = { chatId: commentEntry.chatId };
                     const actions = commentEntry.editable
-                      ? getEditableCommentActions(commentEntry.localIndex, commentEntry.source)
+                      ? getEditableCommentActions(commentEntry.localIndex, commentEntry.source, commentActionContext)
                       : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId });
                     const entryLineLabel = getCommentEntryLineLabel(commentEntry) || normalizedFooterMetaLabel;
 
                     return (
                       <div key={`${group.chatId || 'comment'}-${i}`} className={`spec-done-comment-popup-item${commentEntry.pending ? ' is-pending' : ''}`}>
                         <div className="spec-done-comment-popup-item-body">
-                          <div className="spec-done-comment-popup-item-text text-ui-default">{commentEntry.text}</div>
+                          <div
+                            className={`spec-done-comment-popup-item-text text-ui-default${commentEntry.editable ? ' is-editable' : ''}`}
+                            role={commentEntry.editable ? 'button' : undefined}
+                            tabIndex={commentEntry.editable ? 0 : undefined}
+                            onClick={commentEntry.editable ? (event) => startCommentTextEdit(event, commentEntry.localIndex, commentEntry.source, commentActionContext) : undefined}
+                            onKeyDown={commentEntry.editable ? (event) => handleCommentTextKeyDown(event, commentEntry.localIndex, commentEntry.source, commentActionContext) : undefined}
+                          >
+                            {commentEntry.text}
+                          </div>
                           {entryLineLabel.length > 0 && (
                             <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
                           )}
@@ -938,7 +960,15 @@ export function DiffInlineCommentPopup({
             return (
               <div key={i} className={`spec-done-comment-popup-item${isPending ? ' is-pending' : ''}`}>
                 <div className="spec-done-comment-popup-item-body">
-                  <div className="spec-done-comment-popup-item-text text-ui-default">{commentText}</div>
+                  <div
+                    className={`spec-done-comment-popup-item-text text-ui-default${commentsReadOnly ? '' : ' is-editable'}`}
+                    role={commentsReadOnly ? undefined : 'button'}
+                    tabIndex={commentsReadOnly ? undefined : 0}
+                    onClick={commentsReadOnly ? undefined : (event) => startCommentTextEdit(event, i)}
+                    onKeyDown={commentsReadOnly ? undefined : (event) => handleCommentTextKeyDown(event, i)}
+                  >
+                    {commentText}
+                  </div>
                   {entryLineLabel.length > 0 && (
                     <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
                   )}
@@ -996,6 +1026,7 @@ export function DiffInlineCommentPopup({
                 data-demo-id="diff-comment-submit"
                 title={primarySubmitButtonLabel}
                 aria-label={primarySubmitButtonLabel}
+                disabled={!canSubmitComment}
                 onClick={() => handleSubmit()}
               >
                 {primarySubmitButtonLabel}
@@ -1008,6 +1039,7 @@ export function DiffInlineCommentPopup({
                   triggerRect: submitOptionsRect,
                   width: submitOptionsWidth,
                   selectedTarget: submitAttachTarget ?? { attachMode: submitAttachMode },
+                  canCreateNewChat: !hasCreatedNewChatTarget,
                   onSelectTarget: handleSubmitTargetSelect,
                   onDismiss: () => {
                     setSubmitOptionsRect(null);
@@ -1324,6 +1356,7 @@ export function PlanDiffOverlay({
   const [commentValue, setCommentValue] = useState(normalizedUiState.commentValue);
   const [commentEditingIndex, setCommentEditingIndex] = useState(normalizedUiState.commentEditingIndex);
   const [commentEditingSource, setCommentEditingSource] = useState('diff');
+  const [commentEditingTargetChatId, setCommentEditingTargetChatId] = useState(null);
   const [diffComments, setDiffComments] = useState(() => normalizedInitialDiffComments);
   const [caretState, setCaretState] = useState({
     rowId: initialCaretRowId,
@@ -1368,6 +1401,7 @@ export function PlanDiffOverlay({
     setCommentValue('');
     setCommentEditingIndex(null);
     setCommentEditingSource('diff');
+    setCommentEditingTargetChatId(null);
     setPreserveSelectionCommentRowId(null);
     setCommentFooterMetaLabel('');
     setCommentTargetRowIds([]);
@@ -1389,14 +1423,6 @@ export function PlanDiffOverlay({
   useEffect(() => {
     onUiStateChangeRef.current = onUiStateChange;
   }, [onUiStateChange]);
-
-  useLayoutEffect(() => {
-    if (!preserveSelectionCommentRowId || commentRowId !== preserveSelectionCommentRowId) return;
-    const snapshot = preservedSelectionSnapshotRef.current;
-    if (!snapshot) return;
-    scheduleSelectionSnapshotRestore(snapshot);
-    preservedSelectionSnapshotRef.current = null;
-  }, [commentRowId, preserveSelectionCommentRowId]);
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
@@ -1955,6 +1981,7 @@ export function PlanDiffOverlay({
     setCommentValue('');
     setCommentEditingIndex(null);
     setCommentEditingSource('diff');
+    setCommentEditingTargetChatId(null);
   };
 
   const openGutterContextMenu = (event, rowId) => {
@@ -1983,6 +2010,7 @@ export function PlanDiffOverlay({
     setCommentValue(normalizedUiState.commentValue);
     setCommentEditingIndex(normalizedUiState.commentEditingIndex);
     setCommentEditingSource('diff');
+    setCommentEditingTargetChatId(null);
     setCommentFooterMetaLabel(normalizedUiState.commentRowId
       ? getDiffCommentFooterMetaLabel(normalizedUiState.commentRowId)
       : '');
@@ -2022,6 +2050,7 @@ export function PlanDiffOverlay({
     ));
     if (!Number.isInteger(normalizedUiState.commentEditingIndex)) {
       setCommentEditingSource('diff');
+      setCommentEditingTargetChatId(null);
     }
     setCommentFooterMetaLabel((prev) => {
       if (
@@ -2207,11 +2236,14 @@ export function PlanDiffOverlay({
                   sessionLabel: commentsReadOnly ? 'Archive' : session.chatId === commentSessionActiveChatId ? 'Active' : 'Inactive',
                   messageId: session.messageId,
                   chatId: session.chatId,
-                  comments: sessionComments.map((comment) => ({
+                  comments: sessionComments.map((comment, commentIndex) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
                     text: getCommentEntryText(comment),
                     lineLabel: getCommentEntryLineLabel(comment) || rowLineLabel,
-                    editable: false,
+                    editable: !commentsReadOnly,
+                    localIndex: commentIndex,
+                    source: 'session',
+                    chatId: session.chatId,
                     pending: isRowCommentPending,
                   })),
                 };
@@ -2262,10 +2294,6 @@ export function PlanDiffOverlay({
                 ];
             const hasVisibleRowComments = rowComments.length > 0 || documentRowComments.length > 0 || rowCommentGroups.some((group) => group.comments.length > 0);
             const isCommentComposeOpen = commentRowId === row.id;
-            const isCommentTargetRangeRow = commentTargetRowIds.length > 1 && commentTargetRowIds.includes(row.id);
-            const isCommentTargetRow = isCommentComposeOpen;
-            const isFirstCommentTargetRow = isCommentTargetRangeRow && commentTargetRowIds[0] === row.id;
-            const isLastCommentTargetRow = isCommentTargetRangeRow && commentTargetRowIds[commentTargetRowIds.length - 1] === row.id;
             const isEditingRowComment = commentRowId === row.id && Number.isInteger(commentEditingIndex);
             const hasExistingRowCommentGroups = rowCommentGroups.some((group) => group.comments.length > 0);
             const shouldRenderSeparateCompose = !commentsReadOnly && isCommentComposeOpen && !isEditingRowComment && hasExistingRowCommentGroups;
@@ -2296,6 +2324,14 @@ export function PlanDiffOverlay({
                 key: `${groupIndex}-${commentIndex}`,
               }));
             });
+            const getSessionCommentsStateForChat = (chatId) => {
+              const normalizedChatId = typeof chatId === 'string' ? chatId.trim() : '';
+              if (!normalizedChatId) return {};
+              return normalizedCommentSessions.find((session) => session.chatId === normalizedChatId)?.comments ?? {};
+            };
+            const getSessionRowCommentsForChat = (chatId) => (
+              getSessionCommentsStateForChat(chatId)[row.id] ?? []
+            );
             const handleRowCommentSubmit = ({ attachMode = 'current', targetChatId = null, targetDocumentTabId = null } = {}) => {
               if (commentsReadOnly) return;
               const trimmed = (commentRowId === row.id ? commentValue : '').trim();
@@ -2320,11 +2356,15 @@ export function PlanDiffOverlay({
 
               const isEditingComment = Number.isInteger(commentEditingIndex);
               const isEditingDocumentComment = commentEditingSource === 'document' && isEditingComment;
+              const isEditingSessionComment = commentEditingSource === 'session' && isEditingComment;
+              const editingSessionChatId = isEditingSessionComment ? commentEditingTargetChatId : null;
               const isDocumentAttachMode = isEditingDocumentComment || (attachMode === 'document' && !isEditingComment);
               const isNewChatAttachMode = attachMode === 'new' && !isEditingComment;
               const editingSourceComments = isEditingDocumentComment
                 ? (normalizedDocumentDiffComments[row.id] ?? [])
-                : rowComments;
+                : isEditingSessionComment
+                  ? getSessionRowCommentsForChat(editingSessionChatId)
+                  : rowComments;
               const editingComment = isEditingComment
                 ? (editingSourceComments[commentEditingIndex] ?? null)
                 : null;
@@ -2353,8 +2393,10 @@ export function PlanDiffOverlay({
               };
               const sourceComments = isDocumentAttachMode
                 ? normalizedDocumentDiffComments
-                : (isNewChatAttachMode ? {} : diffComments);
-              const nextSubmittedComments = isDocumentAttachMode
+                : isEditingSessionComment
+                  ? getSessionCommentsStateForChat(editingSessionChatId)
+                  : (isNewChatAttachMode ? {} : diffComments);
+              const nextSubmittedComments = isDocumentAttachMode || isEditingSessionComment
                 ? commentStorageRowIds.reduce((nextComments, targetRowId) => {
                     const existing = nextComments[targetRowId] ?? [];
                     return {
@@ -2365,7 +2407,7 @@ export function PlanDiffOverlay({
                           ))
                         : [...existing, buildSubmittedComment(trimmed)],
                     };
-                  }, { ...normalizedDocumentDiffComments })
+                  }, { ...sourceComments })
                 : commentStorageRowIds.reduce((nextComments, targetRowId) => {
                     const existing = nextComments[targetRowId] ?? [];
                     return {
@@ -2377,9 +2419,10 @@ export function PlanDiffOverlay({
                         : [...existing, buildSubmittedComment(trimmed)],
                     };
                   }, { ...sourceComments });
+              const effectiveTargetChatId = isEditingSessionComment ? editingSessionChatId : targetChatId;
               const submitMetadata = {
                 attachMode: isDocumentAttachMode ? 'document' : attachMode,
-                targetChatId,
+                targetChatId: effectiveTargetChatId,
                 targetDocumentTabId,
                 rowId: row.id,
                 rowIds: targetRowIds,
@@ -2387,8 +2430,8 @@ export function PlanDiffOverlay({
                 isEditing: Number.isInteger(commentEditingIndex),
               };
               const isExplicitChatTarget = !isDocumentAttachMode
-                && typeof targetChatId === 'string'
-                && targetChatId.trim().length > 0;
+                && typeof effectiveTargetChatId === 'string'
+                && effectiveTargetChatId.trim().length > 0;
               const nextDiffComments = isDocumentAttachMode
                 ? (
                     onDiffCommentsChangeRef.current?.(normalizeDiffCommentsState(nextSubmittedComments), submitMetadata),
@@ -2405,7 +2448,7 @@ export function PlanDiffOverlay({
                   );
               onDiffCommentSubmit?.({
                 attachMode: isDocumentAttachMode ? 'document' : attachMode,
-                targetChatId,
+                targetChatId: effectiveTargetChatId,
                 targetDocumentTabId,
                 rowId: row.id,
                 rowIds: targetRowIds,
@@ -2418,7 +2461,7 @@ export function PlanDiffOverlay({
 
             return (<Fragment key={row.id}>
               <div
-                className={`plan-diff-row plan-diff-row-${row.kind}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentTargetRangeRow ? ' is-comment-compose-target' : ''}${isFirstCommentTargetRow ? ' is-comment-compose-target-start' : ''}${isLastCommentTargetRow ? ' is-comment-compose-target-end' : ''}`}
+                className={`plan-diff-row plan-diff-row-${row.kind}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
                 role="button"
@@ -2447,7 +2490,7 @@ export function PlanDiffOverlay({
                   <span className="plan-diff-line-number">{row.oldNumber ?? ''}</span>
                   {!singleLineNumbers && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
                   <span
-                    className={`plan-diff-gutter-icon-slot${isCommentComposeOpen || isCommentTargetRow ? ' is-open' : ''}${hasVisibleRowComments ? ' has-comments' : ''}`}
+                    className={`plan-diff-gutter-icon-slot${isCommentComposeOpen ? ' is-open' : ''}${hasVisibleRowComments ? ' has-comments' : ''}`}
                     data-demo-id={`diff-comment-toggle-${row.id}`}
                     data-comment-shortcut-anchor={commentShortcutHintRowId === row.id ? 'true' : undefined}
                     role="button"
@@ -2569,18 +2612,23 @@ export function PlanDiffOverlay({
                           activeChatTargetKey={commentSessionActiveChatId}
                           renderSubmitTargetPicker={renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
+                          preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           onChange={setCommentValue}
-                          onStartEdit={(idx, source = 'diff') => {
+                          onStartEdit={(idx, source = 'diff', context = null) => {
                             if (commentsReadOnly) return;
+                            const contextChatId = typeof context?.chatId === 'string' ? context.chatId.trim() : '';
                             const sourceComments = source === 'document'
                               ? (normalizedDocumentDiffComments[row.id] ?? [])
-                              : rowComments;
+                              : source === 'session'
+                                ? getSessionRowCommentsForChat(contextChatId)
+                                : rowComments;
                             const editedComment = sourceComments[idx] ?? '';
                             const editedTargetRowIds = getDiffCommentTargetRowIdsForComment(editedComment, row.id);
                             setCommentRowId(row.id);
                             setCommentValue(getCommentEntryText(editedComment));
                             setCommentEditingIndex(idx);
-                            setCommentEditingSource(source === 'document' ? 'document' : 'diff');
+                            setCommentEditingSource(source === 'document' ? 'document' : (source === 'session' ? 'session' : 'diff'));
+                            setCommentEditingTargetChatId(source === 'session' ? contextChatId : null);
                             setCommentTargetRowIds(editedTargetRowIds);
                             setCommentFooterMetaLabel(
                               getCommentEntryLineLabel(editedComment)
@@ -2588,8 +2636,9 @@ export function PlanDiffOverlay({
                               || getDiffCommentFooterMetaLabel(row.id)
                             );
                           }}
-                          onDelete={(idx, source = 'diff') => {
+                          onDelete={(idx, source = 'diff', context = null) => {
                             if (commentsReadOnly) return;
+                            const contextChatId = typeof context?.chatId === 'string' ? context.chatId.trim() : '';
                             if (source === 'document') {
                               const existing = normalizedDocumentDiffComments[row.id] ?? [];
                               const nextDocumentComments = normalizeDiffCommentsState({
@@ -2598,6 +2647,21 @@ export function PlanDiffOverlay({
                               });
                               onDiffCommentsChangeRef.current?.(nextDocumentComments, {
                                 attachMode: 'document',
+                                rowId: row.id,
+                                isEditing: true,
+                              });
+                              return;
+                            }
+                            if (source === 'session' && contextChatId) {
+                              const sessionComments = getSessionCommentsStateForChat(contextChatId);
+                              const existing = sessionComments[row.id] ?? [];
+                              const nextSessionComments = normalizeDiffCommentsState({
+                                ...sessionComments,
+                                [row.id]: existing.filter((_, i) => i !== idx),
+                              });
+                              onDiffCommentsChangeRef.current?.(nextSessionComments, {
+                                attachMode: 'current',
+                                targetChatId: contextChatId,
                                 rowId: row.id,
                                 isEditing: true,
                               });
@@ -2635,6 +2699,7 @@ export function PlanDiffOverlay({
                         activeChatTargetKey={commentSessionActiveChatId}
                         renderSubmitTargetPicker={renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
+                        preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         onChange={setCommentValue}
                         onCancel={() => clearCommentComposeState()}
                         onSubmit={handleRowCommentSubmit}

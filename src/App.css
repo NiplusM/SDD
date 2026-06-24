@@ -2275,6 +2275,17 @@ body {
   white-space: pre-wrap;
 }
 
+.spec-done-comment-popup-item-text.is-editable {
+  cursor: text;
+  border-radius: 3px;
+}
+
+.spec-done-comment-popup-item-text.is-editable:hover,
+.spec-done-comment-popup-item-text.is-editable:focus-visible {
+  color: #FFFFFF;
+  outline: none;
+}
+
 .spec-done-comment-popup-item-meta {
   color: var(--text-subtle, #8C8F97);
   line-height: 16px;
@@ -3820,20 +3831,6 @@ body {
 .plan-diff-row.has-inline-highlight > .plan-diff-row-gutter::before,
 .plan-diff-row.has-inline-highlight > .plan-diff-row-code::before {
   opacity: 1;
-}
-
-.plan-diff-row.is-comment-compose-target > .plan-diff-row-gutter::before,
-.plan-diff-row.is-comment-compose-target > .plan-diff-row-code::before {
-  background: rgba(84, 138, 247, 0.12);
-  opacity: 1;
-}
-
-.plan-diff-row.is-comment-compose-target-start > .plan-diff-row-code::before {
-  border-top-right-radius: 3px;
-}
-
-.plan-diff-row.is-comment-compose-target-end > .plan-diff-row-code::before {
-  border-bottom-right-radius: 3px;
 }
 
 .plan-diff-row-removed.has-inline-highlight > .plan-diff-row-gutter::before,
