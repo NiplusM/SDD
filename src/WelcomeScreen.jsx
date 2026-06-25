@@ -12,7 +12,6 @@ const RECENT_PROJECTS = [
 ];
 
 const ACTION_ITEMS = [
-  { id: 'agent-tasks', label: 'New Agent Task', icon: null, customIcon: 'agent', chevron: false, primary: true },
   { id: 'new',    label: 'New...',                icon: 'general/add',               chevron: true  },
   { id: 'open',   label: 'Open...',               icon: 'nodes/folder',              chevron: false },
   { id: 'clone',  label: 'Clone...',              icon: 'vcs/vcs',                   chevron: false },
@@ -50,16 +49,6 @@ function KeyboardIcon() {
       <path d="M10 7H11V8H10V7Z" fill="currentColor"/>
       <path d="M10 10H5V11H10V10Z" fill="currentColor"/>
       <path fillRule="evenodd" clipRule="evenodd" d="M0 4C0 2.89543 0.895431 2 2 2H13C14.1046 2 15 2.89543 15 4V12C15 13.1046 14.1046 14 13 14H2C0.89543 14 0 13.1046 0 12V4ZM2 3H13C13.5523 3 14 3.44772 14 4V12C14 12.5523 13.5523 13 13 13H2C1.44772 13 1 12.5523 1 12V4C1 3.44772 1.44772 3 2 3Z" fill="currentColor"/>
-    </svg>
-  );
-}
-
-function AgentTasksIcon({ size = 20 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill="currentColor"/>
-      <path d="M10.4202 17.71C6.0202 17.71 2.4502 14.26 2.4502 10C2.4502 5.74004 6.0202 2.29004 10.4202 2.29004" stroke="currentColor" strokeWidth="1.5"/>
-      <path d="M17.34 7.87004C17.34 10.86 14.35 13.45 10.43 13.45C6.51002 13.45 3.52002 10.86 3.52002 7.87004C3.52002 4.88004 6.51002 2.29004 10.43 2.29004C14.35 2.29004 17.34 4.88004 17.34 7.87004Z" stroke="currentColor" strokeWidth="1.5"/>
     </svg>
   );
 }
@@ -138,14 +127,6 @@ function PluginsWelcomeIcon() {
   );
 }
 
-function WelcomeAgentTaskIcon() {
-  return (
-    <span className="ws-action-tile-icon-agent" aria-hidden="true">
-      <AgentTasksIcon size={24} />
-    </span>
-  );
-}
-
 function SshIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
@@ -169,7 +150,7 @@ function ChevronDownIcon({ rotated }) {
 
 // ─── Left panel — project list ────────────────────────────────────────────────
 
-export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, onNewAgentTask, ctx }) {
+export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, ctx }) {
   const [query, setQuery]           = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -184,8 +165,6 @@ export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, onNewAgent
       const rect = e.currentTarget.getBoundingClientRect();
       setNewMenuRect(rect);
       setNewMenuOpen(o => !o);
-    } else if (item.id === 'agent-tasks') {
-      onNewAgentTask?.();
     }
   }
 
@@ -212,10 +191,9 @@ export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, onNewAgent
             <button
               key={item.id}
               className={`ws-disclosure-item${item.primary ? ' primary' : ''}`}
-              data-demo-id={item.id === 'agent-tasks' ? 'welcome-new-agent-task' : undefined}
               onClick={(e) => handleActionClick(item, e)}
             >
-              {item.customIcon === 'ssh' ? <SshIcon /> : (item.customIcon === 'agent' ? <AgentTasksIcon size={16} /> : <Icon name={item.icon} size={16} />)}
+              {item.customIcon === 'ssh' ? <SshIcon /> : <Icon name={item.icon} size={16} />}
               <span className="ws-disclosure-text">{item.label}</span>
               {item.chevron && <ChevronDownIcon rotated={newMenuOpen} />}
             </button>
@@ -283,7 +261,6 @@ export function WelcomeProjectsPanel({ onNewProject, onProjectSelect, onNewAgent
 // ─── Quick action tiles ───────────────────────────────────────────────────────
 
 const QUICK_ACTIONS = [
-  { id: 'agent-tasks', label: 'New Agent Task', IconComponent: WelcomeAgentTaskIcon },
   { id: 'script', label: 'New Script', IconComponent: ScriptWelcomeIcon },
   { id: 'notebook', label: 'New Notebook', IconComponent: NotebookWelcomeIcon },
   { id: 'import', label: 'Import File', IconComponent: ImportWelcomeIcon },
@@ -293,7 +270,7 @@ const QUICK_ACTIONS = [
 
 // ─── Editor area — gradient welcome content ───────────────────────────────────
 
-export function WelcomeGradientArea({ onNewAgentTask }) {
+export function WelcomeGradientArea() {
   const [mode, setMode] = useState('manual');
   const [startup, setStartup] = useState(true);
 
@@ -312,8 +289,6 @@ export function WelcomeGradientArea({ onNewAgentTask }) {
               key={action.id}
               type="button"
               className="ws-action-tile"
-              data-demo-id={action.id === 'agent-tasks' ? 'welcome-quick-new-agent-task' : undefined}
-              onClick={action.id === 'agent-tasks' ? () => onNewAgentTask?.() : undefined}
             >
               <span className="ws-action-tile-icon">
                 {action.IconComponent ? <action.IconComponent /> : <Icon name={action.icon} size={24} />}

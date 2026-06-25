@@ -1137,6 +1137,12 @@ function getCommentEntryLineLabel(comment) {
   return typeof comment?.lineLabel === 'string' ? comment.lineLabel.trim() : '';
 }
 
+function getCommentEntryDisplayKey(comment) {
+  const text = getCommentEntryText(comment).trim().toLowerCase();
+  const lineLabel = getCommentEntryLineLabel(comment).trim().toLowerCase();
+  return `${text}::${lineLabel}`;
+}
+
 function getCommentEntryRowIds(comment) {
   if (!comment || typeof comment !== 'object') return [];
 
@@ -2203,6 +2209,19 @@ export function PlanDiffOverlay({
             const isRowCommentPending = pendingCommentRowIdSet.has(row.id);
             const documentRowComments = normalizedDocumentDiffComments[row.id] ?? [];
             const rowLineLabel = getDiffCommentLineLabelForRowIds([row.id], row.id);
+            const sessionRowCommentKeys = new Set(
+              normalizedCommentSessions.flatMap((session) => (
+                (session.comments[row.id] ?? []).map(getCommentEntryDisplayKey)
+              )),
+            );
+            const localRowComments = rowComments.filter((comment) => {
+              const commentChatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
+              if (commentChatId.length > 0 && commentChatId !== commentSessionActiveChatId) {
+                return false;
+              }
+
+              return !sessionRowCommentKeys.has(getCommentEntryDisplayKey(comment));
+            });
             const documentGroup = documentRowComments.length > 0
               ? {
                   label: documentContextLabel,
@@ -2250,18 +2269,15 @@ export function PlanDiffOverlay({
               })
               .filter(Boolean)
               .filter((group) => !(
-                isMirroredLocalCommentSession({
-                  commentsReadOnly,
-                  sessionTitle: group.label,
-                  commentContextLabel,
-                  sessionComments: group.comments.map((entry) => getCommentEntryText(entry)),
-                  rowComments,
-                })
+                (group.chatId === commentSessionActiveChatId || group.label === commentContextLabel)
+                && isMirroredLocalCommentSession({
+                    commentsReadOnly,
+                    sessionTitle: commentContextLabel,
+                    commentContextLabel,
+                    sessionComments: group.comments.map((entry) => getCommentEntryText(entry)),
+                    rowComments: localRowComments,
+                  })
               ));
-            const localRowComments = rowComments.filter((comment) => {
-              const commentChatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
-              return commentChatId.length === 0 || commentChatId === commentSessionActiveChatId;
-            });
             const localGroup = !commentsReadOnly && (localRowComments.length > 0 || commentRowId === row.id)
               ? {
                   label: commentContextLabel,

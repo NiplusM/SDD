@@ -10,6 +10,7 @@ import {
   PlanDiffCommentBadge,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
+import { SPEC_FLOW_ENABLED } from './featureFlags.js';
 import {
   ThemeProvider,
   MainWindow,
@@ -58,6 +59,8 @@ const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
 const INITIAL_PLAN_DIFF_SOURCE_TAB_ID = '1';
 const INITIAL_PLAN_DIFF_TAB_ID = buildPlanDiffTabId(INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+const FILE_REVIEW_SOURCE_TAB_IDS = new Set(['1', '2']);
+const FILE_REVIEW_SOURCE_LABELS = new Set(['VisitController.java', 'Visit.java']);
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
 const AGENT_TASK_GENERATING_STATE_ENABLED = true;
 const AGENT_TASK_USES_INTERMEDIATE_STATES =
@@ -846,7 +849,7 @@ const MY_PROJECT_TREE = [
 ];
 
 const PROJECT_ROOT_PATH = '~/projects/payment-service';
-const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
+const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Documents`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
 const TERMINAL_RUN_VISIBLE_DELAY_MS = 110;
@@ -977,12 +980,12 @@ function buildTerminalRunSequence({
 
   if (mode === 'generate') {
     const introLines = [
-      { type: 'command', text: `agent run "${resolvedTaskLabel}" --specify` },
+      { type: 'command', text: `task run "${resolvedTaskLabel}" --prepare` },
       { type: 'output', text: `Reading ${resolvedTaskLabel}` },
       { type: 'output', text: `Context: ${contextLabel}` },
       { type: 'output', text: 'Resolving referenced files...' },
       { type: 'output', text: `Loading ${PROJECT_NAME} context...` },
-      { type: 'output', text: 'Specifying visit-booking specification...' },
+      { type: 'output', text: 'Preparing document...' },
       { type: 'output', text: 'Processed 9 plan steps' },
     ];
 
@@ -1012,7 +1015,7 @@ function buildTerminalRunSequence({
 
   return {
     initialLines: [
-      { type: 'command', text: `agent run "${resolvedTaskLabel}" --section "${resolvedSection}"` },
+      { type: 'command', text: `task run "${resolvedTaskLabel}" --section "${resolvedSection}"` },
       { type: 'output', text: `Reading ${resolvedTaskLabel}` },
       { type: 'output', text: `Context: ${contextLabel}` },
       { type: 'output', text: 'Resolving referenced files...' },
@@ -1034,7 +1037,7 @@ function buildAcceptanceCriteriaIntroLines(runRequest = {}) {
     checkTarget: runRequest?.checkTarget ?? null,
   });
   return [
-    { type: 'command', text: `agent run "${resolvedTaskLabel}" --section "Acceptance Criteria"` },
+    { type: 'command', text: `task run "${resolvedTaskLabel}" --section "Acceptance Criteria"` },
     { type: 'output', text: `Reading ${resolvedTaskLabel}` },
     { type: 'output', text: `Context: ${contextLabel}` },
     { type: 'output', text: 'Resolving referenced files...' },
@@ -2646,17 +2649,17 @@ const AGENT_TASKS_ICON = (
 const COMPLETION_POPUP_MAX_ITEMS = 8;
 
 const AT_COMPLETIONS = [
-  { label: 'New Task.md',                  description: 'Agent Specifications' },
-  { label: 'Configuration.md',             description: 'Agent Specifications' },
-  { label: 'Visit-Booking.md',             description: 'Agent Specifications' },
-  { label: 'Vet-Schedules.md',             description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Inspections.md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Beat-3-Execution.md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Code-Review-Moment.md', description: 'Agent Specifications' },
+  { label: 'New Task.md',                  description: 'Recent Files' },
+  { label: 'Configuration.md',             description: 'Recent Files' },
+  { label: 'Visit-Booking.md',             description: 'Recent Files' },
+  { label: 'Vet-Schedules.md',             description: 'Recent Files' },
+  { label: 'Visit-Booking-Inspections.md', description: 'Recent Files' },
+  { label: 'Visit-Booking-Beat-3-Execution.md', description: 'Recent Files' },
+  { label: 'Visit-Booking-Code-Review-Moment.md', description: 'Recent Files' },
 ];
 
 const HASH_COMPLETIONS = [
-  { label: 'Configuration.md',             description: 'Agent Specifications' },
+  { label: 'Configuration.md',             description: 'Recent Files' },
   { label: 'VisitController.java',         description: 'owner'          },
   { label: 'Visit.java',                   description: 'owner'          },
   { label: 'VetFormatter.java',            description: 'vet'            },
@@ -2702,7 +2705,7 @@ const COMPLETION_PREVIEW_LIBRARY = {
   'visit-booking-beat-3-execution.md': {
     previewLines: [
       '## Command',
-      'agent run "Visit-Booking.md" --section "Acceptance Criteria"',
+      'task run "Visit-Booking.md" --section "Acceptance Criteria"',
       '## Pause',
       'Paused - AC 1 requires spec update.',
       '## Rebuild',
@@ -4503,12 +4506,12 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 // ─── Add Popup ────────────────────────────────────────────────────────────────
 
 const ADD_RECENT_FILES = [
-  { label: 'Configuration.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Vet-Schedules.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Inspections.md',        type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Beat-3-Execution.md',   type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Code-Review-Moment.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Configuration.md',                    type: 'md', description: 'Recent Files' },
+  { label: 'Visit-Booking.md',                    type: 'md', description: 'Recent Files' },
+  { label: 'Vet-Schedules.md',                    type: 'md', description: 'Recent Files' },
+  { label: 'Visit-Booking-Inspections.md',        type: 'md', description: 'Recent Files' },
+  { label: 'Visit-Booking-Beat-3-Execution.md',   type: 'md', description: 'Recent Files' },
+  { label: 'Visit-Booking-Code-Review-Moment.md', type: 'md', description: 'Recent Files' },
 ];
 
 function getAddPopupFileType(label) {
@@ -4524,7 +4527,7 @@ function buildAddPopupFiles(agentTasks = []) {
   const taskFiles = agentTasks.map((task) => ({
     label: task.label,
     type: getAddPopupFileType(task.label),
-    description: 'Agent Tasks',
+    description: 'Specifications',
   }));
 
   return [...taskFiles, ...ADD_RECENT_FILES].filter((item, index, items) =>
@@ -10601,7 +10604,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       ))}
                     </div>
                   )}
-                  <button type="button" className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
+                  <button type="button" className="at-send-btn" data-demo-id="document-build-action" onClick={() => {
                     updateTopBarTitleAction('Build');
                     onTopBarAction?.('Build', { sendMessage: true });
                     // Suppress badge during and after the run — the run itself
@@ -10627,7 +10630,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     type="button"
                     className="at-send-btn at-send-btn-enhance"
                     ref={doneEnhanceBtnRef}
-                    data-demo-id="agent-task-enhance"
+                    data-demo-id="document-specify-action"
                     onClick={handleDoneEnhance}
                     disabled={!isDoneEnhanceEnabled}
                     aria-disabled={!isDoneEnhanceEnabled}
@@ -10724,12 +10727,12 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   ))}
                 </div>
               )}
-		              <button type="button" className="at-send-btn" data-demo-id="agent-task-idle-run" onClick={handleBuildClick}>
+		              <button type="button" className="at-send-btn" data-demo-id="document-idle-build-action" onClick={handleBuildClick}>
 		                <Icon name="run/run" size={16} />
 		                <span className="at-send-label">Build</span>
 		              </button>
 	              <div className="at-vsep" />
-	              <button type="button" className="at-send-btn" data-demo-id="agent-task-generate" onClick={handleSpecifyClick}>
+	              <button type="button" className="at-send-btn" data-demo-id="document-idle-specify-action" onClick={handleSpecifyClick}>
 	                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
 	                  <path d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5" stroke="#C4C4C4" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 	                </svg>
@@ -10762,7 +10765,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   );
 }
 
-// ─── Agent Tasks Panel ────────────────────────────────────────────────────────
+// ─── Specifications Panel ────────────────────────────────────────────────────
 
 const AGENT_TASKS = [
   { id: 't1', label: 'Visit-Booking.md',   time: '2m',  status: null },
@@ -10963,7 +10966,21 @@ function getAgentTaskTabId(taskId) {
   return getPresetAgentTaskDefinition(taskId)?.tab?.id ?? `agent-task-${taskId}`;
 }
 
+function isFileReviewSource(source = null) {
+  const tabId = typeof source?.tabId === 'string' ? source.tabId : '';
+  const label = typeof source?.label === 'string' ? source.label : '';
+  return FILE_REVIEW_SOURCE_TAB_IDS.has(tabId) || FILE_REVIEW_SOURCE_LABELS.has(label);
+}
+
+function isFileReviewDiffRequest(request = null) {
+  return isFileReviewSource(request?.source);
+}
+
 function buildInitialEditorTabs() {
+  if (!SPEC_FLOW_ENABLED) {
+    return MY_EDITOR_TABS;
+  }
+
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
 
   return [
@@ -10980,6 +10997,32 @@ function buildInitialEditorTabs() {
 }
 
 function buildInitialEditorTabContents() {
+  if (!SPEC_FLOW_ENABLED) {
+    return {
+      ...MY_EDITOR_TAB_CONTENTS,
+      '1': {
+        ...MY_EDITOR_TAB_CONTENTS['1'],
+        plainFileData: buildPlainFileData(
+          MY_EDITOR_TAB_CONTENTS['1']?.code ?? '',
+          MY_EDITOR_TABS.find((t) => t.id === '1')?.label ?? 'VisitController.java',
+          MY_EDITOR_TAB_CONTENTS['1']?.language ?? 'java',
+        ),
+        inspectionSummary: { warningCount: 2, errorCount: 1 },
+        initialDiffComments: {},
+      },
+      '2': {
+        ...MY_EDITOR_TAB_CONTENTS['2'],
+        plainFileData: buildPlainFileData(
+          MY_EDITOR_TAB_CONTENTS['2']?.code ?? '',
+          MY_EDITOR_TABS.find((t) => t.id === '2')?.label ?? 'Visit.java',
+          MY_EDITOR_TAB_CONTENTS['2']?.language ?? 'java',
+        ),
+        inspectionSummary: { warningCount: 2, errorCount: 1 },
+        initialDiffComments: {},
+      },
+    };
+  }
+
   const sourceTabLabel = MY_EDITOR_TABS.find((tab) => tab.id === INITIAL_PLAN_DIFF_SOURCE_TAB_ID)?.label ?? 'VisitController.java';
   const sourceCode = MY_EDITOR_TAB_CONTENTS[INITIAL_PLAN_DIFF_SOURCE_TAB_ID]?.code ?? '';
   const diffLineText = 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()';
@@ -11044,6 +11087,10 @@ function buildInitialEditorTabContents() {
 }
 
 function buildInitialInteractiveTaskStates() {
+  if (!SPEC_FLOW_ENABLED) {
+    return {};
+  }
+
   return ['t1'].reduce((states, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.interactiveState) return states;
@@ -11463,7 +11510,7 @@ function AgentTasksPanel({
 
   return (
     <ToolWindow
-      title="Agent Tasks"
+      title="Specifications"
       width="100%"
       height="auto"
       actions={['add', 'more', 'minimize']}
@@ -11473,7 +11520,7 @@ function AgentTasksPanel({
         if (action === 'minimize') ctx.setShowLeftPanel(false);
         if (action === 'add' && onAdd) onAdd();
       }}
-      className="agent-tasks-window main-window-tool-window main-window-tool-window-left"
+      className="specifications-window main-window-tool-window main-window-tool-window-left"
     >
       <div className="agent-task-tree">
         <Tree
@@ -12663,10 +12710,6 @@ function AiChatFooterSelector({ icon = null, label }) {
   );
 }
 
-const AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS = {
-  'plan-code-1-added-10': ['Keep vet as a required relationship on Visit so controller validation and persistence use the same model shape.'],
-};
-
 const AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST = {
   text: 'VisitController — inject VetRepository, add @ModelAttribute("vets") with findAll()',
   statusItem: { status: 'passed' },
@@ -12680,16 +12723,6 @@ const AI_CHAT_VISIT_DIFF_REQUEST = {
   issueTarget: { kind: 'plan', index: 1 },
   source: { tabId: '2', label: 'Visit.java' },
 };
-
-const AI_CHAT_VISIT_MODEL_ATTRIBUTES_ATTACHMENTS = [
-  {
-    id: 'diff-visit-model-attributes',
-    label: 'Diff Visit.java',
-    commentCount: flattenStoredDiffCommentsState(AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS).length,
-    diffComments: AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS,
-    diffRequest: AI_CHAT_VISIT_DIFF_REQUEST,
-  },
-];
 
 const AI_CHAT_RECENT_ITEMS = [
   {
@@ -12812,7 +12845,6 @@ public Vet getVet() {
     ],
     command: 'Ran ./gradlew test --tests VisitControllerTests',
     attachmentLabel: 'Diff Visit.java',
-    attachments: AI_CHAT_VISIT_MODEL_ATTRIBUTES_ATTACHMENTS,
     diffRequest: AI_CHAT_VISIT_DIFF_REQUEST,
   },
   'petclinic-tests': {
@@ -13747,12 +13779,12 @@ export default function App() {
     const visitControllerTabIndex = initialTabs.findIndex((tab) => tab.id === '1');
     return visitControllerTabIndex >= 0 ? visitControllerTabIndex : 0;
   });
-  const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
+  const [agentTasks, setAgentTasks] = useState(() => (SPEC_FLOW_ENABLED ? AGENT_TASKS : []));
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
-  const [selectedTask, setSelectedTask] = useState('t1');
+  const [selectedTask, setSelectedTask] = useState(() => (SPEC_FLOW_ENABLED ? 't1' : null));
   const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'ai']);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
@@ -14829,6 +14861,8 @@ export default function App() {
   }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
 
   const handleAgentTaskSelect = useCallback((task) => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     const resolvedTask = typeof task === 'string'
       ? (agentTasks.find((item) => item?.id === task) ?? null)
       : task;
@@ -14856,9 +14890,6 @@ export default function App() {
 
     setSelectedTask(taskId);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
     const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
@@ -15231,6 +15262,8 @@ export default function App() {
   ]);
 
   const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null }) => {
+    if (!SPEC_FLOW_ENABLED && !isFileReviewSource(source)) return;
+
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -15356,9 +15389,6 @@ export default function App() {
       if (issueTarget?.kind === 'plan' && Number.isInteger(issueTarget.index)) {
         setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:${issueTarget.index}:0`);
       }
-      setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-      ));
     }
     setScreen('ide');
     setActiveEditorTab(nextActiveTabIndex);
@@ -16546,12 +16576,6 @@ export default function App() {
   }, [screen, activeEditorTab, ideTabs.length]);
 
   useEffect(() => {
-    if (screen !== 'ide' || seededPresetTaskRef.current) return;
-    seededPresetTaskRef.current = true;
-    handleAgentTaskSelect('t1');
-  }, [screen, handleAgentTaskSelect]);
-
-  useEffect(() => {
     if (typeof document === 'undefined') return undefined;
 
     let frameId = 0;
@@ -17063,6 +17087,8 @@ export default function App() {
   }, [screen, activeEditorTab, ideTabs, genState]);
 
   const openNewAgentTask = useCallback(() => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     seededPresetTaskRef.current = true;
 
     const id = `agent-task-${Date.now()}`;
@@ -17085,9 +17111,6 @@ export default function App() {
     setAgentTasks((tasks) => [newTask, ...tasks]);
     setSelectedTask(id);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
     setIdeTabs((prev) => (
       prev.some((tab) => tab.id === id) ? prev : [nextTab, ...prev]
     ));
@@ -17114,6 +17137,8 @@ export default function App() {
   const activeTabIdForGen = generationTabId ?? ideTabs[activeEditorTab]?.id;
 
   function startAgentTaskGeneration(options = {}) {
+    if (!SPEC_FLOW_ENABLED) return;
+
     const {
       openTerminal = false,
       question = '',
@@ -18363,7 +18388,7 @@ export default function App() {
           `${label} is attached as the active SDD document for this chat.`,
           'Build actions from this chat will use that document context.',
         ],
-        command: `agent run "${label}" --section "Plan"`,
+        command: `task run "${label}" --section "Plan"`,
       };
     }
 
@@ -18380,7 +18405,7 @@ export default function App() {
           `${label} is attached as the active SDD document for this chat.`,
           'Specify actions from this chat will keep using that document context.',
         ],
-        command: `agent run "${label}" --specify`,
+        command: `task run "${label}" --prepare`,
       };
     }
 
@@ -18900,14 +18925,14 @@ export default function App() {
     activePlanDiffDocumentTabMeta?.label
     ?? currentAgentTaskLabel
     ?? TERMINAL_TASK_TAB_BASE_LABEL;
-  const activePlanDiffDefaultSubmitAttachMode = activePlanDiffDocumentSourceTabId ? 'document' : 'current';
+  const activePlanDiffDefaultSubmitAttachMode = SPEC_FLOW_ENABLED && activePlanDiffDocumentSourceTabId ? 'document' : 'current';
   const activePlanDiffDefaultSubmitTargetLabel = activePlanDiffDocumentSourceTabId
-    ? activePlanDiffDocumentContextLabel
+    ? (SPEC_FLOW_ENABLED ? activePlanDiffDocumentContextLabel : planDiffContextChatTitle)
     : planDiffContextChatTitle;
   const activePlanDiffDefaultSubmitTargetIcon = activePlanDiffDocumentSourceTabId
-    ? (activePlanDiffDocumentTabMeta?.icon ?? 'fileTypes/markdown')
+    ? (SPEC_FLOW_ENABLED ? (activePlanDiffDocumentTabMeta?.icon ?? 'fileTypes/markdown') : planDiffContextChatIcon)
     : planDiffContextChatIcon;
-  const activePlanDiffDefaultSubmitTargetKey = activePlanDiffDocumentSourceTabId ?? selectedAiChatId;
+  const activePlanDiffDefaultSubmitTargetKey = SPEC_FLOW_ENABLED ? (activePlanDiffDocumentSourceTabId ?? selectedAiChatId) : selectedAiChatId;
   const selectedChatDocumentAttachments = Array.isArray(getAiChatScenarioById(selectedAiChatId)?.attachments)
     ? getAiChatScenarioById(selectedAiChatId).attachments
     : [];
@@ -19177,6 +19202,10 @@ export default function App() {
     });
   }, [selectedAiChatId]);
   const handleDoneVersionSelect = (version) => {
+    if (!SPEC_FLOW_ENABLED) {
+      return;
+    }
+
     if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
       return;
     }
@@ -19224,7 +19253,7 @@ export default function App() {
       },
     };
 
-    if (metadata?.attachMode === 'document') {
+    if (SPEC_FLOW_ENABLED && metadata?.attachMode === 'document') {
       const sourceDocumentTabId = typeof metadata?.targetDocumentTabId === 'string' && metadata.targetDocumentTabId.trim().length > 0
         ? metadata.targetDocumentTabId
         : activePlanDiffDocumentSourceTabId;
@@ -20093,6 +20122,8 @@ export default function App() {
   }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments, getPendingDocumentCommentSnapshotsByTabIdFromAttachments]);
 
   const handleOpenSddDocument = useCallback((context = {}) => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     const sourceTabId = context?.sourceTabId
       ?? getSourceTabIdFromSddAttachment(context?.attachment)
       ?? visibleEditorStateTabId
@@ -20127,6 +20158,10 @@ export default function App() {
   ]);
 
   const handleOpenAttachmentSource = useCallback(({ attachment = null, source = null, messageId = null, chatId = null, archived = true } = {}) => {
+    if (!SPEC_FLOW_ENABLED && !isFileReviewDiffRequest(attachment?.diffRequest) && !isFileReviewSource({ tabId: source?.navigationTabId, label: source?.label })) {
+      return;
+    }
+
     const targetTabId = source?.navigationTabId ?? null;
     if (!targetTabId) return;
     const targetRawIndex = Number.isInteger(source?.rawIndex)
@@ -20172,7 +20207,7 @@ export default function App() {
       }, targetTabId);
     }
 
-    if (targetTabId === attachment?.sourceTabId) {
+    if (SPEC_FLOW_ENABLED && targetTabId === attachment?.sourceTabId) {
       handleOpenSddDocument({
         commentEntries: attachment?.sddCommentEntries ?? [],
         isCommentAttachment: Boolean(attachment?.isSddCommentAttachment),
@@ -20186,6 +20221,8 @@ export default function App() {
   }, [handleOpenSddDocument, ideTabs, openEditorTabByLabel, openPlanDiffTab, requestProblemHighlight, updatePlanDiffUiStateForTab]);
 
   const handleOpenSpecCommentSource = useCallback((issue = null) => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     const targetTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : null;
     if (!targetTabId) return;
 
@@ -20385,10 +20422,6 @@ export default function App() {
 
     if (taskId) {
       setSelectedTask(taskId);
-      setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-      ));
-
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
   }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs, restoreSpecDoneScrollForTab]);
@@ -20542,7 +20575,6 @@ export default function App() {
               runConfig="Current File"
               rightActions={(
                 <>
-                  <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
                   <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
                   <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
                 </>
@@ -20551,12 +20583,11 @@ export default function App() {
           )}
 
           editorTabs={[{ id: 'welcome', label: 'Welcome Screen', icon: (() => { const C = getIcon('ij-platform-logo'); return C ? <C width={16} height={16} /> : null; })(), closable: true }]}
-          editorTopBar={<WelcomeGradientArea onNewAgentTask={openNewAgentTask} />}
+          editorTopBar={<WelcomeGradientArea />}
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
             { id: '_sep',        separator: true,                                                   section: 'top'    },
-            { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
@@ -20569,11 +20600,9 @@ export default function App() {
               <WelcomeProjectsPanel
                 onNewProject={() => setScreen('ide')}
                 onProjectSelect={() => setScreen('ide')}
-                onNewAgentTask={openNewAgentTask}
                 ctx={ctx}
               />
             );
-            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
 	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} showNewContextOptionsIndicator={showNewContextOptionsIndicator} onAddContextPopupOpen={handleAiChatAddContextPopupOpen} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
@@ -20599,6 +20628,8 @@ export default function App() {
     );
   }
   const handlePlanDiffRowDelete = (rowId, comment) => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     if (!activeTabId || !isDiffTab) return;
 
     const deletedRow = activePlanDiffData?.rows?.find((row) => row.id === rowId);
@@ -20640,6 +20671,8 @@ export default function App() {
     }
   };
   const handlePlanDiffRowFix = (rowId, comment) => {
+    if (!SPEC_FLOW_ENABLED) return;
+
     if (!activePlanDiffTarget) return;
 
     const fixedRow = activePlanDiffData?.rows?.find((row) => row.id === rowId);
@@ -20669,30 +20702,7 @@ export default function App() {
       index: activePlanDiffTarget.index,
     });
   };
-  const projectTreeData = [{
-    ...MY_PROJECT_TREE[0],
-    children: [
-      ...MY_PROJECT_TREE[0].children,
-      {
-        id: 'specs',
-        label: 'Agent Specifications',
-        icon: 'nodes/folder',
-        isExpanded: true,
-        children: [
-          {
-            id: 'spec-configuration',
-            label: 'Configuration.md',
-            icon: 'fileTypes/markdown',
-          },
-          ...agentTasks.map(task => ({
-            id: `spec-${task.id}`,
-            label: task.label,
-            icon: 'fileTypes/markdown',
-          })),
-        ],
-      },
-    ],
-  }];
+  const projectTreeData = MY_PROJECT_TREE;
   return (
     <ThemeProvider defaultTheme="dark">
       <MainWindow
@@ -20712,7 +20722,6 @@ export default function App() {
             onSettings={() => setIsSettingsDialogOpen(true)}
             rightActions={(
               <>
-                <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
                 <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
                 <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
               </>
@@ -20798,7 +20807,6 @@ export default function App() {
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
           { id: '_sep',        separator: true,                                                    section: 'top' },
-          { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
@@ -20822,7 +20830,6 @@ export default function App() {
               className="main-window-tool-window main-window-tool-window-left"
             />
           );
-          if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} showNewContextOptionsIndicator={showNewContextOptionsIndicator} onAddContextPopupOpen={handleAiChatAddContextPopupOpen} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}

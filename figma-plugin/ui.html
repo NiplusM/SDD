@@ -42,14 +42,14 @@
 
 <div class="section">
   <div class="lbl">Design System MD</div>
-  <textarea id="ds-ta" rows="5" placeholder="Paste AGENT_DESIGN_GUIDE.md…"></textarea>
+  <textarea id="ds-ta" rows="5" placeholder="Paste design system notes…"></textarea>
   <div class="status" id="ds-status"></div>
   <div class="preview" id="ds-preview"></div>
 </div>
 
 <div class="section">
   <div class="lbl">Flows / Frames MD</div>
-  <textarea id="flows-ta" rows="5" placeholder="Paste FIGMA_REPRODUCTION_SPEC.md…"></textarea>
+  <textarea id="flows-ta" rows="5" placeholder="Paste frame notes…"></textarea>
   <div class="status" id="flows-status"></div>
   <div class="preview" id="flows-preview"></div>
 </div>
@@ -228,7 +228,7 @@ function parseFrameDetail(text) {
   }
 
   // Terminal command
-  var cmdMatch = text.match(/`(agent run [^`]+)`/);
+  var cmdMatch = text.match(/`(task run [^`]+)`/);
   if (cmdMatch) detail.command = cmdMatch[1];
 
   // Terminal output lines (bullet lists after command)

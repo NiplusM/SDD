@@ -3214,7 +3214,7 @@ body {
 }
 
 /* Prevent overflow scrollbar from appearing in tool-window-content when panel shrinks */
-.main-window-tool-window-left:not(.project-window):not(.agent-tasks-window) .tool-window-content {
+.main-window-tool-window-left:not(.project-window):not(.specifications-window) .tool-window-content {
   overflow-y: hidden;
 }
 
@@ -3764,10 +3764,28 @@ body {
 
 .plan-diff-overlay--single .plan-diff-row {
   grid-template-columns: 68px minmax(0, 1fr);
+  align-items: start;
+  min-height: 22px;
 }
 
 .plan-diff-overlay--single .plan-diff-row-gutter {
   grid-template-columns: 28px 18px;
+  align-items: start;
+  height: 22px;
+}
+
+.plan-diff-overlay--single .plan-diff-line-number,
+.plan-diff-overlay--single .plan-diff-gutter-icon-slot,
+.plan-diff-overlay--single .plan-diff-row-code {
+  align-items: flex-start;
+  height: 22px;
+  min-height: 22px;
+  line-height: 22px;
+}
+
+.plan-diff-overlay--single .plan-diff-gutter-icon-slot {
+  padding-top: 3px;
+  box-sizing: border-box;
 }
 
 .plan-diff-line-number {
@@ -5304,7 +5322,7 @@ body {
 
 
 /* ── Agent task tree ──────────────────────────────────────────────────────── */
-.agent-tasks-window .tool-window-content {
+.specifications-window .tool-window-content {
   display: flex;
   flex-direction: column;
   min-height: 0;

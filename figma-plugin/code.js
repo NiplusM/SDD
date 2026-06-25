@@ -234,7 +234,7 @@ async function drawProjectTree(parent, X, Y, H) {
     { l: 'templates/pets', d: 2 },
     { l: 'createOrUpdateVisitForm.html', d: 3 },
     { l: 'db/h2/schema.sql', d: 3 },
-    { l: 'Agent Specifications', d: 1 },
+    { l: 'Documents', d: 1 },
     { l: 'visit-booking.md', d: 2 },
     { l: 'vet-schedules.md', d: 2 },
   ];
@@ -249,10 +249,10 @@ async function drawProjectTree(parent, X, Y, H) {
 }
 
 async function drawAgentPanel(parent, X, Y, H, activeTask) {
-  var panel = fr(parent, 'AgentTasksPanel', X, Y, PANEL_W, H, C.card);
+  var panel = fr(parent, 'DocumentsPanel', X, Y, PANEL_W, H, C.card);
   stroke(panel, C.border, 1);
   var hdr = fr(panel, 'Header', 0, 0, PANEL_W, 28, 'transparent');
-  await tx(hdr, 'Agent Tasks', 10, 7, C.textPrimary, 12, 600);
+  await tx(hdr, 'Documents', 10, 7, C.textPrimary, 12, 600);
   var projRow = fr(panel, 'Project', 0, 32, PANEL_W, 24, 'transparent');
   await tx(projRow, '▾  ' + META.project, 8, 5, C.textDefault, 12, 500);
   var tasks = [
@@ -573,7 +573,7 @@ async function buildWelcome(pageX, spec) {
   // Quick action tiles from parsed spec or defaults
   var tiles = (detail && detail.quickTiles && detail.quickTiles.length > 0)
     ? detail.quickTiles
-    : ['New Agent Task', 'New Script', 'New Notebook', 'Import File', 'Learn', 'Plugins'];
+    : ['New Script', 'New Notebook', 'Import File', 'Learn', 'Plugins'];
   var tW = 128, tH = 96, tGap = 16;
   var gridW = tW * 3 + tGap * 2;
   var gx = cx - gridW / 2, gy = cy + 62;
@@ -620,10 +620,10 @@ async function buildIDEWorkspace(pageX, spec) {
   return root;
 }
 
-async function buildAgentTasksPanel(pageX, spec) {
+async function buildDocumentsPanel(pageX, spec) {
   var sz = spec && spec.ideSize ? spec.ideSize : { w: 1440, h: 900 };
   var W = sz.w, H = sz.h;
-  var root = fr(figma.currentPage, 'F-03  Agent Tasks Panel', pageX, 0, W, H, C.surface);
+  var root = fr(figma.currentPage, 'F-03  Documents Panel', pageX, 0, W, H, C.surface);
   await drawToolbar(root, W);
   var bodyH = H - TOOLBAR_H - STATUS_H;
   var body = fr(root, 'Body', 0, TOOLBAR_H, W, bodyH, 'transparent');
@@ -797,8 +797,8 @@ figma.ui.onmessage = async function(msg) {
     await buildIDEWorkspace(x, spec);
     x += 1440 + GAP; progress(26);
 
-    log('F-03  Agent Tasks Panel');
-    await buildAgentTasksPanel(x, spec);
+    log('F-03  Documents Panel');
+    await buildDocumentsPanel(x, spec);
     x += 1440 + GAP; progress(33);
 
     log('F-04  visit-booking Done State');
