@@ -5,8 +5,9 @@ import { PlanDiffEditorArea } from './PlanDiffView.jsx';
 import { PLAN_DIFF_PAGE_STORAGE_KEY } from './planDiffPageState.js';
 
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
-const PLAN_DIFF_PAGE_PROJECT_NAME = 'Code-review';
-const PLAN_DIFF_PAGE_BRANCH_NAME = 'Code-review';
+const PLAN_DIFF_PAGE_PROJECT_NAME = 'spring-petclinic';
+const PLAN_DIFF_PAGE_BRANCH_NAME = 'feature/visit-booking';
+const PLAN_DIFF_PAGE_RUN_CONFIGURATION = 'PetClinicApplication';
 
 const DEFAULT_PLAN_DIFF_ROWS = [
   {
@@ -154,11 +155,12 @@ const DEFAULT_PLAN_DIFF_DATA = {
 
 const DEFAULT_PLAN_DIFF_VIEWER_DATA = {
   planItems: [
-    { id: 'plan-1', text: 'Implement aaaa for BbbbService', status: 'passed', files: ['app.py'], isCurrent: true },
-    { id: 'plan-2', text: 'Add cccc to DdddManager', status: 'passed', files: ['string_validator.py'] },
-    { id: 'plan-3', text: 'Integrate with @AaaaComponent', status: 'passed', files: ['list_operations.py', 'math_utils.py', 'string_validator.py', 'text_analyzer.py'] },
+    { id: 'plan-1', text: 'Add visit time and vet selection to the Visit model and form', status: 'passed', files: ['Visit.java', 'createOrUpdateVisitForm.html'] },
+    { id: 'plan-2', text: 'Prevent double-booking with repository lookup and database uniqueness', status: 'passed', files: ['VisitRepository.java', 'schema.sql'] },
+    { id: 'plan-3', text: 'Refactor VisitController time slots into a reusable model attribute', status: 'warning', files: ['VisitController.java'], isCurrent: true },
+    { id: 'plan-4', text: 'Cover booking conflicts with controller regression tests', status: 'passed', files: ['VisitControllerTests.java'] },
   ],
-  changedFiles: ['app.py'],
+  changedFiles: ['VisitController.java'],
 };
 
 function buildDiffCodeFromRows(rows = []) {
@@ -321,7 +323,7 @@ export default function PlanDiffPage() {
               projectIcon="SD"
               projectColor="blue"
               branchName={PLAN_DIFF_PAGE_BRANCH_NAME}
-              runConfig="Current File"
+              runConfig={PLAN_DIFF_PAGE_RUN_CONFIGURATION}
             />
           )}
           editorTabs={editorTabs}

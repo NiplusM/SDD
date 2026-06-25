@@ -31,6 +31,7 @@ import {
   Input,
   Checkbox,
   Badge,
+  SegmentedControl,
   Tree,
   TreeNode,
   Search,
@@ -50,14 +51,18 @@ import './App.css';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'Code-review';
-const BRANCH_NAME = 'Code-review';
+const PROJECT_NAME = 'spring-petclinic';
+const PROJECT_ROOT_PATH_DISPLAY = '~/projects/spring-petclinic';
+const BRANCH_NAME = 'feature/visit-booking';
+const RUN_CONFIGURATION_NAME = 'PetClinicApplication';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
 const INITIAL_PLAN_DIFF_SOURCE_TAB_ID = '1';
 const INITIAL_PLAN_DIFF_TAB_ID = buildPlanDiffTabId(INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
+const CHATS_HISTORY_TOOL_WINDOW_ID = 'chats-history';
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
 const AGENT_TASK_GENERATING_STATE_ENABLED = true;
 const AGENT_TASK_USES_INTERMEDIATE_STATES =
@@ -102,181 +107,1645 @@ function scheduleSpecDoneScrollRestore(snapshot) {
   setTimeout(restore, 0);
 }
 
-function MainToolbarNewChatPicker({ onNewChat = null }) {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState(null);
+function getSpecLinkKeys(item) {
+  if (typeof item === 'string') return [item];
+  if (!item || typeof item !== 'object') return [];
+  return [item.id, item.label].filter((value, index, keys) => (
+    typeof value === 'string' && value.length > 0 && keys.indexOf(value) === index
+  ));
+}
+
+function addSpecLinkToChatChildren(children = [], specLink = null) {
+  if (!specLink?.label && !specLink?.id) return Array.isArray(children) ? children : [];
+  const nextChildren = Array.isArray(children) ? [...children] : [];
+  const specChildIndex = nextChildren.findIndex((child) => child?.id === 'specs');
+  const nextItem = {
+    ...(specLink.id ? { id: specLink.id } : {}),
+    ...(specLink.label ? { label: specLink.label } : {}),
+  };
+  const hasSameSpec = (item) => {
+    const keys = getSpecLinkKeys(item);
+    return (
+      (nextItem.id && keys.includes(nextItem.id))
+      || (nextItem.label && keys.includes(nextItem.label))
+    );
+  };
+
+  if (specChildIndex >= 0) {
+    const specsChild = nextChildren[specChildIndex];
+    const items = Array.isArray(specsChild.items) ? specsChild.items : [];
+    if (items.some(hasSameSpec)) return nextChildren;
+    nextChildren[specChildIndex] = {
+      ...specsChild,
+      items: [...items, nextItem],
+    };
+    return nextChildren;
+  }
+
+  return [
+    ...nextChildren,
+    { id: 'specs', label: 'Specs', items: [nextItem] },
+  ];
+}
+
+function ReferenceMainToolbarNewChatPicker({
+  onNewChat = null,
+  onNewSpec = null,
+  onNewTerminal = null,
+  aiMode = 'chat',
+  onAiModeChange = null,
+  selectedSpecTemplateId = 'feature',
+  onSpecTemplateChange = null,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState({ top: 0, left: 0 });
+  const [selectedChatId, setSelectedChatId] = useState('codex-chat');
+  const [selectedTerminalId, setSelectedTerminalId] = useState('claude-cli');
   const rootRef = useRef(null);
-  const dropdownButtonRef = useRef(null);
-  const dropdownRef = useRef(null);
+  const chevronRef = useRef(null);
+  const activeTabId = aiMode;
+  const setActiveTabId = onAiModeChange ?? (() => {});
+  const setSelectedSpecTemplateId = onSpecTemplateChange ?? (() => {});
+
+  const activeConfig = activeTabId === 'spec'
+    ? { actionLabel: 'New-Spec.md', icon: <IconMdTask /> }
+    : activeTabId === 'terminal'
+    ? { actionLabel: 'New Terminal', icon: <AiChatClaudeIcon /> }
+    : { actionLabel: 'New Chat', icon: <AiChatCodexIcon /> };
+
+  const updateMenuPosition = useCallback(() => {
+    const anchor = chevronRef.current ?? rootRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(403, window.innerWidth - 16);
+    const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8));
+    setMenuStyle({ top: rect.bottom + 4, left });
+  }, []);
 
   useEffect(() => {
-    if (!isDropdownOpen) return undefined;
-
-    const updateDropdownPosition = () => {
-      const rect = dropdownButtonRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const width = 309;
-      const viewportPadding = 8;
-      setDropdownStyle({
-        top: rect.bottom + 6,
-        left: Math.max(
-          viewportPadding,
-          Math.min(rect.right - width, window.innerWidth - width - viewportPadding),
-        ),
-      });
-    };
-
-    updateDropdownPosition();
+    if (!isOpen) return undefined;
+    updateMenuPosition();
 
     const handlePointerDown = (event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target) || dropdownRef.current?.contains(target)) return;
-      setIsDropdownOpen(false);
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsDropdownOpen(false);
-      }
+      if (rootRef.current?.contains(event.target)) return;
+      setIsOpen(false);
     };
 
     document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('resize', updateDropdownPosition);
-    window.addEventListener('scroll', updateDropdownPosition, true);
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
 
     return () => {
       document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('resize', updateDropdownPosition);
-      window.removeEventListener('scroll', updateDropdownPosition, true);
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [isDropdownOpen]);
+  }, [isOpen, updateMenuPosition]);
+
+  const handlePrimaryClick = () => {
+    setIsOpen(false);
+    if (activeTabId === 'spec') {
+      onNewSpec?.({ templateId: selectedSpecTemplateId });
+      return;
+    }
+    if (activeTabId === 'terminal') {
+      onNewTerminal?.();
+      return;
+    }
+    onNewChat?.();
+  };
 
   return (
-    <span className="main-toolbar-new-chat-picker" ref={rootRef}>
-      <button
-        className="main-toolbar-new-chat-picker-button main-toolbar-new-chat-picker-button-primary"
-        type="button"
-        title="New Chat"
-        aria-label="New Chat"
-        onClick={onNewChat ?? undefined}
-      >
-        <span className="main-toolbar-new-chat-picker-label-wrap">
-          <svg
-            className="main-toolbar-new-chat-picker-icon"
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path d="M4.68354 12.8842L8.12595 10.954L8.18354 10.7858L8.12595 10.6928H7.95759L7.38165 10.6574L5.41456 10.6043L3.70886 10.5335L2.05633 10.4449L1.63987 10.3564L1.25 9.84284L1.28987 9.58607L1.63987 9.35144L2.14051 9.39571L3.2481 9.47097L4.90949 9.58607L6.11456 9.65691L7.9 9.84284H8.18354L8.22342 9.72774L8.12595 9.65691L8.05063 9.58607L6.33165 8.42177L4.47089 7.19106L3.4962 6.48273L2.96899 6.12415L2.70316 5.78769L2.58797 5.05281L3.06646 4.52599L3.70886 4.57026L3.87278 4.61453L4.52405 5.11479L5.91519 6.19055L7.73165 7.52751L7.99747 7.74886L8.1038 7.6736L8.11709 7.62048L7.99747 7.42126L7.00949 5.63717L5.95506 3.8221L5.48544 3.0695L5.36139 2.61795C5.31709 2.43201 5.28608 2.27707 5.28608 2.08671L5.83101 1.34739L6.13228 1.25L6.85886 1.34739L7.16456 1.61302L7.61646 2.64451L8.34747 4.26923L9.48165 6.47831L9.81392 7.13351L9.99114 7.74001L10.0576 7.92594H10.1728V7.81969L10.2658 6.5757L10.4386 5.04838L10.607 3.08279L10.6646 2.52941L10.9392 1.86536L11.4842 1.50677L11.9095 1.71041L12.2595 2.21066L12.2108 2.53384L12.0025 3.88408L11.5949 6.00019L11.3291 7.41684H11.4842L11.6614 7.23975L12.3791 6.28795L13.5842 4.78276L14.1158 4.18511L14.7361 3.52549L15.1348 3.21117H15.888L16.4418 4.03459L16.1937 4.88458L15.4184 5.86738L14.7759 6.69966L13.8544 7.93922L13.2785 8.93088L13.3316 9.01056L13.469 8.99728L15.5513 8.55458L16.6766 8.35094L18.019 8.12073L18.6259 8.40406L18.6924 8.69182L18.4532 9.28061L17.0177 9.63477L15.3342 9.97122L12.8266 10.5644L12.7956 10.5866L12.831 10.6308L13.9608 10.7371L14.4437 10.7637H15.6266L17.8285 10.9275L18.4044 11.3082L18.75 11.773L18.6924 12.1272L17.8063 12.5787L16.6101 12.2954L13.819 11.6314L12.862 11.3923H12.7291V11.472L13.5266 12.2511L14.9886 13.5704L16.8184 15.2704L16.9114 15.6909L16.6766 16.023L16.4285 15.9875L14.8203 14.779L14.2 14.2344L12.7956 13.0524H12.7025V13.1764L13.0259 13.6501L14.7361 16.2177L14.8247 17.0058L14.7006 17.2625L14.2576 17.4175L13.7703 17.3289L12.769 15.9256L11.7367 14.3451L10.9038 12.9285L10.8019 12.986L10.3101 18.2763L10.0797 18.5464L9.5481 18.75L9.10506 18.4135L8.87025 17.869L9.10506 16.7933L9.38861 15.3899L9.61899 14.2743L9.82722 12.8886L9.95127 12.4282L9.94241 12.3972L9.84051 12.4105L8.79494 13.8449L7.20443 15.992L5.9462 17.3378L5.64494 17.4573L5.12215 17.1873L5.17089 16.7047L5.46329 16.2753L7.20443 14.0618L8.25443 12.6894L8.93228 11.897L8.92785 11.7819H8.88797L4.26266 14.7834L3.43861 14.8896L3.08418 14.5576L3.12848 14.0131L3.29684 13.836L4.68797 12.8798L4.68354 12.8842Z" fill="#D97757" />
-          </svg>
-          <span className="main-toolbar-new-chat-picker-label">New Chat</span>
-        </span>
+    <div className="aiux543-new-chat-dropdown" ref={rootRef}>
+      <button className="aiux543-new-chat-main" type="button" onClick={handlePrimaryClick}>
+        {activeConfig.icon}
+        <span>{activeConfig.actionLabel}</span>
       </button>
-      <span className="main-toolbar-new-chat-picker-separator" aria-hidden="true" />
       <button
-        ref={dropdownButtonRef}
-        className={`main-toolbar-new-chat-picker-button main-toolbar-new-chat-picker-button-dropdown${isDropdownOpen ? ' is-open' : ''}`}
+        ref={chevronRef}
+        className={`aiux543-new-chat-chevron ${isOpen ? 'open' : ''}`}
         type="button"
-        title="AI Mode"
-        aria-label="Open AI mode menu"
-        aria-expanded={isDropdownOpen}
-        onClick={() => setIsDropdownOpen((prev) => !prev)}
+        aria-label="AI Mode"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        onClick={() => {
+          if (!isOpen) updateMenuPosition();
+          setIsOpen((prev) => !prev);
+        }}
       >
-        <Icon name="general/chevronDown" size={16} className="main-toolbar-new-chat-picker-chevron" />
+        <Icon name="general/chevronDown" size={16} />
       </button>
-      {isDropdownOpen && dropdownStyle && typeof document !== 'undefined' && createPortal(
-        <MainToolbarAiDropdown ref={dropdownRef} style={dropdownStyle} onClose={() => setIsDropdownOpen(false)} />,
-        document.body,
-      )}
-    </span>
+      {isOpen ? (
+        <div className="aiux543-new-chat-menu-wrap" style={menuStyle}>
+          <ReferenceNewChatMenu
+            activeTabId={activeTabId}
+            selectedChatId={selectedChatId}
+            selectedTerminalId={selectedTerminalId}
+            selectedSpecTemplateId={selectedSpecTemplateId}
+            onTabChange={setActiveTabId}
+            onChatItemSelect={setSelectedChatId}
+            onTerminalItemSelect={setSelectedTerminalId}
+            onSpecTemplateSelect={setSelectedSpecTemplateId}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-const MainToolbarAiDropdown = forwardRef(function MainToolbarAiDropdown({ style = null, onClose = null }, ref) {
-  const helpIcon = (
-    <svg className="main-toolbar-ai-dropdown-help" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="8" cy="8" r="6.5" stroke="#868A91" />
-      <path d="M7.59245 8.521C7.67312 8.33767 7.77212 8.18 7.88945 8.048C8.00679 7.916 8.16445 7.75833 8.36245 7.575C8.55312 7.40267 8.70345 7.25417 8.81345 7.1295C8.92712 7.00483 9.02245 6.86 9.09945 6.695C9.17645 6.52633 9.21495 6.33933 9.21495 6.134C9.21495 5.903 9.16545 5.69767 9.06645 5.518C8.97112 5.33833 8.83545 5.199 8.65945 5.1C8.48345 5.001 8.28179 4.9515 8.05445 4.9515C7.80145 4.9515 7.57779 5.0065 7.38345 5.1165C7.18912 5.2265 7.03879 5.3805 6.93245 5.5785C6.90638 5.62705 6.88351 5.67735 6.86383 5.72943C6.75806 6.00931 6.5304 6.2605 6.2312 6.2605C5.932 6.2605 5.68157 6.01527 5.74167 5.72217C5.78989 5.48707 5.87148 5.27051 5.98645 5.0725C6.18445 4.7315 6.46312 4.4675 6.82245 4.2805C7.18179 4.0935 7.59612 4 8.06545 4C8.51279 4 8.90695 4.08617 9.24795 4.2585C9.58895 4.43083 9.85295 4.67467 10.04 4.99C10.227 5.30167 10.3186 5.661 10.315 6.068C10.315 6.38333 10.2655 6.662 10.1665 6.904C10.0675 7.14233 9.94645 7.34217 9.80345 7.5035C9.66045 7.66483 9.47529 7.84633 9.24795 8.048C9.07929 8.19833 8.94729 8.32483 8.85195 8.4275C8.75662 8.53017 8.67595 8.64567 8.60995 8.774C8.59197 8.80997 8.57743 8.84636 8.56569 8.88312C8.47784 9.15799 8.28252 9.401 7.99395 9.401C7.70538 9.401 7.45381 9.16525 7.4934 8.87941C7.51026 8.75764 7.54001 8.6378 7.59245 8.521Z" fill="#868A91" />
-      <circle cx="8" cy="10.75" r="0.75" fill="#868A91" />
-    </svg>
-  );
-  const modeItems = [
-    {
-      id: 'chat',
-      label: 'Chat',
-      selected: true,
-      icon: (
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-          <path d="M4.00002 13.5C4.00003 13.2238 4.22388 13 4.50002 13L11.5 13C11.7761 13 12 13.2239 12 13.5C12 13.7761 11.7761 14 11.5 14L4.50002 14C4.22387 14 4.00001 13.7761 4.00002 13.5Z" fill="#CED0D6" />
-          <path d="M4 2.5L12 2.5C12.8284 2.5 13.5 3.17157 13.5 4L13.5 10C13.5 10.8284 12.8284 11.5 12 11.5L4 11.5C3.17157 11.5 2.5 10.8284 2.5 10L2.5 4C2.5 3.17157 3.17157 2.5 4 2.5Z" stroke="#CED0D6" />
-        </svg>
-      ),
-    },
-    { id: 'terminal', label: 'Terminal', icon: <Icon name="toolwindows/terminal" size={16} /> },
-    {
-      id: 'spec-driven',
-      label: 'Spec-driven',
-      icon: (
-        <span className="main-toolbar-ai-dropdown-bulb" aria-hidden="true">
-          <span />
-          <span />
-          <svg width="10" height="11" viewBox="0 0 10 11" fill="none">
-            <path d="M4.7998 0.5C7.17457 0.5 9.0995 2.42507 9.09961 4.7998C9.09961 6.21038 8.42075 7.46253 7.36992 8.24746L7.0198 10H2.5798L2.22871 8.24746C1.17834 7.4625 0.5 6.21002 0.5 4.7998C0.500095 2.42512 2.42512 0.500095 4.7998 0.5Z" stroke="#CED0D6" />
-          </svg>
-        </span>
-      ),
-    },
+function ReferenceNewChatMenu({
+  activeTabId,
+  selectedChatId,
+  selectedTerminalId,
+  selectedSpecTemplateId,
+  onTabChange,
+  onChatItemSelect,
+  onTerminalItemSelect,
+  onSpecTemplateSelect,
+}) {
+  const chatItems = [
+    { id: 'codex-chat', label: 'AI Assistant', icon: <AiChatCodexIcon /> },
+    { id: 'claude-chat', label: 'Claude', icon: <AiChatClaudeIcon /> },
+  ];
+  const terminalItems = [
+    { id: 'claude-cli', label: 'Claude Code', icon: <AiChatClaudeIcon /> },
+    { id: 'codex-cli', label: 'Codex', icon: <AiChatCodexIcon /> },
+    { id: 'junie', label: 'Junie', hint: 'by JetBrains', icon: <AiChatAgentIcon icon="junie" /> },
+  ];
+  const specTemplateItems = [
+    { id: 'bug-fix', label: 'Bug Fix', icon: <BugFixSpecTemplateIcon /> },
+    { id: 'feature', label: 'Feature', icon: <FeatureSpecTemplateIcon /> },
   ];
 
   return (
-    <div className="main-toolbar-ai-dropdown" style={style ?? undefined} ref={ref}>
-      <div className="main-toolbar-ai-dropdown-spacer" />
-      <div className="main-toolbar-ai-dropdown-title">AI Mode</div>
-      <div className="main-toolbar-ai-dropdown-tabs" role="tablist" aria-label="AI Mode">
-        {modeItems.map((item) => (
+    <div className="aiux543-new-chat-menu" role="menu">
+      <div className="aiux543-new-chat-menu-space" />
+      <div className="aiux543-new-chat-tabs" role="tablist" aria-label="AI Mode">
+        {[
+          { id: 'chat', label: 'Chat', icon: <Icon name="aiAssistant/toolWindowChat" size={20} /> },
+          { id: 'terminal', label: 'Terminal', icon: <Icon name="toolwindows/terminal" size={20} /> },
+          { id: 'spec', label: 'Spec Mode', icon: <IconMdTask /> },
+        ].map((tab) => (
           <button
-            key={item.id}
-            className={`main-toolbar-ai-dropdown-tab${item.selected ? ' is-selected' : ''}`}
+            key={tab.id}
             type="button"
             role="tab"
-            aria-selected={Boolean(item.selected)}
-            onClick={onClose ?? undefined}
+            aria-selected={activeTabId === tab.id}
+            className={`aiux543-new-chat-tab${activeTabId === tab.id ? ' active' : ''}`}
+            onClick={() => onTabChange(tab.id)}
           >
-            <span className="main-toolbar-ai-dropdown-tab-content">
-              <span className="main-toolbar-ai-dropdown-tab-icon">{item.icon}</span>
-              <span>{item.label}</span>
-            </span>
+            {tab.icon}
+            <span>{tab.label}</span>
           </button>
         ))}
       </div>
-      <div className="main-toolbar-ai-dropdown-separator" />
-      <button className="main-toolbar-ai-dropdown-settings" type="button" onClick={onClose ?? undefined}>
-        <Icon name="general/settings" size={20} />
-        <span>AI Chat Settings...</span>
-      </button>
-      <div className="main-toolbar-ai-dropdown-footer">
-        <div className="main-toolbar-ai-dropdown-credit-row">
-          <span><strong>13.4</strong> <strong>/</strong> <strong>30</strong> monthly credits left</span>
-          <span className="main-toolbar-ai-dropdown-credit-meta">till 17.04 11:00</span>
-          {helpIcon}
+      <div className="aiux543-new-chat-separator" />
+      {activeTabId === 'chat' ? (
+        <div className="aiux543-new-chat-entry-list">
+          <div className="aiux543-new-chat-menu-label">Chat</div>
+          {chatItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`aiux543-new-chat-entry-row${selectedChatId === item.id ? ' selected' : ''}`}
+              onClick={() => onChatItemSelect(item.id)}
+            >
+              <span className="aiux543-new-chat-entry-icon">{item.icon}</span>
+              <span className="aiux543-new-chat-entry-title">{item.label}</span>
+              {selectedChatId === item.id ? <Icon name="general/checkmark" size={16} className="aiux543-new-chat-check" /> : null}
+            </button>
+          ))}
         </div>
-        <div className="main-toolbar-ai-dropdown-credit-row">
-          <span><strong>50.00 / 70</strong> top-up credits left</span>
-          <span className="main-toolbar-ai-dropdown-credit-meta">Shared</span>
-          {helpIcon}
+      ) : null}
+      {activeTabId === 'terminal' ? (
+        <div className="aiux543-new-chat-terminal-section">
+          <div className="aiux543-new-chat-menu-label">Terminal Agents</div>
+          <div className="aiux543-new-chat-terminal-agents">
+            {terminalItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`aiux543-new-chat-entry-row aiux543-new-chat-terminal-agent${selectedTerminalId === item.id ? ' selected' : ''}`}
+                onClick={() => onTerminalItemSelect(item.id)}
+              >
+                <span className="aiux543-new-chat-entry-icon">{item.icon}</span>
+                <span className="aiux543-new-chat-entry-title">
+                  <span>{item.label}</span>
+                  {item.hint ? <span className="aiux543-new-chat-entry-hint">{item.hint}</span> : null}
+                </span>
+                {selectedTerminalId === item.id ? <Icon name="general/checkmark" size={16} className="aiux543-new-chat-check" /> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {activeTabId === 'spec' ? (
+        <div className="aiux543-new-chat-entry-list aiux543-new-chat-spec-list">
+          <div className="aiux543-new-chat-menu-label">Templates</div>
+          {specTemplateItems.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className={`aiux543-new-chat-entry-row${selectedSpecTemplateId === template.id ? ' selected' : ''}`}
+              onClick={() => onSpecTemplateSelect?.(template.id)}
+            >
+              <span className="aiux543-new-chat-entry-icon">{template.icon}</span>
+              <span className="aiux543-new-chat-entry-title">{template.label}</span>
+              {selectedSpecTemplateId === template.id ? <Icon name="general/checkmark" size={16} className="aiux543-new-chat-check" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="aiux543-new-chat-separator" />
+      <button type="button" className="aiux543-new-chat-entry-row aiux543-new-chat-flow-row-settings">
+        <span className="aiux543-new-chat-entry-icon"><Icon name="general/settings" size={20} /></span>
+        <span className="aiux543-new-chat-entry-title">AI Chat Settings...</span>
+      </button>
+      <div className="aiux543-new-chat-menu-quota">
+        <div className="aiux543-new-chat-quota-row">
+          <span><strong>13.4</strong> / 30 monthly credits left</span>
+          <span>till 17.04 11:00</span>
+          <span className="aiux543-new-chat-quota-help">?</span>
+        </div>
+        <div className="aiux543-new-chat-quota-row">
+          <span><strong>50.00</strong> / 70 top-up credits left</span>
+          <span>Shared</span>
+          <span className="aiux543-new-chat-quota-help">?</span>
+        </div>
+      </div>
+      <div className="aiux543-new-chat-menu-bottom-space" />
+    </div>
+  );
+}
+
+function ReferenceSpecMarkIcon({ className = '' } = {}) {
+  return (
+    <svg className={`aiux543-spec-mark-icon ${className}`.trim()} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <path d="M0 5.876H3.057L5.192 11.432L5.329 12.003L5.445 11.432L7.516 5.876H10.605V14.963H8.301V9.498L8.34 8.907L6.056 14.963H4.478L2.265 8.965L2.304 9.498V14.963H0V5.876Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M15.117 12.431L15.117 5.876L16.617 5.876L16.617 12.431L18.221 10.826L19.282 11.887L15.867 15.302L12.452 11.887L13.513 10.826L15.117 12.431Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function BugFixSpecTemplateIcon({ className = '' } = {}) {
+  return (
+    <svg className={`icon aiux543-spec-template-line-icon ${className}`.trim()} width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5.8 4.8C5.67 4.52 5.6 4.22 5.6 3.9C5.6 2.57 6.67 1.5 8 1.5C9.33 1.5 10.4 2.57 10.4 3.9C10.4 4.22 10.33 4.52 10.2 4.8" />
+        <path d="M4.5 7.45C4.5 5.82 5.82 4.5 7.45 4.5H8.55C10.18 4.5 11.5 5.82 11.5 7.45V9.9C11.5 12.16 9.93 14 8 14C6.07 14 4.5 12.16 4.5 9.9V7.45Z" />
+        <path d="M4.6 6.7L2.2 5.4" />
+        <path d="M11.4 6.7L13.8 5.4" />
+        <path d="M4.5 9H1.8" />
+        <path d="M11.5 9H14.2" />
+        <path d="M4.8 11.4L2.2 12.9" />
+        <path d="M11.2 11.4L13.8 12.9" />
+      </g>
+    </svg>
+  );
+}
+
+function FeatureSpecTemplateIcon({ className = '' } = {}) {
+  return (
+    <svg className={`icon aiux543-spec-template-line-icon ${className}`.trim()} width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+      <g stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.35 9.2C11.38 8.47 12.05 7.27 12.05 5.9C12.05 3.66 10.24 1.85 8 1.85C5.76 1.85 3.95 3.66 3.95 5.9C3.95 7.27 4.62 8.47 5.65 9.2L6.05 11.15H9.95L10.35 9.2Z" />
+        <path d="M6.35 12.75H9.65" />
+        <path d="M7 14.25H9" />
+      </g>
+    </svg>
+  );
+}
+
+function AIUXNewSessionEditor({
+  onOpenSpec = null,
+  onOpenSpecTask = null,
+  onOpenChat = null,
+  onOpenExistingChat = null,
+  onOpenTerminal = null,
+  onOpenSpecChat = null,
+  agentTasks = AGENT_TASKS,
+  chatRows = AI_SESSION_CHATS,
+  sessionMode = 'chat',
+  onSessionModeChange = null,
+  selectedSpecTemplateId = 'feature',
+  onSpecTemplateChange = null,
+}) {
+  const [prompt, setPrompt] = useState('');
+  const [selectedSpecInputCommand, setSelectedSpecInputCommand] = useState('');
+  const [isSpecHarnessBannerVisible, setIsSpecHarnessBannerVisible] = useState(true);
+  const [expandedSpecIds, setExpandedSpecIds] = useState(() => new Set());
+  const [isSpecKindMenuOpen, setIsSpecKindMenuOpen] = useState(false);
+  const specKindAnchorRef = useRef(null);
+  const continueMode = sessionMode;
+  const setContinueMode = onSessionModeChange ?? (() => {});
+  const specKind = selectedSpecTemplateId;
+  const setSpecKind = onSpecTemplateChange ?? (() => {});
+  const SPEC_KINDS = [
+    { id: 'feature', label: 'feature', icon: <FeatureSpecTemplateIcon /> },
+    { id: 'bug-fix', label: 'bug fix', icon: <BugFixSpecTemplateIcon /> },
+  ];
+  const selectedSpecKind = SPEC_KINDS.find((kind) => kind.id === specKind) ?? SPEC_KINDS[0];
+  const selectedSpecAgent = specKind === 'bug-fix'
+    ? { label: 'Codex', icon: <ReferenceCodexIcon /> }
+    : { label: 'Claude', icon: <ReferenceClaudeIcon /> };
+  const selectedModelLabel = continueMode === 'spec' && specKind === 'bug-fix'
+    ? 'GPT-5.5 (medium)'
+    : 'Opus 4.5';
+  useEffect(() => {
+    if (continueMode !== 'spec' && selectedSpecInputCommand) {
+      setSelectedSpecInputCommand('');
+    }
+  }, [continueMode, selectedSpecInputCommand]);
+  useEffect(() => {
+    if (!isSpecKindMenuOpen) return undefined;
+    const handleClickAway = (event) => {
+      const anchor = specKindAnchorRef.current;
+      if (anchor && anchor.contains(event.target)) return;
+      setIsSpecKindMenuOpen(false);
+    };
+    const handleKey = (event) => {
+      if (event.key === 'Escape') setIsSpecKindMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickAway);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClickAway);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [isSpecKindMenuOpen]);
+  const [specName, setSpecName] = useState('New-Spec.md');
+  const specNameInputRef = useRef(null);
+  // React does not manage contentEditable children, so keep textContent in sync
+  // with state when the name is normalized on blur.
+  useEffect(() => {
+    const el = specNameInputRef.current;
+    if (el && el.textContent !== specName) el.textContent = specName;
+  }, [specName]);
+  const commitSpecNameRename = (raw) => {
+    const trimmed = (raw ?? '').trim();
+    if (!trimmed) {
+      if (specNameInputRef.current) specNameInputRef.current.textContent = specName;
+      return;
+    }
+    const withExt = /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+    if (withExt !== specName) {
+      setSpecName(withExt);
+    } else if (specNameInputRef.current && specNameInputRef.current.textContent !== specName) {
+      specNameInputRef.current.textContent = specName;
+    }
+  };
+  const toggleSpecExpanded = useCallback((id) => {
+    setExpandedSpecIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const textareaRef = useRef(null);
+  const hasPrompt = prompt.trim().length > 0;
+  // Recent chats show standalone conversations. Spec-linked chats stay nested
+  // under Recent specs instead of appearing twice in the generic list.
+  const recentChats = chatRows
+    .filter((chat) => {
+      if (!chat?.id || !chat?.title || chat?.kind === 'section' || chat?.kind === 'spec') return false;
+      if (typeof chat.id === 'string' && chat.id.startsWith('spec-chat-')) return false;
+      const specs = chat.children?.find((child) => child.id === 'specs')?.items ?? [];
+      return specs.length === 0;
+    })
+    .map((chat) => ({
+      id: chat.id,
+      title: chat.title,
+      agent: chat.agent,
+      cloud: chat.cloud,
+      time: chat.time,
+    }));
+  // Build recent specs from the real AGENT_TASKS list. Related chats come from the
+  // AI Sessions data: a chat is linked to a spec when its `specs` children list
+  // includes that spec's label.
+  const recentSpecs = agentTasks.map((task) => ({
+    id: task.id,
+    label: task.label,
+    time: task.time,
+    chats: chatRows
+      .filter((chat) => {
+        const specs = chat.children?.find((c) => c.id === 'specs')?.items ?? [];
+        return specs.some((item) => {
+          const keys = getSpecLinkKeys(item);
+          return keys.includes(task.id) || keys.includes(task.label);
+        });
+      })
+      .map((chat) => ({
+        id: chat.id,
+        title: chat.title,
+        agent: chat.agent,
+        cloud: chat.cloud,
+        time: chat.time,
+      })),
+  }));
+  const continueOptions = [
+    { id: 'chat', label: 'Chat', icon: <Icon name="aiAssistant/toolWindowChat" size={16} /> },
+    { id: 'terminal', label: 'Terminal', icon: <Icon name="toolwindows/terminal" size={16} /> },
+    { id: 'spec', label: 'Spec Mode', icon: <ReferenceSpecMarkIcon className="aiux550-spec-option-icon" /> },
+  ];
+
+  const resizeTextarea = useCallback((element = textareaRef.current) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
+    const top = element.getBoundingClientRect().top;
+    const maxHeight = Math.max(42, Math.min(420, viewportHeight - top - 156));
+    const nextHeight = Math.min(element.scrollHeight, maxHeight);
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [prompt, resizeTextarea]);
+
+  useEffect(() => {
+    window.addEventListener('resize', resizeTextarea);
+    return () => window.removeEventListener('resize', resizeTextarea);
+  }, [resizeTextarea]);
+
+  const handlePrimaryAction = () => {
+    if (continueMode === 'chat') {
+      onOpenChat?.(prompt.trim());
+      return;
+    }
+
+    if (continueMode === 'terminal') {
+      onOpenTerminal?.();
+      return;
+    }
+
+    // Read the latest spec name from the contentEditable directly — the user
+    // may click Send without blurring, so the React state can still hold the
+    // stale value committed by the previous onBlur.
+    const pendingSpecName = (specNameInputRef.current?.textContent ?? specName ?? '').trim();
+    const effectiveSpecName = pendingSpecName
+      ? (/\.md$/i.test(pendingSpecName) ? pendingSpecName : `${pendingSpecName}.md`)
+      : specName;
+    if (effectiveSpecName !== specName) {
+      setSpecName(effectiveSpecName);
+    }
+    onOpenSpec?.({
+      templateId: specKind,
+      command: selectedSpecInputCommand,
+      prompt: prompt.trim(),
+      specName: effectiveSpecName,
+    });
+  };
+  const applySpecInputCommand = (command) => {
+    setSelectedSpecInputCommand(command);
+    setPrompt('');
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(0, 0);
+      resizeTextarea(textarea);
+    });
+  };
+
+  return (
+    <div
+      className="ux3730-aia-flow-surface ux3730-aia-flow-surface-v2 aiux550-start-surface aiux543-whole-flow-page aiux543-new-layout-page"
+      aria-label="New chat"
+    >
+      <div className="aiux550-start-layout" data-node-id="8124:54992">
+        <div className="ux3730-aia-flow-continue-in aiux550-continue-in" role="group" aria-label="Continue in">
+          <span>Continue in:</span>
+          <SegmentedControl
+            className="ux3730-aia-flow-continue-segmented aiux550-continue-segmented"
+            value={continueMode}
+            onChange={setContinueMode}
+            options={continueOptions.map((item) => ({
+              value: item.id,
+              label: (
+                <span className="ux3730-aia-flow-continue-option">
+                  {item.icon}
+                  <span>{item.label}</span>
+                </span>
+              ),
+            }))}
+          />
+        </div>
+
+        <div className="aiux550-session-block">
+          {continueMode === 'spec' ? (
+            <div className="aiux550-session-row">
+              <span className="aiux550-session-label">New specification</span>
+              <div className="aiux550-session-picker-anchor">
+                <div className="aiux550-session-picker aiux550-spec-name-picker">
+                  <IconMdTask />
+                  <span
+                    ref={specNameInputRef}
+                    className="aiux550-spec-name-label"
+                    contentEditable
+                    suppressContentEditableWarning
+                    spellCheck={false}
+                    role="textbox"
+                    aria-label="Rename current specification"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.currentTarget.textContent = specName;
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={(event) => {
+                      commitSpecNameRename(event.currentTarget.textContent ?? '');
+                    }}
+                  >
+                    {specName}
+                  </span>
+                </div>
+              </div>
+              <div className="aiux550-session-picker-anchor" ref={specKindAnchorRef}>
+                <button
+                  type="button"
+                  className="aiux550-session-picker"
+                  aria-haspopup="menu"
+                  aria-expanded={isSpecKindMenuOpen}
+                  onClick={() => setIsSpecKindMenuOpen((prev) => !prev)}
+                >
+                  {selectedSpecKind.icon}
+                  <span>{selectedSpecKind.label}</span>
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+                {isSpecKindMenuOpen ? (
+                  <div className="aiux550-session-picker-menu" role="menu">
+                    {SPEC_KINDS.map((kind) => (
+                      <button
+                        key={kind.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={specKind === kind.id}
+                        className={`aiux550-session-picker-menu-item${specKind === kind.id ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          setSpecKind(kind.id);
+                          setIsSpecKindMenuOpen(false);
+                        }}
+                      >
+                        {kind.icon}
+                        <span>{kind.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <button type="button" className="aiux550-session-picker aiux550-agent-picker">
+                {selectedSpecAgent.icon}
+                <span>{selectedSpecAgent.label}</span>
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="aiux550-session-row">
+              <span className="aiux550-session-label">New session in</span>
+              <button type="button" className="aiux550-session-picker">
+                <Icon name="nodes/folder" size={20} />
+                <span>‘{PROJECT_NAME}’</span>
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+              <button type="button" className="aiux550-session-picker aiux550-agent-picker">
+                <ReferenceClaudeIcon />
+                <span>Claude</span>
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+              <button type="button" className="aiux550-session-picker">
+                <span>Local</span>
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+            </div>
+          )}
+          <div className="ux3730-aia-flow-v2-input">
+            <div className="ux3730-aia-flow-v2-local-card">
+              <button type="button" className="ux3730-aia-chat-dropdown">
+                <span>Local</span>
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+            </div>
+            <div
+              className={`ux3730-aia-flow-v2-composer${hasPrompt ? ' ux3730-aia-flow-v2-composer-filled' : ''}`}
+              onClick={() => textareaRef.current?.focus()}
+            >
+              <div className="ux3730-aia-flow-v2-input-row">
+                {continueMode === 'spec' && selectedSpecInputCommand ? (
+                  <span className="aiux550-spec-command-chip aiux550-spec-command-prefix">{selectedSpecInputCommand}</span>
+                ) : null}
+                {continueMode === 'spec' && !hasPrompt && !selectedSpecInputCommand ? (
+                  <div className="aiux550-spec-input-start-hint">
+                    <span>
+                      Type task, use{' '}
+                      <button type="button" className="aiux550-spec-command-chip" onClick={() => applySpecInputCommand('/roast')}>/roast</button>
+                      {' '}to shape requirements or{' '}
+                      <button type="button" className="aiux550-spec-command-chip" onClick={() => applySpecInputCommand('/spec')}>/spec</button>
+                      {' '}to generate a full spec.
+                    </span>
+                  </div>
+                ) : null}
+                <textarea
+                  ref={textareaRef}
+                  value={prompt}
+                  onChange={(event) => {
+                    setPrompt(event.target.value);
+                    resizeTextarea(event.target);
+                  }}
+                  placeholder="Type task, use @mentions or /commands"
+                  rows={1}
+                  aria-label="New session prompt"
+                />
+              </div>
+              <div className="ux3730-aia-flow-v2-attachments" aria-hidden="true" />
+              <div className="ux3730-aia-flow-v2-toolbar">
+                <div className="ux3730-aia-flow-v2-toolbar-left">
+                  <button type="button" className="ux3730-aia-chat-icon-button" aria-label="Add">
+                    <Icon name="general/add" size={16} />
+                  </button>
+                  <button type="button" className="ux3730-aia-chat-dropdown">
+                    <span>Default</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                </div>
+                <div className="ux3730-aia-flow-v2-toolbar-right">
+                  {hasPrompt ? (
+                    continueMode === 'spec' ? (
+                      <button type="button" className="ux3730-aia-flow-v2-start-chat ux3730-aia-flow-v2-start-chat-plain" onClick={handlePrimaryAction}>
+                        <span>Start</span>
+                      </button>
+                    ) : (
+                      <button type="button" className="ux3730-aia-flow-v2-start-chat" onClick={handlePrimaryAction}>
+                        <span>{continueMode === 'terminal' ? 'Start Terminal' : 'Start Chat'}</span>
+                        <span className="ux3730-aia-flow-v2-start-divider" aria-hidden="true" />
+                        <Icon name="general/chevronDown" size={16} />
+                      </button>
+                    )
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <footer className="ux3730-aia-flow-v2-footer">
+            <span className="ux3730-aia-flow-v2-model">
+              <span>{selectedModelLabel}</span>
+              <Icon name="general/chevronDown" size={16} />
+            </span>
+            <span>Feedback ↗</span>
+          </footer>
+        </div>
+
+        {continueMode === 'spec' && isSpecHarnessBannerVisible ? (
+          <section className="aiux550-spec-harness-banner" aria-label="Spec harness routing">
+            <Icon name="nodes/models" size={16} className="aiux550-spec-harness-banner-icon" />
+            <div className="aiux550-spec-harness-banner-copy">
+              <span className="aiux550-spec-harness-banner-text">
+                Spec harness adapts execution per step: planning, implementation, review, and verification can use different models and agents.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="aiux550-spec-harness-banner-close"
+              aria-label="Dismiss spec harness note"
+              onClick={() => setIsSpecHarnessBannerVisible(false)}
+            >
+              <Icon name="general/close" size={16} />
+            </button>
+          </section>
+        ) : null}
+
+        {continueMode === 'spec' ? (
+          <div className="ux3730-aia-flow-recents aiux550-recent-specs" aria-label="Recent specs">
+            <div className="ux3730-aia-flow-recents-header">
+              <span>Recent specs</span>
+              <button type="button" onClick={() => onOpenSpec?.()}>Show all</button>
+            </div>
+            <div className="ux3730-aia-flow-recent-list">
+              {recentSpecs.map((spec) => {
+                const hasChats = spec.chats.length > 0;
+                const expanded = hasChats && expandedSpecIds.has(spec.id);
+                return (
+                  <div key={spec.id} className="aiux550-recent-spec-group">
+                    <div
+                      className={`ux3730-aia-flow-recent-row aiux550-recent-spec-row${hasChats ? ' aiux550-recent-spec-row-expandable' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onOpenSpecTask?.(spec.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onOpenSpecTask?.(spec.id);
+                        }
+                      }}
+                    >
+                      <span className="aiux550-recent-spec-chevron" aria-hidden="true">
+                        {hasChats ? (
+                          <button
+                            type="button"
+                            className="aiux550-recent-spec-chevron-btn"
+                            aria-label={expanded ? `Collapse ${spec.label}` : `Expand ${spec.label}`}
+                            aria-expanded={expanded}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleSpecExpanded(spec.id);
+                            }}
+                          >
+                            <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+                          </button>
+                        ) : null}
+                      </span>
+                      <ReferenceSpecMarkIcon className="aiux550-spec-option-icon" />
+                      <span className="ux3730-aia-flow-recent-title">
+                        <span>{spec.label}</span>
+                      </span>
+                      <time>{spec.time}</time>
+                    </div>
+                    {hasChats && expanded ? (
+                      <div className="aiux550-recent-spec-chats">
+                        {spec.chats.map((chat) => (
+                          <button
+                            key={chat.id}
+                            type="button"
+                            className="ux3730-aia-flow-recent-row aiux550-recent-spec-chat-row"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenSpecChat?.(chat.id, spec.id);
+                            }}
+                          >
+                            <ReferenceChatAgentIcon agent={chat.agent} />
+                            <span className="ux3730-aia-flow-recent-title">
+                              {chat.cloud ? <ReferenceCloudMarker /> : null}
+                              <span>{chat.title}</span>
+                            </span>
+                            <time>{chat.time}</time>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="ux3730-aia-flow-recents" aria-label="Recent chats">
+            <div className="ux3730-aia-flow-recents-header">
+              <span>Recent chats</span>
+              <button type="button" onClick={() => onOpenExistingChat?.()}>Show all</button>
+            </div>
+            <div className="ux3730-aia-flow-recent-list">
+              {recentChats.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="ux3730-aia-flow-recent-row"
+                  onClick={() => {
+                    onOpenExistingChat?.(item.id, item);
+                  }}
+                >
+                  <ReferenceChatAgentIcon agent={item.agent} />
+                  <span className="ux3730-aia-flow-recent-title">
+                    {item.cloud ? <ReferenceCloudMarker /> : null}
+                    <span>{item.title}</span>
+                  </span>
+                  <time>{item.time}</time>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function resolveAiChatTreeLeafIcon(label, sectionId) {
+  const name = typeof label === 'string' ? label : (label?.label ?? '');
+  if (name.endsWith('.html')) return 'fileTypes/html';
+  if (name.endsWith('.js') || name.endsWith('.jsx')) return 'fileTypes/javaScript';
+  if (name.endsWith('.css')) return 'fileTypes/css';
+  if (name.endsWith('.java')) return 'fileTypes/java';
+  if (name.endsWith('.md')) return 'fileTypes/markdown';
+  if (name.endsWith('.yml') || name.endsWith('.yaml')) return 'fileTypes/yaml';
+  if (name.endsWith('.xml')) return 'fileTypes/xml';
+  if (sectionId === 'branches') return 'vcs/branch';
+  return 'fileTypes/text';
+}
+
+function AiChatRowChildren({ chatId, sections, collapsedSections, onToggleSection }) {
+  return (
+    <div className="aiux543-chat-row-children">
+      {sections.map((section) => {
+        const sectionKey = `${chatId}:${section.id}`;
+        const expanded = !collapsedSections.has(sectionKey);
+        return (
+          <div key={section.id} className="aiux543-chat-row-child-section">
+            <button
+              type="button"
+              className="aiux543-chat-tree-row aiux543-chat-tree-section"
+              aria-expanded={expanded}
+              onClick={() => onToggleSection(sectionKey)}
+            >
+              <Icon className="aiux543-chat-tree-chevron" name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+              <Icon className="aiux543-chat-tree-icon" name="nodes/folder" size={16} />
+              <span>{section.label}</span>
+            </button>
+            {expanded ? (
+              <div className="aiux543-chat-tree-children">
+                {section.items.map((item, idx) => {
+                  const label = typeof item === 'string' ? item : item.label;
+                  const status = typeof item === 'string' ? null : item.status;
+                  const isSubThread = section.id === 'sub-threads';
+                  const leafIconName = resolveAiChatTreeLeafIcon(item, section.id);
+                  const leafClasses = [
+                    'aiux543-chat-tree-row',
+                    'aiux543-chat-tree-leaf',
+                    isSubThread ? 'aiux543-chat-tree-subthread-leaf' : '',
+                    section.id === 'changes' && status ? `aiux543-chat-tree-leaf-${status}` : '',
+                  ].filter(Boolean).join(' ');
+                  return (
+                    <div key={`${section.id}-${idx}-${label}`} className={leafClasses}>
+                      <span className="aiux543-chat-tree-chevron-spacer" aria-hidden="true" />
+                      {isSubThread
+                        ? <AiChatAgentIcon icon={typeof item === 'string' ? 'claude' : (item.agent ?? 'claude')} />
+                        : <Icon className={`aiux543-chat-tree-icon${leafIconName === 'fileTypes/markdown' ? ' aiux550-project-md-icon' : ''}`} name={leafIconName} size={16} />
+                      }
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProjectToolWindowWithAiSessions({
+  ctx,
+  projectTreeData,
+  selectedTaskId = null,
+  agentTasks = AGENT_TASKS,
+  chatRows = AI_SESSION_CHATS,
+  showAllSessions = false,
+  selectedChatId = null,
+  onOpenNewSession = null,
+  onOpenSpecTask = null,
+  onOpenSpecChat = null,
+  onOpenChatInTab = null,
+  onShowAllSessions = null,
+}) {
+  const [isAiSessionsExpanded, setIsAiSessionsExpanded] = useState(true);
+  const [isProjectContextExpanded, setIsProjectContextExpanded] = useState(true);
+  const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
+  const [areAiSessionActionsVisible, setAreAiSessionActionsVisible] = useState(false);
+  const [isShowingAllSessions, setIsShowingAllSessions] = useState(false);
+  const [isAiSessionsStuck, setIsAiSessionsStuck] = useState(false);
+  const [expandedChatRows, setExpandedChatRows] = useState(() => new Set());
+  const [collapsedChatSections, setCollapsedChatSections] = useState(() => new Set());
+  const toggleChatRow = useCallback((id) => {
+    setExpandedChatRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+  const toggleChatSection = useCallback((key) => {
+    setCollapsedChatSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+  const shouldShowAllSessions = isShowingAllSessions || showAllSessions;
+  const scrollContainerRef = useRef(null);
+  const aiSessionsRef = useRef(null);
+
+  const updateStuckState = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const section = aiSessionsRef.current;
+    if (!container || !section) return;
+    const sectionBottom = section.offsetTop + section.offsetHeight;
+    setIsAiSessionsStuck(container.scrollTop >= sectionBottom);
+  }, []);
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(updateStuckState);
+    return () => window.cancelAnimationFrame(raf);
+  }, [isAiSessionsExpanded, updateStuckState]);
+  const chatsBySpecKey = new Map();
+  const specLinkedChatIds = new Set();
+  for (const chat of chatRows) {
+    const specKeys = (chat.children?.find((child) => child.id === 'specs')?.items ?? [])
+      .flatMap(getSpecLinkKeys)
+      .filter(Boolean);
+    if (specKeys.length === 0) continue;
+    specLinkedChatIds.add(chat.id);
+    for (const specKey of specKeys) {
+      if (!chatsBySpecKey.has(specKey)) chatsBySpecKey.set(specKey, []);
+      chatsBySpecKey.get(specKey).push(chat);
+    }
+  }
+  const aiSessionRows = [
+    {
+      id: AIUX_NEW_SESSION_TAB_ID,
+      title: 'New Session',
+      time: 'now',
+      icon: <AiChatClaudeIcon />,
+      type: 'new-session',
+    },
+    ...chatRows.filter((chat) => !specLinkedChatIds.has(chat.id)).map((chat) => ({
+      ...chat,
+      type: chat.type ?? 'chat',
+      icon: <AiChatAgentIcon icon={chat.agent ?? chat.icon ?? 'claude'} />,
+    })),
+  ];
+  const visibleAiSessionChatsById = new Map();
+  for (const row of aiSessionRows) {
+    if (row.type !== 'new-session') {
+      visibleAiSessionChatsById.set(row.id, row);
+    }
+  }
+  const selectedVisibleChat = selectedChatId ? visibleAiSessionChatsById.get(selectedChatId) : null;
+  const activeAiSessionRowId = selectedVisibleChat
+    ? selectedChatId
+    : selectedTaskId;
+  const specRows = agentTasks.map((task) => ({
+    ...task,
+    relatedChats: (chatsBySpecKey.get(task.id) ?? chatsBySpecKey.get(task.label) ?? []).map((chat) => ({
+      ...chat,
+      specId: task.id,
+      type: chat.type ?? 'chat',
+      icon: <AiChatAgentIcon icon={chat.agent ?? chat.icon ?? 'claude'} />,
+      children: (chat.children ?? []).filter((child) => child.id !== 'specs'),
+    })),
+  }));
+  const selectedSpecLinkedChat = selectedChatId
+    ? specRows.flatMap((task) => task.relatedChats).find((chat) => chat.id === selectedChatId)
+    : null;
+
+  const visibleProjectContextRows = [
+    { id: 'ai-context-root', label: 'Project AI context', icon: 'nodes/folder', level: 1, leaf: false, collapsed: !(isProjectContextExpanded || shouldShowAllSessions), onToggle: () => setIsProjectContextExpanded((prev) => !prev) },
+    ...(isProjectContextExpanded || shouldShowAllSessions ? [
+      { id: 'ai-context-agents', label: 'AGENTS.md', icon: 'fileTypes/markdown', level: 2, leaf: true },
+      { id: 'ai-context-skills', label: 'Skills', icon: 'nodes/folder', level: 2, leaf: false, collapsed: !(isSkillsExpanded || shouldShowAllSessions), onToggle: () => setIsSkillsExpanded((prev) => !prev) },
+      ...(isSkillsExpanded || shouldShowAllSessions ? [
+        { id: 'ai-context-skill-code-review', label: 'code-review', icon: 'codeInsight/intentionBulbGrey', level: 3, leaf: true },
+        { id: 'ai-context-skill-test-writer', label: 'test-writer', icon: 'codeInsight/intentionBulbGrey', level: 3, leaf: true },
+        { id: 'ai-context-skill-api-migration', label: 'api-migration-planner', icon: 'codeInsight/intentionBulbGrey', level: 3, leaf: true },
+        { id: 'ai-context-skill-release-notes', label: 'release-notes-drafter', icon: 'codeInsight/intentionBulbGrey', level: 3, leaf: true },
+      ] : []),
+    ] : []),
+  ];
+
+  return (
+    <ToolWindow
+      title="Project"
+      width="100%"
+      height="auto"
+      actions={['more', 'minimize']}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
+      onActionClick={(action) => {
+        if (action === 'minimize') ctx.setShowLeftPanel(false);
+      }}
+      className="aiux550-project-tool-window project-window main-window-tool-window main-window-tool-window-left"
+    >
+      <div className="aiux550-project-tree">
+        <Tree data={projectTreeData} defaultSelectedId="src" />
+      </div>
+    </ToolWindow>
+  );
+}
+
+const REFERENCE_CHAT_HISTORY_GROUPS = [
+  {
+    project: PROJECT_NAME,
+    projectIcon: 'CM',
+    projectTone: 'cobalt',
+    rows: [
+      {
+        id: 'request-logging',
+        title: 'Add request logging to a Java application',
+        agent: 'claude',
+        time: '4m',
+        children: [
+          { id: 'changes', label: 'Changes', summary: { added: 16, deleted: 4 }, items: [{ label: 'RequestLoggingFilter.java', status: 'added' }, { label: 'application.yml', status: 'modified' }] },
+        ],
+      },
+      {
+        id: 'promote-vet-schedules-spec',
+        title: 'Clarify Vet-Schedules requirements',
+        agent: 'claude',
+        time: 'now',
+      },
+    ],
+  },
+];
+
+// Promote chats that reference a `.md` spec (via `children.specs.items`) into
+// parent "spec" rows keyed by the spec label, so the chat tree shows the spec
+// document as the parent and its related chats as nested children. Chats
+// without spec linkage and section markers keep their original position.
+function restructureRowsBySpec(rows, knownSpecs = []) {
+  const chatsBySpec = new Map();
+  const linkedChatIds = new Set();
+  for (const row of rows) {
+    if (!row || row.kind === 'section' || row.kind === 'spec') continue;
+    const specsChild = row.children?.find((c) => c.id === 'specs');
+    const labels = (specsChild?.items ?? [])
+      .flatMap(getSpecLinkKeys)
+      .filter(Boolean);
+    if (labels.length === 0) continue;
+    for (const label of labels) {
+      if (!chatsBySpec.has(label)) chatsBySpec.set(label, []);
+      chatsBySpec.get(label).push(row);
+    }
+    linkedChatIds.add(row.id);
+  }
+  const allLabels = new Set([
+    ...chatsBySpec.keys(),
+    ...knownSpecs.map((spec) => spec.label),
+  ]);
+  const specRows = Array.from(allLabels).map((label) => {
+    const known = knownSpecs.find((spec) => spec.label === label);
+    return {
+      id: known?.id ?? `spec-row:${label}`,
+      kind: 'spec',
+      title: label,
+      time: known?.time,
+      relatedChats: chatsBySpec.get(label) ?? [],
+    };
+  });
+  const remaining = rows.filter((row) => (
+    !row || row.kind === 'section' || (row.kind !== 'spec' && !linkedChatIds.has(row.id))
+  ));
+  return [...specRows, ...remaining];
+}
+
+// Build current project spec rows from the same AGENT_TASKS + AI_SESSION_CHATS
+// data the Project tool window uses, so both views stay in sync. Other
+// projects fall back to inverting chat→spec links from their own rows.
+function buildChatHistoryGroups(agentTasks = AGENT_TASKS, chatRows = AI_SESSION_CHATS) {
+  const chatsBySpecKey = new Map();
+  const linkedChatIds = new Set();
+  for (const chat of chatRows) {
+    const specsChild = chat.children?.find((c) => c.id === 'specs');
+    const specKeys = (specsChild?.items ?? [])
+      .flatMap(getSpecLinkKeys)
+      .filter(Boolean);
+    if (specKeys.length === 0) continue;
+    for (const specKey of specKeys) {
+      if (!chatsBySpecKey.has(specKey)) chatsBySpecKey.set(specKey, []);
+      chatsBySpecKey.get(specKey).push(chat);
+    }
+    linkedChatIds.add(chat.id);
+  }
+  return REFERENCE_CHAT_HISTORY_GROUPS.map((group) => {
+    if (group.project === PROJECT_NAME) {
+      const specRows = agentTasks.map((task) => ({
+        id: task.id,
+        kind: 'spec',
+        title: task.label,
+        time: task.time,
+        relatedChats: (chatsBySpecKey.get(task.id) ?? chatsBySpecKey.get(task.label) ?? []).map((chat) => ({
+          ...chat,
+          specId: task.id,
+        })),
+      }));
+      const rootRows = group.rows.filter((row) => (
+        !row || row.kind === 'section' || !linkedChatIds.has(row.id)
+      ));
+      return { ...group, rows: [...specRows, ...rootRows] };
+    }
+    return { ...group, rows: restructureRowsBySpec(group.rows) };
+  });
+}
+
+function buildExpandedSpecRowsFromGroups(groups) {
+  const expanded = {};
+  for (const group of groups) {
+    for (const row of group.rows ?? []) {
+      if (row?.kind === 'spec' && Array.isArray(row.relatedChats) && row.relatedChats.length > 0) {
+        expanded[row.id] = true;
+      }
+    }
+  }
+  return expanded;
+}
+
+function ChatsHistoryToolWindow({
+  ctx,
+  activeChatId = 'request-logging',
+  activeSpecId = null,
+  onActiveChatIdChange = null,
+  agentTasks = AGENT_TASKS,
+  chatRows = AI_SESSION_CHATS,
+  onOpenSpecTask = null,
+  onOpenSpecChat = null,
+  onOpenChatInTab = null,
+}) {
+  const [isCreateProjectMenuOpen, setIsCreateProjectMenuOpen] = useState(false);
+  const [groups, setGroups] = useState(() => buildChatHistoryGroups(agentTasks, chatRows));
+  const [expandedProjects, setExpandedProjects] = useState(() => (
+    Object.fromEntries(buildChatHistoryGroups(agentTasks, chatRows).map((group) => [group.project ?? group.title, true]))
+  ));
+  const [expandedSections, setExpandedSections] = useState({});
+  const [expandedRows, setExpandedRows] = useState(() => (
+    buildExpandedSpecRowsFromGroups(buildChatHistoryGroups(agentTasks, chatRows))
+  ));
+  const [openProjectPrompt, setOpenProjectPrompt] = useState(null);
+  const selectedId = activeChatId;
+  const closeCreateProjectMenu = () => setIsCreateProjectMenuOpen(false);
+
+  useEffect(() => {
+    const nextGroups = buildChatHistoryGroups(agentTasks, chatRows);
+    setGroups(nextGroups);
+    setExpandedRows((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const group of nextGroups) {
+        for (const row of group.rows ?? []) {
+          if (row?.kind !== 'spec' || !Array.isArray(row.relatedChats) || row.relatedChats.length === 0) continue;
+          if (next[row.id]) continue;
+          next[row.id] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [agentTasks, chatRows]);
+
+  const handleSelectChat = (chatId, specId = null) => {
+    onActiveChatIdChange?.(chatId);
+    if (specId) {
+      // Chat under a spec node: open the spec in a center tab AND the chat
+      // on the left AI panel (mirrors the New Session "Recent specs" flow).
+      onOpenSpecChat?.(chatId, specId);
+      return;
+    }
+    // Standalone chats open as their own editor tab in the center.
+    onOpenChatInTab?.(chatId);
+  };
+
+  const handleCreateThread = (projectName) => {
+    const id = `${projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-new-thread-${Date.now()}`;
+    const nextRow = {
+      id,
+      title: 'New chat',
+      agent: 'claude',
+      kind: 'empty',
+      time: 'now',
+    };
+    setExpandedProjects((prev) => ({ ...prev, [projectName]: true }));
+    setGroups((prev) => prev.map((group) => (
+      (group.project ?? group.title) === projectName
+        ? { ...group, rows: [nextRow, ...group.rows] }
+        : group
+    )));
+    handleSelectChat(id);
+  };
+
+  return (
+    <ToolWindow
+      title="Chats History"
+      width="100%"
+      height="auto"
+      actions={['more', 'minimize']}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
+      onFocusCapture={() => ctx.setFocusedPanel('left')}
+      onActionClick={(action) => {
+        closeCreateProjectMenu();
+        if (action === 'minimize') ctx.setShowLeftPanel(false);
+      }}
+      toolbarExtra={(
+        <div className="aiux543-create-project-anchor">
+          <IconButton
+            icon="actions/addDirectory"
+            tooltip="New Project"
+            onClick={() => setIsCreateProjectMenuOpen((prev) => !prev)}
+          />
+          {isCreateProjectMenuOpen ? (
+            <div className="aiux543-create-project-menu" role="menu" aria-label="Create project">
+              {['New Project', 'Get From VCS', 'Open...'].map((item) => (
+                <button key={item} type="button" role="menuitem" onClick={closeCreateProjectMenu}>
+                  {item}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+      className={`main-window-tool-window main-window-tool-window-left aiux543-history-tool-window${isCreateProjectMenuOpen ? ' create-menu-open' : ''}`}
+    >
+      <div className="aiux543-tool-history-content">
+        <label className="aiux543-tool-search-field">
+          <Icon name="toolwindows/find" size={16} />
+          <input placeholder="Search projects or chats" />
+        </label>
+        <ReferenceChatList
+          activeChatId={selectedId}
+          activeSpecId={activeSpecId}
+          groups={groups}
+          expandedProjects={expandedProjects}
+          expandedRows={expandedRows}
+          expandedSections={expandedSections}
+          selectedActive={ctx.focusedPanel === 'left'}
+          className="aiux543-tool-chat-list"
+          onCreateThread={handleCreateThread}
+          onOpenProject={(projectName) => {
+            setOpenProjectPrompt(projectName);
+          }}
+          onOpenSpecTask={onOpenSpecTask}
+          onSelectChat={handleSelectChat}
+          onToggleProject={(projectName) => setExpandedProjects((prev) => ({ ...prev, [projectName]: !(prev[projectName] ?? true) }))}
+          onToggleRow={(rowId) => setExpandedRows((prev) => ({ ...prev, [rowId]: !(prev[rowId] ?? false) }))}
+          onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? true) }))}
+        />
+      </div>
+      {openProjectPrompt ? (
+        <ReferenceOpenProjectOverlay
+          projectName={openProjectPrompt}
+          onCancel={() => setOpenProjectPrompt(null)}
+          onOpenThisWindow={(projectName) => {
+            setExpandedProjects(Object.fromEntries(groups.map((group) => [group.project ?? group.title, (group.project ?? group.title) === projectName])));
+            setOpenProjectPrompt(null);
+          }}
+        />
+      ) : null}
+    </ToolWindow>
+  );
+}
+
+function ReferenceOpenProjectOverlay({ projectName, onCancel, onOpenThisWindow }) {
+  return (
+    <div className="aiux543-open-project-overlay" role="presentation">
+      <div className="aiux543-open-project-alert" role="dialog" aria-modal="true" aria-label="Open Project">
+        <Icon name="general/questionDialog" size={28} className="aiux543-open-project-alert-icon" />
+        <div className="aiux543-open-project-alert-copy">
+          <div className="aiux543-open-project-alert-title">Open Project</div>
+          <p>Where would you like to open the project<br />'{projectName}'?</p>
+          <label className="aiux543-open-project-checkbox">
+            <input type="checkbox" />
+            <span>Don't ask again</span>
+          </label>
+        </div>
+        <div className="aiux543-open-project-alert-buttons">
+          <button type="button" className="aiux543-open-project-button secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className="aiux543-open-project-button secondary" onClick={onCancel}>New Window</button>
+          <button type="button" className="aiux543-open-project-button primary" onClick={() => onOpenThisWindow(projectName)}>This Window</button>
         </div>
       </div>
     </div>
   );
-});
+}
+
+function ReferenceChatList({
+  activeChatId,
+  activeSpecId = null,
+  groups,
+  expandedProjects,
+  expandedRows,
+  expandedSections,
+  selectedActive,
+  className = '',
+  onCreateThread,
+  onOpenProject,
+  onOpenSpecTask,
+  onSelectChat,
+  onToggleProject,
+  onToggleRow,
+  onToggleSection,
+}) {
+  const activeChatIsStandalone = groups.some((group) => (
+    (group.rows ?? []).some((row) => (
+      row?.kind !== 'section'
+      && row?.kind !== 'spec'
+      && row?.id === activeChatId
+    ))
+  ));
+
+  return (
+    <div className={`aiux543-chat-list ${className}`.trim()}>
+      {groups.map((group) => {
+        const projectName = group.project ?? group.title;
+        const isProjectExpanded = expandedProjects[projectName] ?? true;
+        let collapsedSectionId = null;
+
+        return (
+          <section key={projectName}>
+            <ReferenceChatGroupHeader
+              group={group}
+              expanded={isProjectExpanded}
+              onCreateThread={() => onCreateThread?.(projectName)}
+              onOpenProject={group.projectAction ? () => onOpenProject?.(projectName) : null}
+              onToggle={() => onToggleProject?.(projectName)}
+            />
+            {isProjectExpanded ? (
+              <div className="aiux543-chat-group-rows">
+                {group.rows.map((row) => {
+                  if (row.kind === 'section') {
+                    const sectionKey = `${projectName}:${row.id}`;
+                    const expanded = expandedSections[sectionKey] ?? row.defaultExpanded ?? true;
+                    collapsedSectionId = expanded ? null : sectionKey;
+                    return (
+                      <ReferenceChatSectionHeader
+                        key={row.id}
+                        expanded={expanded}
+                        label={row.label}
+                        onToggle={() => onToggleSection?.(sectionKey)}
+                      />
+                    );
+                  }
+                  if (collapsedSectionId) return null;
+                  const isRowExpanded = expandedRows[row.id] ?? false;
+                  if (row.kind === 'spec') {
+                    const hasChats = Array.isArray(row.relatedChats) && row.relatedChats.length > 0;
+                    const isSpecSelected = row.id === activeSpecId
+                      && !activeChatIsStandalone
+                      && !row.relatedChats?.some((chatRow) => chatRow.id === activeChatId);
+                    return (
+                      <div className="aiux543-chat-node aiux543-spec-node" key={row.id}>
+                        <ReferenceChatRow
+                          row={row}
+                          expanded={isRowExpanded}
+                          selected={isSpecSelected}
+                          selectedActive={selectedActive}
+                          onSelect={() => onOpenSpecTask?.(row.id)}
+                          onToggleExpanded={() => onToggleRow?.(row.id)}
+                        />
+                        {hasChats && isRowExpanded ? (
+                          <div className="aiux543-spec-related-chats">
+                            {row.relatedChats.map((chatRow) => (
+                              <ReferenceChatRow
+                                key={chatRow.id}
+                                row={chatRow}
+                                expanded={false}
+                                selected={chatRow.id === activeChatId}
+                                selectedActive={selectedActive}
+                                onSelect={() => onSelectChat?.(chatRow.id, row.id)}
+                                onToggleExpanded={() => onToggleRow?.(chatRow.id)}
+                                nested
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="aiux543-chat-node" key={row.id}>
+                      <ReferenceChatRow
+                        row={row}
+                        expanded={isRowExpanded}
+                        selected={row.id === activeChatId}
+                        selectedActive={selectedActive}
+                        onSelect={() => onSelectChat?.(row.id)}
+                        onToggleExpanded={() => onToggleRow?.(row.id)}
+                      />
+                      {row.children?.length && isRowExpanded ? (
+                        <ReferenceChatRowChildren sections={row.children} />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReferenceChatGroupHeader({
+  group,
+  expanded,
+  onCreateThread,
+  onOpenProject,
+  onToggle,
+}) {
+  const title = group.project ?? group.title;
+  const projectAction = onOpenProject && group.projectAction ? `${group.projectAction}...` : '';
+  return (
+    <div className="aiux543-chat-group-header">
+      <button className="aiux543-chat-group-toggle" type="button" aria-expanded={expanded} onClick={onToggle}>
+        <Icon className="aiux543-chevron" name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        {group.projectIcon ? <span className={`aiux543-project-chip ${group.projectTone ?? 'cobalt'}`}>{group.projectIcon}</span> : null}
+        <span className={group.project ? 'project' : ''}>{title}</span>
+      </button>
+      <span className="aiux543-chat-group-separator" />
+      {projectAction ? (
+        <button className="aiux543-project-link" type="button" title={projectAction} aria-label={`${projectAction}: ${title}`} onClick={onOpenProject}>
+          {projectAction}
+        </button>
+      ) : null}
+      <button className="aiux543-new-thread-button" type="button" title={`New thread in ${title}`} aria-label={`New thread in ${title}`} onClick={onCreateThread}>
+        <Icon name="general/add" size={16} />
+      </button>
+    </div>
+  );
+}
+
+function ReferenceChatSectionHeader({ expanded, label, onToggle }) {
+  return (
+    <button className="aiux543-chat-history-section-header" type="button" aria-expanded={expanded} onClick={onToggle}>
+      <span className="aiux543-chat-history-section-label">
+        <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        <span>{label}</span>
+      </span>
+      <span className="aiux543-chat-history-section-separator" />
+    </button>
+  );
+}
+
+function ReferenceChatRow({
+  row,
+  expanded,
+  selected,
+  selectedActive,
+  onSelect,
+  onToggleExpanded,
+  nested = false,
+}) {
+  const isSpec = row.kind === 'spec';
+  const hasChildren = isSpec
+    ? Boolean(row.relatedChats?.length)
+    : (!nested && Boolean(row.children?.length));
+  const changeSummary = row.children?.find((child) => child.id === 'changes')?.summary;
+  const isInteractive = typeof onSelect === 'function';
+  const handleKeyDown = (event) => {
+    if (!isInteractive) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onSelect();
+  };
+  return (
+    <div
+      className={[
+        'aiux543-chat-row',
+        isInteractive ? 'aiux543-chat-row-clickable' : '',
+        selected ? `selected ${selectedActive ? 'selected-active' : 'selected-inactive'}` : '',
+        hasChildren ? 'expandable' : '',
+        changeSummary ? 'has-change-summary' : '',
+        nested ? 'aiux543-chat-row-nested' : '',
+      ].filter(Boolean).join(' ')}
+      role={isInteractive ? 'button' : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onClick={onSelect}
+      onKeyDown={handleKeyDown}
+    >
+      {hasChildren ? (
+        <button
+          className="aiux543-chat-row-chevron"
+          type="button"
+          title={expanded ? 'Collapse chat details' : 'Expand chat details'}
+          aria-label={expanded ? `Collapse ${row.title}` : `Expand ${row.title}`}
+          aria-expanded={expanded}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded?.();
+          }}
+        >
+          <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        </button>
+      ) : null}
+      <span className="aiux543-chat-title">
+        {row.kind === 'spec' ? <IconMdTask /> : <ReferenceChatAgentIcon agent={row.agent} mode={row.mode} />}
+        {row.cloud ? <ReferenceCloudMarker /> : null}
+        <span>{row.title}</span>
+      </span>
+      {changeSummary ? (
+        <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${changeSummary.added}, minus ${changeSummary.deleted}`}>
+          <span className="added">+{changeSummary.added}</span>
+          <span className="deleted">-{changeSummary.deleted}</span>
+        </span>
+      ) : null}
+      <ReferenceChatStatus status={row.status} />
+      <span className="aiux543-chat-time">{row.time}</span>
+    </div>
+  );
+}
+
+function ReferenceChatAgentIcon({ agent, mode }) {
+  const className = "aiux543-chat-burst aiux543-agent-icon";
+  if (mode === 'green' || agent === 'junie') return <ReferenceJunieIcon className={className} />;
+  if (agent === 'codex') return <ReferenceCodexIcon className={className} />;
+  return <ReferenceClaudeIcon className={className} />;
+}
+
+function ReferenceClaudeIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true" focusable="false" data-agent="claude">
+      <path d="M3.74684 10.3074L6.50076 8.76322L6.54684 8.62864L6.50076 8.55426H6.36608L5.90532 8.52593L4.33165 8.48343L2.96709 8.42676L1.64506 8.35593L1.3119 8.2851L1 7.87427L1.0319 7.66886L1.3119 7.48115L1.71241 7.51657L2.59848 7.57678L3.92759 7.66886L4.89165 7.72553L6.32 7.87427H6.54684L6.57873 7.78219L6.50076 7.72553L6.44051 7.66886L5.06532 6.73741L3.57671 5.75285L2.79696 5.18619L2.37519 4.89932L2.16253 4.63015L2.07038 4.04225L2.45316 3.62079L2.96709 3.65621L3.09823 3.69163L3.61924 4.09183L4.73215 4.95244L6.18532 6.02201L6.39797 6.19909L6.48304 6.13888L6.49367 6.09638L6.39797 5.93701L5.6076 4.50974L4.76405 3.05768L4.38835 2.4556L4.28911 2.09436C4.25367 1.94561 4.22886 1.82165 4.22886 1.66937L4.66481 1.07792L4.90582 1L5.48709 1.07792L5.73165 1.29041L6.09316 2.11561L6.67797 3.41538L7.58532 5.18265L7.85114 5.70681L7.99291 6.19201L8.04608 6.34075H8.13823V6.25576L8.21266 5.26056L8.35089 4.0387L8.48557 2.46623L8.53165 2.02353L8.75139 1.49228L9.18734 1.20541L9.5276 1.36833L9.80759 1.76853L9.76861 2.02707L9.60203 3.10726L9.27595 4.80015L9.06329 5.93347H9.18734L9.32911 5.7918L9.90329 5.03036L10.8673 3.82621L11.2927 3.34809L11.7889 2.82039L12.1078 2.56893H12.7104L13.1534 3.22768L12.9549 3.90767L12.3347 4.6939L11.8208 5.35973L11.0835 6.35138L10.6228 7.1447L10.6653 7.20845L10.7752 7.19782L12.441 6.84366L13.3413 6.68075L14.4152 6.49659L14.9008 6.72325L14.9539 6.95345L14.7625 7.42449L13.6142 7.70782L12.2673 7.97698L10.2613 8.45156L10.2365 8.46926L10.2648 8.50468L11.1686 8.58968L11.5549 8.61093H12.5013L14.2628 8.74197L14.7235 9.04655L15 9.41842L14.9539 9.70175L14.2451 10.063L13.2881 9.83633L11.0552 9.30508L10.2896 9.11384H10.1833V9.17759L10.8213 9.80091L11.9909 10.8563L13.4547 12.2163L13.5291 12.5527L13.3413 12.8184L13.1428 12.79L11.8562 11.8232L11.36 11.3876L10.2365 10.4419H10.162V10.5411L10.4208 10.9201L11.7889 12.9742L11.8597 13.6046L11.7605 13.81L11.4061 13.934L11.0162 13.8631L10.2152 12.7405L9.38937 11.4761L8.72304 10.3428L8.64152 10.3888L8.2481 14.621L8.0638 14.8371L7.63848 15L7.28405 14.7308L7.0962 14.2952L7.28405 13.4346L7.51089 12.3119L7.69519 11.4194L7.86177 10.3109L7.96101 9.94258L7.95392 9.91778L7.8724 9.92841L7.03595 11.0759L5.76354 12.7936L4.75696 13.8702L4.51595 13.9658L4.09772 13.7498L4.13671 13.3638L4.37063 13.0202L5.76354 11.2494L6.60354 10.1515L7.14582 9.51758L7.14228 9.4255H7.11038L3.41013 11.8267L2.75089 11.9117L2.46734 11.6461L2.50278 11.2105L2.63747 11.0688L3.75038 10.3038L3.74684 10.3074Z" fill="#D97757" />
+    </svg>
+  );
+}
+
+function ReferenceJunieIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true" focusable="false" data-agent="junie">
+      <path d="M10.3688 5.66597H15.0369V6.44399C15.0369 11.8883 12.7028 15.0004 6.48051 15.0004H5.70251V10.3322H6.48051C9.2036 10.3322 10.3707 9.16517 10.3707 6.44208V5.66406L10.3688 5.66597Z" fill="#48E054" />
+      <path d="M5.66815 5.66602H1V10.3342H5.66815V5.66602Z" fill="#48E054" />
+      <path d="M10.3364 1H5.66821V5.66815H10.3364V1Z" fill="#48E054" />
+    </svg>
+  );
+}
+
+function ReferenceCodexIcon({ className = '' } = {}) {
+  return <AiChatCodexIcon className={className} />;
+}
+
+function ReferenceCloudMarker() {
+  return (
+    <svg className="aiux543-cloud-marker" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M8 4C6.80272 4 5.76826 4.70135 5.28689 5.71782L5.1583 5.98935L4.85818 6.00328C3.26739 6.07711 2 7.39069 2 9C2 10.6569 3.34315 12 5 12H11.5C12.8807 12 14 10.8807 14 9.5C14 8.11976 12.8815 7.00076 11.5014 7C11.5009 7 11.5005 7 11.5 7L11.0314 7.00276L10.9696 6.57098C10.7618 5.11752 9.51098 4 8 4ZM4.51881 5.02868C5.20575 3.81809 6.5069 3 8 3C9.87134 3 11.4419 4.28465 11.879 6.02029C13.6338 6.20925 15 7.69507 15 9.5C15 11.433 13.433 13 11.5 13H5C2.79086 13 1 11.2091 1 9C1 6.9537 2.53638 5.2665 4.51881 5.02868Z" />
+    </svg>
+  );
+}
+
+function ReferenceChatStatus({ status }) {
+  if (status === 'loading') return <span className="aiux543-spinner" aria-hidden="true" />;
+  if (status === 'ready') return <span className="aiux543-ready-dot" aria-hidden="true" />;
+  if (status === 'progress') return <span className="aiux543-progress-dot" aria-hidden="true" />;
+  return <span aria-hidden="true" />;
+}
+
+function ReferenceChatRowChildren({ sections }) {
+  const [expandedSections, setExpandedSections] = useState(() => (
+    Object.fromEntries(sections.map((section) => [section.id, true]))
+  ));
+  const getIconName = (item, sectionId) => {
+    const label = typeof item === 'string' ? item : item.label;
+    if (label.endsWith('.html')) return 'fileTypes/html';
+    if (label.endsWith('.js') || label.endsWith('.jsx')) return 'fileTypes/javaScript';
+    if (label.endsWith('.css')) return 'fileTypes/css';
+    if (label.endsWith('.java')) return 'fileTypes/java';
+    if (label.endsWith('.md')) return 'fileTypes/markdown';
+    if (sectionId === 'branches') return 'vcs/branch';
+    return 'fileTypes/text';
+  };
+
+  return (
+    <div className="aiux543-chat-row-children">
+      {sections.map((section) => {
+        const isExpanded = expandedSections[section.id] ?? true;
+        return (
+          <div className="aiux543-chat-row-child-section" key={section.id}>
+            <button
+              className="aiux543-chat-tree-row aiux543-chat-tree-section"
+              type="button"
+              aria-expanded={isExpanded}
+              onClick={() => setExpandedSections((prev) => ({ ...prev, [section.id]: !isExpanded }))}
+            >
+              <Icon className="aiux543-chat-tree-chevron" name={isExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+              <Icon className="aiux543-chat-tree-icon" name="nodes/folder" size={16} />
+              <span>{section.label}</span>
+            </button>
+            {isExpanded ? (
+              <div className="aiux543-chat-tree-children">
+                {section.items.map((item) => {
+                  const label = typeof item === 'string' ? item : item.label;
+                  const status = typeof item === 'string' ? null : item.status;
+                  const rowClassName = [
+                    'aiux543-chat-tree-row',
+                    'aiux543-chat-tree-leaf',
+                    section.id === 'changes' && status ? `aiux543-chat-tree-leaf-${status}` : '',
+                    section.id === 'branches' ? 'aiux543-chat-tree-branch-leaf' : '',
+                    section.id === 'sub-threads' ? 'aiux543-chat-tree-subthread-leaf' : '',
+                  ].filter(Boolean).join(' ');
+
+                  return (
+                    <div className={rowClassName} key={label}>
+                      <span className="aiux543-chat-tree-chevron-spacer" />
+                      {section.id === 'sub-threads' ? (
+                        <ReferenceChatAgentIcon agent={typeof item === 'string' ? 'claude' : item.agent} mode={typeof item === 'string' ? undefined : item.mode} />
+                      ) : (
+                        <Icon className="aiux543-chat-tree-icon" name={getIconName(item, section.id)} size={16} />
+                      )}
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const MY_PROJECTS = [
-  { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
+  { id: '1', name: 'spring-petclinic', path: '~/projects/spring-petclinic', initials: 'SP', gradient: ['#548AF7', '#2E4D89'] },
   { id: '2', name: 'auth-module',     path: '~/projects/auth-module',     initials: 'AM', gradient: ['#8b5cf6', '#6d28d9'] },
   { id: '3', name: 'api-gateway',     path: '~/projects/api-gateway',     initials: 'AG', gradient: ['#10b981', '#059669'] },
 ];
@@ -523,28 +1992,28 @@ const MY_COMMIT_FILES = [
       {
         id: 'visit-controller',
         label: 'VisitController.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/owner',
         icon: 'fileTypes/java',
         status: 'modified',
       },
       {
         id: 'diff-visit',
         label: 'Visit.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/owner',
         icon: 'fileTypes/java',
         status: 'modified',
       },
       {
         id: 'adapter-script',
         label: 'AdapterScript.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
+        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/support',
         icon: 'fileTypes/java',
         status: 'modified',
       },
       {
         id: 'function-utils',
         label: 'FunctionUtils.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
+        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/support',
         icon: 'fileTypes/java',
         status: 'modified',
       },
@@ -559,7 +2028,7 @@ const MY_COMMIT_FILES = [
       {
         id: 'visit-controller-test',
         label: 'VisitControllerTests.java',
-        path: '~/IdeaProjects/payment-service/src/test/java/org/springframework/samples/petclinic/owner',
+        path: '~/IdeaProjects/spring-petclinic/src/test/java/org/springframework/samples/petclinic/owner',
         icon: 'fileTypes/java',
         status: 'added',
       },
@@ -732,8 +2201,10 @@ const MY_PROJECT_TREE = [
     id: 'root',
     label: PROJECT_NAME,
     icon: 'nodes/folder',
+    secondaryText: PROJECT_ROOT_PATH_DISPLAY,
     isExpanded: true,
     children: [
+      { id: 'idea', label: '.idea', icon: 'nodes/folder' },
       {
         id: 'src',
         label: 'src/main/java',
@@ -746,12 +2217,12 @@ const MY_PROJECT_TREE = [
             icon: 'nodes/package',
             isExpanded: true,
             children: [
-              { id: 'visit',           label: 'Visit.java',             icon: 'fileTypes/java' },
-              { id: 'visitCtrl',       label: 'VisitController.java',   icon: 'fileTypes/java' },
-              { id: 'visitRepo',       label: 'VisitRepository.java',   icon: 'fileTypes/java' },
-              { id: 'owner-file',      label: 'Owner.java',             icon: 'fileTypes/java' },
-              { id: 'pet',             label: 'Pet.java',               icon: 'fileTypes/java' },
-              { id: 'petTypeFormatter', label: 'PetTypeFormatter.java', icon: 'fileTypes/java' },
+              { id: 'visit',            label: 'Visit',             icon: 'nodes/class' },
+              { id: 'visitCtrl',        label: 'VisitController',   icon: 'nodes/class' },
+              { id: 'visitRepo',        label: 'VisitRepository',   icon: 'nodes/interface' },
+              { id: 'owner-file',       label: 'Owner',             icon: 'nodes/class' },
+              { id: 'pet',              label: 'Pet',               icon: 'nodes/class' },
+              { id: 'petTypeFormatter', label: 'PetTypeFormatter',  icon: 'nodes/class' },
             ],
           },
           {
@@ -760,10 +2231,10 @@ const MY_PROJECT_TREE = [
             icon: 'nodes/package',
             isExpanded: true,
             children: [
-              { id: 'vet-file',     label: 'Vet.java',           icon: 'fileTypes/java' },
-              { id: 'vetRepo',      label: 'VetRepository.java', icon: 'fileTypes/java' },
-              { id: 'vetFormatter', label: 'VetFormatter.java',  icon: 'fileTypes/java' },
-              { id: 'vetSchedule',  label: 'VetSchedule.java',   icon: 'fileTypes/java' },
+              { id: 'vet-file',     label: 'Vet',           icon: 'nodes/class' },
+              { id: 'vetRepo',      label: 'VetRepository', icon: 'nodes/interface' },
+              { id: 'vetFormatter', label: 'VetFormatter',  icon: 'nodes/class' },
+              { id: 'vetSchedule',  label: 'VetSchedule',   icon: 'nodes/class' },
             ],
           },
           {
@@ -772,8 +2243,8 @@ const MY_PROJECT_TREE = [
             icon: 'nodes/package',
             isExpanded: true,
             children: [
-              { id: 'baseEntity', label: 'BaseEntity.java', icon: 'fileTypes/java' },
-              { id: 'person',     label: 'Person.java',     icon: 'fileTypes/java' },
+              { id: 'baseEntity', label: 'BaseEntity', icon: 'nodes/class' },
+              { id: 'person',     label: 'Person',     icon: 'nodes/class' },
             ],
           },
         ],
@@ -828,7 +2299,7 @@ const MY_PROJECT_TREE = [
               },
             ],
           },
-          { id: 'appProps', label: 'application.properties', icon: 'fileTypes/text' },
+          { id: 'appProps', label: 'application.properties', icon: 'fileTypes/properties' },
         ],
       },
       {
@@ -837,15 +2308,27 @@ const MY_PROJECT_TREE = [
         icon: 'nodes/testRoot',
         isExpanded: true,
         children: [
-          { id: 'test1', label: 'VisitControllerTests.java', icon: 'fileTypes/java' },
-          { id: 'test2', label: 'ClinicServiceTests.java',   icon: 'fileTypes/java' },
+          { id: 'test1', label: 'VisitControllerTests', icon: 'nodes/class' },
+          { id: 'test2', label: 'ClinicServiceTests',   icon: 'nodes/class' },
         ],
       },
+      {
+        id: 'target',
+        label: 'target',
+        icon: 'nodes/excludeRoot',
+        isExpanded: true,
+        children: [
+          { id: 'target-classes',   label: 'classes',           icon: 'nodes/excludeRoot' },
+          { id: 'target-generated', label: 'generated-sources', icon: 'nodes/excludeRoot' },
+        ],
+      },
+      { id: 'gitignore',         label: '.gitignore',         icon: 'fileTypes/text' },
+      { id: 'external-libraries', label: 'External Libraries', icon: 'nodes/library' },
     ],
   },
 ];
 
-const PROJECT_ROOT_PATH = '~/projects/payment-service';
+const PROJECT_ROOT_PATH = '~/projects/spring-petclinic';
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
@@ -2633,6 +4116,8 @@ const MY_LEFT_STRIPE = DEFAULT_LEFT_STRIPE_ITEMS.filter(i =>
   ['project', 'commit', 'structure'].includes(i.id)
 );
 
+const MY_RIGHT_STRIPE = DEFAULT_RIGHT_STRIPE_ITEMS.filter((item) => item.id !== 'ai');
+
 const AGENT_TASKS_ICON = (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M13.2701 19.13C14.0501 19.13 14.6901 18.5 14.6901 17.71C14.6901 16.92 14.0601 16.29 13.2701 16.29C12.4801 16.29 11.8501 16.92 11.8501 17.71C11.8501 18.5 12.4801 19.13 13.2701 19.13Z" fill="currentColor"/>
@@ -2877,6 +4362,7 @@ function getCompletionAttachment(item) {
   return null;
 }
 
+const LEFT_TOOL_WINDOW_IDS = new Set(['project', 'commit', 'structure', 'agent-tasks', CHATS_HISTORY_TOOL_WINDOW_ID]);
 const BOTTOM_TOOL_WINDOW_IDS = new Set(['terminal', 'git', 'problems']);
 const BOTTOM_TOOL_WINDOW_TITLES = {
   terminal: 'Terminal',
@@ -2886,31 +4372,15 @@ const BOTTOM_TOOL_WINDOW_TITLES = {
 const TERMINAL_TASK_TAB_BASE_LABEL = 'Visit-Booking.md';
 
 function ProblemsFileNodeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12.9498 3.05025C15.6835 5.78392 15.6835 10.2161 12.9498 12.9497C10.2162 15.6834 5.784 15.6834 3.05033 12.9497C0.316663 10.2161 0.316663 5.78392 3.05033 3.05025C5.784 0.316582 10.2162 0.316583 12.9498 3.05025Z" fill="#3D3223" />
-      <path fillRule="evenodd" clipRule="evenodd" d="M14.9144 6.90481L13.9266 7.06045C13.736 5.85124 13.1756 4.69027 12.2427 3.75736C11.3098 2.82445 10.1488 2.26404 8.93963 2.07352L9.09527 1.0857C10.5063 1.30802 11.8624 1.96287 12.9498 3.05025C14.0372 4.13763 14.6921 5.49375 14.9144 6.90481ZM6.90489 1.0857L7.06053 2.07352C5.85132 2.26404 4.69035 2.82445 3.75744 3.75736C2.82453 4.69027 2.26412 5.85124 2.0736 7.06045L1.08579 6.90481C1.30811 5.49375 1.96295 4.13763 3.05033 3.05025C4.13771 1.96287 5.49383 1.30802 6.90489 1.0857ZM1.08579 9.09519C1.30811 10.5063 1.96295 11.8624 3.05033 12.9497C4.13771 14.0371 5.49383 14.692 6.90489 14.9143L7.06053 13.9265C5.85132 13.736 4.69035 13.1755 3.75744 12.2426C2.82453 11.3097 2.26412 10.1488 2.0736 8.93955L1.08579 9.09519ZM9.09527 14.9143L8.93963 13.9265C10.1488 13.736 11.3098 13.1755 12.2427 12.2426C13.1756 11.3097 13.736 10.1488 13.9266 8.93955L14.9144 9.09519C14.6921 10.5063 14.0372 11.8624 12.9498 12.9497C11.8624 14.0371 10.5063 14.692 9.09527 14.9143Z" fill="#D6AE58" />
-      <path d="M9 4.5L6 8H10L7 11.5" stroke="#D6AE58" strokeLinecap="round" />
-    </svg>
-  );
+  return <Icon name="actions/lightning" size={16} />;
 }
 
 function ProblemsWarningNodeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M1.27603 10.8634L6.3028 1.98903C7.04977 0.670323 8.94893 0.670326 9.69589 1.98903L14.7227 10.8634C15.516 12.2639 14.5047 14 12.8956 14H3.10308C1.494 14 0.482737 12.2639 1.27603 10.8634Z" fill="#C7A450" />
-      <path d="M9 5C9 4.44772 8.55228 4 8 4C7.44772 4 7 4.44772 7 5V7.5C7 8.05229 7.44772 8.5 8 8.5C8.55229 8.5 9 8.05228 9 7.5L9 5Z" fill="#1E1F22" />
-      <path d="M8 12C8.55228 12 9 11.5523 9 11C9 10.4477 8.55228 10 8 10C7.44772 10 7 10.4477 7 11C7 11.5523 7.44772 12 8 12Z" fill="#1E1F22" />
-    </svg>
-  );
+  return <Icon name="status/warning" size={16} />;
 }
 
 function ProblemsErrorNodeIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path fillRule="evenodd" clipRule="evenodd" d="M2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8ZM7 5C7 4.44772 7.44772 4 8 4C8.55229 4 9 4.44772 9 5V8C9 8.55228 8.55229 9 8 9C7.44772 9 7 8.55228 7 8V5ZM9 11C9 11.5523 8.55229 12 8 12C7.44772 12 7 11.5523 7 11C7 10.4477 7.44772 10 8 10C8.55229 10 9 10.4477 9 11Z" fill="#DB5C5C" />
-    </svg>
-  );
+  return <Icon name="status/error" size={16} />;
 }
 
 function ProblemsCommentNodeIcon() {
@@ -4292,9 +5762,9 @@ function resolveRuntimeInspectionItem(item) {
 
 function CompletionNestedChevron() {
   return (
-    <svg className="cmp-nested-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.25 4.5L9.75 8L6.25 11.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span className="cmp-nested-chevron">
+      <Icon name="general/chevronRight" size={16} />
+    </span>
   );
 }
 
@@ -4509,19 +5979,15 @@ function buildAddPopupFiles(agentTasks = []) {
 }
 
 function AddFileIcon({ type }) {
-  if (type === 'md') return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path fillRule="evenodd" clipRule="evenodd" d="M12.5929 9.9438L12.5929 4.70001L13.7929 4.70002L13.7929 9.94379L15.0763 8.66037L15.9248 9.5089L13.1929 12.2409L10.4609 9.5089L11.3095 8.66037L12.5929 9.9438Z" fill="#9B6BDA"/>
-      <path d="M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z" fill="#9B6BDA"/>
+  if (type === 'md') return <Icon name="fileTypes/markdown" size={16} />;
+  if (type === 'py') return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <path fillRule="evenodd" clipRule="evenodd" d="M8 1C11 1 11 2 11 4L11 6.5C11 7.32843 10.3284 8 9.5 8H6.5C5.11929 8 4 9.11929 4 10.5V11C2 11 1 11 1 7.99999C1 4.99999 2 4.99998 4 4.99998L7.5 5C7.77614 5 8 4.77614 8 4.5C8 4.22386 7.77614 4 7.5 4H5C5 2 5 1 8 1ZM6.5 3C6.77614 3 7 2.77614 7 2.5C7 2.22386 6.77614 2 6.5 2C6.22386 2 6 2.22386 6 2.5C6 2.77614 6.22386 3 6.5 3Z" fill="#548AF7" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M12 5V6.5C12 7.88071 10.8807 9 9.5 9H6.5C5.67157 9 5 9.67157 5 10.5L5 12C5 14 5 15 8 15C11 15 11 14 11 12L8.5 12C8.22386 12 8 11.7761 8 11.5C8 11.2239 8.22386 11 8.5 11L12 11C14 11 15 11 15 8C15 5 14 5 12 5ZM9.5 14C9.77614 14 10 13.7761 10 13.5C10 13.2239 9.77614 13 9.5 13C9.22386 13 9 13.2239 9 13.5C9 13.7761 9.22386 14 9.5 14Z" fill="#F2C55C" />
     </svg>
   );
-  if (type === 'py') return <span style={{ fontSize: 14, lineHeight: '16px', flexShrink: 0 }}>🐍</span>;
-  if (type === 'ipynb') return <span style={{ fontSize: 14, lineHeight: '16px', flexShrink: 0 }}>⟳</span>;
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M2 4h12M2 8h12M2 12h8" stroke="#9FA2A8" strokeWidth="1.2" strokeLinecap="round"/>
-    </svg>
-  );
+  if (type === 'ipynb') return <Icon name="fileTypes/scratch" size={16} />;
+  return <Icon name="fileTypes/text" size={16} />;
 }
 
 function AddPopup({ onClose, onSelectFile, style, files = ADD_RECENT_FILES }) {
@@ -4840,6 +6306,195 @@ function createSpecDocument() {
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
+}
+
+function createFeatureTemplateSpecDocument() {
+  return [
+    {
+      id: 'feature-summary',
+      title: 'Feature Summary',
+      items: [
+        { id: 'feature-summary-1', type: 'paragraph', text: 'Describe the user-facing capability you want to add.' },
+        { id: 'feature-summary-2', type: 'paragraph', text: 'Context: mention the screen, workflow, API, or module this feature belongs to.' },
+      ],
+    },
+    {
+      id: 'feature-user-value',
+      title: 'User Value',
+      items: [
+        { id: 'feature-value-1', type: 'bullet', text: 'Who benefits from this feature?' },
+        { id: 'feature-value-2', type: 'bullet', text: 'What user problem or business goal does it solve?' },
+      ],
+    },
+    {
+      id: 'feature-plan',
+      title: 'Implementation Plan',
+      items: [
+        {
+          id: 'feature-plan-1',
+          type: 'check',
+          checked: false,
+          text: 'Identify the affected UI, backend, data, and integration surfaces.',
+          children: [
+            { id: 'feature-plan-1-child-1', type: 'check', checked: false, text: 'List files/components/services likely to change.' },
+            { id: 'feature-plan-1-child-2', type: 'check', checked: false, text: 'Call out migrations, flags, or compatibility constraints.' },
+          ],
+        },
+        {
+          id: 'feature-plan-2',
+          type: 'check',
+          checked: false,
+          text: 'Implement the smallest complete vertical slice.',
+          children: [
+            { id: 'feature-plan-2-child-1', type: 'check', checked: false, text: 'Describe the happy path.' },
+            { id: 'feature-plan-2-child-2', type: 'check', checked: false, text: 'Describe empty, loading, permission, and error states.' },
+          ],
+        },
+        {
+          id: 'feature-plan-3',
+          type: 'check',
+          checked: false,
+          text: 'Add tests and verification coverage.',
+          children: [
+            { id: 'feature-plan-3-child-1', type: 'check', checked: false, text: 'Unit/integration tests to add or update.' },
+            { id: 'feature-plan-3-child-2', type: 'check', checked: false, text: 'Manual checks or demo flow.' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'feature-acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'feature-ac-1', type: 'check', checked: false, text: 'User can complete the new workflow from start to finish.' },
+        { id: 'feature-ac-2', type: 'check', checked: false, text: 'The feature handles validation, permissions, and failure states.' },
+        { id: 'feature-ac-3', type: 'check', checked: false, text: 'Existing behavior remains unchanged outside the described scope.' },
+      ],
+    },
+    {
+      id: 'feature-notes',
+      title: 'Implementation Notes',
+      items: [
+        { id: 'feature-notes-1', type: 'bullet', text: 'Add relevant codebase observations here.' },
+        { id: 'feature-notes-2', type: 'bullet', text: 'Add API, schema, design, or dependency constraints here.' },
+      ],
+    },
+    {
+      id: 'feature-decisions',
+      title: 'Decisions',
+      items: [
+        { id: 'feature-decision-1', type: 'comment', text: 'Record tradeoffs, alternatives rejected, or assumptions that need confirmation.' },
+      ],
+    },
+    {
+      id: 'feature-other',
+      title: 'Out of Scope',
+      items: [
+        { id: 'feature-other-1', type: 'comment', text: 'List adjacent requests that should not be implemented in this task.' },
+      ],
+    },
+  ].map((section) => withDerivedPlanChildren(section));
+}
+
+function createBugFixTemplateSpecDocument() {
+  return [
+    {
+      id: 'bug-summary',
+      title: 'Bug Summary',
+      items: [
+        { id: 'bug-summary-1', type: 'paragraph', text: 'Describe the broken behavior and where it happens.' },
+        { id: 'bug-summary-2', type: 'paragraph', text: 'Impact: who is affected, how often it happens, and how severe it is.' },
+      ],
+    },
+    {
+      id: 'bug-reproduction',
+      title: 'Reproduction Steps',
+      items: [
+        { id: 'bug-repro-1', type: 'check', checked: false, text: 'Open or set up the affected state.' },
+        { id: 'bug-repro-2', type: 'check', checked: false, text: 'Perform the action that triggers the bug.' },
+        { id: 'bug-repro-3', type: 'check', checked: false, text: 'Observe the incorrect result.' },
+      ],
+    },
+    {
+      id: 'bug-expected',
+      title: 'Expected Behavior',
+      items: [
+        { id: 'bug-expected-1', type: 'paragraph', text: 'Describe what should happen instead.' },
+      ],
+    },
+    {
+      id: 'bug-actual',
+      title: 'Actual Behavior',
+      items: [
+        { id: 'bug-actual-1', type: 'paragraph', text: 'Describe what currently happens, including errors, logs, or screenshots if relevant.' },
+      ],
+    },
+    {
+      id: 'bug-plan',
+      title: 'Fix Plan',
+      items: [
+        {
+          id: 'bug-plan-1',
+          type: 'check',
+          checked: false,
+          text: 'Locate the failing code path and confirm the root cause.',
+          children: [
+            { id: 'bug-plan-1-child-1', type: 'check', checked: false, text: 'Identify the affected files, inputs, and state transitions.' },
+            { id: 'bug-plan-1-child-2', type: 'check', checked: false, text: 'Explain why the current behavior is wrong.' },
+          ],
+        },
+        {
+          id: 'bug-plan-2',
+          type: 'check',
+          checked: false,
+          text: 'Apply a minimal fix that preserves existing behavior.',
+          children: [
+            { id: 'bug-plan-2-child-1', type: 'check', checked: false, text: 'Describe the code change.' },
+            { id: 'bug-plan-2-child-2', type: 'check', checked: false, text: 'Call out compatibility or migration risks.' },
+          ],
+        },
+        {
+          id: 'bug-plan-3',
+          type: 'check',
+          checked: false,
+          text: 'Add regression coverage.',
+          children: [
+            { id: 'bug-plan-3-child-1', type: 'check', checked: false, text: 'Add or update tests that fail before the fix.' },
+            { id: 'bug-plan-3-child-2', type: 'check', checked: false, text: 'Add manual verification steps if automated coverage is not enough.' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'bug-acceptance',
+      title: 'Acceptance Criteria',
+      items: [
+        { id: 'bug-ac-1', type: 'check', checked: false, text: 'The reproduction steps no longer produce the bug.' },
+        { id: 'bug-ac-2', type: 'check', checked: false, text: 'The expected behavior is covered by regression tests.' },
+        { id: 'bug-ac-3', type: 'check', checked: false, text: 'No related existing workflow regresses.' },
+      ],
+    },
+    {
+      id: 'bug-notes',
+      title: 'Investigation Notes',
+      items: [
+        { id: 'bug-notes-1', type: 'bullet', text: 'Add stack traces, logs, recent changes, or suspicious files here.' },
+      ],
+    },
+    {
+      id: 'bug-other',
+      title: 'Out of Scope',
+      items: [
+        { id: 'bug-other-1', type: 'comment', text: 'List cleanup or redesign work that should not be bundled into this bug fix.' },
+      ],
+    },
+  ].map((section) => withDerivedPlanChildren(section));
+}
+
+function createTaskTemplateSpecDocument(templateId = 'feature') {
+  return templateId === 'bug-fix'
+    ? createBugFixTemplateSpecDocument()
+    : createFeatureTemplateSpecDocument();
 }
 
 function serializeSpecDocument(documentSections) {
@@ -6052,9 +7707,9 @@ function AcCheckRow({
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
-              <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <span className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
+              <Icon name="general/chevronDown" size={12} />
+            </span>
           </button>
         )}
         {commentAdornment}
@@ -7270,19 +8925,13 @@ function DoneInspectionWidget({
             )}
             {hasWarnings && (
               <span className="spec-done-inspection-group">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path fillRule="evenodd" clipRule="evenodd" d="M1.27603 10.8634L6.3028 1.98903C7.04977 0.670323 8.94893 0.670326 9.69589 1.98903L14.7227 10.8634C15.516 12.2639 14.5047 14 12.8956 14H3.10308C1.494 14 0.482737 12.2639 1.27603 10.8634Z" fill="#C7A450" />
-                <path d="M9 5C9 4.44772 8.55228 4 8 4C7.44772 4 7 4.44772 7 5V7.5C7 8.05229 7.44772 8.5 8 8.5C8.55229 8.5 9 8.05228 9 7.5L9 5Z" fill="#1E1F22" />
-                <path d="M8 12C8.55228 12 9 11.5523 9 11C9 10.4477 8.55228 10 8 10C7.44772 10 7 10.4477 7 11C7 11.5523 7.44772 12 8 12Z" fill="#1E1F22" />
-              </svg>
-              <span className="spec-done-inspection-text">{warningCount}</span>
-            </span>
-          )}
-          {hasErrors && (
-            <span className="spec-done-inspection-group">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path fillRule="evenodd" clipRule="evenodd" d="M2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8ZM7 5C7 4.44772 7.44772 4 8 4C8.55229 4 9 4.44772 9 5V8C9 8.55228 8.55229 9 8 9C7.44772 9 7 8.55228 7 8V5ZM9 11C9 11.5523 8.55229 12 8 12C7.44772 12 7 11.5523 7 11C7 10.4477 7.44772 10 8 10C8.55229 10 9 10.4477 9 11Z" fill="#DB5C5C" />
-              </svg>
+                <Icon name="status/warning" size={16} />
+                <span className="spec-done-inspection-text">{warningCount}</span>
+              </span>
+            )}
+            {hasErrors && (
+              <span className="spec-done-inspection-group">
+                <Icon name="status/error" size={16} />
                 <span className="spec-done-inspection-text">{errorCount}</span>
               </span>
             )}
@@ -7297,9 +8946,7 @@ function DoneInspectionWidget({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onNavigatePreviousIssue?.()}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M4.5 9.75L8 6.25L11.5 9.75" stroke="currentColor" strokeLinecap="round" />
-                  </svg>
+                  <Icon name="general/chevronUp" size={16} />
                 </button>
               </Tooltip>
               <Tooltip text="Next Highlighted Error" shortcut="F2" placement="bottom" delay={0}>
@@ -7310,9 +8957,7 @@ function DoneInspectionWidget({
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onNavigateNextIssue?.()}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="currentColor" strokeLinecap="round" />
-                  </svg>
+                  <Icon name="general/chevronDown" size={16} />
                 </button>
               </Tooltip>
             </div>
@@ -7350,9 +8995,9 @@ function DoneInspectionWidget({
                   }
                 }}
               >
-                <svg className="spec-done-version-popup-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8C2 4.68629 4.68629 2 8 2ZM8 3C5.23858 3 3 5.23858 3 8C3 10.7614 5.23858 13 8 13C10.7614 13 13 10.7614 13 8C13 5.23858 10.7614 3 8 3ZM7.50153 5C7.74699 5 7.95114 5.17688 7.99347 5.41012L8.00153 5.5V8H9.5C9.77614 8 10 8.22386 10 8.5C10 8.74546 9.82312 8.94961 9.58988 8.99194L9.5 9H7.50153C7.25607 9 7.05192 8.82312 7.00958 8.58988L7.00153 8.5V5.5C7.00153 5.22386 7.22538 5 7.50153 5Z" fill="#CED0D6" />
-                </svg>
+                <span className="spec-done-version-popup-icon">
+                  <Icon name="general/history" size={16} />
+                </span>
                 <div className="cmp-content">
                   <span className="cmp-label">{version.label}</span>
                   <span className="cmp-desc">{isCurrentVersion ? 'Current' : 'Show diff'}</span>
@@ -9721,10 +11366,7 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
         <div className="agent-task-toolbar-right">
           {/* Restart icon button */}
           <button className="at-icon-btn" title="Restart">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 7A5 5 0 0 0 7 12 5 5 0 0 0 12 7 5 5 0 0 0 7 2" stroke="#CED0D6" strokeWidth="1.2" strokeLinecap="round"/>
-              <path d="M7 2L4.5 4.5 7 7" stroke="#CED0D6" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <Icon name="general/refresh" size={14} />
           </button>
           {/* Specify button */}
           <button className="fu-regenerate-btn" onClick={onRegenerate}>Specify</button>
@@ -9743,9 +11385,7 @@ function AttachedFileChip({ label, onRemove, className = '' }) {
       <span className="attached-file-label">{label}</span>
       {onRemove && (
         <button type="button" className="attached-file-remove" onClick={onRemove}>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
+          <Icon name="general/closeSmall" size={12} />
         </button>
       )}
     </div>
@@ -10745,6 +12385,60 @@ const AGENT_TASKS = [
   { id: 't2', label: 'Vet-Schedules.md',   time: '15m', status: null },
 ];
 
+// Real chat sessions shared between the AI Sessions panel and the New Session editor.
+// `agent` is a string id; the renderer resolves the icon via <AiChatAgentIcon icon={agent} />.
+// Each chat may carry `children.specs.items` listing real `.md` files it touched —
+// recentSpecs in AIUXNewSessionEditor uses that linkage to find related chats.
+//
+// Spec-status chats (`spec-chat-${tabId}-build` / `spec-chat-${tabId}-specified`)
+// are tied to a specific AGENT_TASKS entry. Only Visit-Booking (t1) has them in
+// initial state; Vet-Schedules (t2) intentionally has no related chats yet.
+const AI_SESSION_CHATS = [
+  {
+    id: 'spec-chat-agent-task-t1-build',
+    title: 'Build: Visit-Booking',
+    time: '12m',
+    agent: 'claude',
+    type: 'chat',
+    children: [
+      { id: 'specs', label: 'Specs', items: ['Visit-Booking.md'] },
+    ],
+  },
+  {
+    id: 'spec-chat-agent-task-t1-specified',
+    title: 'Specified: Visit-Booking',
+    time: '34m',
+    agent: 'claude',
+    type: 'chat',
+    children: [
+      { id: 'specs', label: 'Specs', items: ['Visit-Booking.md'] },
+    ],
+  },
+  {
+    id: 'request-logging',
+    title: 'Add request logging to visits flow',
+    time: '2m',
+    agent: 'claude',
+    type: 'chat',
+    cloud: false,
+    diff: { added: 16, deleted: 4 },
+    children: [
+      { id: 'changes', label: 'Changes', summary: { added: 16, deleted: 4 }, items: [
+        { label: 'RequestLoggingFilter.java', status: 'added' },
+        { label: 'application.yml', status: 'modified' },
+        { label: 'VisitController.java', status: 'modified' },
+      ]},
+    ],
+  },
+  {
+    id: 'promote-vet-schedules-spec',
+    title: 'Clarify Vet-Schedules requirements',
+    time: 'now',
+    agent: 'claude',
+    type: 'chat',
+  },
+];
+
 const VET_SCHEDULES_AC_RUN_STATUSES = [
   {
     status: 'passed',
@@ -10943,6 +12637,12 @@ function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
 
   return [
+    {
+      id: AIUX_NEW_SESSION_TAB_ID,
+      label: 'New Session',
+      icon: <AiChatClaudeIcon />,
+      closable: true,
+    },
     visitControllerTab,
     {
       id: INITIAL_PLAN_DIFF_TAB_ID,
@@ -10975,6 +12675,10 @@ function buildInitialEditorTabContents() {
     sourceTabLabel,
   });
   const baseContents = {
+    [AIUX_NEW_SESSION_TAB_ID]: {
+      language: 'text',
+      code: '',
+    },
     ...MY_EDITOR_TAB_CONTENTS,
     '1': {
       ...MY_EDITOR_TAB_CONTENTS['1'],
@@ -11066,9 +12770,9 @@ function resolveAgentTaskExecutionTimeLabel(timing, now = Date.now()) {
   return formatAgentTaskExecutionTime(timing.lastDurationMs);
 }
 
-function IconMdTask() {
+function IconMdTask({ className = '' } = {}) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path fillRule="evenodd" clipRule="evenodd" d="M12.5929 9.9438L12.5929 4.70001L13.7929 4.70002L13.7929 9.94379L15.0763 8.66037L15.9248 9.5089L13.1929 12.2409L10.4609 9.5089L11.3095 8.66037L12.5929 9.9438Z" fill="#9B6BDA"/>
       <path d="M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z" fill="#9B6BDA"/>
     </svg>
@@ -11148,11 +12852,7 @@ function IconWarning() {
 }
 
 function IconDone() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M2.5 8.25L6 11.75L13.5 4.25" stroke="#868A91" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <Icon name="general/checkmark" size={16} />;
 }
 
 function IconLoaderSpinner() {
@@ -11172,12 +12872,16 @@ function IconLoaderSpinner() {
 
 function IconChevron({ expanded }) {
   return (
-    <svg
-      width="16" height="16" viewBox="0 0 16 16" fill="none"
-      style={{ flexShrink: 0, transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)' }}
+    <span
+      style={{
+        display: 'inline-flex',
+        flexShrink: 0,
+        transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+        transition: 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
     >
-      <path d="M4 6L8 10L12 6" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
+      <Icon name="general/chevronDown" size={16} />
+    </span>
   );
 }
 
@@ -11531,6 +13235,7 @@ function getAiChatAttachmentSourcePreviewItems(attachment = null) {
 
 function ChatToolWindow({
   ctx,
+  onBackToHistory = null,
   onOpenDiffTab = null,
   onClearDiffComments = null,
   onClearAllDiffAttachments = null,
@@ -12044,14 +13749,22 @@ function ChatToolWindow({
 	      title={isEmptyChatState ? 'AI Chat' : selectedChat.title}
       width={377}
       height="auto"
-      focused={ctx.focusedPanel === 'right'}
-      onFocus={() => ctx.setFocusedPanel('right')}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
       onActionClick={(action) => {
-        if (action === 'minimize') ctx.setShowRightPanel(false);
+        if (action === 'minimize') ctx.setShowLeftPanel(false);
       }}
       actions={[]}
 	      toolbarExtra={(
 	        <div className="ai-chat-header-extra">
+	          {onBackToHistory ? (
+	            <IconButton
+	              icon="general/chevronLeft"
+	              tooltip="Back to Chats History"
+	              className="ai-chat-toolbar-button ai-chat-back-button"
+	              onClick={onBackToHistory}
+	            />
+	          ) : null}
 	          <button
 	            ref={chatTitleChevronRef}
 	            className={`ai-chat-title-button${isChatListOpen ? ' is-selected' : ''}`}
@@ -12070,11 +13783,11 @@ function ChatToolWindow({
             </button>
             <IconButton icon="general/openNewTab" tooltip="Open in New Tab" className="ai-chat-toolbar-button" />
             <IconButton icon="general/moreVertical" tooltip="More Options" className="ai-chat-toolbar-button" />
-            <IconButton icon="general/hide" tooltip="Hide" className="ai-chat-toolbar-button" onClick={() => ctx.setShowRightPanel(false)} />
+            <IconButton icon="general/hide" tooltip="Hide" className="ai-chat-toolbar-button" onClick={() => ctx.setShowLeftPanel(false)} />
           </div>
         </div>
       )}
-      className="ai-chat-window main-window-tool-window main-window-tool-window-right"
+      className="ai-chat-window main-window-tool-window main-window-tool-window-left"
     >
       {isChatListOpen && chatListPopupStyle && typeof document !== 'undefined' && createPortal(
 	          <ChatListPopup
@@ -12620,30 +14333,140 @@ const AI_CHAT_RECENT_ITEMS = [
   },
 ];
 
-const AI_CHAT_OLDER_THAN_7_ITEMS = [
-  {
-    id: 'owners-search',
-    title: 'Fix owner search empty result copy',
-    time: '8d',
-    icon: 'claude',
-  },
-  {
-    id: 'vet-list-model',
-    title: 'Expose vets list through @ModelAttribute',
-    time: '12d',
-    added: '+8',
-    removed: '-3',
-    icon: 'claude',
-  },
-  {
-    id: 'appointment-validation',
-    title: 'Tighten visit appointment validation',
-    time: '19d',
-    icon: 'junie',
-  },
-];
+const AI_CHAT_OLDER_THAN_7_ITEMS = [];
+
+function createAiSessionChatScenarios(chatRows = AI_SESSION_CHATS) {
+  return Object.fromEntries(chatRows.map((chat) => {
+    const specs = chat.children?.find((child) => child.id === 'specs')?.items ?? [];
+    const specLabel = specs
+      .map((item) => (typeof item === 'string' ? item : item?.label))
+      .find(Boolean);
+    const title = chat.title ?? 'AI Chat';
+    const isBuildChat = typeof title === 'string' && title.startsWith('Build:');
+    const isSpecifiedChat = typeof title === 'string' && title.startsWith('Specified:');
+    if (chat.id === 'request-logging') {
+      return [chat.id, {
+        title,
+        userPrompt: 'Add request logging to the visits flow so request method, path, status, and duration are recorded for visit booking requests.',
+        assistantParagraphs: [
+          'I added a lightweight servlet filter for the visits flow and kept it independent from controller logic.',
+          'The filter records the HTTP method, request path, response status, and elapsed time, so booking issues can be traced without changing the visit form workflow.',
+        ],
+        changeCard: {
+          name: 'RequestLoggingFilter.java',
+          added: '+16',
+          removed: '-4',
+          code: `@Component
+public class RequestLoggingFilter extends OncePerRequestFilter {
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+            HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
+        long startedAt = System.currentTimeMillis();
+        chain.doFilter(request, response);
+        log.info("{} {} -> {} in {}ms",
+            request.getMethod(), request.getRequestURI(), response.getStatus(),
+            System.currentTimeMillis() - startedAt);
+    }
+}`,
+        },
+        result: [
+          'Request logging now covers the visit booking route and keeps the output close to the HTTP request lifecycle.',
+          'The change also updates application.yml so the new filter logs at the expected level during local runs.',
+        ],
+        command: 'Ran ./mvnw test -Dtest=VisitControllerTests',
+      }];
+    }
+
+    const assistantParagraphs = isBuildChat
+      ? [
+          specLabel
+            ? `I prepared the implementation path for ${specLabel} and grouped the work around controller changes, form validation, and regression coverage.`
+            : 'I prepared the implementation path for this specification and grouped the work around the affected code paths.',
+          'Next I would apply the code changes, run the targeted tests, and feed the result back into the spec status.',
+        ]
+      : isSpecifiedChat
+        ? [
+            specLabel
+              ? `I refined ${specLabel} into an implementation-ready specification with scope, constraints, and acceptance checks.`
+              : 'I refined the task into an implementation-ready specification with scope, constraints, and acceptance checks.',
+            'The thread keeps the decisions and follow-up questions attached to the same spec context.',
+          ]
+        : [
+            'I reviewed the relevant PetClinic flow and narrowed the next step to the files that need attention.',
+            'The notes below summarize what changed and what still needs verification before the task is complete.',
+          ];
+    return [chat.id, {
+      title,
+      userPrompt: specLabel
+        ? `${title}: continue work for ${specLabel}.`
+        : `${title}.`,
+      assistantParagraphs,
+      result: [
+        'The chat is ready with the current project context and can continue from this point.',
+      ],
+      command: 'Prepared project context',
+    }];
+  }));
+}
 
 const AI_CHAT_SCENARIOS = {
+  'promote-vet-schedules-spec': {
+    title: 'Clarify Vet-Schedules requirements',
+    conversationTurns: [
+      {
+        role: 'user',
+        text: 'Vet-Schedules.md still feels too loose. We say vets have working hours, but it is not clear what should happen when an owner tries to book outside those hours.',
+      },
+      {
+        role: 'assistant',
+        paragraphs: [
+          'The spec should separate schedule storage from booking validation. One acceptance criterion can cover weekly schedule data, and another can cover rejecting visits outside the selected vet window.',
+          'I would also call out that the visit-booking flow must keep showing only valid slots once a vet and date are selected.',
+        ],
+      },
+      {
+        role: 'user',
+        text: 'There is also an on-call case. If the primary vet is unavailable, the clinic wants a fallback vet, but only for urgent appointment types.',
+      },
+      {
+        role: 'assistant',
+        paragraphs: [
+          'That sounds like a separate rule: on-call fallback is allowed only when the visit is marked urgent, and normal visits should not silently reassign the vet.',
+          'The implementation plan should include repository checks for schedules, controller validation, and tests for off-hours, unavailable primary vet, and non-urgent fallback rejection.',
+        ],
+      },
+      {
+        role: 'user',
+        text: 'Yes, and make sure we do not break the existing Visit-Booking.md assumptions about static demo slots.',
+      },
+      {
+        role: 'assistant',
+        paragraphs: [
+          'Then the scope should explicitly preserve the current demo slot behavior until the schedule-backed slot filtering is enabled for the selected vet.',
+          'At this point the requirements are structured enough to turn into a spec: goal, acceptance criteria, plan, and constraints are all already present in this thread.',
+        ],
+      },
+    ],
+    initialComposerText: '/spec Create a Vet Schedules specification from this discussion, using Vet-Schedules.md and Visit-Booking.md as context',
+    specSuggestion: {
+      title: 'We see you are iterating on a specification',
+      body: 'You have clarified scope, acceptance criteria, edge cases, and implementation constraints here. Want to create a specification from this thread?',
+      command: '/spec',
+      ctaLabel: 'Create specification',
+    },
+    specAttachments: [
+      {
+        id: 'sdd-document-attach-vet-schedules-promotion',
+        label: 'Vet-Schedules.md',
+        icon: 'fileTypes/markdown',
+      },
+      {
+        id: 'sdd-document-attach-visit-booking-example',
+        label: 'Visit-Booking.md',
+        icon: 'fileTypes/markdown',
+      },
+    ],
+  },
   'refactor-time-slots': {
     title: 'Refactor VisitController time slots',
     userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
@@ -12950,7 +14773,7 @@ const ChatListPopup = forwardRef(function ChatListPopup({
             : <ChatListRow key={node.item.id} item={node.item} selected={node.item.id === selectedChatId} active={node.item.id === activeChatId} onSelect={onSelectChat} hideMeta={hideMeta} showActiveBadge={showActiveBadge} />
         ))}
       </div>
-      {showOlderSections && (
+      {showOlderSections && olderItems.length > 0 && (
         <>
           <ChatListGroupHeader>Older than 7 days</ChatListGroupHeader>
           <div className="ai-chat-list-section">
@@ -13094,6 +14917,270 @@ function ChatAssistantMessage({ children, streaming = false }) {
   );
 }
 
+function AiChatTabView({
+  chatId,
+  scenarios = {},
+  sentMessages = [],
+  onSendMessage = null,
+  fallbackTitle = 'AI Chat',
+}) {
+  const scenario = scenarios?.[chatId] ?? {
+    title: fallbackTitle,
+    userPrompt: fallbackTitle,
+    assistantParagraphs: [
+      'I opened this existing chat in the editor tab with the current project context.',
+    ],
+    result: [
+      'The conversation is ready to continue from this point.',
+    ],
+    command: 'Prepared project context',
+  };
+  const messageId = scenario?.messageId ?? `editor-chat-${chatId}`;
+  const initialComposerText = typeof scenario?.initialComposerText === 'string' ? scenario.initialComposerText : '';
+  const [composerText, setComposerText] = useState(initialComposerText);
+  const composerRef = useRef(null);
+  const scrollRef = useRef(null);
+  const specSuggestionCommand = typeof scenario?.specSuggestion?.command === 'string'
+    ? scenario.specSuggestion.command
+    : '';
+  const activeSpecCommand = specSuggestionCommand
+    && (composerText === specSuggestionCommand || composerText.startsWith(`${specSuggestionCommand} `))
+    ? specSuggestionCommand
+    : null;
+  const visibleComposerText = activeSpecCommand
+    ? composerText.slice(activeSpecCommand.length).trimStart()
+    : composerText;
+  const conversationTurns = Array.isArray(scenario?.conversationTurns)
+    ? scenario.conversationTurns
+    : [];
+  const specComposerAttachments = Array.isArray(scenario?.specAttachments)
+    ? scenario.specAttachments
+    : (scenario?.specAttachment ? [scenario.specAttachment] : []);
+  const focusComposerAtEnd = useCallback(() => {
+    const focus = () => {
+      const textarea = composerRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      const caretPosition = textarea.value.length;
+      textarea.setSelectionRange(caretPosition, caretPosition);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(focus));
+  }, []);
+
+  useEffect(() => {
+    setComposerText(initialComposerText);
+    focusComposerAtEnd();
+  }, [chatId, focusComposerAtEnd, initialComposerText]);
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+  }, [chatId, sentMessages.length]);
+
+  const handleSend = () => {
+    const trimmed = composerText.trim();
+    if (!trimmed) return;
+    onSendMessage?.(chatId, trimmed);
+    setComposerText('');
+  };
+
+  return (
+    <div className="aiux543-conversation">
+      <div ref={scrollRef} className="aiux543-conversation-scroll">
+        {conversationTurns.length > 0 ? (
+          conversationTurns.map((turn, index) => (
+            turn?.role === 'user' ? (
+              <div key={`turn-${index}`} className="aiux543-user-message aiux543-thread-user-message" data-ai-chat-message-id={`${messageId}-turn-${index}`}>
+                <p>{turn.text}</p>
+                <span className="aiux543-kebab" aria-hidden="true">
+                  <Icon name="general/moreVertical" size={16} />
+                </span>
+              </div>
+            ) : (
+              <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
+                <h3>Claude Agent</h3>
+                {(Array.isArray(turn?.paragraphs) ? turn.paragraphs : [turn?.text].filter(Boolean)).map((paragraph, paragraphIndex) => (
+                  <p key={`turn-${index}-paragraph-${paragraphIndex}`}>{paragraph}</p>
+                ))}
+              </article>
+            )
+          ))
+        ) : (
+          <>
+            {scenario?.userPrompt && (
+              <div className="aiux543-user-message" data-ai-chat-message-id={messageId}>
+                <p>{scenario.userPrompt}</p>
+                <span className="aiux543-kebab" aria-hidden="true">
+                  <Icon name="general/moreVertical" size={16} />
+                </span>
+              </div>
+            )}
+
+            {scenario?.assistantParagraphs?.length > 0 && (
+              <article className="aiux543-answer">
+                <h3>What changed</h3>
+                {scenario.assistantParagraphs.map((paragraph, idx) => (
+                  <p key={`assistant-${idx}`}>{paragraph}</p>
+                ))}
+              </article>
+            )}
+          </>
+        )}
+
+        {scenario?.changeCard && (
+          <section className="aiux543-code-card">
+            <header>
+              <Icon className="aiux543-file-icon" name="fileTypes/java" size={16} />
+              <strong>{scenario.changeCard.name}</strong>
+              <span className="aiux543-diff-inline">{scenario.changeCard.added}</span>
+              <span>{scenario.changeCard.removed}</span>
+              <em>Edited</em>
+            </header>
+            <SyntaxCode code={scenario.changeCard.code} />
+          </section>
+        )}
+
+        {Array.isArray(scenario?.result) && scenario.result.length > 0 && (
+          <article className="aiux543-answer">
+            <h3>Result</h3>
+            {scenario.result.map((paragraph, idx) => (
+              <p key={`result-${idx}`}>{paragraph}</p>
+            ))}
+          </article>
+        )}
+
+        {scenario?.command && (
+          <section className="aiux543-detail-trail">
+            <article className="aiux543-detail-card">
+              <h3>How to verify</h3>
+              <p>{scenario.command}</p>
+            </article>
+          </section>
+        )}
+
+        {sentMessages.map((message) => (
+          message.role === 'assistant' ? (
+            <article key={message.id} className="aiux543-answer">
+              <h3>Claude Agent</h3>
+              <p>
+                {message.text}
+                {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
+              </p>
+            </article>
+          ) : (
+            <div key={message.id} className="aiux543-user-message" data-ai-chat-message-id={message.id}>
+              <p>{message.text}</p>
+              <span className="aiux543-kebab" aria-hidden="true">
+                <Icon name="general/moreVertical" size={16} />
+              </span>
+            </div>
+          )
+        ))}
+      </div>
+
+      <div className="aiux543-composer-sticky">
+        {scenario?.specSuggestion ? (
+          <div className="aiux550-chat-tab-spec-suggestion" role="status">
+            <span className="aiux550-chat-tab-spec-suggestion-icon" aria-hidden="true">
+              <ReferenceSpecMarkIcon className="aiux550-spec-option-icon" />
+            </span>
+            <div className="aiux550-chat-tab-spec-suggestion-body">
+              <strong>{scenario.specSuggestion.title}</strong>
+              <p>{scenario.specSuggestion.body}</p>
+            </div>
+            <button
+              type="button"
+              className="aiux550-chat-tab-spec-suggestion-cta"
+              onClick={() => {
+                const cmd = scenario.specSuggestion.command ?? '';
+                setComposerText((current) => (current.startsWith(cmd) ? current : `${cmd} ${current}`.trim()));
+                focusComposerAtEnd();
+              }}
+            >
+              {scenario.specSuggestion.ctaLabel ?? 'Create specification'}
+            </button>
+          </div>
+        ) : null}
+        <div className="aiux543-chat-local-card">
+          <button type="button" className="aiux543-chat-dropdown">
+            <span>Local</span>
+            <Icon name="general/chevronDown" size={16} />
+          </button>
+        </div>
+        <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
+          <div className="aiux543-chat-input-row">
+            {activeSpecCommand ? (
+              <span className="aiux550-spec-command-chip aiux550-spec-command-prefix" aria-hidden="true">{activeSpecCommand}</span>
+            ) : null}
+            <textarea
+              ref={composerRef}
+              className="aiux543-chat-input"
+              rows={1}
+              value={visibleComposerText}
+              placeholder={specComposerAttachments.length > 0 ? 'Describe the spec, use @mentions or /commands' : 'Type task, use @mentions or /commands'}
+              aria-label="Task prompt"
+              onChange={(event) => {
+                const nextVisibleText = event.target.value;
+                setComposerText(activeSpecCommand
+                  ? `${activeSpecCommand}${nextVisibleText ? ` ${nextVisibleText}` : ''}`
+                  : nextVisibleText);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+          </div>
+          <div className="aiux543-chat-attachments-spacer">
+            {specComposerAttachments.length > 0 ? (
+              <div className="aiux550-chat-tab-composer-attachments" onClick={(e) => e.stopPropagation()}>
+                {specComposerAttachments.map((attachment) => (
+                  <span key={attachment.id ?? attachment.label} className="aiux550-chat-tab-composer-attachment-chip">
+                    <Icon name={attachment.icon ?? 'fileTypes/markdown'} size={16} className="aiux550-project-md-icon" />
+                    <span className="aiux550-chat-tab-composer-attachment-label">{attachment.label}</span>
+                    <button type="button" className="aiux550-chat-tab-composer-attachment-close" aria-label={`Remove ${attachment.label ?? 'attachment'}`}>
+                      <Icon name="windows/closeSmall" size={16} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="aiux543-chat-toolbar">
+            <div className="aiux543-chat-toolbar-left">
+              <button className="aiux543-chat-icon-button" type="button" aria-label="Add context">
+                <Icon name="general/add" size={16} />
+              </button>
+              <button className="aiux543-chat-dropdown" type="button">
+                Default
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+            </div>
+            <div className="aiux543-chat-toolbar-right">
+              <button type="button" className="aiux543-chat-icon-button" aria-label="Generating">
+                <AiChatProgressIcon />
+              </button>
+              <button type="button" className="aiux543-chat-icon-button" aria-label="Send" onClick={handleSend} disabled={!composerText.trim()}>
+                <AiChatSendIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+        <footer className="aiux543-editor-footer">
+          <span className="aiux543-editor-footer-left">
+            <span>Claude Agent</span>
+            <span>Opus 4.5</span>
+          </span>
+          <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
 function AiChatToolbarIconButton({ label, className = '', children, onClick = null, disabled = false }) {
   return (
     <button
@@ -13128,13 +15215,7 @@ function AiChatProgressIcon() {
 }
 
 function AiChatOpenInToolWindowIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
-      <path d="M7 9L10.5 5.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7.5 5.5L10.5 5.5L10.5 8.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-      <rect x="13.5" y="13.5" width="11" height="11" rx="1.5" transform="rotate(180 13.5 13.5)" stroke="currentColor" />
-    </svg>
-  );
+  return <Icon name="general/openInToolWindow" size={16} />;
 }
 
 function AiChatSendIcon() {
@@ -13624,14 +15705,23 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
-export default function App() {
-  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide'
+export default function App({
+  initialScreen = 'welcome',
+  initialAgentTaskId = null,
+  initialEditorTabId = null,
+  initialOpenToolWindows = null,
+} = {}) {
+  const [screen, setScreen] = useState(initialScreen); // 'welcome' | 'ide'
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
+    if (initialEditorTabId) {
+      const initialTabIndex = initialTabs.findIndex((tab) => tab.id === initialEditorTabId);
+      if (initialTabIndex >= 0) return initialTabIndex;
+    }
     const visitControllerTabIndex = initialTabs.findIndex((tab) => tab.id === '1');
     return visitControllerTabIndex >= 0 ? visitControllerTabIndex : 0;
   });
@@ -13641,7 +15731,17 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'ai']);
+  const [newSessionMode, setNewSessionMode] = useState('chat');
+  const [newSessionSpecKind, setNewSessionSpecKind] = useState('feature');
+  const [aiuxProjectShowAllSessions, setAiuxProjectShowAllSessions] = useState(false);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(() => {
+    const initial = Array.isArray(initialOpenToolWindows) && initialOpenToolWindows.length > 0
+      ? initialOpenToolWindows
+      : ['commit'];
+    // 'ai' (right-side chat tool window) and 'agent-tasks' are currently hidden;
+    // filter them out if a caller passes them through initial state.
+    return initial.filter((id) => id !== 'ai' && id !== 'agent-tasks');
+  });
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
@@ -13649,6 +15749,12 @@ export default function App() {
   const [showFileCommentsSuggestionBanner, setShowFileCommentsSuggestionBanner] = useState(false);
   const [chatScrollTarget, setChatScrollTarget] = useState(null);
   const [selectedAiChatId, setSelectedAiChatId] = useState('refactor-time-slots');
+  const [chatsHistorySlotShowsAiChat, setChatsHistorySlotShowsAiChat] = useState(false);
+  // When the user opens a spec without a chat (e.g. clicking the .md row in the
+  // Project / Recents / Chats History tree), we don't want the spec-status
+  // useEffect to auto-open the AI chat window. Toggled by openSpecTaskOnly and
+  // consumed by the effect on the next tick.
+  const suppressNextSpecAutoChatRef = useRef(false);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
   const [commentShortcutHintTarget, setCommentShortcutHintTarget] = useState(null);
@@ -13670,29 +15776,25 @@ export default function App() {
   }, [commentShortcutHintTarget]);
   const openAiToolWindow = useCallback(() => {
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('ai') ? prev : [...prev, 'ai']
-    ));
-
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-    const revealAiPanel = () => {
-      const chatWindow = document.querySelector('.ai-chat-window');
-      if (chatWindow instanceof HTMLElement && chatWindow.getClientRects().length > 0) {
-        return;
-      }
-
-      const aiStripe = document.querySelector('.main-window-stripe-right [title="AI Assistant"]');
-      if (aiStripe instanceof HTMLElement) {
-        aiStripe.click();
-      }
-    };
-
-    window.requestAnimationFrame(() => {
-      revealAiPanel();
-      window.setTimeout(revealAiPanel, 0);
+    // AI chat reuses the Chats History tool-window slot — it doesn't get its own
+    // stripe item. We swap the slot content via chatsHistorySlotShowsAiChat
+    // and make sure the chats-history window is the active left tool window.
+    setChatsHistorySlotShowsAiChat(true);
+    setIdeOpenWindows((prev) => {
+      const filtered = prev.filter((id) => (
+        id !== 'project'
+        && id !== 'commit'
+        && id !== 'structure'
+        && id !== CHATS_HISTORY_TOOL_WINDOW_ID
+      ));
+      return [CHATS_HISTORY_TOOL_WINDOW_ID, ...filtered];
     });
   }, []);
+  useEffect(() => {
+    if (!ideOpenWindows.includes(CHATS_HISTORY_TOOL_WINDOW_ID)) {
+      setChatsHistorySlotShowsAiChat(false);
+    }
+  }, [ideOpenWindows]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -13713,6 +15815,7 @@ export default function App() {
   );
   const aiChatScenarios = useMemo(
     () => ({
+      ...createAiSessionChatScenarios(AI_SESSION_CHATS),
       ...AI_CHAT_SCENARIOS,
       ...aiChatDraftSessionsById,
     }),
@@ -13725,6 +15828,12 @@ export default function App() {
         const sddAttachment = Array.isArray(session.attachments)
           ? session.attachments.find((attachment) => attachment?.isSddDocument)
           : null;
+        const children = sddAttachment
+          ? addSpecLinkToChatChildren(session.children, {
+              id: sddAttachment.sourceTabId,
+              label: sddAttachment.label,
+            })
+          : session.children;
         const specChatStatus = typeof session.id === 'string'
           && session.id.startsWith('spec-chat-')
           && typeof session.title === 'string'
@@ -13749,6 +15858,7 @@ export default function App() {
           sourceDocumentLabel: sddAttachment?.label ?? null,
           sourceDocumentIcon: sddAttachment?.icon ?? 'fileTypes/markdown',
           sourceDocumentTabId: sddAttachment?.sourceTabId ?? null,
+          children,
         };
       }),
     [aiChatDraftSessionsById],
@@ -13757,6 +15867,13 @@ export default function App() {
     () => [
       ...aiChatDraftListItems,
       ...AI_CHAT_RECENT_ITEMS.filter((item) => !aiChatDraftSessionsById[item.id]),
+    ],
+    [aiChatDraftListItems, aiChatDraftSessionsById],
+  );
+  const aiSessionChatRows = useMemo(
+    () => [
+      ...aiChatDraftListItems,
+      ...AI_SESSION_CHATS.filter((item) => !aiChatDraftSessionsById[item.id]),
     ],
     [aiChatDraftListItems, aiChatDraftSessionsById],
   );
@@ -13782,6 +15899,7 @@ export default function App() {
     changeCard = null,
     result = [],
     command = '',
+    children = [],
     showAttachmentsInComposer = false,
     select = true,
   } = {}) => {
@@ -13803,6 +15921,7 @@ export default function App() {
       changeCard,
       result: Array.isArray(result) ? result : [],
       command,
+      children: Array.isArray(children) ? children : [],
       showAttachmentsInComposer,
       attachmentLabel,
       attachments: Array.isArray(attachments) ? attachments : [],
@@ -13852,7 +15971,7 @@ export default function App() {
   });
   const doneEnhanceFlowRef = useRef(null);
   const specStatusChatIdsRef = useRef({});
-  const seededPresetTaskRef = useRef(true);
+  const seededPresetTaskRef = useRef(!initialAgentTaskId);
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
@@ -14709,7 +16828,8 @@ export default function App() {
     }
   }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
 
-  const handleAgentTaskSelect = useCallback((task) => {
+  const handleAgentTaskSelect = useCallback((task, options = {}) => {
+    const { revealAgentTasks = true } = options ?? {};
     const resolvedTask = typeof task === 'string'
       ? (agentTasks.find((item) => item?.id === task) ?? null)
       : task;
@@ -14737,9 +16857,11 @@ export default function App() {
 
     setSelectedTask(taskId);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
+    if (revealAgentTasks) {
+      setIdeOpenWindows((prev) => (
+        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+      ));
+    }
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
     const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
@@ -16427,10 +18549,10 @@ export default function App() {
   }, [screen, activeEditorTab, ideTabs.length]);
 
   useEffect(() => {
-    if (screen !== 'ide' || seededPresetTaskRef.current) return;
+    if (screen !== 'ide' || seededPresetTaskRef.current || !initialAgentTaskId) return;
     seededPresetTaskRef.current = true;
-    handleAgentTaskSelect('t1');
-  }, [screen, handleAgentTaskSelect]);
+    handleAgentTaskSelect(initialAgentTaskId);
+  }, [screen, handleAgentTaskSelect, initialAgentTaskId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -16943,15 +19065,28 @@ export default function App() {
     };
   }, [screen, activeEditorTab, ideTabs, genState]);
 
-  const openNewAgentTask = useCallback(() => {
+  const openNewAgentTask = useCallback((options = {}) => {
+    const { revealAgentTasks = true, templateId = null, label: providedLabel = null } = options ?? {};
     seededPresetTaskRef.current = true;
 
     const id = `agent-task-${Date.now()}`;
-    const newTask = { id, label: 'New Task.md', time: 'now', status: null };
+    const normalizedLabel = (() => {
+      const trimmed = typeof providedLabel === 'string' ? providedLabel.trim() : '';
+      if (!trimmed) return 'New Task.md';
+      return /\.md$/i.test(trimmed) ? trimmed : `${trimmed}.md`;
+    })();
+    const newTask = { id, label: normalizedLabel, time: 'now', status: null };
     const scenario = getAgentTaskScenario({
       tabId: id,
       label: newTask.label,
     });
+    const templateDocumentSections = templateId ? createTaskTemplateSpecDocument(templateId) : null;
+    const initialTaskState = templateDocumentSections
+      ? createInteractiveTaskState({
+          documentSections: templateDocumentSections,
+          genState: 'idle',
+        })
+      : scenario.initialTaskState;
     const nextTab = {
       id,
       label: newTask.label,
@@ -16960,15 +19095,19 @@ export default function App() {
     };
     const nextContent = {
       language: 'markdown',
-      code: scenario.initialCode,
+      code: templateDocumentSections
+        ? serializeSpecDocument(templateDocumentSections)
+        : scenario.initialCode,
     };
 
     setAgentTasks((tasks) => [newTask, ...tasks]);
     setSelectedTask(id);
     setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
-    ));
+    if (revealAgentTasks) {
+      setIdeOpenWindows((prev) => (
+        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+      ));
+    }
     setIdeTabs((prev) => (
       prev.some((tab) => tab.id === id) ? prev : [nextTab, ...prev]
     ));
@@ -16985,12 +19124,208 @@ export default function App() {
         ? prev
         : {
             ...prev,
-            [id]: scenario.initialTaskState,
+            [id]: initialTaskState,
           }
     ));
-    applyInteractiveTaskState(id, scenario.initialTaskState);
+    applyInteractiveTaskState(id, initialTaskState);
     setActiveEditorTab(0);
+    return newTask;
   }, [applyInteractiveTaskState]);
+
+  const openNewSessionTab = useCallback(() => {
+    setScreen('ide');
+    setIdeOpenWindows((prev) => (
+      prev.includes('project') ? prev : ['project', ...prev]
+    ));
+    const existingIndex = ideTabs.findIndex((tab) => tab.id === AIUX_NEW_SESSION_TAB_ID);
+    if (existingIndex >= 0) {
+      setActiveEditorTab(existingIndex);
+    } else {
+      setIdeTabs((prev) => [{
+        id: AIUX_NEW_SESSION_TAB_ID,
+        label: 'New Session',
+        icon: <AiChatClaudeIcon />,
+        closable: true,
+      }, ...prev]);
+      setActiveEditorTab(0);
+    }
+    setIdeTabContents((prev) => (
+      prev[AIUX_NEW_SESSION_TAB_ID]
+        ? prev
+        : {
+            ...prev,
+            [AIUX_NEW_SESSION_TAB_ID]: {
+              language: 'text',
+              code: '',
+            },
+          }
+    ));
+  }, [ideTabs]);
+
+  // Open a chat in the center editor area as its own tab (not in the left
+  // panel). Used by Project tool window, Chats History and New Session recents.
+  const openChatInEditorTab = useCallback((chatId, chatMetaOverride = null) => {
+    if (!chatId) return;
+    const tabId = `ai-chat-${chatId}`;
+    setScreen('ide');
+    setSelectedAiChatId(chatId);
+    setChatsHistorySlotShowsAiChat(false);
+
+    setIdeTabs((prevTabs) => {
+      const existingIndex = prevTabs.findIndex((tab) => tab.id === tabId);
+      const chatMeta = chatMetaOverride
+        ?? aiSessionChatRows.find((row) => row?.id === chatId)
+        ?? aiChatRecentItems.find((row) => row?.id === chatId)
+        ?? null;
+      const title = chatMeta?.title ?? aiChatScenarios[chatId]?.title ?? 'AI Chat';
+      const iconName = (() => {
+        const raw = typeof chatMeta?.icon === 'string' ? chatMeta.icon : null;
+        if (raw === 'codex') return 'aiAssistant/codex@20x20';
+        if (raw === 'junie') return 'aiAssistant/junie@20x20';
+        if (raw === 'fileTypes/markdown') return 'fileTypes/markdown';
+        return 'aiAssistant/toolWindowChat';
+      })();
+      if (existingIndex >= 0) {
+        setActiveEditorTab(existingIndex);
+        return prevTabs.map((tab, index) => (
+          index === existingIndex
+            ? { ...tab, label: title, icon: iconName }
+            : tab
+        ));
+      }
+      const nextTab = {
+        id: tabId,
+        label: title,
+        icon: iconName,
+        closable: true,
+      };
+      setActiveEditorTab(0);
+      return [nextTab, ...prevTabs];
+    });
+
+    setIdeTabContents((prev) => (
+      prev[tabId] ? prev : { ...prev, [tabId]: { language: 'text', code: '' } }
+    ));
+  }, [aiChatRecentItems, aiChatScenarios, aiSessionChatRows]);
+
+  const openNewSessionChat = useCallback((prompt = '') => {
+    const session = createEmptyAiChatSession({
+      title: prompt || 'New Chat',
+      userPrompt: prompt,
+      emptyState: !prompt,
+      assistantParagraphs: prompt ? ['I created a new chat from the New Session tab.'] : [],
+      select: false,
+    });
+    openChatInEditorTab(session.id, session);
+  }, [createEmptyAiChatSession, openChatInEditorTab]);
+
+  const openNewSessionTerminal = useCallback(() => {
+    setScreen('ide');
+    openIdeBottomToolWindow('terminal');
+  }, [openIdeBottomToolWindow]);
+
+  // Open an existing spec-related chat: spec → center editor tab, chat → left AI panel.
+  // Used by the Recents > spec mode rows in AIUXNewSessionEditor.
+  const openSpecChatFromRecents = useCallback((chatId, specId = null) => {
+    if (specId) {
+      // Block the spec-status useEffect from auto-selecting (and opening) a
+      // freshly created "Specified" chat — it would override the chat the user
+      // just clicked.
+      suppressNextSpecAutoChatRef.current = true;
+      handleAgentTaskSelect(specId, { revealAgentTasks: false });
+    }
+    if (chatId) {
+      setSelectedAiChatId(chatId);
+    }
+    openAiToolWindow();
+  }, [handleAgentTaskSelect, openAiToolWindow]);
+
+  const openSpecTaskOnly = useCallback((taskId) => {
+    if (!taskId) return;
+    suppressNextSpecAutoChatRef.current = true;
+    handleAgentTaskSelect(taskId, { revealAgentTasks: false });
+    setSelectedAiChatId(null);
+    // If the slot was showing the AI chat panel, close it entirely so only the
+    // spec editor remains. Leave it open when the slot was showing the Chats
+    // History list — the user is likely navigating from there.
+    if (chatsHistorySlotShowsAiChat) {
+      setIdeOpenWindows((prev) => prev.filter((id) => id !== CHATS_HISTORY_TOOL_WINDOW_ID));
+    }
+    setChatsHistorySlotShowsAiChat(false);
+  }, [chatsHistorySlotShowsAiChat, handleAgentTaskSelect]);
+
+  const showAllAiSessionsFromProject = useCallback(() => {
+    setAiuxProjectShowAllSessions(true);
+    setIdeOpenWindows((prev) => {
+      const nonLeftWindows = prev.filter((windowId) => !LEFT_TOOL_WINDOW_IDS.has(windowId));
+      return [CHATS_HISTORY_TOOL_WINDOW_ID, ...nonLeftWindows];
+    });
+  }, []);
+
+  const handleSpecModeStart = useCallback((prompt = '', taskIdOverride = null) => {
+    if (prompt && typeof prompt === 'object') {
+      const createdTask = openNewAgentTask({
+        revealAgentTasks: false,
+        templateId: prompt.templateId ?? null,
+        label: prompt.specName ?? null,
+      });
+      const command = typeof prompt.command === 'string' ? prompt.command.trim() : '';
+      const userPrompt = typeof prompt.prompt === 'string' ? prompt.prompt.trim() : '';
+      const commandPrompt = [command, userPrompt].filter(Boolean).join(' ');
+      if (command === '/roast' && createdTask?.label) {
+        const chatId = `roast-${createdTask.id}`;
+        const specAttachment = {
+          id: `sdd-document-${createdTask.id}-roast`,
+          sourceTabId: createdTask.id,
+          label: createdTask.label,
+          icon: 'fileTypes/markdown',
+          commentCount: 0,
+          diffComments: null,
+          diffRequest: null,
+          diffTabId: null,
+          isPlainFile: false,
+          isSddDocument: true,
+          isSddCommentAttachment: false,
+          sddCommentEntries: [],
+        };
+        createEmptyAiChatSession({
+          id: chatId,
+          title: `Roast: ${createdTask.label.replace(/\.md$/i, '')}`,
+          icon: 'codex',
+          emptyState: false,
+          userPrompt: commandPrompt,
+          assistantParagraphs: [
+            `I loaded ${createdTask.label} as the source specification for this roast chat.`,
+            'I will challenge the task framing and help shape the spec before implementation.',
+          ],
+          command: commandPrompt,
+          attachmentLabel: createdTask.label,
+          attachments: [specAttachment],
+          showAttachmentsInComposer: true,
+          children: [
+            { id: 'specs', label: 'Specs', items: [{ id: createdTask.id, label: createdTask.label }] },
+          ],
+          select: false,
+        });
+        // openNewAgentTask already added the tab and made it active. Calling
+        // handleAgentTaskSelect here reads stale ideTabs/agentTasks (the new
+        // task isn't committed yet), then overwrites the just-created tab via
+        // setIdeTabs with a default "New Task.md" label.
+        setSelectedAiChatId(chatId);
+        openAiToolWindow();
+      }
+      return;
+    }
+
+    if (taskIdOverride) {
+      handleAgentTaskSelect(taskIdOverride, { revealAgentTasks: false });
+      setSelectedAiChatId(null);
+      setChatsHistorySlotShowsAiChat(false);
+      return;
+    }
+
+    openNewAgentTask({ revealAgentTasks: false });
+  }, [createEmptyAiChatSession, handleAgentTaskSelect, openAiToolWindow, openNewAgentTask]);
 
   const activeTabIdForGen = generationTabId ?? ideTabs[activeEditorTab]?.id;
 
@@ -18166,7 +20501,11 @@ export default function App() {
   );
   const activeTabId = activeEditorTabMeta?.id ?? null;
   const activeTabContent = activeEditorTabContentEntry;
+  const isAiuxNewSessionTab = activeTabId === AIUX_NEW_SESSION_TAB_ID;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
+  const isAiChatTab = activeTabId?.startsWith('ai-chat-');
+  const activeAiChatTabChatId = isAiChatTab ? activeTabId.slice('ai-chat-'.length) : null;
+  const chatHistoryActiveSpecId = isAiChatTab ? null : selectedTask;
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
@@ -18283,6 +20622,10 @@ export default function App() {
     const attachment = buildSpecStatusAttachment(status, sourceTabId);
     const title = getSpecStatusChatTitle(status, sourceTabId)
     const chatContent = buildSpecStatusChatContent(status, attachment);
+    const specChildren = addSpecLinkToChatChildren([], {
+      id: attachment.sourceTabId,
+      label: attachment.label,
+    });
 
     if (aiChatDraftSessionsById[existingChatId]) {
       setAiChatDraftSessionsById((prev) => {
@@ -18297,6 +20640,7 @@ export default function App() {
           && existingSession?.command === chatContent.command
           && existingSession?.showAttachmentsInComposer === true
           && JSON.stringify(existingSession?.attachments ?? []) === JSON.stringify([attachment])
+          && JSON.stringify(existingSession?.children ?? []) === JSON.stringify(specChildren)
         ) {
           return prev;
         }
@@ -18310,6 +20654,7 @@ export default function App() {
             ...chatContent,
             showAttachmentsInComposer: true,
             attachments: [attachment],
+            children: specChildren,
           },
         };
       });
@@ -18329,6 +20674,7 @@ export default function App() {
       title,
       attachmentLabel: attachment.label,
       attachments: [attachment],
+      children: specChildren,
       ...chatContent,
       showAttachmentsInComposer: true,
       icon: 'claude',
@@ -18347,9 +20693,12 @@ export default function App() {
   useEffect(() => {
     if (!isAgentTaskTab || genState !== 'done') return;
 
+    const suppress = suppressNextSpecAutoChatRef.current;
+    suppressNextSpecAutoChatRef.current = false;
+
     const specifiedKey = getSpecStatusChatKey('Specified');
-    const shouldSelectSpecifiedChat = !specStatusChatIdsRef.current[specifiedKey]
-      || (typeof selectedAiChatId === 'string' && selectedAiChatId.endsWith('-generated'));
+    const shouldSelectSpecifiedChat = !suppress && (!specStatusChatIdsRef.current[specifiedKey]
+      || (typeof selectedAiChatId === 'string' && selectedAiChatId.endsWith('-generated')));
     ensureSpecStatusChat('Specified', { select: shouldSelectSpecifiedChat });
     ensureSpecStatusChat('Build', { select: false });
     Object.keys(specStatusChatIdsRef.current).forEach((key) => {
@@ -18378,6 +20727,10 @@ export default function App() {
         const attachment = buildSpecStatusAttachment(status);
         const title = getSpecStatusChatTitle(status);
         const chatContent = buildSpecStatusChatContent(status, attachment);
+        const specChildren = addSpecLinkToChatChildren([], {
+          id: attachment.sourceTabId,
+          label: attachment.label,
+        });
         if (
           existingSession.title === title
           && existingSession.attachmentLabel === attachment.label
@@ -18388,6 +20741,7 @@ export default function App() {
           && existingSession.command === chatContent.command
           && existingSession.showAttachmentsInComposer === true
           && JSON.stringify(existingSession.attachments ?? []) === JSON.stringify([attachment])
+          && JSON.stringify(existingSession.children ?? []) === JSON.stringify(specChildren)
         ) {
           return;
         }
@@ -18399,6 +20753,7 @@ export default function App() {
           ...chatContent,
           showAttachmentsInComposer: true,
           attachments: [attachment],
+          children: specChildren,
         };
         didChange = true;
       });
@@ -20357,10 +22712,17 @@ export default function App() {
               projectIcon="SD"
               projectColor="blue"
               branchName={BRANCH_NAME}
-              runConfig="Current File"
+              runConfig={RUN_CONFIGURATION_NAME}
               rightActions={(
-                <>
-                  <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
+              <>
+                  <ReferenceMainToolbarNewChatPicker
+                    onNewChat={createEmptyAiChatSession}
+                    onNewSpec={handleSpecModeStart}
+                    aiMode={newSessionMode}
+                    onAiModeChange={setNewSessionMode}
+                    selectedSpecTemplateId={newSessionSpecKind}
+                    onSpecTemplateChange={setNewSessionSpecKind}
+                  />
                   <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
                   <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
                 </>
@@ -20373,13 +22735,14 @@ export default function App() {
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
+            { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chats History', section: 'top' },
             { id: '_sep',        separator: true,                                                   section: 'top'    },
-            { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
+            // { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
-          rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
+          rightStripeItems={MY_RIGHT_STRIPE}
           defaultOpenToolWindows={['project']}
 
           leftPanelContent={(id, ctx) => {
@@ -20391,10 +22754,23 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            // if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+            if (id === CHATS_HISTORY_TOOL_WINDOW_ID) return (
+              <ChatsHistoryToolWindow
+	                ctx={ctx}
+	                activeChatId={selectedAiChatId}
+	                activeSpecId={chatHistoryActiveSpecId}
+	                onActiveChatIdChange={setSelectedAiChatId}
+                agentTasks={agentTasks}
+                chatRows={aiSessionChatRows}
+                onOpenSpecTask={openSpecTaskOnly}
+                onOpenSpecChat={openSpecChatFromRecents}
+                onOpenChatInTab={openChatInEditorTab}
+              />
+            );
             return defaultLeftPanelContent(id, ctx);
           }}
-	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
+	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
           bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
           statusBarProps={{
@@ -20489,27 +22865,7 @@ export default function App() {
   };
   const projectTreeData = [{
     ...MY_PROJECT_TREE[0],
-    children: [
-      ...MY_PROJECT_TREE[0].children,
-      {
-        id: 'specs',
-        label: 'Agent Specifications',
-        icon: 'nodes/folder',
-        isExpanded: true,
-        children: [
-          {
-            id: 'spec-configuration',
-            label: 'Configuration.md',
-            icon: 'fileTypes/markdown',
-          },
-          ...agentTasks.map(task => ({
-            id: `spec-${task.id}`,
-            label: task.label,
-            icon: 'fileTypes/markdown',
-          })),
-        ],
-      },
-    ],
+    children: MY_PROJECT_TREE[0].children,
   }];
   return (
     <ThemeProvider defaultTheme="dark">
@@ -20526,11 +22882,19 @@ export default function App() {
             projectIcon="SD"
             projectColor="blue"
             branchName={BRANCH_NAME}
-            runConfig="Current File"
+            runConfig={RUN_CONFIGURATION_NAME}
             onSettings={() => setIsSettingsDialogOpen(true)}
             rightActions={(
               <>
-                <MainToolbarNewChatPicker onNewChat={createEmptyAiChatSession} />
+                <ReferenceMainToolbarNewChatPicker
+                  onNewChat={createEmptyAiChatSession}
+                  onNewSpec={handleSpecModeStart}
+                  onNewTerminal={openNewSessionTerminal}
+                  aiMode={newSessionMode}
+                  onAiModeChange={setNewSessionMode}
+                  selectedSpecTemplateId={newSessionSpecKind}
+                  onSpecTemplateChange={setNewSessionSpecKind}
+                />
                 <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
                 <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
               </>
@@ -20556,7 +22920,38 @@ export default function App() {
           }));
         }}
         editorTopBar={
-          isAgentTaskTab
+          isAiuxNewSessionTab
+            ? (
+	              <AIUXNewSessionEditor
+	                onOpenSpec={handleSpecModeStart}
+	                onOpenSpecTask={openSpecTaskOnly}
+	                onOpenChat={openNewSessionChat}
+                onOpenExistingChat={openChatInEditorTab}
+                onOpenTerminal={openNewSessionTerminal}
+                onOpenSpecChat={openSpecChatFromRecents}
+                agentTasks={agentTasks}
+                chatRows={aiSessionChatRows}
+                sessionMode={newSessionMode}
+                onSessionModeChange={setNewSessionMode}
+                selectedSpecTemplateId={newSessionSpecKind}
+                onSpecTemplateChange={setNewSessionSpecKind}
+              />
+            )
+            : isAiChatTab
+            ? (
+                <div className="aiux543-chat-editor-host">
+                  <AiChatTabView
+                    chatId={activeAiChatTabChatId}
+                    scenarios={aiChatScenarios}
+                    sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
+                    fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
+                    onSendMessage={(targetChatId, text) => {
+                      handleAiChatMessageSent?.(targetChatId, text);
+                    }}
+                  />
+                </div>
+              )
+            : isAgentTaskTab
             ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
             : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
@@ -20615,16 +23010,51 @@ export default function App() {
 
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
+          { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chats History', section: 'top' },
           { id: '_sep',        separator: true,                                                    section: 'top' },
-          { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
+          // { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
         ]}
-        rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
+        rightStripeItems={MY_RIGHT_STRIPE}
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
+          if (id === 'project') return (
+            <ProjectToolWindowWithAiSessions
+              ctx={ctx}
+              projectTreeData={projectTreeData}
+              selectedTaskId={isAiuxNewSessionTab ? AIUX_NEW_SESSION_TAB_ID : selectedTask}
+              agentTasks={agentTasks}
+              chatRows={aiSessionChatRows}
+              showAllSessions={aiuxProjectShowAllSessions}
+              selectedChatId={selectedAiChatId}
+              onOpenNewSession={openNewSessionTab}
+              onOpenSpecTask={openSpecTaskOnly}
+              onOpenSpecChat={openSpecChatFromRecents}
+              onOpenChatInTab={openChatInEditorTab}
+              onShowAllSessions={showAllAiSessionsFromProject}
+            />
+          );
+          if (id === CHATS_HISTORY_TOOL_WINDOW_ID) {
+            if (chatsHistorySlotShowsAiChat) {
+              return <ChatToolWindow ctx={ctx} onBackToHistory={() => { setChatsHistorySlotShowsAiChat(false); setSelectedAiChatId(null); }} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} />;
+            }
+            return (
+              <ChatsHistoryToolWindow
+	                ctx={ctx}
+	                activeChatId={selectedAiChatId}
+	                activeSpecId={chatHistoryActiveSpecId}
+	                onActiveChatIdChange={setSelectedAiChatId}
+                agentTasks={agentTasks}
+                chatRows={aiSessionChatRows}
+                onOpenSpecTask={openSpecTaskOnly}
+                onOpenSpecChat={openSpecChatFromRecents}
+                onOpenChatInTab={openChatInEditorTab}
+              />
+            );
+          }
           if (id === 'commit') return (
             <CommitWindow
               title="Commit"
@@ -20640,10 +23070,10 @@ export default function App() {
               className="main-window-tool-window main-window-tool-window-left"
             />
           );
-          if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
+          // if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
-	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
+	        rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{

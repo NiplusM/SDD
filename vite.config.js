@@ -22,6 +22,7 @@ function patchIntUiKitStyles() {
 }
 
 export default defineConfig({
+  base: '/AIUX-550/layout/',
   plugins: [patchIntUiKitStyles(), react()],
   server: {
     host: 'localhost',

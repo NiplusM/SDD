@@ -5,7 +5,7 @@ import './WelcomeScreen.css';
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const RECENT_PROJECTS = [
-  { id: '1', name: 'payment-service',              path: '~/projects/payment-service',              initials: 'PS', bg: 'linear-gradient(180deg, #E08855 0%, #E9806F 100%)' },
+  { id: '1', name: 'spring-petclinic',             path: '~/projects/spring-petclinic',             initials: 'SP', bg: 'linear-gradient(180deg, #548AF7 0%, #2E4D89 100%)' },
   { id: '2', name: 'IntelliJ IDEA',                path: 'Hint',                                    initials: 'II', bg: 'linear-gradient(180deg, #A1A359 0%, #87AA59 100%)' },
   { id: '3', name: 'calculator-unit-tests-java',   path: 'Hint',                                    initials: 'CU', bg: '#24A394' },
   { id: '4', name: 'calculator-unit-tests-java',   path: 'Hint',                                    initials: 'CU', bg: '#24A394' },
@@ -29,29 +29,11 @@ const NEW_MENU_ITEMS = [
 ];
 
 function MoonIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <path d="M6.1582 1.76538C5.73758 2.58551 5.50004 3.51521 5.5 4.49976C5.5 7.81346 8.18629 10.4998 11.5 10.4998C12.4843 10.4998 13.4134 10.2619 14.2334 9.84155C13.4393 12.5341 10.9499 14.4998 8 14.4998C4.41015 14.4998 1.5 11.5896 1.5 7.99976C1.50011 5.04996 3.46571 2.55947 6.1582 1.76538Z" stroke="currentColor"/>
-    </svg>
-  );
+  return <Icon name="theme/darkTheme" size={16} />;
 }
 
 function KeyboardIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-      <path d="M4 5H3V6H4V5Z" fill="currentColor"/>
-      <path d="M5 7H4V8H5V7Z" fill="currentColor"/>
-      <path d="M7 5H8V6H7V5Z" fill="currentColor"/>
-      <path d="M9 7H8V8H9V7Z" fill="currentColor"/>
-      <path d="M5 5H6V6H5V5Z" fill="currentColor"/>
-      <path d="M7 7H6V8H7V7Z" fill="currentColor"/>
-      <path d="M9 5H10V6H9V5Z" fill="currentColor"/>
-      <path d="M12 5H11V6H12V5Z" fill="currentColor"/>
-      <path d="M10 7H11V8H10V7Z" fill="currentColor"/>
-      <path d="M10 10H5V11H10V10Z" fill="currentColor"/>
-      <path fillRule="evenodd" clipRule="evenodd" d="M0 4C0 2.89543 0.895431 2 2 2H13C14.1046 2 15 2.89543 15 4V12C15 13.1046 14.1046 14 13 14H2C0.89543 14 0 13.1046 0 12V4ZM2 3H13C13.5523 3 14 3.44772 14 4V12C14 12.5523 13.5523 13 13 13H2C1.44772 13 1 12.5523 1 12V4C1 3.44772 1.44772 3 2 3Z" fill="currentColor"/>
-    </svg>
-  );
+  return <Icon name="general/keyboard" size={16} />;
 }
 
 function AgentTasksIcon({ size = 20 }) {
@@ -147,23 +129,21 @@ function WelcomeAgentTaskIcon() {
 }
 
 function SshIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="1" y="2" width="14" height="12" rx="2" fill="#43454A" stroke="#CED0D6" strokeWidth="1"/>
-      <path d="M3.5 6.5L6 8.5L3.5 10.5" stroke="#CED0D6" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-      <line x1="7.5" y1="10.5" x2="12" y2="10.5" stroke="#CED0D6" strokeWidth="1" strokeLinecap="round"/>
-    </svg>
-  );
+  return <Icon name="nodes/ssh" size={16} />;
 }
 
 function ChevronDownIcon({ rotated }) {
   return (
-    <svg
-      width="16" height="16" viewBox="0 0 16 16" fill="none"
-      style={{ flexShrink: 0, transform: rotated ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)' }}
+    <span
+      style={{
+        display: 'inline-flex',
+        flexShrink: 0,
+        transform: rotated ? 'rotate(180deg)' : 'rotate(0deg)',
+        transition: 'transform 0.24s cubic-bezier(0.22, 1, 0.36, 1)',
+      }}
     >
-      <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="var(--text-muted)" strokeLinecap="round"/>
-    </svg>
+      <Icon name="general/chevronDown" size={16} />
+    </span>
   );
 }
 
