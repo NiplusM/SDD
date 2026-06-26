@@ -2198,17 +2198,10 @@ function buildDisplayRowSerializedLineMatches(displayRows = [], serializedLines 
     const line = typeof row?.line === 'string' ? row.line : '';
     let matchedIndex = -1;
 
-    if (
-      row.rawIndex >= searchStart &&
-      row.rawIndex < lineMap.length
-    ) {
-      matchedIndex = row.rawIndex;
-    } else {
-      for (let index = searchStart; index < serializedLines.length; index += 1) {
-        if (serializedLines[index] === line) {
-          matchedIndex = index;
-          break;
-        }
+    for (let index = searchStart; index < serializedLines.length; index += 1) {
+      if (serializedLines[index] === line) {
+        matchedIndex = index;
+        break;
       }
     }
 
@@ -4503,12 +4496,9 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 // ─── Add Popup ────────────────────────────────────────────────────────────────
 
 const ADD_RECENT_FILES = [
-  { label: 'Configuration.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Vet-Schedules.md',                    type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Inspections.md',        type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Beat-3-Execution.md',   type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking-Code-Review-Moment.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Configuration.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Visit-Booking.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Vet-Schedules.md', type: 'md', description: 'Agent Specifications' },
 ];
 
 function getAddPopupFileType(label) {
@@ -4548,11 +4538,53 @@ function AddFileIcon({ type }) {
   );
 }
 
-function AddPopup({ onClose, onSelectFile, style, files = ADD_RECENT_FILES }) {
-  const [search, setSearch] = useState('');
+function AddPopup({
+  onClose,
+  onSelectFile,
+  style,
+  files = ADD_RECENT_FILES,
+  initialSearch = '',
+  // When `searchControlled` is set the popup mirrors this value instead of its
+  // own input state. Used by the `@` completion flow so the user can keep
+  // typing in the document (driving the filter from there) without focus
+  // jumping into the popup.
+  searchControlled = null,
+  autoFocusSearch = true,
+}) {
+  const [search, setSearch] = useState(initialSearch);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const effectiveSearch = searchControlled ?? search;
   const filtered = files.filter(f =>
-    f.label.toLowerCase().includes(search.toLowerCase())
+    f.label.toLowerCase().includes(effectiveSearch.toLowerCase())
   );
+
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [effectiveSearch, files]);
+
+  const commitSelection = useCallback((item) => {
+    if (!item) return;
+    onSelectFile?.(item);
+    onClose?.();
+  }, [onClose, onSelectFile]);
+
+  // Keyboard navigation — Arrow keys to move, Enter / Tab to commit, Esc to
+  // close. Mounted at the document level so it works whether focus is in the
+  // popup's search input or still in the upstream contenteditable.
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose?.(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, Math.max(filtered.length - 1, 0))); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)); }
+      else if (e.key === 'Enter' || e.key === 'Tab') {
+        if (filtered.length === 0) return;
+        e.preventDefault();
+        commitSelection(filtered[selectedIdx]);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [commitSelection, filtered, onClose, selectedIdx]);
 
   return (
     <div className="add-popup" style={style} onMouseDown={e => e.stopPropagation()}>
@@ -4565,16 +4597,17 @@ function AddPopup({ onClose, onSelectFile, style, files = ADD_RECENT_FILES }) {
         <input
           className="add-popup-search-input"
           placeholder="Search"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          autoFocus
+          value={effectiveSearch}
+          onChange={e => searchControlled === null ? setSearch(e.target.value) : null}
+          readOnly={searchControlled !== null}
+          autoFocus={autoFocusSearch && searchControlled === null}
         />
       </div>
 
       <div className="add-popup-divider" />
 
       {/* Static items */}
-      {!search && (
+      {!effectiveSearch && (
         <div className="popup-cell popup-cell-header">
           <div className="popup-cell-content">
             <div className="popup-cell-header-text text-ui-default-semibold">Recent files</div>
@@ -4584,9 +4617,14 @@ function AddPopup({ onClose, onSelectFile, style, files = ADD_RECENT_FILES }) {
 
       {/* File list */}
       <div className="add-popup-files">
-        {filtered.map(f => (
-          <div key={f.label} className="add-popup-item" onMouseDown={() => { onSelectFile?.(f); onClose(); }}>
-            <AddFileIcon type={f.type} />
+        {filtered.map((f, idx) => (
+          <div
+            key={f.label}
+            className={`add-popup-item${idx === selectedIdx ? ' add-popup-item-selected' : ''}`}
+            onMouseEnter={() => setSelectedIdx(idx)}
+            onMouseDown={(e) => { e.preventDefault(); commitSelection(f); }}
+          >
+            <FileTypeIcon label={f.label} />
             <span className="add-popup-item-label">{f.label}</span>
           </div>
         ))}
@@ -5035,6 +5073,22 @@ function normalizeDoneEditableText(text = '') {
     .trim();
 }
 
+function getDoneEditablePlainText(node) {
+  if (!node) return '';
+
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent ?? '';
+  }
+
+  if (node instanceof HTMLElement && node.classList.contains('spec-ref')) {
+    return node.dataset.refRaw || node.textContent || '';
+  }
+
+  return Array.from(node.childNodes ?? [])
+    .map((child) => getDoneEditablePlainText(child))
+    .join('');
+}
+
 function normalizeSpecCodeForComparison(code = '') {
   return String(code)
     .replace(/\u200B/g, '')
@@ -5093,7 +5147,7 @@ function extractSnapshotLineFromDoneRow(rowEl, originalLine = '') {
     return sourceLine;
   }
 
-  const nextText = normalizeDoneEditableText(editableEl.textContent ?? sourceLine);
+  const nextText = normalizeDoneEditableText(getDoneEditablePlainText(editableEl) || sourceLine);
   const checkMatch = sourceLine.match(/^(\s*-\s+\[[ x]\]\s+)(.*)$/i);
   if (checkMatch) {
     return `${checkMatch[1]}${nextText}`;
@@ -5466,14 +5520,295 @@ function extractGoalTitleFromMarkdown(code) {
   return '';
 }
 
-function renderDoneInlineText(text, keyPrefix = 'inline') {
-  const parts = text.split(/(@\w+)/g);
-  if (parts.length === 1) return text;
-  return parts.map((part, index) =>
-    /^@\w+$/.test(part)
-      ? <span key={`${keyPrefix}-${index}`} className="spec-ref">{part}</span>
-      : part
+// Canonical filenames for known markdown documents. Whenever the spec text
+// mentions any case/spelling variant — `Visit-booking`, `visit booking`,
+// `Vet Schedules`, `configuration`, etc. — we render the chip with this
+// exact label so a doc reference reads identically no matter how the author
+// typed it.
+const KNOWN_DOC_CANONICAL_NAMES = {
+  'visit-booking': 'Visit-Booking.md',
+  'vet-schedules': 'Vet-Schedules.md',
+  'new-task': 'New Task.md',
+  'configuration': 'Configuration.md',
+};
+
+// Subset of the known docs that represent ACTIVE agent tasks — these get the
+// project's purple AI-markdown icon. Regular markdown specs (e.g.
+// Configuration.md) keep the standard blue markdown icon.
+const AGENT_TASK_DOC_SLUGS = new Set([
+  'visit-booking',
+  'vet-schedules',
+  'new-task',
+]);
+
+const KNOWN_DOC_SLUGS = new Set(Object.keys(KNOWN_DOC_CANONICAL_NAMES));
+
+// Single-word domain/library class identifiers that wouldn't be caught by the
+// multi-segment PascalCase pattern. Listed explicitly so we don't accidentally
+// style sentence-start English words like "Schema" or "Tests".
+const KNOWN_CODE_SYMBOLS = [
+  // Domain entities (singular and plural) used throughout the spec text.
+  'Visit', 'Visits', 'Vet', 'Vets', 'Owner', 'Owners', 'Pet', 'Pets',
+  // Common JVM types referenced in implementation notes.
+  'String', 'Collection', 'Formatter',
+  // Domain column / type references ("Time columns", "Date column", …).
+  'Time', 'Date',
+  // Topic prefixes used as the leading subject of plan items in the spec.
+  'Schema', 'Form', 'Tests',
+];
+
+const BARE_FILE_PATTERN_SRC = '\\b[A-Za-z][\\w-]*\\.[a-z]{2,10}\\b';
+// Hyphenated OR space-separated variants: matches `Visit-booking`,
+// `Visit Booking`, `visit booking`, `Vet Schedules`, `vet-schedules`, etc.
+// Listed before the bare class/identifier patterns so `Visit` / `Vet` from
+// the known-code-symbols list doesn't bite the leading word out of the slug.
+const BARE_DOC_SLUG_PATTERN_SRC = '\\b(?:[Vv]isit[ -][Bb]ooking|[Vv]et[ -][Ss]chedules)(?:\\.md)?\\b';
+// Dotted code references like `VetRepository.findAll()` or `Visit.entity`. Must
+// start with an uppercase letter so we don't bite into `e.g.`/`i.e.`.
+const CLASS_DOTTED_PATTERN_SRC = '\\b[A-Z][a-zA-Z][\\w]*(?:\\.[a-zA-Z][\\w]*)+(?:\\(\\))?';
+const METHOD_CALL_PATTERN_SRC = '\\b[A-Za-z][\\w]*\\(\\)';
+const PASCAL_CASE_MULTI_PATTERN_SRC = '\\b[A-Z][a-z]+(?:[A-Z][a-z]*)+\\b';
+const CAMEL_CASE_PATTERN_SRC = '\\b[a-z]+(?:[A-Z][a-z]*)+\\b';
+const SNAKE_CASE_PATTERN_SRC = '\\b[a-z][\\w]*_[\\w]+\\b';
+const KNOWN_CODE_SYMBOLS_PATTERN_SRC = `\\b(?:${KNOWN_CODE_SYMBOLS.join('|')})\\b`;
+
+const INLINE_REFERENCE_SPLIT_PATTERN = new RegExp(
+  [
+    '`[^`]+`',
+    '@[A-Za-z0-9_./#-]+(?:\\(\\))?',
+    '#[A-Za-z][\\w-]*(?:#[\\w-]+)?',
+    // Doc slugs come BEFORE the bare class/identifier patterns so that
+    // `Visit-booking` matches as a whole token instead of being eaten by the
+    // single-word `Visit` rule.
+    BARE_DOC_SLUG_PATTERN_SRC,
+    CLASS_DOTTED_PATTERN_SRC,
+    BARE_FILE_PATTERN_SRC,
+    METHOD_CALL_PATTERN_SRC,
+    PASCAL_CASE_MULTI_PATTERN_SRC,
+    CAMEL_CASE_PATTERN_SRC,
+    SNAKE_CASE_PATTERN_SRC,
+    KNOWN_CODE_SYMBOLS_PATTERN_SRC,
+  ].map((src) => `(?:${src})`).join('|'),
+  'g',
+);
+
+const INLINE_REFERENCE_TEST_PATTERNS = [
+  /^@[A-Za-z0-9_./#-]+(?:\(\))?$/,
+  /^#[A-Za-z][\w-]*(?:#[\w-]+)?$/,
+  new RegExp(`^${BARE_DOC_SLUG_PATTERN_SRC}$`),
+  new RegExp(`^${CLASS_DOTTED_PATTERN_SRC}$`),
+  new RegExp(`^${BARE_FILE_PATTERN_SRC}$`),
+  new RegExp(`^${METHOD_CALL_PATTERN_SRC}$`),
+  new RegExp(`^${PASCAL_CASE_MULTI_PATTERN_SRC}$`),
+  new RegExp(`^${CAMEL_CASE_PATTERN_SRC}$`),
+  new RegExp(`^${SNAKE_CASE_PATTERN_SRC}$`),
+  new RegExp(`^${KNOWN_CODE_SYMBOLS_PATTERN_SRC}$`),
+];
+
+function isInlineReferenceToken(part) {
+  if (typeof part !== 'string' || part.length === 0) return false;
+  return INLINE_REFERENCE_TEST_PATTERNS.some((re) => re.test(part));
+}
+
+// Map a file-like reference target to one of the int-ui-kit file-type icon
+// slugs. The matching CSS class is `.spec-ref-file--{key}`. Keys here track
+// `resolveAgentTaskPlanFileIcon` (line ~11468) so a `.java` reference in the
+// spec uses the same icon as the editor tab.
+function resolveSpecRefFileIconKey(target = '') {
+  const normalized = String(target).toLowerCase().trim();
+  if (!normalized) return 'text';
+  if (normalized.endsWith('.java')) return 'java';
+  if (normalized.endsWith('.html') || normalized.endsWith('.xhtml') || normalized.endsWith('.htm')) return 'html';
+  if (normalized.endsWith('.md') || normalized.endsWith('.markdown')) return 'markdown';
+  if (normalized.endsWith('.json')) return 'json';
+  if (normalized.endsWith('.properties')) return 'properties';
+  if (
+    normalized.endsWith('.js') || normalized.endsWith('.jsx')
+    || normalized.endsWith('.ts') || normalized.endsWith('.tsx')
+    || normalized.endsWith('.mjs') || normalized.endsWith('.cjs')
+  ) return 'javaScript';
+  // Doc slugs without an extension (visit-booking, vet-schedules, …) act like
+  // markdown documents in this product.
+  if (!normalized.includes('.')) return 'markdown';
+  return 'text';
+}
+
+function getDoneInlineReferenceInfo(rawReference = '') {
+  const marker = rawReference.startsWith('@') || rawReference.startsWith('#')
+    ? rawReference[0]
+    : '';
+  const value = marker ? rawReference.slice(1) : rawReference;
+  const hasSectionAnchor = value.includes('#');
+  const [targetLabel = '', sectionAnchor = ''] = value.split('#');
+  const normalizedTarget = targetLabel.trim();
+  const normalizedSection = sectionAnchor.trim();
+  const isMarkdownFile = /\.md$/i.test(normalizedTarget);
+  const isFile = /\.[A-Za-z0-9]+$/.test(normalizedTarget);
+  // Normalise space/hyphen variants ("Vet Schedules" → "vet-schedules") so the
+  // doc-slug lookup matches every casing the spec text uses.
+  const docSlugKey = normalizedTarget
+    .toLowerCase()
+    .replace(/\.md$/, '')
+    .replace(/[\s_-]+/g, '-');
+  const canonicalDocName = KNOWN_DOC_CANONICAL_NAMES[docSlugKey] || null;
+  // A "doc slug" is a bare reference (no `@`, no extension) that matches one
+  // of the known agent-task documents. Used to upgrade the type to `file` so
+  // the chip shows a markdown icon and grey background.
+  const isKnownDocSlug = marker === '' && !!canonicalDocName && KNOWN_DOC_SLUGS.has(docSlugKey);
+  const isCurrentSection = marker === '#' && normalizedTarget.length > 0 && !isFile && !hasSectionAnchor;
+  const isExternalSection = hasSectionAnchor && (isMarkdownFile || normalizedTarget.length > 0);
+
+  // Sub-classify code identifiers so the spec uses the same JetBrains editor
+  // palette as the Java/SQL token highlighter: classes (#16baac teal),
+  // methods (#56a8f5 blue), variables / constants (#c77dbb purple).
+  const targetWithoutParens = normalizedTarget.replace(/\(\)$/, '');
+  const hasParens = normalizedTarget !== targetWithoutParens;
+  const dotChainSegments = !isFile && !isKnownDocSlug && targetWithoutParens.includes('.')
+    ? targetWithoutParens.split('.').filter(Boolean)
+    : null;
+  const lastDotSegment = dotChainSegments ? dotChainSegments[dotChainSegments.length - 1] : '';
+  const hasUnderscore = /_/.test(targetWithoutParens);
+  const isPascalCase = (segment) => /^[A-Z][a-z]/.test(segment);
+  const isCamelCaseSegment = (segment) => /^[a-z]+[A-Z]/.test(segment);
+
+  const codeIdentifierType = (() => {
+    if (!normalizedTarget) return null;
+    if (isFile || isKnownDocSlug || isCurrentSection || isExternalSection) return null;
+    if (hasParens) return 'method';
+    if (dotChainSegments) {
+      // Foo.bar / Foo.bar.baz — the last segment decides whether it reads as
+      // a method (camelCase) or a class member (PascalCase / default).
+      if (isCamelCaseSegment(lastDotSegment) || /^[a-z]/.test(lastDotSegment)) return 'method';
+      if (isPascalCase(lastDotSegment)) return 'class';
+    }
+    if (hasUnderscore) return 'variable';
+    if (isPascalCase(targetWithoutParens)) return 'class';
+    if (isCamelCaseSegment(targetWithoutParens)) return 'method';
+    return null;
+  })();
+
+  const type = isExternalSection
+    ? 'external-section'
+    : isCurrentSection
+      ? 'current-section'
+      : (isFile || isKnownDocSlug)
+        ? 'file'
+        : codeIdentifierType ?? 'symbol';
+  // Capitalize the first letter of a section anchor ("plan" → "Plan") so the
+  // displayed section name reads like a proper heading. Leaves the rest of the
+  // string alone in case the author wrote `acceptance-criteria` etc.
+  const capitalizeFirst = (text) => {
+    if (typeof text !== 'string' || text.length === 0) return text;
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+  const fileName = isExternalSection ? (canonicalDocName || normalizedTarget) : null;
+  const sectionName = isExternalSection
+    ? capitalizeFirst(normalizedSection || 'Section')
+    : isCurrentSection
+      ? capitalizeFirst(normalizedTarget)
+      : null;
+  const displayLabel = isExternalSection
+    ? `${fileName} › ${sectionName}`
+    : isCurrentSection
+      ? sectionName
+      : canonicalDocName || normalizedTarget || value;
+
+  // Active agent-task docs (Visit-Booking.md, Vet-Schedules.md, New Task.md)
+  // use the project's purple AI markdown icon. All other markdown documents
+  // (including Configuration.md and any ad-hoc *.md) keep the blue
+  // `fileTypes/markdown` icon. Files of other extensions resolve normally.
+  // External-section refs (e.g. `@Configuration.md#plan`) carry a file too —
+  // we show the same icon next to the chip so the chip reads as "this file →
+  // this section".
+  const fileIconKey = (type === 'file' || type === 'external-section')
+    ? (AGENT_TASK_DOC_SLUGS.has(docSlugKey)
+        ? 'agent-markdown'
+        : resolveSpecRefFileIconKey(canonicalDocName || normalizedTarget))
+    : null;
+  // The actual filename that should be opened when the chip is clicked. Doc
+  // slugs are normalised to their canonical name (`Visit-booking` →
+  // `Visit-Booking.md`), bare files (`data.sql`) are returned as-is.
+  const targetFile = (type === 'file' || type === 'external-section')
+    ? (canonicalDocName || (normalizedTarget && /\./.test(normalizedTarget) ? normalizedTarget : null))
+    : null;
+
+  return {
+    type,
+    marker,
+    label: displayLabel,
+    fileIconKey,
+    targetFile,
+    fileName,
+    sectionName,
+  };
+}
+
+function renderDoneInlineReference(rawReference, key) {
+  const reference = getDoneInlineReferenceInfo(rawReference);
+  const fileModifierClass = reference.fileIconKey ? ` spec-ref-file--${reference.fileIconKey}` : '';
+  // contentEditable={false} turns the chip into an atomic node inside the
+  // contenteditable: the caret can't enter it, so a Backspace at the chip's
+  // trailing boundary removes the whole reference rather than nibbling its
+  // characters. The serializer still recovers the raw reference from
+  // `data-ref-raw` (see `getDoneEditablePlainText`).
+  const commonProps = {
+    className: `spec-ref spec-ref-${reference.type}${fileModifierClass}`,
+    'data-ref-type': reference.type,
+    'data-ref-marker': reference.marker,
+    'data-ref-raw': rawReference,
+    'data-ref-target': reference.targetFile || undefined,
+    contentEditable: false,
+    suppressContentEditableWarning: true,
+  };
+
+  // External section: <file icon> <File name> › <¶> <Section Name> + ↗
+  if (reference.type === 'external-section') {
+    return (
+      <span key={key} {...commonProps}>
+        <span className="spec-ref-file-name">{reference.fileName}</span>
+        <span className="spec-ref-section-divider" aria-hidden="true">{' › '}</span>
+        <span className="spec-ref-paragraph-icon" aria-hidden="true">{'§'}</span>
+        <span className="spec-ref-section-name">{reference.sectionName}</span>
+      </span>
+    );
+  }
+
+  // Current section: <¶> <Section Name> (paragraph icon comes from CSS::before
+  // for current-section to keep render parity with the file icon path).
+  if (reference.type === 'current-section') {
+    return (
+      <span key={key} {...commonProps}>
+        <span className="spec-ref-section-name">{reference.sectionName}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span key={key} {...commonProps}>
+      {reference.label}
+    </span>
   );
+}
+
+function renderDoneInlineText(text, keyPrefix = 'inline') {
+  const splitPattern = new RegExp(`(${INLINE_REFERENCE_SPLIT_PATTERN.source})`, 'g');
+  const parts = text.split(splitPattern);
+  if (parts.length === 1) return text;
+  return parts.map((part, index) => {
+    if (isInlineReferenceToken(part)) {
+      return renderDoneInlineReference(part, `${keyPrefix}-${index}`);
+    }
+
+    if (/^`[^`]+`$/.test(part)) {
+      return (
+        <code key={`${keyPrefix}-${index}`} className="spec-done-inline-code">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return part;
+  });
 }
 
 const INLINE_INSPECTION_TOOLTIP_WIDTH = 320;
@@ -5932,12 +6267,15 @@ function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }
   );
 }
 
-function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, commentAdornment = null }) {
+function DoneHeadingWithFiles({ title, level = 2, initialFiles = [], addPopupFiles, commentAdornment = null }) {
+  const normalizedLevel = Math.min(Math.max(Number.isInteger(level) ? level : 2, 1), 6);
+  const HeadingTag = `h${normalizedLevel}`;
+
   return (
     <div className="spec-done-heading-row">
-      <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
+      <HeadingTag className={`spec-done-heading spec-done-heading-level-${normalizedLevel}`} contentEditable suppressContentEditableWarning>
         {renderDoneMarkdownInline(title)}
-      </h1>
+      </HeadingTag>
       <DoneFileChipGroup
         initialFiles={initialFiles}
         addPopupFiles={addPopupFiles}
@@ -5949,9 +6287,15 @@ function DoneHeadingWithFiles({ title, initialFiles = [], addPopupFiles, comment
   );
 }
 
+function getDoneHeadingInfo(line) {
+  const headingMatch = line.match(/^\s*(#{1,6})\s+(.*)$/);
+  return headingMatch
+    ? { level: headingMatch[1].length, title: headingMatch[2].trim() }
+    : null;
+}
+
 function getDoneHeadingTitle(line) {
-  const headingMatch = line.match(/^\s*##\s+(.*)$/);
-  return headingMatch ? headingMatch[1].trim() : null;
+  return getDoneHeadingInfo(line)?.title ?? null;
 }
 
 function shouldShowDoneRunIcon(line) {
@@ -7080,7 +7424,8 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
 }
 
 function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null) {
-  const headingTitle = getDoneHeadingTitle(line);
+  const headingInfo = getDoneHeadingInfo(line);
+  const headingTitle = headingInfo?.title ?? null;
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
       const initialFiles = getDonePlanHeadingFiles(sectionMeta, attachedFiles);
@@ -7088,6 +7433,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
         <DoneHeadingWithFiles
           key={key}
           title={headingTitle}
+          level={headingInfo.level}
           initialFiles={initialFiles}
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
@@ -7100,17 +7446,20 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
         <DoneHeadingWithFiles
           key={key}
           title={headingTitle}
+          level={headingInfo.level}
           initialFiles={initialFiles}
           addPopupFiles={addPopupFiles}
           commentAdornment={commentAdornment}
         />
       );
     }
+    const normalizedLevel = Math.min(Math.max(headingInfo.level, 1), 6);
+    const HeadingTag = `h${normalizedLevel}`;
     return (
       <div key={key} className="spec-done-heading-row">
-        <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
+        <HeadingTag className={`spec-done-heading spec-done-heading-level-${normalizedLevel}`} contentEditable suppressContentEditableWarning>
           {renderDoneMarkdownInline(headingTitle)}
-        </h1>
+        </HeadingTag>
         {commentAdornment}
       </div>
     );
@@ -7671,10 +8020,19 @@ function getTextareaEditorCommentLineLabel(snapshot = null) {
   return formatEditorCommentLineLabel([startLineNumber, endLineNumber]);
 }
 
+const SPEC_SELECTION_TOOLBAR_HEADING_OPTIONS = [
+  { id: 'heading-1', label: 'Heading 1', text: 'H1', textClassName: 'spec-done-selection-toolbar-heading-option-h1' },
+  { id: 'heading-2', label: 'Heading 2', text: 'H2', textClassName: 'spec-done-selection-toolbar-heading-option-h2' },
+  { id: 'heading-3', label: 'Heading 3', text: 'H3', textClassName: 'spec-done-selection-toolbar-heading-option-h3' },
+  { id: 'paragraph', label: 'Paragraph', text: 'P', textClassName: 'spec-done-selection-toolbar-heading-option-p' },
+];
+
 const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'suggest', label: 'Suggest action', accent: 'warning', iconName: 'codeInsight/intentionBulb' },
   { id: 'comment', label: 'Comment', iconName: 'general/balloon' },
   { id: 'separator-ai', type: 'separator' },
+  { id: 'heading', type: 'heading-dropdown', label: 'Heading size' },
+  { id: 'separator-heading-after', type: 'separator' },
   { id: 'bold', label: 'Bold', text: 'B', textClassName: 'spec-done-selection-toolbar-text-bold' },
   { id: 'italic', label: 'Italic', text: 'I', textClassName: 'spec-done-selection-toolbar-text-italic' },
   { id: 'strike', label: 'Strikethrough', text: 'S', textClassName: 'spec-done-selection-toolbar-text-strike' },
@@ -7809,10 +8167,23 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
 }
 
 function SpecSelectionToolbar({ position, onAction }) {
+  const [isHeadingDropdownOpen, setIsHeadingDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (!position) {
+      setIsHeadingDropdownOpen(false);
+    }
+  }, [position]);
+
   if (!position) return null;
 
   const preventSelectionReset = (event) => {
     event.preventDefault();
+  };
+
+  const handleHeadingOptionSelect = (optionId, rect) => {
+    setIsHeadingDropdownOpen(false);
+    onAction?.(optionId, rect);
   };
 
   return createPortal(
@@ -7826,6 +8197,59 @@ function SpecSelectionToolbar({ position, onAction }) {
       {SPEC_SELECTION_TOOLBAR_ITEMS.map((item) => {
         if (item.type === 'separator') {
           return <span key={item.id} className="spec-done-selection-toolbar-separator" aria-hidden="true" />;
+        }
+
+        if (item.type === 'heading-dropdown') {
+          return (
+            <div key={item.id} className="spec-done-selection-toolbar-heading-wrapper">
+              <button
+                type="button"
+                className={`spec-done-selection-toolbar-btn spec-done-selection-toolbar-heading-btn${isHeadingDropdownOpen ? ' is-active' : ''}`}
+                aria-label={item.label}
+                title={item.label}
+                aria-haspopup="listbox"
+                aria-expanded={isHeadingDropdownOpen}
+                onMouseDown={preventSelectionReset}
+                onClick={() => setIsHeadingDropdownOpen((prev) => !prev)}
+              >
+                <span className="spec-done-selection-toolbar-text spec-done-selection-toolbar-heading-label" aria-hidden="true">
+                  H
+                </span>
+                <span className="spec-done-selection-toolbar-heading-caret" aria-hidden="true">
+                  <Icon name="general/chevronDown" size={12} />
+                </span>
+              </button>
+              {isHeadingDropdownOpen ? (
+                <div
+                  className="spec-done-selection-toolbar-heading-dropdown"
+                  role="listbox"
+                  aria-label="Heading size"
+                  onMouseDown={preventSelectionReset}
+                >
+                  {SPEC_SELECTION_TOOLBAR_HEADING_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      className="spec-done-selection-toolbar-heading-option"
+                      onMouseDown={preventSelectionReset}
+                      onClick={(event) =>
+                        handleHeadingOptionSelect(option.id, event.currentTarget.getBoundingClientRect())
+                      }
+                    >
+                      <span
+                        className={`spec-done-selection-toolbar-text ${option.textClassName ?? ''}`}
+                        aria-hidden="true"
+                      >
+                        {option.text}
+                      </span>
+                      <span className="spec-done-selection-toolbar-heading-option-label">{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
         }
 
         return (
@@ -7910,6 +8334,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     ),
     [code, effectiveDocumentSections]
   );
+  const displayDocumentSections = useMemo(
+    () => orderPlanBeforeAcceptanceSections(
+      parseSpecCodeToDocumentSections(effectiveCode, effectiveDocumentSections)
+        .map((section) => withDerivedPlanChildren(section))
+    ),
+    [effectiveCode, effectiveDocumentSections]
+  );
   const commentContextLabel = useMemo(() => {
     const normalizedProvidedLabel = typeof providedCommentContextLabel === 'string'
       ? providedCommentContextLabel.trim()
@@ -7977,8 +8408,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return nextRows;
   }, [draftCode]);
   const serializedDocumentModel = useMemo(
-    () => buildSerializedDocumentLines(effectiveDocumentSections),
-    [effectiveDocumentSections]
+    () => buildSerializedDocumentLines(displayDocumentSections),
+    [displayDocumentSections]
   );
   const serializedDocumentLineMap = serializedDocumentModel.lineMap;
   const serializedDocumentLines = serializedDocumentModel.lines;
@@ -8037,7 +8468,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         return;
       }
 
-      const sectionTitle = effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '';
+      const sectionTitle = displayDocumentSections?.[lineMeta.sectionIndex]?.title ?? '';
       const normalizedSectionTitle = sectionTitle.toLowerCase();
 
       if (normalizedSectionTitle === 'acceptance criteria') {
@@ -8081,21 +8512,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
 
     return nextMeta;
-  }, [acRunResult, effectiveDocumentSections, planRunResult, removedIssueIndices, serializedDocumentLineMap]);
+  }, [acRunResult, displayDocumentSections, planRunResult, removedIssueIndices, serializedDocumentLineMap]);
   const rowMetaList = useMemo(() => {
     const sectionMetaByTitle = new Map(
-      (effectiveDocumentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
+      (displayDocumentSections ?? []).map((section) => [section.title.toLowerCase(), section.meta ?? null])
     );
     const hasNestedPlanChildren = matchedSerializedLineMetaByRow.some((lineMeta) => (
       lineMeta?.itemType === 'check'
       && (lineMeta?.nestingLevel ?? 0) > 0
-      && (effectiveDocumentSections?.[lineMeta.sectionIndex]?.title ?? '').toLowerCase() === 'plan'
+      && (displayDocumentSections?.[lineMeta.sectionIndex]?.title ?? '').toLowerCase() === 'plan'
     ));
     let inAcSection = false;
     let inPlanSection = false;
     let currentSectionTitle = null;
     let acItemCount = 0;
-    let planParentCount = 0;
 
     return displayRows.map((row, rowIndex) => {
       const line = row.line;
@@ -8110,9 +8540,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         inPlanSection = headingTitle.toLowerCase() === 'plan';
         if (inAcSection) {
           acItemCount = 0;
-        }
-        if (inPlanSection) {
-          planParentCount = 0;
         }
       }
 
@@ -8133,10 +8560,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         && serializedLineMeta?.itemType === 'check'
         && (serializedLineMeta?.nestingLevel ?? 0) === 0
       );
-      const isFirstTopLevelPlanParent = isTopLevelPlanParent && planParentCount === 0;
-      if (isTopLevelPlanParent) {
-        planParentCount += 1;
-      }
       const isFlatTopLevelPlanParent = isTopLevelPlanParent && !hasNestedPlanChildren;
       const isNestedPlanChild = Boolean(
         effectiveIsCheckLine
@@ -8211,7 +8634,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         isTopLevelAcItem,
         isFirstTopLevelAcItem,
         isTopLevelPlanParent,
-        isFirstTopLevelPlanParent,
         isFlatTopLevelPlanParent,
         isNestedPlanChild,
         isFirstNestedPlanChild,
@@ -8222,7 +8644,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         issueTarget,
       };
     });
-  }, [displayRows, effectiveDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
+  }, [displayRows, displayDocumentSections, matchedSerializedLineMetaByRow, runStatusMetaByStableKey]);
   const rowMetaByKey = useMemo(
     () => new Map(rowMetaList.map((rowMeta) => [rowMeta.stableKey, rowMeta])),
     [rowMetaList]
@@ -8618,9 +9040,37 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       range.setStart(range.startContainer, range.startOffset - deleteLen);
     }
     range.deleteContents();
+    const rawReference = `@${getCompletionInsertText(item)}`;
+    const reference = getDoneInlineReferenceInfo(rawReference);
+    const fileModifierClass = reference.fileIconKey ? ` spec-ref-file--${reference.fileIconKey}` : '';
     const span = document.createElement('span');
-    span.className = 'spec-ref';
-    span.textContent = `@${getCompletionInsertText(item)}`;
+    span.className = `spec-ref spec-ref-${reference.type}${fileModifierClass}`;
+    span.dataset.refType = reference.type;
+    span.dataset.refMarker = reference.marker;
+    span.dataset.refRaw = rawReference;
+    if (reference.targetFile) {
+      span.dataset.refTarget = reference.targetFile;
+    }
+    span.setAttribute('contenteditable', 'false');
+
+    const appendStructuredChild = (className, text, ariaHidden = false) => {
+      const child = document.createElement('span');
+      child.className = className;
+      child.textContent = text;
+      if (ariaHidden) child.setAttribute('aria-hidden', 'true');
+      span.appendChild(child);
+    };
+
+    if (reference.type === 'external-section') {
+      appendStructuredChild('spec-ref-file-name', reference.fileName);
+      appendStructuredChild('spec-ref-section-divider', ' › ', true);
+      appendStructuredChild('spec-ref-paragraph-icon', '§', true);
+      appendStructuredChild('spec-ref-section-name', reference.sectionName);
+    } else if (reference.type === 'current-section') {
+      appendStructuredChild('spec-ref-section-name', reference.sectionName);
+    } else {
+      span.textContent = reference.label;
+    }
     range.insertNode(span);
     const space = document.createTextNode(' ');
     span.after(space);
@@ -8728,45 +9178,33 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [refPopupPos, refCmpQuery, refCmpSelectedIdx]);
 
-  // Keyboard support for doneCmpPos CompletionPopup
-  useEffect(() => {
-    if (!doneCmpPos) return;
-    const filtered = AT_COMPLETIONS.filter(item => item.label.toLowerCase().includes((doneCmpPos.query ?? '').toLowerCase())).slice(0, COMPLETION_POPUP_MAX_ITEMS);
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); setDoneCmpPos(null); }
-      else if (e.key === 'ArrowDown') { e.preventDefault(); setDoneCmpSelectedIdx(i => Math.min(i + 1, filtered.length - 1)); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setDoneCmpSelectedIdx(i => Math.max(i - 1, 0)); }
-      else if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        const item = filtered[doneCmpSelectedIdx];
-        const selection = buildCompletionSelection(item);
-        if (selection) { applyDoneCompletion(selection); setDoneCmpPos(null); }
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [doneCmpPos, doneCmpSelectedIdx]);
+  // Keyboard navigation for the `@` popup now lives inside `AddPopup` itself
+  // (it owns the search state). No external handler needed.
 
+  // Clicking a file chip opens the matching editor tab via `onOpenCheckChip`.
+  // Three render paths funnel through one delegated handler:
+  //   • inline `.spec-ref-file` (e.g. `data.sql`, `Visit-Booking.md`)
+  //   • inline `.spec-ref-external-section` (e.g. `Configuration.md › plan`)
+  //   • section meta chip `.attached-file-chip[data-ref-target]`
+  // Each carries the canonical filename in `data-ref-target`. The remove-X
+  // button inside the meta chip is excluded so we don't navigate when the user
+  // means to remove the chip.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    const handleRefClick = (e) => {
-      const ref = e.target.closest('.spec-ref');
-      if (!ref) return;
-      const r = ref.getBoundingClientRect();
-      const POPUP_WIDTH = 300;
-      const overflows = r.left + POPUP_WIDTH > window.innerWidth - 8;
-      refSpanRef.current = ref;
-      setRefCmpQuery('');
-      setRefCmpSelectedIdx(0);
-      setRefPopupPos(overflows
-        ? { top: r.bottom + 6, right: window.innerWidth - r.right }
-        : { top: r.bottom + 6, left: r.left }
-      );
+    if (!el || typeof onOpenCheckChip !== 'function') return;
+    const handleFileRefClick = (e) => {
+      if (e.target instanceof Element && e.target.closest('.attached-file-remove')) return;
+      const ref = e.target.closest('.spec-ref-file[data-ref-target], .spec-ref-external-section[data-ref-target], .attached-file-chip[data-ref-target]');
+      if (!ref || !el.contains(ref)) return;
+      const target = ref.dataset.refTarget;
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onOpenCheckChip(target);
     };
-    el.addEventListener('click', handleRefClick);
-    return () => el.removeEventListener('click', handleRefClick);
-  }, []);
+    el.addEventListener('click', handleFileRefClick);
+    return () => el.removeEventListener('click', handleFileRefClick);
+  }, [onOpenCheckChip]);
 
   // When the spec changes (Enhance, fix, etc.) prune overrides for rows that no
   // longer exist, but KEEP overrides for rows that are still in the document so
@@ -9305,7 +9743,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -9584,12 +10022,18 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     {doneCmpPos && createPortal(
       <>
         <div className="add-popup-overlay" onMouseDown={() => setDoneCmpPos(null)} />
-        <CompletionPopup
-          trigger="@"
-          query={doneCmpPos.query ?? ''}
-          selectedIdx={doneCmpSelectedIdx}
-          onSelect={(item) => { applyDoneCompletion(item); setDoneCmpPos(null); }}
+        <AddPopup
+          files={addPopupFiles}
+          searchControlled={doneCmpPos.query ?? ''}
+          autoFocusSearch={false}
           onClose={() => setDoneCmpPos(null)}
+          onSelectFile={(item) => {
+            applyDoneCompletion(buildCompletionSelection({
+              label: item.label,
+              description: item.description,
+            }));
+            setDoneCmpPos(null);
+          }}
           style={{ position: 'fixed', top: doneCmpPos.top, left: doneCmpPos.left, right: doneCmpPos.right }}
         />
       </>,
@@ -9762,8 +10206,12 @@ function FollowUpToolbar({ taskText, onRegenerate, onTaskTextChange }) {
 
 function AttachedFileChip({ label, onRemove, className = '' }) {
   return (
-    <div className={`attached-file-chip${className ? ` ${className}` : ''}`} contentEditable={false}>
-      <IconMdTask />
+    <div
+      className={`attached-file-chip${className ? ` ${className}` : ''}`}
+      contentEditable={false}
+      data-ref-target={label || undefined}
+    >
+      <FileTypeIcon label={label} />
       <span className="attached-file-label">{label}</span>
       {onRemove && (
         <button type="button" className="attached-file-remove" onClick={onRemove}>
@@ -10769,6 +11217,10 @@ const AGENT_TASKS = [
   { id: 't2', label: 'Vet-Schedules.md',   time: '15m', status: null },
 ];
 
+const INITIAL_ACTIVE_AGENT_TASK_ID = 't2';
+const INITIAL_ACTIVE_AGENT_TASK_TAB_ID = 'agent-task-t2';
+const INITIAL_ACTIVE_AGENT_TASK_LABEL = 'Vet-Schedules.md';
+
 const VET_SCHEDULES_AC_RUN_STATUSES = [
   {
     status: 'passed',
@@ -10820,22 +11272,23 @@ function createVetSchedulesSpecDocument() {
     {
       id: 'plan',
       title: 'Plan',
+      meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Add VetSchedule entity under the vet package' },
-        { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet and date' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows' },
-        { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection' },
+        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package' },
+        { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/date in @VetScheduleRepository.findByVetIdAndWeekday()' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
+        { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql for @Configuration.md#plan' },
+        { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
       ],
     },
     {
       id: 'acceptance',
       title: 'Acceptance Criteria',
       items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week.' },
+        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week in @VetSchedule entity.' },
         { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
         { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: 'Visit-booking can keep using static hourly slots while this task is in progress.' },
+        { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan can keep using static hourly slots while this work is in progress.' },
       ],
     },
     {
@@ -10965,8 +11418,10 @@ function getAgentTaskTabId(taskId) {
 
 function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
+  const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
 
   return [
+    ...(vetSchedulesPreset?.tab ? [vetSchedulesPreset.tab] : []),
     visitControllerTab,
     {
       id: INITIAL_PLAN_DIFF_TAB_ID,
@@ -11032,7 +11487,7 @@ function buildInitialEditorTabContents() {
     },
   };
 
-  return ['t1'].reduce((contents, taskId) => {
+  return ['t1', 't2'].reduce((contents, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.content) return contents;
 
@@ -11044,7 +11499,7 @@ function buildInitialEditorTabContents() {
 }
 
 function buildInitialInteractiveTaskStates() {
-  return ['t1'].reduce((states, taskId) => {
+  return ['t1', 't2'].reduce((states, taskId) => {
     const preset = getPresetAgentTaskDefinition(taskId);
     if (!preset?.tab?.id || !preset?.interactiveState) return states;
 
@@ -11097,6 +11552,30 @@ function IconMdTask() {
       <path d="M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z" fill="#9B6BDA"/>
     </svg>
   );
+}
+
+// Pick the right project file-type icon for a filename / doc reference. Mirrors
+// the inline-reference logic (`spec-ref-file--{key}`) so the section meta chip
+// next to a heading and the inline `Visit-Booking.md` chip show the same icon
+// for the same target.
+function FileTypeIcon({ label = '' }) {
+  const normalized = String(label).trim();
+  const slugKey = normalized.toLowerCase().replace(/\.md$/, '').replace(/[\s_-]+/g, '-');
+  if (AGENT_TASK_DOC_SLUGS.has(slugKey)) {
+    return <IconMdTask />;
+  }
+  const iconKey = resolveSpecRefFileIconKey(normalized);
+  const iconNameByKey = {
+    java: 'fileTypes/java',
+    html: 'fileTypes/html',
+    markdown: 'fileTypes/markdown',
+    json: 'fileTypes/json',
+    javaScript: 'fileTypes/javaScript',
+    properties: 'fileTypes/properties',
+    text: 'fileTypes/text',
+  };
+  const iconName = iconNameByKey[iconKey] ?? 'fileTypes/text';
+  return <Icon name={iconName} size={14} />;
 }
 
 function buildTerminalTaskTabs(tabs = []) {
@@ -13744,6 +14223,8 @@ export default function App() {
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
+    const specTabIndex = initialTabs.findIndex((tab) => tab.id === 'agent-task-t2');
+    if (specTabIndex >= 0) return specTabIndex;
     const visitControllerTabIndex = initialTabs.findIndex((tab) => tab.id === '1');
     return visitControllerTabIndex >= 0 ? visitControllerTabIndex : 0;
   });
@@ -13752,8 +14233,8 @@ export default function App() {
   const [dismissedAgentTaskSuccessIds, setDismissedAgentTaskSuccessIds] = useState([]);
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
-  const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'ai']);
+  const [selectedTask, setSelectedTask] = useState(INITIAL_ACTIVE_AGENT_TASK_ID);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit']);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
@@ -13823,8 +14304,11 @@ export default function App() {
   const [terminalPermissionPrompt, setTerminalPermissionPrompt] = useState(null);
   const [terminalPermissionScope, setTerminalPermissionScope] = useState(null);
   const [acWarningPermissionScope, setAcWarningPermissionScope] = useState(null);
-  const initialVisitBookingTaskState = useMemo(
-    () => getPresetAgentTaskDefinition('t1')?.interactiveState ?? createInteractiveTaskState({
+  const initialActiveAgentTaskState = useMemo(
+    () => getAgentTaskScenario({
+      tabId: INITIAL_ACTIVE_AGENT_TASK_TAB_ID,
+      label: INITIAL_ACTIVE_AGENT_TASK_LABEL,
+    }).initialTaskState ?? createInteractiveTaskState({
       documentSections: createSpecDocument(),
       genState: 'done',
     }),
@@ -13945,8 +14429,8 @@ export default function App() {
   }, [openAiToolWindow]);
   const [runStatesByTab, setRunStatesByTab] = useState({});
   const [specDocumentRunRequestsByTab, setSpecDocumentRunRequestsByTab] = useState({});
-  const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
-  const [planRunResult, setPlanRunResult] = useState(() => initialVisitBookingTaskState.planRunResult ?? null);
+  const [acRunResult, setAcRunResult] = useState(() => initialActiveAgentTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
+  const [planRunResult, setPlanRunResult] = useState(() => initialActiveAgentTaskState.planRunResult ?? null);
   const [acWarningBanner, setAcWarningBanner] = useState(null);
   const lastRunSectionRef = useRef(null);
   const lastTerminalRunRequestRef = useRef(null);
@@ -13956,18 +14440,19 @@ export default function App() {
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
-  const [genState, setGenState] = useState(() => initialVisitBookingTaskState.genState ?? 'done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
-  const [genProgress, setGenProgress] = useState(() => initialVisitBookingTaskState.genProgress ?? 1);
-  const [generatedDocument, setGeneratedDocument] = useState(() => initialVisitBookingTaskState.documentSections ?? createSpecDocument());
-  const [appliedIssueFixes, setAppliedIssueFixes] = useState(() => initialVisitBookingTaskState.appliedIssueFixes ?? { ac: {}, plan: {} });
-  const [removedIssueIndices, setRemovedIssueIndices] = useState(() => initialVisitBookingTaskState.removedIssueIndices ?? { ac: {}, plan: {} });
-  const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialVisitBookingTaskState.commentEntries ?? []);
+  const [genState, setGenState] = useState(() => initialActiveAgentTaskState.genState ?? 'done'); // 'idle' | 'done' in the current flow; loading/generating are kept behind a flag
+  const [genProgress, setGenProgress] = useState(() => initialActiveAgentTaskState.genProgress ?? 1);
+  const [generatedDocument, setGeneratedDocument] = useState(() => initialActiveAgentTaskState.documentSections ?? createSpecDocument());
+  const [appliedIssueFixes, setAppliedIssueFixes] = useState(() => initialActiveAgentTaskState.appliedIssueFixes ?? { ac: {}, plan: {} });
+  const [removedIssueIndices, setRemovedIssueIndices] = useState(() => initialActiveAgentTaskState.removedIssueIndices ?? { ac: {}, plan: {} });
+  const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialActiveAgentTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
   const problemsTreeNodesByDisplayRef = useRef(new Map());
-  const [generationTabId, setGenerationTabId] = useState('agent-task-t1');
+  const [generationTabId, setGenerationTabId] = useState(INITIAL_ACTIVE_AGENT_TASK_TAB_ID);
   const [specTopBarStatusesByTab, setSpecTopBarStatusesByTab] = useState({
     'agent-task-t1': 'Specified',
+    [INITIAL_ACTIVE_AGENT_TASK_TAB_ID]: 'Specified',
   });
   const doneEnhanceFlowRef = useRef(null);
   const specStatusChatIdsRef = useRef({});
@@ -14531,7 +15016,7 @@ export default function App() {
       tabId,
       label: matchingTab?.label ?? '',
     });
-    const isLiveTaskTab = tabId === activeSourceEditorTabId || tabId === generationTabId;
+    const isLiveTaskTab = tabId === generationTabId;
     const taskState = isLiveTaskTab
       ? {
           genState,
@@ -14557,7 +15042,6 @@ export default function App() {
       baseCode,
     };
   }, [
-    activeSourceEditorTabId,
     acRunResult,
     agentTaskCommentEntries,
     appliedIssueFixes,
@@ -14584,7 +15068,7 @@ export default function App() {
       suppressDoneCommentsChangeTimerRef.current = null;
     }, 300);
 
-    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+    if (tabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => (Array.isArray(prev) && prev.length > 0 ? [] : prev));
     }
     setInteractiveTaskStates((prev) => {
@@ -14633,13 +15117,13 @@ export default function App() {
       return didChange ? next : prev;
     });
     setDoneCommentResetToken((prev) => prev + 1);
-  }, [activeSourceEditorTabId, generationTabId]);
+  }, [generationTabId]);
 
   const clearTaskCommentTargetForTab = useCallback((tabId, target) => {
     const normalizedTarget = normalizeCommentTarget(target);
     if (!tabId || !normalizedTarget) return;
 
-    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+    if (tabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => {
         if (!Array.isArray(prev) || prev.length === 0) return prev;
         const nextEntries = prev.filter((entry) => !doesEntryMatchCommentTarget(entry, normalizedTarget));
@@ -14665,7 +15149,7 @@ export default function App() {
         },
       };
     });
-  }, [activeSourceEditorTabId, generationTabId]);
+  }, [generationTabId]);
 
   const getCommentEntriesForTaskTab = useCallback((tabId) => {
     if (!tabId) return [];
@@ -14674,7 +15158,7 @@ export default function App() {
       return [];
     }
 
-    if (tabId === activeSourceEditorTabId || tabId === generationTabId) {
+    if (tabId === generationTabId) {
       return Array.isArray(agentTaskCommentEntries) ? agentTaskCommentEntries : [];
     }
 
@@ -14693,7 +15177,6 @@ export default function App() {
       ? fallbackScenario.initialTaskState.commentEntries
       : [];
   }, [
-    activeSourceEditorTabId,
     agentTaskCommentEntries,
     generationTabId,
     ideTabs,
@@ -14818,7 +15301,7 @@ export default function App() {
       };
     });
 
-    if (sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
+    if (sourceTabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => replaceCommentEntriesForTarget(
         prev,
         normalizedTarget,
@@ -14826,7 +15309,7 @@ export default function App() {
         metadata,
       ));
     }
-  }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
+  }, [generationTabId, getTaskRuntimeState]);
 
   const handleAgentTaskSelect = useCallback((task) => {
     const resolvedTask = typeof task === 'string'
@@ -14949,7 +15432,8 @@ export default function App() {
   }, [activeEditorTabId]);
 
   useEffect(() => {
-    if (!activeEditorTabId?.startsWith('agent-task-')) return;
+    const targetTabId = generationTabId;
+    if (!targetTabId?.startsWith('agent-task-')) return;
 
     setInteractiveTaskStates((prev) => {
       const nextTaskState = {
@@ -14962,7 +15446,7 @@ export default function App() {
         planRunResult,
         commentEntries: agentTaskCommentEntries,
       };
-      const previousTaskState = prev[activeEditorTabId];
+      const previousTaskState = prev[targetTabId];
 
       if (
         previousTaskState &&
@@ -14980,14 +15464,14 @@ export default function App() {
 
       return {
         ...prev,
-        [activeEditorTabId]: nextTaskState,
+        [targetTabId]: nextTaskState,
       };
     });
   }, [
     acRunResult,
-    activeEditorTabId,
     agentTaskCommentEntries,
     appliedIssueFixes,
+    generationTabId,
     genProgress,
     genState,
     generatedDocument,
@@ -15388,18 +15872,68 @@ export default function App() {
       return;
     }
 
+    // Agent-task markdown docs (Visit-Booking.md, Vet-Schedules.md) need the
+    // interactive scenario opener, not the plain code-tab path.
+    const lowerLabel = normalizedLabel.toLowerCase();
+    const AGENT_TASK_BY_LABEL = {
+      'visit-booking.md': 't1',
+      'vet-schedules.md': 't2',
+    };
+    const agentTaskId = AGENT_TASK_BY_LABEL[lowerLabel];
+    if (agentTaskId) {
+      handleAgentTaskSelect(agentTaskId);
+      return;
+    }
+
     const presetTab = MY_EDITOR_TABS.find((tab) => tab.label === normalizedLabel);
     const tabContent = getEditorTabContentByLabel(normalizedLabel);
-    if (!presetTab || !tabContent) return;
 
-    setIdeTabs((prev) => [...prev, presetTab]);
+    // Fallback for files mentioned in spec text that we don't ship presets
+    // for (e.g. `data.sql`, `Configuration.md`, `application.properties`,
+    // `VetSchedule.java`). Open a stub tab so the navigation still works.
+    // When the file appears in `COMPLETION_PREVIEW_LIBRARY` we seed the tab
+    // with its preview lines so Configuration.md, Visit-Booking-Inspections.md
+    // etc. open with real content instead of an empty buffer.
+    const languageByExtension = (name) => {
+      const lower = name.toLowerCase();
+      if (lower.endsWith('.java')) return 'java';
+      if (lower.endsWith('.sql')) return 'sql';
+      if (lower.endsWith('.md')) return 'markdown';
+      if (lower.endsWith('.html') || lower.endsWith('.xhtml')) return 'html';
+      if (lower.endsWith('.json')) return 'json';
+      if (lower.endsWith('.properties')) return 'properties';
+      if (lower.endsWith('.css')) return 'css';
+      if (lower.endsWith('.xml')) return 'xml';
+      if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'yaml';
+      return 'text';
+    };
+    const previewEntry =
+      COMPLETION_PREVIEW_LIBRARY[normalizedLabel]
+      ?? COMPLETION_PREVIEW_LIBRARY[normalizeMarkdownDocumentLabelKey(normalizedLabel)]
+      ?? null;
+    const previewCode = Array.isArray(previewEntry?.previewLines) && previewEntry.previewLines.length > 0
+      ? previewEntry.previewLines.join('\n')
+      : '';
+    const stubTabId = `inline-ref-${normalizedLabel.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+    const finalTab = presetTab ?? {
+      id: stubTabId,
+      label: normalizedLabel,
+      icon: resolveAgentTaskPlanFileIcon(normalizedLabel),
+      closable: true,
+    };
+    const finalContent = tabContent ?? {
+      language: languageByExtension(normalizedLabel),
+      code: previewCode,
+    };
+
+    setIdeTabs((prev) => [...prev, finalTab]);
     setIdeTabContents((prev) => ({
       ...prev,
-      [presetTab.id]: tabContent,
+      [finalTab.id]: finalContent,
     }));
     setScreen('ide');
     setActiveEditorTab(ideTabs.length);
-  }, [ideTabs]);
+  }, [ideTabs, handleAgentTaskSelect]);
 
   const openSpecVersionDiffTab = useCallback(({
     sourceTabId,
@@ -17597,7 +18131,7 @@ export default function App() {
       };
     });
 
-    if (targetTabId === activeSourceEditorTabId || targetTabId === generationTabId) {
+    if (targetTabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => {
         const mergedNextEntries = mergeCommentEntriesWithExistingDiffAnchors(normalizedNextEntries, prev);
         const nextSignature = buildSpecVersionCommentEntriesSignature(mergedNextEntries);
@@ -17607,7 +18141,7 @@ export default function App() {
           : mergedNextEntries;
       });
     }
-  }, [activeSourceEditorTabId, generationTabId, ideTabs, visibleEditorStateTabId]);
+  }, [generationTabId, ideTabs, visibleEditorStateTabId]);
   const activeAgentTaskViewState = useMemo(
     () => (
       activeEditorTabId?.startsWith('agent-task-') && (genState === 'done' || genState === 'idle' || Boolean(doneEnhanceFlowRef.current))
@@ -17616,10 +18150,31 @@ export default function App() {
     ),
     [activeEditorTabId, genState, getCommentDrivenViewStateForTaskTab],
   );
-  const activeAgentTaskDocumentSections = activeAgentTaskViewState?.documentSections ?? generatedDocument;
-  const activeAgentTaskAcRunResult = activeAgentTaskViewState?.acRunResult ?? acRunResult;
-  const activeAgentTaskPlanRunResult = activeAgentTaskViewState?.planRunResult ?? planRunResult;
-  const activeAgentTaskRemovedIssueIndices = activeAgentTaskViewState?.removedIssueIndices ?? removedIssueIndices;
+  const activeAgentTaskRuntimeState = useMemo(
+    () => (
+      activeEditorTabId?.startsWith('agent-task-')
+        ? getTaskRuntimeState(activeEditorTabId)
+        : null
+    ),
+    [activeEditorTabId, getTaskRuntimeState],
+  );
+  const activeAgentTaskDocumentSections =
+    activeAgentTaskViewState?.documentSections
+    ?? activeAgentTaskRuntimeState?.taskState?.documentSections
+    ?? activeAgentTaskRuntimeState?.scenario?.defaultDocument
+    ?? generatedDocument;
+  const activeAgentTaskAcRunResult =
+    activeAgentTaskViewState?.acRunResult
+    ?? activeAgentTaskRuntimeState?.taskState?.acRunResult
+    ?? acRunResult;
+  const activeAgentTaskPlanRunResult =
+    activeAgentTaskViewState?.planRunResult
+    ?? activeAgentTaskRuntimeState?.taskState?.planRunResult
+    ?? planRunResult;
+  const activeAgentTaskRemovedIssueIndices =
+    activeAgentTaskViewState?.removedIssueIndices
+    ?? activeAgentTaskRuntimeState?.taskState?.removedIssueIndices
+    ?? removedIssueIndices;
   const agentTaskPanelRuntimeStates = useMemo(
     () => agentTasks.map((task) => {
       const taskTabId = getAgentTaskTabId(task?.id);
@@ -18466,16 +19021,13 @@ export default function App() {
   useEffect(() => {
     if (!isAgentTaskTab || genState !== 'done') return;
 
-    const specifiedKey = getSpecStatusChatKey('Specified');
-    const shouldSelectSpecifiedChat = !specStatusChatIdsRef.current[specifiedKey]
-      || (typeof selectedAiChatId === 'string' && selectedAiChatId.endsWith('-generated'));
-    ensureSpecStatusChat('Specified', { select: shouldSelectSpecifiedChat });
+    ensureSpecStatusChat('Specified', { select: false });
     ensureSpecStatusChat('Build', { select: false });
     Object.keys(specStatusChatIdsRef.current).forEach((key) => {
       if (!key.endsWith(':Generated')) return;
       delete specStatusChatIdsRef.current[key];
     });
-  }, [ensureSpecStatusChat, genState, getSpecStatusChatKey, isAgentTaskTab, selectedAiChatId]);
+  }, [ensureSpecStatusChat, genState, isAgentTaskTab]);
   useEffect(() => {
     if (!isAgentTaskTab || genState !== 'done') return;
 
@@ -19322,7 +19874,7 @@ export default function App() {
           };
         });
 
-        if (sourceDocumentTabId === activeSourceEditorTabId || sourceDocumentTabId === generationTabId || sourceDocumentTabId === 'agent-task-t1') {
+        if (sourceDocumentTabId === generationTabId) {
           setAgentTaskCommentEntries((prev) => (
             buildSpecVersionCommentEntriesSignature(prev ?? []) === buildSpecVersionCommentEntriesSignature(nextDocumentEntries)
               ? prev
@@ -19528,6 +20080,7 @@ export default function App() {
       activePlanDiffTarget,
       activePlanDiffCommentsReadOnly,
       hasShownCommentShortcutHint,
+      activeEditorTabId,
       activeSourceEditorTabId,
 	    activeRelatedDiffCommentIssues,
       aiChatSentMessagesByChatId,
@@ -19711,7 +20264,7 @@ export default function App() {
         };
       });
 
-      if (sourceDocumentTabId === activeSourceEditorTabId || sourceDocumentTabId === generationTabId || sourceDocumentTabId === 'agent-task-t1') {
+      if (sourceDocumentTabId === generationTabId) {
         setAgentTaskCommentEntries((prev) => removeCommentEntries(prev));
       }
 
@@ -19862,6 +20415,7 @@ export default function App() {
       sourceNavigationTabId: diffTabId,
     });
   }, [
+    activeEditorTabId,
     activeSourceEditorTabId,
     aiChatComposerDiffSourceTabId,
     generationTabId,

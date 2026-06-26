@@ -623,6 +623,7 @@ body {
   display: flex;
   flex-direction: column;
   background: #191A1C;
+  box-shadow: inset 0 1px 0 #26282C;
   overflow: hidden;
 }
 
@@ -694,7 +695,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 0;
+  padding: 12px 0 0;
 }
 
 .spec-done-overlay.has-top-banner .spec-done-inspection-widget {
@@ -1045,6 +1046,105 @@ body {
   letter-spacing: -0.2px;
 }
 
+.spec-done-selection-toolbar-heading-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.spec-done-selection-toolbar-heading-btn {
+  width: auto;
+  padding: 0 6px;
+  gap: 2px;
+}
+
+.spec-done-selection-toolbar-heading-btn.is-active,
+.spec-done-selection-toolbar-heading-btn:active {
+  color: #CED0D6;
+}
+
+.spec-done-selection-toolbar-heading-label {
+  font-weight: 600;
+}
+
+.spec-done-selection-toolbar-heading-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.spec-done-selection-toolbar-heading-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  background: #1D1E21;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.42);
+}
+
+.spec-done-selection-toolbar-heading-option {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: #CED0D6;
+  cursor: pointer;
+}
+
+.spec-done-selection-toolbar-heading-option:hover,
+.spec-done-selection-toolbar-heading-option:focus-visible {
+  background: var(--spec-done-selection-toolbar-hover-bg);
+}
+
+.spec-done-selection-toolbar-heading-option:focus-visible {
+  outline: 2px solid var(--control-focus-border-brand);
+}
+
+.spec-done-selection-toolbar-heading-option > .spec-done-selection-toolbar-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  font-weight: 600;
+}
+
+.spec-done-selection-toolbar-heading-option-h1 {
+  font-size: 16px;
+}
+
+.spec-done-selection-toolbar-heading-option-h2 {
+  font-size: 14px;
+}
+
+.spec-done-selection-toolbar-heading-option-h3 {
+  font-size: 13px;
+}
+
+.spec-done-selection-toolbar-heading-option-p {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.spec-done-selection-toolbar-heading-option-label {
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  color: currentColor;
+}
+
 .editor-selection-toolbar {
   --editor-selection-toolbar-hover-bg: var(--icon-button-hover-bg, var(--toolbar-bg-hovered, rgba(255, 255, 255, 0.08)));
   --editor-selection-toolbar-active-bg: var(--icon-button-pressed-bg, var(--toolbar-bg-pressed, rgba(255, 255, 255, 0.12)));
@@ -1171,16 +1271,11 @@ body {
   align-items: flex-start;
 }
 
-.spec-done-row-plan-parent.spec-done-row-plan-parent-first {
-  margin-top: 4px;
-}
-
-.spec-done-row-plan-parent:not(.spec-done-row-plan-parent-first) {
+.spec-done-row-plan-parent {
   margin-top: 6px;
 }
 
-.spec-done-row-plan-parent.spec-done-row-plan-parent-flat.spec-done-row-plan-parent-first,
-.spec-done-row-plan-parent.spec-done-row-plan-parent-flat:not(.spec-done-row-plan-parent-first) {
+.spec-done-row-plan-parent.spec-done-row-plan-parent-flat {
   margin-top: 3px;
 }
 
@@ -1205,15 +1300,7 @@ body {
 }
 
 .spec-done-row.spec-done-issue-row::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -4px;
-  right: 0;
-  height: 22px;
-  background: rgba(194, 128, 19, 0.22);
-  box-shadow: inset 0 1px 0 rgba(255, 175, 15, 0.12), inset 0 -1px 0 rgba(255, 175, 15, 0.08);
-  pointer-events: none;
+  content: none;
 }
 
 .spec-done-row.spec-done-issue-row > * {
@@ -1222,7 +1309,7 @@ body {
 }
 
 .spec-done-row.spec-done-problems-row {
-  background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
+  background: transparent;
 }
 
 .spec-external-comments-section {
@@ -1327,7 +1414,7 @@ body {
 }
 
 .spec-done-row.spec-done-active-line:not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
-  background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
+  background: transparent;
 }
 
 .spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
@@ -1336,14 +1423,7 @@ body {
 }
 
 .spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"])::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 23px;
-  background: var(--pce-bg-highlight, rgba(255, 255, 255, 0.05));
-  pointer-events: none;
+  content: none;
 }
 
 .spec-done-row.spec-done-active-line:has(.ac-subcheck-list):not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) > * {
@@ -1551,7 +1631,7 @@ body {
 
 .spec-done-gutter-cell-section-run {
   align-items: center;
-  min-height: 32px;
+  min-height: calc(22px * 1.3);
 }
 
 .spec-done-gutter-cell:has(.spec-done-gutter-breakpoint-btn:hover) .spec-done-gutter-line-number-run,
@@ -1931,6 +2011,19 @@ body {
 .spec-done-heading-files {
   flex-shrink: 0;
   overflow: visible;
+}
+
+.spec-done-heading-files .spec-done-ref-add-btn {
+  opacity: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-soft);
+  pointer-events: none;
+}
+
+.spec-done-heading-row:hover .spec-done-heading-files .spec-done-ref-add-btn,
+.spec-done-heading-files .spec-done-ref-add-btn:focus-visible,
+.spec-done-heading-files .spec-done-ref-add-btn[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .spec-done-line {
@@ -4958,11 +5051,16 @@ body {
   cursor: pointer;
 }
 
-.add-popup-item:hover { background: rgba(255,255,255,0.06); }
+.add-popup-item:hover,
+.add-popup-item-selected { background: rgba(255,255,255,0.06); }
 
+/* Match the file-chip aesthetic from inside the agent markdown body: Inter,
+   medium weight, default text colour. The icon comes from `FileTypeIcon`
+   which already mirrors the spec body's `spec-ref-file--<key>` palette. */
 .add-popup-item-label {
   font-family: Inter, -apple-system, sans-serif;
   font-size: 13px;
+  font-weight: 500;
   color: #DFE1E5;
   white-space: nowrap;
   overflow: hidden;
@@ -5736,12 +5834,215 @@ body {
 }
 
 .spec-ref {
-  color: var(--text-link);
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-  padding: 0 3px;
+  display: inline;
+  max-width: none;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+  vertical-align: baseline;
+  cursor: text;
+}
+
+.spec-ref::before,
+.spec-ref::after {
+  content: none;
+}
+
+/* File references — grey pill chip carrying the actual project file-type icon
+   from @jetbrains/int-ui-kit. SVGs are inlined as data URIs so the chip looks
+   identical whether the span was rendered by React or by the contenteditable
+   completion path. External-section refs share the chip styling so a
+   `Configuration.md › plan` reads as the same kind of "file" reference. */
+.spec-ref-file,
+.spec-ref-external-section {
+  display: inline;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(155, 158, 167, 0.09);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 500;
+  line-height: inherit;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+/* When the chip points at an actual editor target it becomes clickable.
+   On hover the background brightens just a hair so the chip has a quiet
+   "yes, you can click me" signal without shouting. */
+.spec-ref-file[data-ref-target],
+.spec-ref-external-section[data-ref-target] {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.spec-ref-file[data-ref-target]:hover,
+.spec-ref-external-section[data-ref-target]:hover {
+  background: rgba(155, 158, 167, 0.14);
+}
+
+.spec-ref-file::before,
+.spec-ref-external-section::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  vertical-align: -3px;
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><rect x='2' y='12' width='8' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='6' width='8' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='9' width='12' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='3' width='12' height='1' rx='.5' fill='%23CED0D6'/></svg>");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.spec-ref-file--java::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><rect x='2' y='13' width='12' height='1' rx='.5' fill='%23C77D55'/><path d='M2.5 3C2.5 2.72386 2.72386 2.5 3 2.5H12C12.2761 2.5 12.5 2.72386 12.5 3V8C12.5 9.933 10.933 11.5 9 11.5H6C4.067 11.5 2.5 9.933 2.5 8V3Z' fill='%2345322B' stroke='%23C77D55'/><path d='M12.5 2.5H14.5C14.7761 2.5 15 2.72386 15 3V4.18121C15 4.78125 14.6424 5.32356 14.0909 5.55993L12.5 6.24173V2.5Z' stroke='%23C77D55'/></svg>");
+}
+
+.spec-ref-file--markdown::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path fill-rule='evenodd' clip-rule='evenodd' d='M12.5929 9.9438L12.5929 4.70001L13.7929 4.70002L13.7929 9.94379L15.0763 8.66037L15.9248 9.5089L13.1929 12.2409L10.4609 9.5089L11.3095 8.66037L12.5929 9.9438Z' fill='%23548AF7'/><path d='M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z' fill='%23548AF7'/></svg>");
+}
+
+/* Agent-task markdown documents use the project's purple "AI" markdown icon
+   (see AiChatMarkdownFileIcon in AiChatListParts.jsx — fill #9B6BDA). */
+.spec-ref-file--agent-markdown::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path fill-rule='evenodd' clip-rule='evenodd' d='M12.5929 9.9438L12.5929 4.70001L13.7929 4.70002L13.7929 9.94379L15.0763 8.66037L15.9248 9.5089L13.1929 12.2409L10.4609 9.5089L11.3095 8.66037L12.5929 9.9438Z' fill='%239B6BDA'/><path d='M0.5 4.70001H2.94558L4.65385 9.14463L4.76288 9.60155L4.85635 9.14463L6.51269 4.70001H8.98423V11.9692H7.14096V7.59732L7.17212 7.12482L5.34442 11.9692H4.08269L2.31212 7.17155L2.34327 7.59732V11.9692H0.5V4.70001Z' fill='%239B6BDA'/></svg>");
+}
+
+.spec-ref-file--html::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M6.36812 4.9736C6.62969 4.77016 6.67681 4.39319 6.47337 4.13163C6.26992 3.87006 5.89296 3.82294 5.63139 4.02638L0.522461 7.99999L5.63139 11.9736C5.89296 12.177 6.26992 12.1299 6.47337 11.8684C6.67681 11.6068 6.62969 11.2298 6.36812 11.0264L2.47705 7.99999L6.36812 4.9736Z' fill='%23369650'/><path d='M9.63139 4.9736C9.36983 4.77016 9.3227 4.39319 9.52615 4.13163C9.72959 3.87006 10.1066 3.82294 10.3681 4.02638L15.4771 7.99999L10.3681 11.9736C10.1066 12.177 9.72959 12.1299 9.52615 11.8684C9.3227 11.6068 9.36983 11.2298 9.63139 11.0264L13.5225 7.99999L9.63139 4.9736Z' fill='%23369650'/></svg>");
+}
+
+.spec-ref-file--json::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M3.98755 9.77751C3.99755 9.39251 3.87005 9.08501 3.60505 8.85501C3.34005 8.62501 2.98255 8.51001 2.53255 8.51001H2V7.43001H2.53255C2.98255 7.43001 3.34005 7.31501 3.60505 7.08501C3.87005 6.85501 3.99755 6.54751 3.98755 6.16251L3.95755 4.58C3.94755 4.06 4.05505 3.605 4.28005 3.215C4.51005 2.825 4.83755 2.525 5.26255 2.315C5.68755 2.105 6.18755 2 6.76255 2H7.5V3.005H6.77005C6.25005 3.005 5.83755 3.15 5.53255 3.44C5.23255 3.725 5.08505 4.1125 5.09005 4.6025L5.12005 6.17001C5.13005 6.68001 4.99255 7.09751 4.70755 7.42251C4.42255 7.74251 4.03755 7.92001 3.55255 7.95501C4.03755 8.04501 4.42255 8.25501 4.70755 8.58501C4.99255 8.91001 5.13005 9.30501 5.12005 9.77001L5.09005 11.5475C5.08005 11.9875 5.21255 12.3375 5.48755 12.5975C5.76755 12.8625 6.14505 12.995 6.62005 12.995H7.5V14H6.61255C6.07755 14 5.60755 13.9 5.20255 13.7C4.80255 13.505 4.49255 13.2225 4.27255 12.8525C4.05755 12.4875 3.95255 12.06 3.95755 11.57L3.98755 9.77751Z' fill='%23834DF0'/><path d='M12.0145 9.77751C12.0045 9.39251 12.132 9.08501 12.397 8.85501C12.662 8.62501 13.0195 8.51001 13.4695 8.51001H14V7.43001H13.4695C13.0195 7.43001 12.662 7.31501 12.397 7.08501C12.132 6.85501 12.0045 6.54751 12.0145 6.16251L12.0445 4.58C12.0545 4.06 11.9445 3.605 11.7145 3.215C11.4895 2.825 11.1645 2.525 10.7395 2.315C10.3145 2.105 9.81455 2 9.23955 2H8.5V3.005H9.23205C9.75205 3.005 10.162 3.15 10.462 3.44C10.767 3.725 10.917 4.1125 10.912 4.6025L10.882 6.17001C10.872 6.68001 11.0095 7.09751 11.2945 7.42251C11.5795 7.74251 11.9645 7.92001 12.4495 7.95501C11.9645 8.04501 11.5795 8.25501 11.2945 8.58501C11.0095 8.91001 10.872 9.30501 10.882 9.77001L10.912 11.5475C10.922 11.9875 10.787 12.3375 10.507 12.5975C10.232 12.8625 9.85705 12.995 9.38205 12.995H8.5V14H9.38955C9.92455 14 10.392 13.9 10.792 13.7C11.197 13.505 11.507 13.2225 11.722 12.8525C11.942 12.4875 12.0495 12.06 12.0445 11.57L12.0145 9.77751Z' fill='%23834DF0'/></svg>");
+}
+
+.spec-ref-file--javaScript::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M14 4C14 2.89543 13.1046 2 12 2H4C2.89543 2 2 2.89543 2 4V12C2 13.1046 2.89543 14 4 14H12C13.1046 14 14 13.1046 14 12V4Z' fill='%23FFAF0F'/><path d='M9.55434 11.8593C9.88209 12.0132 10.2583 12.0901 10.6829 12.0901C11.1047 12.0901 11.4795 12.0117 11.8073 11.855C12.135 11.6982 12.3901 11.4831 12.5725 11.2095C12.7549 10.933 12.8461 10.6238 12.8461 10.2818C12.8461 9.99963 12.7834 9.73315 12.658 9.48235C12.5326 9.23155 12.3545 9.02208 12.1236 8.85393C11.8956 8.68578 11.6348 8.57605 11.3413 8.52475L10.3452 8.3623C10.1429 8.3281 9.97899 8.24118 9.85359 8.10153C9.72819 7.95903 9.66549 7.79088 9.66549 7.59708C9.66549 7.43178 9.70824 7.28643 9.79374 7.16103C9.87924 7.03563 9.99894 6.93873 10.1528 6.87033C10.3067 6.80193 10.4849 6.76773 10.6872 6.76773C10.8896 6.76773 11.0677 6.80335 11.2216 6.8746C11.3755 6.94585 11.4952 7.04703 11.5807 7.17813C11.6662 7.30638 11.7089 7.45173 11.7089 7.61418H12.7221C12.7193 7.28073 12.6309 6.98433 12.4571 6.72498C12.2832 6.46563 12.041 6.26328 11.7303 6.11793C11.4225 5.97258 11.0705 5.8999 10.6744 5.8999C10.2868 5.8999 9.93909 5.97543 9.63129 6.12648C9.32349 6.27468 9.08266 6.4813 8.90881 6.74635C8.73781 7.00855 8.65231 7.30495 8.65231 7.63555C8.65231 7.912 8.70931 8.16708 8.82331 8.40078C8.94016 8.63163 9.10546 8.824 9.31921 8.9779C9.53296 9.1318 9.78519 9.2344 10.0759 9.2857L11.0891 9.4567C11.3114 9.49375 11.4895 9.5935 11.6234 9.75595C11.7574 9.91555 11.8244 10.1065 11.8244 10.3288C11.8244 10.5055 11.7773 10.6623 11.6833 10.7991C11.5921 10.933 11.461 11.037 11.29 11.1111C11.119 11.1852 10.9209 11.2223 10.6958 11.2223C10.4649 11.2223 10.2597 11.1824 10.0802 11.1026C9.90346 11.0199 9.76524 10.9045 9.66549 10.7563C9.56574 10.6081 9.51586 10.44 9.51586 10.2519H8.50269C8.50554 10.611 8.59959 10.9302 8.78484 11.2095C8.97009 11.4859 9.22659 11.7025 9.55434 11.8593Z' fill='black'/><path d='M5.22179 11H4.21289V12H5.32012C5.64787 12 5.93857 11.9316 6.19222 11.7948C6.44587 11.6551 6.64394 11.4613 6.78644 11.2134C6.92894 10.9654 7.00019 10.6804 7.00019 10.3584L7.00024 6H5.99989L5.99984 10.222C5.99984 10.3759 5.96707 10.5127 5.90152 10.6324C5.83882 10.7492 5.74762 10.8404 5.62792 10.906C5.51107 10.9687 5.37569 11 5.22179 11Z' fill='black'/></svg>");
+}
+
+.spec-ref-file--properties::before {
+  background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><path fill-rule='evenodd' clip-rule='evenodd' d='M1.54855 5.28862C1.5276 5.33845 1.50721 5.38857 1.48738 5.43898C1.40469 5.64924 1.43184 5.88502 1.54695 6.07944L2.44942 7.60376C2.5941 7.84811 2.5941 8.15189 2.44942 8.39625L1.54695 9.92057C1.43184 10.115 1.40469 10.3508 1.48738 10.561C1.50712 10.6112 1.52742 10.6611 1.54828 10.7107M1.54855 5.28862C1.77862 4.74151 2.07621 4.22979 2.43087 3.76389C2.46347 3.72108 2.49654 3.67865 2.53009 3.63661C2.67096 3.46012 2.8886 3.36585 3.1144 3.36832L4.88356 3.3877C4.90131 3.3879 4.91898 3.38749 4.93653 3.38648C5.19992 3.37145 5.4393 3.22346 5.56988 2.99146L6.43817 1.44875C6.43805 1.44896 6.43829 1.44854 6.43817 1.44875C6.54919 1.25193 6.74034 1.11006 6.96387 1.07676C7.01726 1.06881 7.07084 1.06146 7.12462 1.05472C7.41272 1.0186 7.70624 1 8.00408 1C8.30187 1 8.59534 1.01859 8.88339 1.0547C8.88311 1.05466 8.88367 1.05473 8.88339 1.0547C8.93688 1.06141 8.99103 1.06883 9.04414 1.07674C9.26753 1.11001 9.45823 1.25108 9.56929 1.44771C9.56948 1.44805 9.56967 1.44839 9.56986 1.44873L10.4382 2.99146C10.5774 3.23892 10.8405 3.39081 11.1245 3.3877L12.8938 3.36832C12.8936 3.36832 12.8939 3.36832 12.8938 3.36832C13.1194 3.36598 13.3373 3.46024 13.4781 3.63661C13.5113 3.67829 13.5441 3.72035 13.5765 3.7628C13.5767 3.76316 13.577 3.76353 13.5773 3.76389C13.9319 4.22975 14.2295 4.74142 14.4596 5.28848C14.4594 5.28819 14.4597 5.28876 14.4596 5.28848C14.4804 5.33802 14.501 5.38872 14.5207 5.43884C14.6034 5.64891 14.5763 5.88446 14.4615 6.07878C14.4616 6.07861 14.4614 6.07896 14.4615 6.07878L13.5586 7.60376C13.4139 7.84811 13.4139 8.15189 13.5586 8.39625L14.4612 9.92069C14.4611 9.92061 14.4612 9.92078 14.4612 9.92069C14.5761 10.1151 14.6034 10.351 14.5207 10.5612C14.5013 10.6106 14.4813 10.6598 14.4607 10.7087C14.4603 10.7097 14.4599 10.7106 14.4596 10.7115C14.2295 11.2586 13.9319 11.7703 13.5773 12.2361C13.5447 12.2789 13.5116 12.3214 13.4781 12.3634C13.3372 12.5399 13.1196 12.6342 12.8938 12.6317L11.1245 12.6123C11.1067 12.6121 11.0891 12.6125 11.0715 12.6135C10.8081 12.6285 10.5687 12.7765 10.4382 13.0085L9.56986 14.5513C9.56998 14.5511 9.56975 14.5515 9.56986 14.5513C9.45884 14.7481 9.26768 14.89 9.04414 14.9233C8.99076 14.9312 8.93717 14.9386 8.8834 14.9453C8.59534 14.9814 8.30187 15 8.00408 15C7.70624 15 7.41272 14.9814 7.12461 14.9453C7.12407 14.9452 7.12353 14.9451 7.12299 14.9451C7.06976 14.9384 7.01672 14.9311 6.96387 14.9232C6.7401 14.8899 6.54914 14.7484 6.43817 14.5512L5.56988 13.0085C5.4306 12.7611 5.16752 12.6092 4.88356 12.6123L3.1144 12.6317C2.8886 12.6342 2.67096 12.5399 2.5301 12.3634C2.49655 12.3214 2.46347 12.2789 2.43088 12.2361C2.07621 11.7702 1.77835 11.2578 1.54828 10.7107M3.22655 4.36961C3.20952 4.39198 3.19265 4.41447 3.17593 4.43709C2.89397 4.81844 2.65633 5.23403 2.47037 5.67626L3.30992 7.0943C3.6406 7.65283 3.6406 8.34718 3.30992 8.9057L2.47037 10.3237C2.48155 10.3503 2.49293 10.3769 2.50449 10.4033C2.69648 10.8419 2.93961 11.2535 3.22656 11.6304L4.87261 11.6124C5.52165 11.6053 6.12297 11.9524 6.44133 12.5181L7.24899 13.953C7.25784 13.9542 7.26669 13.9552 7.27555 13.9563C7.51399 13.9851 7.75709 14 8.00408 14C8.2602 14 8.51214 13.984 8.75904 13.9531L9.56671 12.5181C9.88507 11.9524 10.4864 11.6053 11.1354 11.6124L12.7816 11.6304C12.7986 11.608 12.8155 11.5855 12.8322 11.5629C13.1142 11.1816 13.3518 10.766 13.5377 10.3239L12.6981 8.9057C12.6568 8.83589 12.6206 8.76395 12.5896 8.69042C12.3726 8.17571 12.4088 7.58301 12.6981 7.0943L13.5377 5.67613C13.5266 5.64954 13.5152 5.62304 13.5036 5.59663C13.3117 5.15806 13.0685 4.74652 12.7816 4.36961L11.1354 4.38764C10.4864 4.39475 9.88507 4.04758 9.56671 3.48194L8.75904 2.04693C8.7502 2.04583 8.74136 2.04474 8.73251 2.04367C8.4941 2.01487 8.25104 2 8.00408 2C7.74792 2 7.49594 2.016 7.24899 2.04695L6.44133 3.48194C6.12297 4.04758 5.52165 4.39475 4.87261 4.38764L3.22655 4.36961ZM8.004 9.65101C8.91582 9.65101 9.655 8.91183 9.655 8.00001C9.655 7.08819 8.91582 6.34902 8.004 6.34902C7.09218 6.34902 6.353 7.08819 6.353 8.00001C6.353 8.91183 7.09218 9.65101 8.004 9.65101ZM10.655 8.00001C10.655 9.46412 9.46811 10.651 8.004 10.651C6.5399 10.651 5.353 9.46412 5.353 8.00001C5.353 6.53591 6.5399 5.34902 8.004 5.34902C9.46811 5.34902 10.655 6.53591 10.655 8.00001Z' fill='%236C707E'/></svg>");
+}
+
+/* Section meta chip — keep the inherited `.attached-file-chip` look: 22px
+   tall pill, 11px rounded corners, neutral `#393B40` border. We only opt in
+   to clickability via `data-ref-target`. */
+.attached-file-chip.spec-done-ref-chip[data-ref-target] {
   cursor: pointer;
 }
+
+.attached-file-chip.spec-done-ref-chip::before {
+  content: none;
+}
+
+/* Code identifiers — subtle inline-code style. The background is much lighter
+   than the file/section chips so that the click-affordance hierarchy stays
+   intact: prominent grey chip → navigable, faint code chip → read-only
+   highlight of a code term. */
+.spec-ref-class,
+.spec-ref-method,
+.spec-ref-variable,
+.spec-ref-symbol {
+  display: inline;
+  padding: 1px 5px;
+  background: rgba(155, 158, 167, 0.08);
+  border: 0;
+  border-radius: 4px;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: inherit;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+/* Classes / types — editor's type-parameter colour. */
+.spec-ref-class {
+  color: var(--editor-type-parameter, #16baac);
+}
+
+/* Methods & function calls — editor's method colour. */
+.spec-ref-method {
+  color: var(--editor-method, #56a8f5);
+}
+
+/* Variables, fields, snake_case columns — editor's constant/property colour. */
+.spec-ref-variable {
+  color: var(--editor-constant, #c77dbb);
+}
+
+/* Fallback for any code-like reference that didn't match a more specific
+   subtype (rare). Keep the original amber so it is still visible. */
+.spec-ref-symbol {
+  color: #E6B98A;
+}
+
+/* Section anchor inside the current spec — same chip styling as a file/
+   external-section ref so a `#Plan` reads like the same kind of inline
+   reference as `Configuration.md › Plan`. The leading paragraph glyph (¶)
+   plays the role of the file-type icon. */
+.spec-ref-current-section {
+  display: inline;
+  padding: 4px 8px 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(155, 158, 167, 0.09);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 500;
+  line-height: inherit;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.spec-ref-current-section::before {
+  content: '\00a7';
+  display: inline-block;
+  width: 14px;
+  margin-right: 3px;
+  text-align: center;
+  font-weight: 600;
+  opacity: 0.7;
+  vertical-align: baseline;
+}
+
+/* Internal anatomy of an external-section chip:
+     <file icon> <file name> › <¶> <Section Name> ↗
+   The `›` divider and the `¶` icon get muted styling so the file + section
+   parts read as the headline information. */
+.spec-ref-section-divider {
+  opacity: 0.55;
+  margin: 0 1px;
+}
+
+.spec-ref-paragraph-icon {
+  display: inline-block;
+  width: 12px;
+  margin-right: 2px;
+  text-align: center;
+  font-weight: 600;
+  opacity: 0.7;
+  vertical-align: baseline;
+}
+
+/* External-section refs (e.g. `Configuration.md › Plan`) reuse the file chip
+   styling above (grey background + file-type icon) and read as a single
+   breadcrumb. No trailing arrow. */
 
 .spec-line-comment {
   display: inline-flex;
@@ -7415,4 +7716,188 @@ body {
   width: min(420px, calc(100vw - 16px));
   min-width: min(420px, calc(100vw - 16px));
   max-width: min(420px, calc(100vw - 16px));
+}
+
+/* Markdown preview typography mirrors IntelliJ rendered markdown, not raw editor text. */
+.spec-done-overlay {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+.spec-done-overlay .spec-done-line,
+.spec-done-overlay .spec-done-line-empty,
+.spec-done-overlay .spec-done-line-empty-editable {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  min-height: calc(1em * 1.55);
+  padding-top: 0;
+  padding-bottom: 0;
+  color: rgba(223, 225, 229, 0.9);
+  white-space: normal;
+}
+
+.spec-done-overlay .spec-done-line-check,
+.spec-done-overlay .spec-done-line-bullet,
+.spec-done-overlay .spec-done-line-text,
+.spec-done-overlay .spec-done-line-status,
+.spec-done-overlay .spec-done-line-comment {
+  padding-top: 0;
+  padding-bottom: 0;
+  align-items: baseline;
+}
+
+.spec-done-overlay .spec-done-line-empty,
+.spec-done-overlay .spec-done-line-empty-editable {
+  min-height: 22px;
+}
+
+.spec-done-overlay .spec-done-line > [contenteditable],
+.spec-done-overlay .spec-done-line-status > span:last-child,
+.spec-done-overlay .spec-done-line-check > span:last-child,
+.spec-done-overlay .spec-done-line-bullet > span:last-child,
+.spec-done-overlay .spec-done-line-comment > span:last-child {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.spec-done-overlay .spec-done-bullet {
+  line-height: 1.55;
+}
+
+.spec-done-overlay .spec-done-line-text,
+.spec-done-overlay .spec-done-line-status,
+.spec-done-overlay .spec-done-line-comment {
+  margin-bottom: 8px;
+}
+
+.spec-done-overlay .spec-done-line-bullet,
+.spec-done-overlay .spec-done-line-check {
+  margin-bottom: 2px;
+}
+
+.spec-done-overlay .spec-plan-subitem-list {
+  gap: 4px;
+  padding-bottom: 4px;
+}
+
+.spec-done-overlay .spec-plan-subitem-row,
+.spec-done-overlay .spec-plan-subitem-shell {
+  min-height: 22px;
+}
+
+.spec-done-overlay .spec-done-plan-child-line .spec-done-plan-text,
+.spec-done-overlay .spec-done-plan-text,
+.spec-done-overlay .spec-plan-subitem-row,
+.spec-done-overlay .spec-plan-subitem-text {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.spec-done-overlay .spec-done-heading,
+.spec-done-overlay h1.text-ui-h1,
+.spec-done-overlay .text-ui-h1 {
+  font-family: inherit;
+  color: rgba(223, 225, 229, 0.92);
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin: 0;
+  padding-bottom: 0;
+}
+
+.spec-done-overlay .spec-done-heading-level-1 {
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.spec-done-overlay .spec-done-heading-level-2 {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.spec-done-overlay .spec-done-heading-level-3 {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.spec-done-overlay .spec-done-heading-level-4,
+.spec-done-overlay .spec-done-heading-level-5,
+.spec-done-overlay .spec-done-heading-level-6 {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.spec-done-overlay .spec-done-meta-label,
+.spec-done-overlay h2.text-ui-h2,
+.spec-done-overlay .text-ui-h2 {
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 700;
+  margin: 0;
+}
+
+.spec-done-overlay .spec-done-heading-row {
+  margin: 0;
+  min-height: 0;
+  align-items: baseline;
+}
+
+.spec-done-overlay .spec-done-heading-row .spec-done-heading {
+  margin: 0;
+}
+
+.spec-done-overlay .spec-done-row[data-row-key^="section-heading"] {
+  padding-top: 0;
+  padding-bottom: 8px;
+}
+
+.spec-done-overlay .spec-done-row[data-row-key^="section-heading"]:first-child {
+  padding-top: 0;
+}
+
+.spec-done-overlay .spec-done-heading-row {
+  min-height: 0;
+  margin: 0;
+}
+
+.spec-done-overlay .spec-done-heading-row .spec-done-heading,
+.spec-done-overlay .spec-done-heading {
+  min-height: 0;
+}
+
+.spec-done-overlay .spec-done-row-plan-parent,
+.spec-done-overlay .spec-done-row-plan-parent-flat,
+.spec-done-overlay .spec-done-row-plan-child,
+.spec-done-overlay .spec-done-row-plan-child.spec-done-row-plan-child-first,
+.spec-done-overlay .spec-done-row-ac-item,
+.spec-done-overlay .spec-done-row-ac-item:not(.spec-done-row-ac-item-first) {
+  margin-top: 0 !important;
+}
+
+.spec-done-overlay .spec-done-checkbox.checkbox-container {
+  padding: 0;
+  align-items: center;
+  min-height: calc(1em * 1.55);
+  transform: translateY(2px);
+}
+
+.spec-done-overlay .spec-done-inline-code {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(223, 225, 229, 0.92);
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  vertical-align: baseline;
 }
