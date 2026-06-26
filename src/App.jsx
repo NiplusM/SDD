@@ -19416,10 +19416,13 @@ export default function App() {
           ? { chatId: metadata.targetChatId.trim() }
           : {}),
       };
-      return normalizeStoredDiffCommentsState(metadataRowIds.reduce((nextComments, rowId) => ({
-        ...nextComments,
-        [rowId]: [commentEntry],
-      }), { ...normalizeStoredDiffCommentsState(baseComments) }));
+      const primaryRowId = (typeof metadata?.rowId === 'string' && metadata.rowId.length > 0)
+        ? metadata.rowId
+        : metadataRowIds[0];
+      return normalizeStoredDiffCommentsState({
+        ...normalizeStoredDiffCommentsState(baseComments),
+        [primaryRowId]: [commentEntry],
+      });
     };
     const targetSessionComments = (() => {
       if (shouldCreateNewChat) {
