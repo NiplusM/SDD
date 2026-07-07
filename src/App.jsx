@@ -6360,6 +6360,7 @@ function renderExternalMarkdownLink(part, key) {
       key={key}
       className="spec-external-md-link-token"
       data-md-link-raw={part}
+      data-ref-path={href}
       contentEditable={false}
       suppressContentEditableWarning
     >
@@ -6384,6 +6385,14 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
     const externalLink = renderExternalMarkdownLink(part, `${keyPrefix}-${index}`);
     if (externalLink) {
       return externalLink;
+    }
+
+    // Incomplete external markdown links are the edit-state for a rendered
+    // external Link. Keep them as plain editable text; otherwise the generic
+    // expanded-file-link renderer would wrap `[label](https://...` in an atomic
+    // span and the user could not edit the URL/label naturally.
+    if (typeof part === 'string' && /^\[[^\]]+\]\s?\(https?:\/\/[^\s)\n]*\)?$/i.test(part)) {
+      return part;
     }
 
     // Expanded file reference `[Name.java] (path/to/Name.java)` — a single blue
@@ -9818,7 +9827,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       setRefHoverTip({ path, left: rect.left + rect.width / 2, top: rect.top - 6 });
     };
     const handleOver = (e) => {
-      const chip = e.target instanceof Element ? e.target.closest('.spec-ref[data-ref-path]') : null;
+      const chip = e.target instanceof Element
+        ? e.target.closest('.spec-ref[data-ref-path], .spec-external-md-link-token[data-ref-path]')
+        : null;
       if (chip && el.contains(chip)) {
         if (refHoverTipRef.current === chip) return; // already showing for this chip
         refHoverTipRef.current = chip;
@@ -10109,6 +10120,25 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       return node instanceof HTMLElement && node.classList.contains('spec-md-link') ? node : null;
     };
 
+    // External markdown links are rendered with the int-ui-kit Link component.
+    // They stay atomic in preview mode; editing starts by replacing the rendered
+    // link with its raw markdown token in `draftCode`, already shortened by one
+    // character so it no longer re-tokenizes as a Link on the next render.
+    const externalMdLinkBeforeCaret = (range) => {
+      const { startContainer, startOffset } = range;
+      let node = null;
+      if (startContainer.nodeType === Node.ELEMENT_NODE) node = startContainer.childNodes[startOffset - 1] || null;
+      else if (startContainer.nodeType === Node.TEXT_NODE) { if (startOffset > 0) return null; node = startContainer.previousSibling; }
+      return node instanceof HTMLElement && node.classList.contains('spec-external-md-link-token') ? node : null;
+    };
+
+    const externalMdLinkAtCaret = (range) => {
+      const anchor = range.startContainer;
+      const host = anchor.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+      const link = host instanceof Element ? host.closest('.spec-external-md-link-token') : null;
+      return link instanceof HTMLElement ? link : null;
+    };
+
     // Backspace on the expanded breadcrumb erases ONE character at a time, driven
     // through `draftCode` (React reconciles — no imperative DOM mutation, so no
     // crash). While the `[name] (` structure survives the breadcrumb stays a
@@ -10139,6 +10169,41 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         if (rawIndex >= 0 && rawIndex < lines.length) {
           const at = lines[rawIndex].indexOf(linkText);
           if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + linkText.length);
+        }
+        return lines.join('\n');
+      });
+      onUserInput?.();
+    };
+
+    const startEditingExternalMdLink = (link) => {
+      const rowEl = link.closest('.spec-done-row');
+      const editable = link.parentElement?.closest('[contenteditable="true"]');
+      const raw = link.dataset.mdLinkRaw || link.textContent || '';
+      const rawIndexAttr = rowEl?.dataset.rawIndex ?? null;
+      const rawIndex = rawIndexAttr != null ? Number(rawIndexAttr) : NaN;
+      if (!Number.isInteger(rawIndex) || !raw) return;
+      let baseOffset = 0;
+      if (editable) {
+        try {
+          const pre = document.createRange();
+          pre.selectNodeContents(editable);
+          pre.setEndBefore(link);
+          baseOffset = pre.toString().length;
+        } catch { baseOffset = 0; }
+      }
+      const nextText = raw.slice(0, -1);
+      pendingCaretRestoreRef.current = {
+        rawIndex: rawIndexAttr,
+        rowKey: rowEl?.dataset.rowKey ?? null,
+        offset: baseOffset + nextText.length,
+      };
+      setRefHoverTip(null);
+      refHoverTipRef.current = null;
+      setDraftCode((prev) => {
+        const lines = prev.split(/\r?\n/);
+        if (rawIndex >= 0 && rawIndex < lines.length) {
+          const at = lines[rawIndex].indexOf(raw);
+          if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + raw.length);
         }
         return lines.join('\n');
       });
@@ -10225,6 +10290,18 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           return;
         }
         // Backspace on the expanded breadcrumb erases one character at a time.
+        const externalMdLinkInside = externalMdLinkAtCaret(range);
+        if (externalMdLinkInside && el.contains(externalMdLinkInside)) {
+          e.preventDefault();
+          startEditingExternalMdLink(externalMdLinkInside);
+          return;
+        }
+        const externalMdLink = externalMdLinkBeforeCaret(range);
+        if (externalMdLink && editable.contains(externalMdLink)) {
+          e.preventDefault();
+          startEditingExternalMdLink(externalMdLink);
+          return;
+        }
         const mdLink = mdLinkBeforeCaret(range);
         if (mdLink && editable.contains(mdLink)) {
           e.preventDefault();
