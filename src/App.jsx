@@ -25,6 +25,7 @@ import {
   PopupCell,
   Tooltip,
   Loader,
+  Link,
   Icon,
   IconButton,
   Button,
@@ -5203,6 +5204,7 @@ function createSpecDocument() {
         { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
         { id: 'impl-3', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.' },
         { id: 'impl-4', type: 'bullet', text: 'Project uses Formatter<T> for form selects (see PetTypeFormatter).' },
+        { id: 'impl-5', type: 'bullet', text: 'Spring MVC reference: [Controller method validation](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-validation.html).' },
       ],
     },
     {
@@ -5412,6 +5414,10 @@ function getDoneEditablePlainText(node) {
       return text === rawIdent ? raw : text;
     }
     return node.dataset.refRaw || node.textContent || '';
+  }
+
+  if (node instanceof HTMLElement && node.classList.contains('spec-external-md-link-token')) {
+    return node.dataset.mdLinkRaw || node.textContent || '';
   }
 
   // Concatenate children. If an ATOMIC reference chip (file / external-section)
@@ -6334,11 +6340,52 @@ function renderExpandedFileLink(part, key) {
   return <span key={key} className="spec-md-link" contentEditable={false} suppressContentEditableWarning>{part}</span>;
 }
 
+const EXTERNAL_MARKDOWN_LINK_PATTERN = /^\[([^\]\n]+)\]\((https?:\/\/[^\s)\n]+)\)$/i;
+
+function renderExternalMarkdownLink(part, key) {
+  const match = String(part).match(EXTERNAL_MARKDOWN_LINK_PATTERN);
+  if (!match) return null;
+
+  const [, label, href] = match;
+  const openExternalLink = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (typeof window !== 'undefined') {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <span
+      key={key}
+      className="spec-external-md-link-token"
+      data-md-link-raw={part}
+      contentEditable={false}
+      suppressContentEditableWarning
+    >
+      <Link
+        type="default"
+        href={href}
+        className="spec-external-md-link"
+        onClick={openExternalLink}
+      >
+        <span className="spec-external-md-link-label">{label}</span>
+        <Icon name="ide/externalLink" size={14} className="spec-external-md-link-icon" />
+      </Link>
+    </span>
+  );
+}
+
 function renderDoneInlineText(text, keyPrefix = 'inline') {
   const splitPattern = new RegExp(`(${INLINE_REFERENCE_SPLIT_PATTERN.source})`, 'g');
   const parts = text.split(splitPattern);
   if (parts.length === 1) return text;
   return parts.map((part, index) => {
+    const externalLink = renderExternalMarkdownLink(part, `${keyPrefix}-${index}`);
+    if (externalLink) {
+      return externalLink;
+    }
+
     // Expanded file reference `[Name.java] (path/to/Name.java)` — a single blue
     // text span. Lenient (optional close paren, whitespace-terminated path) so
     // partially-erased breadcrumbs still render as one span.
@@ -12234,6 +12281,7 @@ function createVetSchedulesSpecDocument() {
         { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
         { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L14-L20' },
         { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
+        { id: 'ref-4', type: 'bullet', text: 'Spring scheduling reference: [Scheduling Tasks](https://spring.io/guides/gs/scheduling-tasks).' },
       ],
     },
     {

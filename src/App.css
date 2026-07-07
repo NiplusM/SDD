@@ -8117,6 +8117,47 @@ body {
   transform: translateY(2px);
 }
 
+.spec-done-overlay .spec-external-md-link-token {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: baseline;
+}
+
+.spec-done-overlay .spec-external-md-link {
+  display: inline-flex !important;
+  align-items: baseline;
+  gap: 3px;
+  max-width: 100%;
+  padding: 0 !important;
+  color: var(--text-link);
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+.spec-done-overlay .spec-external-md-link .link-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font: inherit;
+  color: inherit;
+}
+
+.spec-done-overlay .spec-external-md-link-label {
+  overflow-wrap: anywhere;
+}
+
+.spec-done-overlay .spec-external-md-link-icon {
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  color: currentColor;
+  transform: translateY(2px);
+}
+
+.spec-done-overlay .spec-external-md-link-icon path {
+  fill: currentColor;
+}
+
 .spec-done-overlay .spec-done-inline-code {
   display: inline-block;
   max-width: 100%;
