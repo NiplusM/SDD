@@ -878,7 +878,7 @@ const ISSUE_QUICK_FIX_CONFIG = {
     },
     2: {
       actionLabel: 'Show inline field error on booking conflict',
-      replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
+      replacementText: 'A vet cannot be booked for the same date+time twice. On a blocked booking, the form re-renders with an inline error on the vet field.',
       resolvedStatus: {
         status: 'passed',
         checks: [],
@@ -2333,17 +2333,17 @@ const DEFAULT_PROBLEMS_ISSUES = [
 ];
 
 const AGENT_TASK_PROBLEMS_ISSUES = [
-  { severity: 'warning', label: 'Missing UX for booking conflict', secondaryText: 'Line 8' },
+  { severity: 'warning', label: 'Double-booking error UX is unspecified.', secondaryText: 'Line 8' },
 ];
 
 const VISIT_BOOKING_CONFLICT_PROBLEM_TARGET = { kind: 'ac', index: 2 };
 const VISIT_BOOKING_AC_REWORD_TARGET = { kind: 'ac', index: 0 };
-const VISIT_BOOKING_CONFLICT_PROBLEM_TITLE = 'Behavior not specified';
-const VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION = 'Prevention is defined, but the blocked-booking response is missing. How would you like to handle it?';
+const VISIT_BOOKING_CONFLICT_PROBLEM_TITLE = 'Double-booking error UX is unspecified.';
+const VISIT_BOOKING_CONFLICT_PROBLEM_DESCRIPTION = 'How would you like to specify it?';
 const VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS = [
   {
     label: 'Inline error on vet field',
-    replacementText: 'A vet cannot be booked for the same date+time twice. On conflict, the form re-renders with an inline error on the vet field.',
+    replacementText: 'A vet cannot be booked for the same date+time twice. On a blocked booking, the form re-renders with an inline error on the vet field.',
   },
   {
     label: 'Conflict modal',
@@ -2352,7 +2352,7 @@ const VISIT_BOOKING_CONFLICT_PROBLEM_OPTIONS = [
   {
     label: 'Let the agent decide',
     isSoftOption: true,
-    replacementText: 'A vet cannot be booked for the same date+time twice. The agent chooses the most appropriate conflict UX when a booking is blocked.',
+    replacementText: 'A vet cannot be booked for the same date+time twice. On a blocked booking, the form re-renders with an inline error on the vet field.',
   },
   {
     label: 'Describe a different fix',
