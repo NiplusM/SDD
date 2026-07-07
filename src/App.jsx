@@ -1,5 +1,5 @@
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
   PlanDiffEditorArea,
@@ -2799,6 +2799,168 @@ function getEditorTabContentByLabel(label = '') {
   return null;
 }
 
+// Single source-of-truth registry of the project's source files, used for BOTH
+// resolving inline code identifiers to a file + line AND seeding the editor tab
+// when one of these files is opened — so the line the chip navigates to always
+// matches the content the tab actually shows. Built once, lazily (after all the
+// module constants it draws from are initialised).
+//
+// Priority per label: the full shipped editor files (MY_EDITOR_TAB_CONTENTS)
+// win because they are exactly what opens in a preset tab; the richer "after"
+// snapshots from PLAN_CODE_DIFF_PRESETS fill in files we don't ship full source
+// for (VisitRepository.java, ownerDetails.html); COMPLETION_PREVIEW_LIBRARY
+// previews (e.g. VetFormatter.java) come last.
+// Source for files the spec references that the app doesn't ship as editor tabs
+// or diff presets — chiefly the parallel Vet-Schedules track (VetSchedule.java,
+// VetScheduleRepository.java). Without these, chips like `VetSchedule` and
+// `VetScheduleRepository.findByVetIdAndWeekday()` have nothing to resolve to.
+const EXTRA_SPEC_SOURCE_FILES = {
+  'VetSchedule.java': {
+    language: 'java',
+    code: `@Entity
+@Table(name = "vet_schedules")
+public class VetSchedule extends BaseEntity {
+
+    @ManyToOne
+    @JoinColumn(name = "vet_id")
+    @NotNull
+    private Vet vet;
+
+    @Column(name = "weekday")
+    @NotNull
+    private DayOfWeek weekday;
+
+    @Column(name = "start_time")
+    @NotNull
+    private LocalTime startTime;
+
+    @Column(name = "end_time")
+    @NotNull
+    private LocalTime endTime;
+
+    public Vet getVet() { return this.vet; }
+    public void setVet(Vet vet) { this.vet = vet; }
+
+    public DayOfWeek getWeekday() { return this.weekday; }
+    public void setWeekday(DayOfWeek weekday) { this.weekday = weekday; }
+
+    public LocalTime getStartTime() { return this.startTime; }
+    public void setStartTime(LocalTime startTime) { this.startTime = startTime; }
+
+    public LocalTime getEndTime() { return this.endTime; }
+    public void setEndTime(LocalTime endTime) { this.endTime = endTime; }
+}`,
+  },
+  'VetScheduleRepository.java': {
+    language: 'java',
+    code: `public interface VetScheduleRepository extends CrudRepository<VetSchedule, Integer> {
+
+    List<VetSchedule> findByVetIdAndWeekday(Integer vetId, DayOfWeek weekday);
+}`,
+  },
+};
+
+let SPEC_SOURCE_FILES = null;
+function getSpecSourceFiles() {
+  if (SPEC_SOURCE_FILES) return SPEC_SOURCE_FILES;
+  const files = new Map();
+  const add = (label, language, code) => {
+    if (typeof label !== 'string' || !label.trim()) return;
+    if (typeof code !== 'string' || code.length === 0) return;
+    if (files.has(label)) return; // first writer wins → honour priority order
+    files.set(label, { language: language || 'text', code });
+  };
+  // 1. Full shipped editor files.
+  for (const tab of MY_EDITOR_TABS) {
+    const content = MY_EDITOR_TAB_CONTENTS[tab.id];
+    if (content) add(tab.label, content.language, content.code);
+  }
+  // 1b. Extra feature files (Vet-Schedules track) not shipped as tabs.
+  for (const [label, entry] of Object.entries(EXTRA_SPEC_SOURCE_FILES)) {
+    add(label, entry.language, entry.code);
+  }
+  // 2. "After" snapshots from the plan diff presets (current state of the code).
+  for (const preset of Object.values(PLAN_CODE_DIFF_PRESETS)) {
+    if (preset?.fileLabel) add(preset.fileLabel, preset.language, preset.afterCode);
+  }
+  // 3. Preview-library snippets.
+  for (const [label, entry] of Object.entries(COMPLETION_PREVIEW_LIBRARY)) {
+    if (Array.isArray(entry?.previewLines) && entry.previewLines.length > 0) {
+      add(label, undefined, entry.previewLines.join('\n'));
+    }
+  }
+  SPEC_SOURCE_FILES = files;
+  return files;
+}
+
+// Editor-ready content for a known source file label (used to seed tabs opened
+// from inline code chips so they never open empty). Returns null when unknown.
+function getSpecSourceFileContent(label = '') {
+  const entry = getSpecSourceFiles().get(String(label).trim());
+  return entry ? { language: entry.language, code: entry.code } : null;
+}
+
+// Lazily-built line-indexed corpus derived from the same registry, so resolved
+// line numbers line up with what the opened tab shows.
+let CODE_IDENTIFIER_CORPUS = null;
+function getCodeIdentifierCorpus() {
+  if (CODE_IDENTIFIER_CORPUS) return CODE_IDENTIFIER_CORPUS;
+  CODE_IDENTIFIER_CORPUS = [...getSpecSourceFiles().entries()].map(([label, entry]) => ({
+    label,
+    lines: entry.code.split(/\r?\n/),
+  }));
+  return CODE_IDENTIFIER_CORPUS;
+}
+
+// Resolve a bare code identifier (`VisitController`, `populateVets()`, `Foo.bar`,
+// `visit_date`) to the file + 1-based line where it is defined or mentioned.
+// Passes, best match first: (1) a definition-like line (class decl, method, SQL
+// column / constraint), (2) a case-sensitive whole-word mention, (3) a
+// case-insensitive whole-word mention allowing a trailing plural `s` (so entity
+// names like `Owner`/`Pet`/`Vet` land on the `owners`/`pets`/`vets` SQL tables).
+// Returns null only when nothing in the project source matches.
+function resolveCodeIdentifierLocation(rawIdentifier = '') {
+  if (typeof rawIdentifier !== 'string') return null;
+  let token = rawIdentifier.trim().replace(/^[@#]/, '').replace(/`/g, '').trim();
+  token = token.replace(/\(\)$/, '').trim();
+  if (!token) return null;
+  // For dot-chains (`Foo.bar`) jump to the last segment — the member the reader
+  // most likely means.
+  const segments = token.split('.').filter(Boolean);
+  const searchToken = segments.length > 0 ? segments[segments.length - 1] : token;
+  if (!/^[A-Za-z_$][\w$]*$/.test(searchToken)) return null;
+
+  const escaped = searchToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const wholeWord = new RegExp(`\\b${escaped}\\b`);
+  const looseWord = new RegExp(`\\b${escaped}s?\\b`, 'i');
+  const definition = new RegExp(
+    `\\bclass\\s+${escaped}\\b`
+    + `|\\binterface\\s+${escaped}\\b`
+    + `|\\b${escaped}\\s*\\(`
+    + `|\\b${escaped}\\b\\s+(?:VARCHAR|INT|BIGINT|SMALLINT|DATE|TIME|TIMESTAMP|DATETIME|DECIMAL|NUMERIC|BOOLEAN|TEXT|CHAR)`
+    + `|\\bCONSTRAINT\\s+${escaped}\\b`,
+    'i',
+  );
+
+  const corpus = getCodeIdentifierCorpus();
+  let exactFallback = null;
+  let looseFallback = null;
+  for (const entry of corpus) {
+    for (let i = 0; i < entry.lines.length; i += 1) {
+      const line = entry.lines[i];
+      if (wholeWord.test(line)) {
+        if (definition.test(line)) {
+          return { label: entry.label, line: i + 1 };
+        }
+        if (!exactFallback) exactFallback = { label: entry.label, line: i + 1 };
+      } else if (!exactFallback && !looseFallback && looseWord.test(line)) {
+        looseFallback = { label: entry.label, line: i + 1 };
+      }
+    }
+  }
+  return exactFallback || looseFallback;
+}
+
 function normalizeMarkdownDocumentLabelKey(label = '') {
   return String(label).trim().replace(/\s+/g, '-').toLowerCase();
 }
@@ -4496,9 +4658,9 @@ function CompletionPopup({ trigger, query, selectedIdx, onSelect, onClose, style
 // ─── Add Popup ────────────────────────────────────────────────────────────────
 
 const ADD_RECENT_FILES = [
-  { label: 'Configuration.md', type: 'md', description: 'Agent Specifications' },
-  { label: 'Visit-Booking.md', type: 'md', description: 'Agent Specifications' },
-  { label: 'Vet-Schedules.md', type: 'md', description: 'Agent Specifications' },
+  { label: 'Configuration.md', type: 'md', description: 'Agent Specifications', path: 'src/Specifications' },
+  { label: 'Visit-Booking.md', type: 'md', description: 'Agent Specifications', path: 'src/Specifications' },
+  { label: 'Vet-Schedules.md', type: 'md', description: 'Agent Specifications', path: 'src/Specifications' },
 ];
 
 function getAddPopupFileType(label) {
@@ -4515,6 +4677,7 @@ function buildAddPopupFiles(agentTasks = []) {
     label: task.label,
     type: getAddPopupFileType(task.label),
     description: 'Agent Tasks',
+    path: 'src/Specifications',
   }));
 
   return [...taskFiles, ...ADD_RECENT_FILES].filter((item, index, items) =>
@@ -4615,7 +4778,8 @@ function AddPopup({
         </div>
       )}
 
-      {/* File list */}
+      {/* File list — same row structure as the `@` popup: icon, name, and a
+          muted location right after it. */}
       <div className="add-popup-files">
         {filtered.map((f, idx) => (
           <div
@@ -4624,10 +4788,163 @@ function AddPopup({
             onMouseEnter={() => setSelectedIdx(idx)}
             onMouseDown={(e) => { e.preventDefault(); commitSelection(f); }}
           >
-            <FileTypeIcon label={f.label} />
+            <span className="add-popup-item-icon"><FileTypeIcon label={f.label} /></span>
             <span className="add-popup-item-label">{f.label}</span>
+            {(f.path || f.description) ? <span className="add-popup-item-path">{f.path || f.description}</span> : null}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// `@` completion popup shown inline in a spec line. Modelled on the IDE's
+// JetBrains-style reference popup: three special commands at the top (with a
+// right-aligned description), then a saved-chat entry and the project files
+// (each with an icon, a filename, and — right after it — a muted location), and
+// a footer hint bar.
+const AT_POPUP_COMMANDS = [
+  { id: 'thisFile', label: '@thisFile', desc: 'Refer to currently opened file' },
+  { id: 'file', label: '@file:', desc: 'Add a file into prompt' },
+  { id: 'folder', label: '@folder:', desc: 'Add a folder into prompt' },
+];
+
+// Content mirrors the PetClinic project the prototype renders — the files from
+// its project tree/editor and the code references (classes/methods/variables)
+// used across the specs.
+const AT_PKG_OWNER = 'src/main/java/org/springframework/samples/petclinic/owner';
+const AT_PKG_VET = 'src/main/java/org/springframework/samples/petclinic/vet';
+const AT_PKG_MODEL = 'src/main/java/org/springframework/samples/petclinic/model';
+
+const AT_SPECS_PATH = 'src/Specifications';
+
+const AT_POPUP_ITEMS = [
+  // Spec markdown documents first so they're always visible (they're the docs the
+  // author most often cross-references).
+  { id: 'md-configuration', kind: 'file', label: 'Configuration.md', path: AT_SPECS_PATH },
+  { id: 'md-visit-booking', kind: 'file', label: 'Visit-Booking.md', path: AT_SPECS_PATH },
+  { id: 'md-vet-schedules', kind: 'file', label: 'Vet-Schedules.md', path: AT_SPECS_PATH },
+  // Code references and files are interleaved so both kinds stay visible in the
+  // popup's viewport without scrolling.
+  { id: 'cls-visitcontroller', kind: 'class', label: 'VisitController', path: AT_PKG_OWNER },
+  { id: 'visit-controller', kind: 'file', label: 'VisitController.java', path: AT_PKG_OWNER },
+  { id: 'cls-vetschedule', kind: 'class', label: 'VetSchedule', path: AT_PKG_VET },
+  { id: 'vet-schedule', kind: 'file', label: 'VetSchedule.java', path: AT_PKG_VET },
+  { id: 'cls-visit', kind: 'class', label: 'Visit', path: AT_PKG_OWNER },
+  { id: 'visit', kind: 'file', label: 'Visit.java', path: AT_PKG_OWNER },
+  { id: 'mtd-processvisit', kind: 'method', label: 'processNewVisitForm()', path: 'VisitController.java' },
+  { id: 'mtd-findby', kind: 'method', label: 'findByVetIdAndWeekday()', path: 'VetScheduleRepository.java' },
+  { id: 'var-visittime', kind: 'variable', label: 'visit_time', path: 'schema.sql' },
+  { id: 'var-vetid', kind: 'variable', label: 'vet_id', path: 'schema.sql' },
+  // Remaining project files.
+  { id: 'visit-repo', kind: 'file', label: 'VisitRepository.java', path: AT_PKG_OWNER },
+  { id: 'owner', kind: 'file', label: 'Owner.java', path: AT_PKG_OWNER },
+  { id: 'pet', kind: 'file', label: 'Pet.java', path: AT_PKG_OWNER },
+  { id: 'vet', kind: 'file', label: 'Vet.java', path: AT_PKG_VET },
+  { id: 'vet-repo', kind: 'file', label: 'VetRepository.java', path: AT_PKG_VET },
+  { id: 'vet-formatter', kind: 'file', label: 'VetFormatter.java', path: AT_PKG_VET },
+  { id: 'base-entity', kind: 'file', label: 'BaseEntity.java', path: AT_PKG_MODEL },
+  { id: 'visit-form', kind: 'file', label: 'createOrUpdateVisitForm.html', path: 'src/main/resources/templates/pets' },
+  { id: 'owner-details', kind: 'file', label: 'ownerDetails.html', path: 'src/main/resources/templates/owners' },
+  { id: 'schema', kind: 'file', label: 'schema.sql', path: 'src/main/resources/db/h2' },
+  { id: 'data', kind: 'file', label: 'data.sql', path: 'src/main/resources/db/h2' },
+  { id: 'app-props', kind: 'file', label: 'application.properties', path: 'src/main/resources' },
+  { id: 'visit-tests', kind: 'file', label: 'VisitControllerTests.java', path: 'src/test/java/org/springframework/samples/petclinic/owner' },
+];
+
+// Real int-ui-kit structure icons for code references; FileTypeIcon for files.
+const AT_POPUP_CODE_ICON = { class: 'nodes/class', method: 'nodes/method', variable: 'nodes/variable' };
+
+function AtPopupRowIcon({ kind, label }) {
+  if (kind === 'folder') return <Icon name="nodes/folder" size={16} />;
+  if (AT_POPUP_CODE_ICON[kind]) return <Icon name={AT_POPUP_CODE_ICON[kind]} size={16} />;
+  return <FileTypeIcon label={label} />;
+}
+
+function AtCompletionPopup({ query = '', onClose, onSelectCommand, onSelectItem, style }) {
+  const q = query.trim().toLowerCase();
+  const commands = AT_POPUP_COMMANDS.filter(
+    (c) => !q || c.label.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q)
+  );
+  const items = AT_POPUP_ITEMS.filter((i) => !q || i.label.toLowerCase().includes(q));
+  const rows = [
+    ...commands.map((c) => ({ type: 'command', data: c })),
+    ...items.map((i) => ({ type: 'item', data: i })),
+  ];
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const listRef = useRef(null);
+  useEffect(() => { setSelectedIdx(0); }, [query]);
+
+  // Keep the selected row scrolled into view during keyboard navigation.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.children[selectedIdx];
+    if (row instanceof HTMLElement) row.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx]);
+
+  const commit = useCallback((row) => {
+    if (!row) return;
+    if (row.type === 'command') onSelectCommand?.(row.data);
+    else onSelectItem?.(row.data);
+    onClose?.();
+  }, [onClose, onSelectCommand, onSelectItem]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose?.(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIdx((i) => Math.min(i + 1, Math.max(rows.length - 1, 0))); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedIdx((i) => Math.max(i - 1, 0)); }
+      else if (e.key === 'Enter' || e.key === 'Tab') {
+        if (rows.length === 0) return;
+        e.preventDefault();
+        commit(rows[selectedIdx]);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [rows, selectedIdx, commit, onClose]);
+
+  return (
+    <div className="at-popup" style={style} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="at-popup-list" ref={listRef}>
+        {rows.map((row, idx) => {
+          const selected = idx === selectedIdx;
+          const cls = `at-popup-row${selected ? ' at-popup-row-selected' : ''}`;
+          if (row.type === 'command') {
+            return (
+              <div
+                key={`cmd-${row.data.id}`}
+                className={cls}
+                onMouseEnter={() => setSelectedIdx(idx)}
+                onMouseDown={(e) => { e.preventDefault(); commit(row); }}
+              >
+                <span className="at-popup-cmd">{row.data.label}</span>
+                <span className="at-popup-cmd-desc">{row.data.desc}</span>
+              </div>
+            );
+          }
+          const it = row.data;
+          return (
+            <div
+              key={`item-${it.id}`}
+              className={cls}
+              onMouseEnter={() => setSelectedIdx(idx)}
+              onMouseDown={(e) => { e.preventDefault(); commit(row); }}
+            >
+              <span className="at-popup-icon"><AtPopupRowIcon kind={it.kind} label={it.label} /></span>
+              <span className="at-popup-label">{it.label}</span>
+              {it.path ? <span className="at-popup-path">{it.path}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+      <div className="at-popup-footer">
+        <span className="at-popup-hint">
+          Press <span className="at-popup-key">↵</span> to insert, <span className="at-popup-key">⇥</span> to replace
+          <span className="at-popup-tip">Next Tip</span>
+        </span>
+        <span className="at-popup-more" aria-hidden="true">⋮</span>
       </div>
     </div>
   );
@@ -5081,12 +5398,80 @@ function getDoneEditablePlainText(node) {
   }
 
   if (node instanceof HTMLElement && node.classList.contains('spec-ref')) {
+    // File & external-section chips are atomic — recover the exact raw reference
+    // from `data-ref-raw` (their display text isn't the raw form). Code-identifier
+    // chips are editable inline: return their CURRENT text so typing/deleting
+    // inside them is captured, but keep the original raw (with its `@`/`#` marker)
+    // while the text is untouched so unrelated edits don't rewrite them.
+    const isAtomic = node.classList.contains('spec-ref-file')
+      || node.classList.contains('spec-ref-external-section');
+    if (!isAtomic) {
+      const raw = node.dataset.refRaw || '';
+      const rawIdent = raw.replace(/^[@#]/, '');
+      const text = node.textContent || '';
+      return text === rawIdent ? raw : text;
+    }
     return node.dataset.refRaw || node.textContent || '';
   }
 
-  return Array.from(node.childNodes ?? [])
-    .map((child) => getDoneEditablePlainText(child))
-    .join('');
+  // Concatenate children. If an ATOMIC reference chip (file / external-section)
+  // is immediately followed by text that would extend its reference token (a
+  // word/path char with no separating whitespace — e.g. the user typed right
+  // after the chip), insert a single boundary space so the reference stays
+  // intact instead of merging into a corrupt token like `@VetSchedule.javaQQ`.
+  const kids = Array.from(node.childNodes ?? []);
+  let out = '';
+  for (let i = 0; i < kids.length; i += 1) {
+    const child = kids[i];
+    const text = getDoneEditablePlainText(child);
+    const prev = kids[i - 1];
+    if (
+      prev instanceof HTMLElement
+      && prev.classList.contains('spec-ref')
+      && (prev.classList.contains('spec-ref-file') || prev.classList.contains('spec-ref-external-section'))
+      && /^[A-Za-z0-9_.#:/()-]/.test(text)
+    ) {
+      out += ' ';
+    }
+    out += text;
+  }
+  return out;
+}
+
+// Place a collapsed caret at a character offset within an editable line, walking
+// its text nodes (atomic chip text counts toward the offset). If the offset lands
+// inside an atomic (contentEditable=false) chip, the caret is placed just after
+// it. Used to restore the caret after the overlay re-renders from an edit.
+function setDoneCaretByCharOffset(host, targetOffset) {
+  if (!(host instanceof HTMLElement)) return false;
+  host.focus();
+  const sel = window.getSelection();
+  if (!sel) return false;
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT, null);
+  let remaining = Math.max(0, targetOffset);
+  let lastNode = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    lastNode = node;
+    const len = node.textContent.length;
+    if (remaining <= len) {
+      const range = document.createRange();
+      const atomic = node.parentElement?.closest('[contenteditable="false"]');
+      if (atomic && host.contains(atomic)) range.setStartAfter(atomic);
+      else range.setStart(node, remaining);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    }
+    remaining -= len;
+  }
+  const range = document.createRange();
+  if (lastNode) range.setStart(lastNode, lastNode.textContent.length);
+  else { range.selectNodeContents(host); }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  return false;
 }
 
 function normalizeSpecCodeForComparison(code = '') {
@@ -5558,6 +5943,13 @@ const KNOWN_CODE_SYMBOLS = [
 ];
 
 const BARE_FILE_PATTERN_SRC = '\\b[A-Za-z][\\w-]*\\.[a-z]{2,10}\\b';
+// Bare (no `@`) file reference that pins a line or line range, e.g.
+// `Owner.java#L49`, `Owner.java#L64-L67`, `Owner.java:49`, `Owner.java:64-67`.
+// The trailing line anchor is REQUIRED here (plain bare files fall through to
+// BARE_FILE_PATTERN_SRC), and this must be matched BEFORE CLASS_DOTTED so the
+// `#L49` / `:49` suffix rides along instead of being split into a separate
+// section-anchor token.
+const BARE_FILE_LINE_PATTERN_SRC = '\\b[A-Za-z][\\w-]*\\.[a-z]{2,10}(?:#L?\\d+(?:-L?\\d+)?|:L?\\d+(?:-L?\\d+)?)';
 // Hyphenated OR space-separated variants: matches `Visit-booking`,
 // `Visit Booking`, `visit booking`, `Vet Schedules`, `vet-schedules`, etc.
 // Listed before the bare class/identifier patterns so `Visit` / `Vet` from
@@ -5572,15 +5964,29 @@ const CAMEL_CASE_PATTERN_SRC = '\\b[a-z]+(?:[A-Z][a-z]*)+\\b';
 const SNAKE_CASE_PATTERN_SRC = '\\b[a-z][\\w]*_[\\w]+\\b';
 const KNOWN_CODE_SYMBOLS_PATTERN_SRC = `\\b(?:${KNOWN_CODE_SYMBOLS.join('|')})\\b`;
 
+// Expanded reference form `[Name.java](path/to/Name.java)` — produced when the
+// user presses Backspace next to a file chip. Matched FIRST (before any of the
+// bare file / class patterns) so the whole link is one token and its inner
+// filename/path are NOT re-tokenized into nested chips.
+// Closing `)` is optional and the path stops at whitespace, so that a breadcrumb
+// being erased character-by-character (`[Name.java] (src/main/j`) still matches
+// as one token and stays a single `.spec-md-link` span instead of re-tokenizing
+// its filename fragments into phantom chips.
+const MD_LINK_PATTERN_SRC = '\\[[^\\]\\n]+\\]\\s?\\([^\\s)\\n]*\\)?';
+
 const INLINE_REFERENCE_SPLIT_PATTERN = new RegExp(
   [
+    MD_LINK_PATTERN_SRC,
     '`[^`]+`',
-    '@[A-Za-z0-9_./#-]+(?:\\(\\))?',
+    '@[A-Za-z0-9_./#:-]+(?:\\(\\))?',
     '#[A-Za-z][\\w-]*(?:#[\\w-]+)?',
     // Doc slugs come BEFORE the bare class/identifier patterns so that
     // `Visit-booking` matches as a whole token instead of being eaten by the
     // single-word `Visit` rule.
     BARE_DOC_SLUG_PATTERN_SRC,
+    // File+line refs (`Owner.java#L49`) BEFORE CLASS_DOTTED so the line anchor
+    // stays attached to the file token.
+    BARE_FILE_LINE_PATTERN_SRC,
     CLASS_DOTTED_PATTERN_SRC,
     BARE_FILE_PATTERN_SRC,
     METHOD_CALL_PATTERN_SRC,
@@ -5593,9 +5999,10 @@ const INLINE_REFERENCE_SPLIT_PATTERN = new RegExp(
 );
 
 const INLINE_REFERENCE_TEST_PATTERNS = [
-  /^@[A-Za-z0-9_./#-]+(?:\(\))?$/,
+  /^@[A-Za-z0-9_./#:-]+(?:\(\))?$/,
   /^#[A-Za-z][\w-]*(?:#[\w-]+)?$/,
   new RegExp(`^${BARE_DOC_SLUG_PATTERN_SRC}$`),
+  new RegExp(`^${BARE_FILE_LINE_PATTERN_SRC}$`),
   new RegExp(`^${CLASS_DOTTED_PATTERN_SRC}$`),
   new RegExp(`^${BARE_FILE_PATTERN_SRC}$`),
   new RegExp(`^${METHOD_CALL_PATTERN_SRC}$`),
@@ -5633,17 +6040,82 @@ function resolveSpecRefFileIconKey(target = '') {
   return 'text';
 }
 
+// Real Java package prefix that the Project tree collapses away — the tree only
+// shows the short leaf package (owner/vet/model), but the on-disk path is
+// `src/main/java/org/springframework/samples/petclinic/<pkg>/…`.
+const WORKSPACE_JAVA_PACKAGE_SEGMENTS = ['org', 'springframework', 'samples', 'petclinic'];
+// Files the spec references that don't appear as leaves in MY_PROJECT_TREE.
+const EXTRA_WORKSPACE_FILE_PATHS = {
+  'VetScheduleRepository.java': 'src/main/java/org/springframework/samples/petclinic/vet/VetScheduleRepository.java',
+};
+
+let WORKSPACE_FILE_PATHS = null;
+// Walk MY_PROJECT_TREE once to map each filename → its workspace-relative path,
+// expanding the collapsed Java package prefix under the java source roots.
+function getWorkspaceFilePaths() {
+  if (WORKSPACE_FILE_PATHS) return WORKSPACE_FILE_PATHS;
+  const map = new Map();
+  const walk = (nodes, trail) => {
+    for (const node of nodes || []) {
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        walk(node.children, [...trail, node.label]);
+      } else if (typeof node.label === 'string' && node.label.includes('.')) {
+        const segments = [];
+        for (const seg of [...trail, node.label]) {
+          segments.push(seg);
+          if (seg === 'src/main/java' || seg === 'src/test/java') {
+            segments.push(...WORKSPACE_JAVA_PACKAGE_SEGMENTS);
+          }
+        }
+        if (!map.has(node.label)) map.set(node.label, segments.join('/'));
+      }
+    }
+  };
+  // Start from the root's children so the project-name node isn't part of the path.
+  for (const root of MY_PROJECT_TREE) walk(root.children, []);
+  WORKSPACE_FILE_PATHS = map;
+  return map;
+}
+
+// Resolve a bare filename to its workspace-relative path. Falls back to the
+// filename itself for anything not in the tree or the extras map.
+function resolveWorkspaceFilePath(fileName = '') {
+  const name = String(fileName).trim();
+  if (!name) return '';
+  return EXTRA_WORKSPACE_FILE_PATHS[name] || getWorkspaceFilePaths().get(name) || name;
+}
+
+// A file reference can pin a single line or a line range: `@Owner.java#L49`,
+// `@Owner.java#L64-L67`, or the editor-style colon forms `@Owner.java:49` /
+// `@Owner.java:64-67`. Both the `L`-prefix and bare-number spellings are
+// accepted; the anchor renders as a muted `L49` / `L64-L67` suffix on the chip
+// and navigation jumps to the first line.
+const LINE_ANCHOR_PATTERN = /^L?(\d+)(?:\s*-\s*L?(\d+))?$/i;
+
 function getDoneInlineReferenceInfo(rawReference = '') {
   const marker = rawReference.startsWith('@') || rawReference.startsWith('#')
     ? rawReference[0]
     : '';
-  const value = marker ? rawReference.slice(1) : rawReference;
+  const rawValue = marker ? rawReference.slice(1) : rawReference;
+  // Normalise a colon line-anchor (`Owner.java:49`) into the `#` form so the
+  // single anchor path below handles every spelling.
+  const colonAnchorMatch = rawValue.match(/^(.+\.[A-Za-z0-9]+):(L?\d+(?:\s*-\s*L?\d+)?)$/i);
+  const value = colonAnchorMatch ? `${colonAnchorMatch[1]}#${colonAnchorMatch[2]}` : rawValue;
   const hasSectionAnchor = value.includes('#');
   const [targetLabel = '', sectionAnchor = ''] = value.split('#');
   const normalizedTarget = targetLabel.trim();
   const normalizedSection = sectionAnchor.trim();
   const isMarkdownFile = /\.md$/i.test(normalizedTarget);
   const isFile = /\.[A-Za-z0-9]+$/.test(normalizedTarget);
+  // A line/range anchor on a file target (`Owner.java#L49`) is NOT a section
+  // link — it renders as a file chip with a muted line-number suffix.
+  const lineAnchorMatch = isFile && normalizedSection ? normalizedSection.match(LINE_ANCHOR_PATTERN) : null;
+  const isLineAnchor = Boolean(lineAnchorMatch);
+  const lineStart = lineAnchorMatch ? Number.parseInt(lineAnchorMatch[1], 10) : null;
+  const lineEnd = lineAnchorMatch && lineAnchorMatch[2] ? Number.parseInt(lineAnchorMatch[2], 10) : null;
+  const lineLabel = lineAnchorMatch
+    ? (Number.isInteger(lineEnd) && lineEnd !== lineStart ? `L${lineStart}-L${lineEnd}` : `L${lineStart}`)
+    : null;
   // Normalise space/hyphen variants ("Vet Schedules" → "vet-schedules") so the
   // doc-slug lookup matches every casing the spec text uses.
   const docSlugKey = normalizedTarget
@@ -5656,7 +6128,7 @@ function getDoneInlineReferenceInfo(rawReference = '') {
   // the chip shows a markdown icon and grey background.
   const isKnownDocSlug = marker === '' && !!canonicalDocName && KNOWN_DOC_SLUGS.has(docSlugKey);
   const isCurrentSection = marker === '#' && normalizedTarget.length > 0 && !isFile && !hasSectionAnchor;
-  const isExternalSection = hasSectionAnchor && (isMarkdownFile || normalizedTarget.length > 0);
+  const isExternalSection = hasSectionAnchor && !isLineAnchor && (isMarkdownFile || normalizedTarget.length > 0);
 
   // Sub-classify code identifiers so the spec uses the same JetBrains editor
   // palette as the Java/SQL token highlighter: classes (#16baac teal),
@@ -5732,6 +6204,13 @@ function getDoneInlineReferenceInfo(rawReference = '') {
     ? (canonicalDocName || (normalizedTarget && /\./.test(normalizedTarget) ? normalizedTarget : null))
     : null;
 
+  // Code identifiers (class/method/variable/symbol) resolve to a location in a
+  // source file so the chip can navigate to it — the same affordance the file
+  // chips already offer. Unresolved identifiers get null and stay read-only.
+  const codeLocation = (type === 'class' || type === 'method' || type === 'variable' || type === 'symbol')
+    ? resolveCodeIdentifierLocation(normalizedTarget)
+    : null;
+
   return {
     type,
     marker,
@@ -5740,24 +6219,62 @@ function getDoneInlineReferenceInfo(rawReference = '') {
     targetFile,
     fileName,
     sectionName,
+    codeLocation,
+    lineLabel,
+    line: Number.isInteger(lineStart) ? lineStart : null,
   };
 }
 
 function renderDoneInlineReference(rawReference, key) {
   const reference = getDoneInlineReferenceInfo(rawReference);
+
+  // Code-identifier chips keep their highlight (background + colour) whether or
+  // not they resolve to a source location — so editing one (typing/deleting)
+  // never makes the pill's styling flicker away as the partial identifier stops
+  // matching a real symbol. Resolved chips additionally become navigable (they
+  // get a `data-ref-target`, hence pointer + hover); unresolved ones are simply
+  // static highlighted terms.
   const fileModifierClass = reference.fileIconKey ? ` spec-ref-file--${reference.fileIconKey}` : '';
-  // contentEditable={false} turns the chip into an atomic node inside the
-  // contenteditable: the caret can't enter it, so a Backspace at the chip's
-  // trailing boundary removes the whole reference rather than nibbling its
-  // characters. The serializer still recovers the raw reference from
-  // `data-ref-raw` (see `getDoneEditablePlainText`).
+  // All reference chips (file, code-identifier, external-section, current-section)
+  // are EDITABLE (contentEditable inherits true): the caret can move INSIDE the
+  // pill and Backspace drives the shared `@`-completion editing flow (a literal
+  // `@` is prepended and the popup surfaces the closest match). The serializer
+  // recovers the exact reference from `data-ref-raw`, so moving the caret never
+  // corrupts it.
+  const isAtomicRef = false;
+  // File/section chips navigate to a file; code-identifier chips navigate to a
+  // resolved source location (label + line). Both funnel through `data-ref-target`
+  // so the single delegated click handler covers every navigable chip.
+  const navTarget = reference.targetFile || reference.codeLocation?.label || undefined;
+  const navLine = reference.line ?? reference.codeLocation?.line;
+  // Hover tooltip: the file's full location in the project (the same path the
+  // `[name] (path)` edit mode resolves), with any line/section anchor appended.
+  // File / external-section chips resolve their own target; code-identifier chips
+  // resolve through the source location they navigate to (unresolved ones show
+  // nothing). Current-section chips point inside the current doc, so no path.
+  let hoverPath = '';
+  if (reference.type === 'file') {
+    const base = reference.targetFile ? resolveWorkspaceFilePath(reference.targetFile) : reference.label;
+    hoverPath = reference.lineLabel ? `${base} ${reference.lineLabel}` : base;
+  } else if (reference.type === 'external-section') {
+    const base = reference.targetFile ? resolveWorkspaceFilePath(reference.targetFile) : reference.fileName;
+    hoverPath = reference.sectionName ? `${base} › ${reference.sectionName}` : base;
+  } else if (reference.codeLocation) {
+    const base = resolveWorkspaceFilePath(reference.codeLocation.label);
+    hoverPath = Number.isInteger(reference.codeLocation.line) ? `${base}:${reference.codeLocation.line}` : base;
+  }
   const commonProps = {
     className: `spec-ref spec-ref-${reference.type}${fileModifierClass}`,
     'data-ref-type': reference.type,
     'data-ref-marker': reference.marker,
     'data-ref-raw': rawReference,
-    'data-ref-target': reference.targetFile || undefined,
-    contentEditable: false,
+    'data-ref-target': navTarget,
+    'data-ref-line': Number.isInteger(navLine) ? String(navLine) : undefined,
+    // The resolved location is shown on hover by a portal tooltip (built with the
+    // int-ui-kit `.tooltip` rendering) — driven from this attribute rather than a
+    // native `title`, so wrapping the chip inside contenteditable isn't needed.
+    'data-ref-path': hoverPath || undefined,
+    contentEditable: isAtomicRef ? false : undefined,
     suppressContentEditableWarning: true,
   };
 
@@ -5783,11 +6300,38 @@ function renderDoneInlineReference(rawReference, key) {
     );
   }
 
+  // File chip with a line/range anchor: the muted `L49` / `L64-L67` label sits
+  // INSIDE the pill, right after the filename. Because the whole `.spec-ref`
+  // element is atomic to the serializer (it recovers the raw reference from
+  // `data-ref-raw`), the label round-trips without any extra handling.
   return (
     <span key={key} {...commonProps}>
       {reference.label}
+      {reference.lineLabel ? (
+        <span className="spec-ref-line">{reference.lineLabel}</span>
+      ) : null}
     </span>
   );
+}
+
+// Render the expanded reference `[Name.java] (src/main/.../Name.java#L3)` with
+// the path split into breadcrumb segments. Each folder/file segment is its own
+// hoverable, underline-on-hover, navigable span (`.spec-md-link-seg`) separated
+// by dimmed `/`. Segments carry `data-ref-target` so the shared delegated click
+// handler opens the file (the file segment also carries the line). The full
+// concatenated text stays byte-identical to the token so it round-trips through
+// the serializer unchanged.
+// Expanded file reference `[Name.java] (path/to/Name.java#L3)`. Rendered as a
+// SINGLE editable text node (blue). Earlier this split the path into per-segment
+// child spans, but a structured element inside the contenteditable desyncs from
+// React when the browser edits it (removeChild crash on the first character
+// erased). A single text node reconciles safely like ordinary editable text.
+function renderExpandedFileLink(part, key) {
+  // Atomic (contentEditable=false): the browser can't edit its text in place, so
+  // React never has to reconcile a browser-mutated node (which crashed with
+  // "removeChild ... not a child" when a character was erased). Deletion is
+  // handled imperatively by the Backspace handler instead.
+  return <span key={key} className="spec-md-link" contentEditable={false} suppressContentEditableWarning>{part}</span>;
 }
 
 function renderDoneInlineText(text, keyPrefix = 'inline') {
@@ -5795,14 +6339,29 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
   const parts = text.split(splitPattern);
   if (parts.length === 1) return text;
   return parts.map((part, index) => {
+    // Expanded file reference `[Name.java] (path/to/Name.java)` — a single blue
+    // text span. Lenient (optional close paren, whitespace-terminated path) so
+    // partially-erased breadcrumbs still render as one span.
+    if (typeof part === 'string' && /^\[[^\]]+\]\s?\([^\s)]*\)?$/.test(part)) {
+      return renderExpandedFileLink(part, `${keyPrefix}-${index}`);
+    }
+
     if (isInlineReferenceToken(part)) {
       return renderDoneInlineReference(part, `${keyPrefix}-${index}`);
     }
 
     if (/^`[^`]+`$/.test(part)) {
+      const codeText = part.slice(1, -1);
+      // Backtick code navigates to its source location too, when resolvable.
+      const codeLocation = resolveCodeIdentifierLocation(codeText);
       return (
-        <code key={`${keyPrefix}-${index}`} className="spec-done-inline-code">
-          {part.slice(1, -1)}
+        <code
+          key={`${keyPrefix}-${index}`}
+          className="spec-done-inline-code"
+          data-ref-target={codeLocation?.label || undefined}
+          data-ref-line={Number.isInteger(codeLocation?.line) ? String(codeLocation.line) : undefined}
+        >
+          {codeText}
         </code>
       );
     }
@@ -6432,7 +6991,7 @@ function AcCheckRow({
           {checks.map((check, i) => (
             <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
-              <span className="ac-subcheck-text">{check.text}</span>
+              <span className="ac-subcheck-text">{renderDoneInlineText(check.text, `subcheck-${i}`)}</span>
               {check.chip && <AcSubcheckChip label={check.chip} onOpen={onOpenCheckChip} />}
               {check.note && <span className="ac-subcheck-note">{check.note}</span>}
             </div>
@@ -8380,6 +8939,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [draftCode, setDraftCode] = useState(() => effectiveCode);
   const draftCodeRef = useRef(draftCode);
   draftCodeRef.current = draftCode;
+  // When typing triggers a re-render (setDraftCode), the contenteditable line is
+  // rebuilt and the browser caret is lost. We stash the caret's row + character
+  // offset here right before the re-render and restore it in a layout effect.
+  const pendingCaretRestoreRef = useRef(null);
 
   useEffect(() => {
     setProjectContextBannerDismissed(false);
@@ -8437,6 +9000,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const doneCmpEditableRef = useRef(null);
   const doneCmpRangeRef = useRef(null);
   const doneCmpQueryRef = useRef('');
+  // Hover tooltip showing a reference chip's resolved file location.
+  const [refHoverTip, setRefHoverTip] = useState(null);
+  const refHoverTipRef = useRef(null);
   const [hasEditedLines, setHasEditedLines] = useState(false);
   const [deletedRowKeys, setDeletedRowKeys] = useState(() => new Set());
   const [clearedRowKeys, setClearedRowKeys] = useState(() => new Set());
@@ -9025,64 +9591,79 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
   };
 
-  const applyDoneCompletion = (item) => {
+  // Commit an `@` completion by editing the MODEL (`draftCode`) rather than
+  // inserting a DOM node imperatively. While the `@` query is being typed we skip
+  // re-render (to keep the popup stable), so React's vdom is stale; an imperative
+  // insert + sync then made React append a SECOND chip it didn't know was already
+  // there. Replacing the typed `@query` inside the snapshot and letting React
+  // render the chip keeps everything consistent — exactly one element inserted.
+  const commitDoneAtInsertion = (insertText, renderedLabel) => {
     const editable = doneCmpEditableRef.current;
     const savedRange = doneCmpRangeRef.current;
     const query = doneCmpQueryRef.current;
-    if (!editable || !savedRange) return;
-    editable.focus();
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(savedRange);
-    const range = savedRange.cloneRange();
-    const deleteLen = query.length + 1; // '@' + query chars
-    if (range.startContainer.nodeType === Node.TEXT_NODE && range.startOffset >= deleteLen) {
-      range.setStart(range.startContainer, range.startOffset - deleteLen);
-    }
-    range.deleteContents();
-    const rawReference = `@${getCompletionInsertText(item)}`;
-    const reference = getDoneInlineReferenceInfo(rawReference);
-    const fileModifierClass = reference.fileIconKey ? ` spec-ref-file--${reference.fileIconKey}` : '';
-    const span = document.createElement('span');
-    span.className = `spec-ref spec-ref-${reference.type}${fileModifierClass}`;
-    span.dataset.refType = reference.type;
-    span.dataset.refMarker = reference.marker;
-    span.dataset.refRaw = rawReference;
-    if (reference.targetFile) {
-      span.dataset.refTarget = reference.targetFile;
-    }
-    span.setAttribute('contenteditable', 'false');
-
-    const appendStructuredChild = (className, text, ariaHidden = false) => {
-      const child = document.createElement('span');
-      child.className = className;
-      child.textContent = text;
-      if (ariaHidden) child.setAttribute('aria-hidden', 'true');
-      span.appendChild(child);
-    };
-
-    if (reference.type === 'external-section') {
-      appendStructuredChild('spec-ref-file-name', reference.fileName);
-      appendStructuredChild('spec-ref-section-divider', ' › ', true);
-      appendStructuredChild('spec-ref-paragraph-icon', '§', true);
-      appendStructuredChild('spec-ref-section-name', reference.sectionName);
-    } else if (reference.type === 'current-section') {
-      appendStructuredChild('spec-ref-section-name', reference.sectionName);
-    } else {
-      span.textContent = reference.label;
-    }
-    range.insertNode(span);
-    const space = document.createTextNode(' ');
-    span.after(space);
-    const newRange = document.createRange();
-    newRange.setStart(space, 1);
-    newRange.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(newRange);
     setDoneCmpPos(null);
+    if (editable && savedRange) {
+      const rowEl = editable.closest('.spec-done-row');
+      const rawIndexAttr = rowEl?.dataset.rawIndex ?? null;
+      const rawIndex = rawIndexAttr != null ? Number(rawIndexAttr) : NaN;
+      const trigger = `@${query}`;
+      // Rendered caret position (chip text counted as its visible label).
+      let renderedCaretPos = 0;
+      try {
+        const pre = document.createRange();
+        pre.selectNodeContents(editable);
+        pre.setEnd(savedRange.startContainer, savedRange.startOffset);
+        renderedCaretPos = pre.toString().length;
+      } catch { renderedCaretPos = 0; }
+      const triggerStart = Math.max(0, renderedCaretPos - trigger.length);
+      if (Number.isInteger(rawIndex)) {
+        // Build the committed line from the CURRENT (imperatively edited) DOM. The
+        // separator after the inserted reference is dropped when a space already
+        // trails the trigger (mid-sentence edit), so we never inject a double space.
+        const snapshot = buildDoneOverlaySnapshotCode(draftCodeRef.current);
+        const lines = snapshot.split(/\r?\n/);
+        let sep = ' ';
+        if (rawIndex >= 0 && rawIndex < lines.length) {
+          const idx = lines[rawIndex].lastIndexOf(trigger);
+          if (idx >= 0) {
+            const rest = lines[rawIndex].slice(idx + trigger.length);
+            sep = rest.startsWith(' ') ? '' : ' ';
+            lines[rawIndex] = lines[rawIndex].slice(0, idx) + insertText + sep + rest;
+          }
+        }
+        const finalCode = lines.join('\n');
+        // The edits so far were imperative (DOM only) to keep the literal `@`
+        // visible, so React's tree is stale. If the committed value equals the
+        // current model (e.g. the SAME reference was re-selected after editing),
+        // React would bail out of re-rendering and leave the half-edited DOM
+        // stranded — force a reconcile by first flushing the edited snapshot.
+        if (finalCode === draftCodeRef.current && snapshot !== draftCodeRef.current) {
+          flushSync(() => setDraftCode(snapshot));
+        }
+        pendingCaretRestoreRef.current = {
+          rawIndex: rawIndexAttr,
+          rowKey: rowEl?.dataset.rowKey ?? null,
+          offset: triggerStart + renderedLabel.length + sep.length,
+        };
+        setDraftCode(finalCode);
+        onUserInput?.();
+      }
+    }
     doneCmpEditableRef.current = null;
     doneCmpRangeRef.current = null;
     doneCmpQueryRef.current = '';
+  };
+
+  const applyDoneCompletion = (item) => {
+    const rawReference = `@${getCompletionInsertText(item)}`;
+    const reference = getDoneInlineReferenceInfo(rawReference);
+    commitDoneAtInsertion(rawReference, reference.label || getCompletionInsertText(item));
+  };
+
+  // The `@thisFile` / `@file:` / `@folder:` commands are prompt directives — they
+  // insert their literal text rather than a reference chip.
+  const applyDoneCommandText = (text) => {
+    commitDoneAtInsertion(text, text);
   };
 
   // Detect @ in contenteditable and show AddPopup
@@ -9123,11 +9704,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const range = sel.getRangeAt(0).cloneRange();
       range.setStart(editable, 0);
       const textBefore = range.toString();
-      const match = textBefore.match(/@(\w*)$/);
+      // Allow `.` and `-` in the query so file names (e.g. `@Vet-Schedules.md`,
+      // `@Configuration.md`) can be typed and filtered without the popup closing
+      // at the first hyphen/dot.
+      const match = textBefore.match(/@([\w.-]*)$/);
       if (match) {
         const query = match[1];
         const cursorRect = sel.getRangeAt(0).getBoundingClientRect();
-        const POPUP_WIDTH = 300;
+        const POPUP_WIDTH = 480;
         const overflows = cursorRect.left + POPUP_WIDTH > window.innerWidth - 8;
         doneCmpEditableRef.current = editable;
         doneCmpRangeRef.current = sel.getRangeAt(0).cloneRange();
@@ -9137,24 +9721,102 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           ? { top: cursorRect.bottom + 4, right: window.innerWidth - cursorRect.right, query }
           : { top: cursorRect.bottom + 4, left: cursorRect.left, query }
         );
-      } else {
-        setDoneCmpPos(null);
-        doneCmpEditableRef.current = null;
-        doneCmpRangeRef.current = null;
-        doneCmpQueryRef.current = '';
+        // While the `@` completion is open, do NOT re-render: it would rebuild the
+        // line and invalidate the saved range the completion inserts at (dropping
+        // the chip in the wrong place and leaving the `@` behind). The DOM stays
+        // ahead until the completion is applied (or dismissed), then syncs.
+        updateEditedLinesState();
+        return;
       }
+      setDoneCmpPos(null);
+      doneCmpEditableRef.current = null;
+      doneCmpRangeRef.current = null;
+      doneCmpQueryRef.current = '';
 
       const nextDraftCode = buildDoneOverlaySnapshotCode(draftCodeRef.current);
-      setDraftCode((prev) => (
-        normalizeSpecCodeForComparison(prev) === normalizeSpecCodeForComparison(nextDraftCode)
-          ? prev
-          : nextDraftCode
-      ));
+      if (normalizeSpecCodeForComparison(draftCodeRef.current) !== normalizeSpecCodeForComparison(nextDraftCode)) {
+        // The upcoming re-render rebuilds this line and drops the caret — capture
+        // the caret's row + character offset so the layout effect can restore it.
+        try {
+          const caretRange = sel.getRangeAt(0);
+          const rowEl = editable.closest('.spec-done-row');
+          const pre = document.createRange();
+          pre.selectNodeContents(editable);
+          pre.setEnd(caretRange.startContainer, caretRange.startOffset);
+          pendingCaretRestoreRef.current = {
+            rawIndex: rowEl?.dataset.rawIndex ?? null,
+            rowKey: rowEl?.dataset.rowKey ?? null,
+            offset: pre.toString().length,
+          };
+        } catch { pendingCaretRestoreRef.current = null; }
+        setDraftCode(nextDraftCode);
+      }
       updateEditedLinesState();
     };
     el.addEventListener('input', handleInput);
     return () => el.removeEventListener('input', handleInput);
   }, [onUserInput, updateEditedLinesState]);
+
+  // Show a reference chip's resolved file location on hover, rendered with the
+  // int-ui-kit `.tooltip` styling through a portal (kept OUTSIDE the
+  // contenteditable so it never affects the chip's DOM / serialization / caret).
+  // Delegated via mouseover/mouseout so it survives the overlay's re-renders.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const showFor = (chip) => {
+      const path = chip?.dataset?.refPath;
+      if (!path) return;
+      const rect = chip.getBoundingClientRect();
+      setRefHoverTip({ path, left: rect.left + rect.width / 2, top: rect.top - 6 });
+    };
+    const handleOver = (e) => {
+      const chip = e.target instanceof Element ? e.target.closest('.spec-ref[data-ref-path]') : null;
+      if (chip && el.contains(chip)) {
+        if (refHoverTipRef.current === chip) return; // already showing for this chip
+        refHoverTipRef.current = chip;
+        showFor(chip);
+      } else if (refHoverTipRef.current) {
+        refHoverTipRef.current = null;
+        setRefHoverTip(null);
+      }
+    };
+    const handleOut = (e) => {
+      const chip = refHoverTipRef.current;
+      if (!chip) return;
+      // Leaving to somewhere still inside the same chip → keep the tooltip.
+      const to = e.relatedTarget;
+      if (to instanceof Node && chip.contains(to)) return;
+      refHoverTipRef.current = null;
+      setRefHoverTip(null);
+    };
+    el.addEventListener('mouseover', handleOver);
+    el.addEventListener('mouseout', handleOut);
+    return () => {
+      el.removeEventListener('mouseover', handleOver);
+      el.removeEventListener('mouseout', handleOut);
+    };
+  }, []);
+
+  // Restore the caret after an edit-driven re-render rebuilds the line, so typing
+  // in an existing line doesn't scatter the caret or drop focus. Runs before
+  // paint (useLayoutEffect) and only when an edit stashed a pending position.
+  useLayoutEffect(() => {
+    const pending = pendingCaretRestoreRef.current;
+    if (!pending) return;
+    pendingCaretRestoreRef.current = null;
+    const container = scrollRef.current;
+    if (!container) return;
+    let host = null;
+    if (pending.rawIndex != null) {
+      host = container.querySelector(`.spec-done-row[data-raw-index="${pending.rawIndex}"] [contenteditable]`);
+    }
+    if (!host && pending.rowKey) {
+      const key = (window.CSS && CSS.escape) ? CSS.escape(pending.rowKey) : pending.rowKey;
+      host = container.querySelector(`.spec-done-row[data-row-key="${key}"] [contenteditable]`);
+    }
+    if (host) setDoneCaretByCharOffset(host, pending.offset);
+  }, [draftCode]);
 
   // Keyboard support for refPopupPos CompletionPopup
   useEffect(() => {
@@ -9194,13 +9856,31 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!el || typeof onOpenCheckChip !== 'function') return;
     const handleFileRefClick = (e) => {
       if (e.target instanceof Element && e.target.closest('.attached-file-remove')) return;
-      const ref = e.target.closest('.spec-ref-file[data-ref-target], .spec-ref-external-section[data-ref-target], .attached-file-chip[data-ref-target]');
+      const ref = e.target.closest([
+        '.spec-ref-file[data-ref-target]',
+        '.spec-ref-external-section[data-ref-target]',
+        '.attached-file-chip[data-ref-target]',
+        '.spec-ref-class[data-ref-target]',
+        '.spec-ref-method[data-ref-target]',
+        '.spec-ref-variable[data-ref-target]',
+        '.spec-ref-symbol[data-ref-target]',
+        '.spec-md-link-seg[data-ref-target]',
+        '.spec-md-link-anchor[data-ref-target]',
+        '.spec-done-inline-code[data-ref-target]',
+      ].join(', '));
       if (!ref || !el.contains(ref)) return;
       const target = ref.dataset.refTarget;
       if (!target) return;
       e.preventDefault();
       e.stopPropagation();
-      onOpenCheckChip(target);
+      // Chips/segments carry a 1-based line and/or a document section. Open the
+      // file and reveal the line, or jump to the named section of the doc.
+      const parsedLine = Number.parseInt(ref.dataset.refLine ?? '', 10);
+      const line = Number.isInteger(parsedLine) && parsedLine > 0 ? parsedLine : null;
+      const section = typeof ref.dataset.refSection === 'string' && ref.dataset.refSection.length > 0
+        ? ref.dataset.refSection
+        : null;
+      onOpenCheckChip(target, (line || section) ? { line: line || undefined, section: section || undefined } : undefined);
     };
     el.addEventListener('click', handleFileRefClick);
     return () => el.removeEventListener('click', handleFileRefClick);
@@ -9262,10 +9942,250 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     const el = scrollRef.current;
     if (!el) return;
 
+    // Given a collapsed caret, return the reference chip immediately before it,
+    // if any (any `.spec-ref` pill — file, external-section, or code identifier).
+    const refChipBeforeCaret = (range) => {
+      const { startContainer, startOffset } = range;
+      let node = null;
+      if (startContainer.nodeType === Node.ELEMENT_NODE) {
+        node = startContainer.childNodes[startOffset - 1] || null;
+      } else if (startContainer.nodeType === Node.TEXT_NODE) {
+        if (startOffset > 0) return null; // real text sits before the caret
+        node = startContainer.previousSibling;
+      }
+      return node instanceof HTMLElement && node.classList.contains('spec-ref') ? node : null;
+    };
+
+    // Given a collapsed caret, return the editable chip the caret sits INSIDE (the
+    // caret lives within the pill while you edit it). Covers code-identifier, file
+    // AND external-section chips — all use the same `@`-completion editing flow.
+    // Current-section chips stay atomic (caret can't enter), so they're excluded.
+    const editableChipAtCaret = (range) => {
+      const anchor = range.startContainer;
+      const host = anchor.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+      const chip = host instanceof Element ? host.closest('.spec-ref') : null;
+      return chip instanceof HTMLElement
+        && !chip.classList.contains('spec-ref-current-section')
+        ? chip
+        : null;
+    };
+
+    // Open the `@` completion popup anchored to a chip (code identifier OR file)
+    // being edited, filtered by the chip's current text so its most relevant match
+    // is pre-selected. Stashes the same refs the `@`-typing flow uses so selecting
+    // an item commits through `commitDoneAtInsertion` (which finds the `@<text>`
+    // token in the model and swaps it for the chosen reference).
+    const openChipCompletion = (chip, editable) => {
+      const text = chip.textContent || '';
+      const query = text.startsWith('@') ? text.slice(1) : text;
+      const rect = chip.getBoundingClientRect();
+      const POPUP_WIDTH = 480;
+      const overflows = rect.left + POPUP_WIDTH > window.innerWidth - 8;
+      doneCmpEditableRef.current = editable;
+      const r = document.createRange();
+      const tn = chip.firstChild;
+      if (tn && tn.nodeType === Node.TEXT_NODE) r.setStart(tn, tn.textContent.length);
+      else r.setStartAfter(chip);
+      r.collapse(true);
+      doneCmpRangeRef.current = r;
+      doneCmpQueryRef.current = query;
+      setDoneCmpSelectedIdx(0);
+      setDoneCmpPos(overflows
+        ? { top: rect.bottom + 4, right: window.innerWidth - rect.right, query }
+        : { top: rect.bottom + 4, left: rect.left, query });
+    };
+
+    // Backspace while editing a chip — code identifier OR file (caret inside it,
+    // or right after it). On the FIRST deletion the chip flips into "editing" mode:
+    // a literal `@` is prepended (so it reads like an in-progress `@mention`) and
+    // the completion popup opens showing the closest match. Each further Backspace
+    // trims one character and re-filters the popup. Deleting past the last
+    // character removes the chip. Everything stays imperative (no re-render) so the
+    // popup and caret don't flicker; `data-ref-raw` mirrors the visible `@<text>`
+    // so the model / serializer stay in sync.
+    const editChipDelete = (chip, editable) => {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      // The editable string is the chip's RAW reference, always carrying a leading
+      // `@`. Once editing has started the chip's text already is that `@…` string;
+      // on the FIRST deletion we derive it from `data-ref-raw` (NOT the display
+      // text) so structured chips — external sections (`@Doc.md#Section`) and
+      // line-anchored files (`@File.java#L3`) — edit from their true token rather
+      // than the pretty ` › §` / concatenated form shown in the pill.
+      const editing = chip.classList.contains('spec-ref-editing');
+      let base;
+      if (editing) {
+        base = chip.textContent || '';
+      } else {
+        const rawRef = chip.dataset.refRaw || chip.textContent || '';
+        base = rawRef.startsWith('@') ? rawRef : `@${rawRef}`;
+      }
+      const ident = base.startsWith('@') ? base.slice(1) : base;
+      if (editing && ident.length === 0) {
+        // Only the leading `@` remains → drop the whole chip.
+        const parent = chip.parentNode;
+        const anchor = chip.previousSibling;
+        chip.remove();
+        if (anchor && anchor.nodeType === Node.TEXT_NODE) range.setStart(anchor, anchor.textContent.length);
+        else if (parent) range.setStart(parent, 0);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        setDoneCmpPos(null);
+        doneCmpEditableRef.current = null;
+        doneCmpRangeRef.current = null;
+        doneCmpQueryRef.current = '';
+        return;
+      }
+      const nextText = `@${ident.slice(0, -1)}`;
+      chip.textContent = nextText;
+      chip.dataset.refRaw = nextText;
+      // While editing, the leading `@` stands in for the file-type icon — hide the
+      // icon so the chip reads as an in-progress `@mention`. The class is dropped
+      // when the chip re-renders on commit (or the next model sync).
+      chip.classList.add('spec-ref-editing');
+      const tn = chip.firstChild;
+      if (tn && tn.nodeType === Node.TEXT_NODE) range.setStart(tn, nextText.length);
+      else range.setStartAfter(chip);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      openChipCompletion(chip, editable);
+    };
+
+    // The expanded `[name] (path)` breadcrumb (`.spec-md-link`) is atomic.
+    const mdLinkBeforeCaret = (range) => {
+      const { startContainer, startOffset } = range;
+      let node = null;
+      if (startContainer.nodeType === Node.ELEMENT_NODE) node = startContainer.childNodes[startOffset - 1] || null;
+      else if (startContainer.nodeType === Node.TEXT_NODE) { if (startOffset > 0) return null; node = startContainer.previousSibling; }
+      return node instanceof HTMLElement && node.classList.contains('spec-md-link') ? node : null;
+    };
+
+    // Backspace on the expanded breadcrumb erases ONE character at a time, driven
+    // through `draftCode` (React reconciles — no imperative DOM mutation, so no
+    // crash). While the `[name] (` structure survives the breadcrumb stays a
+    // single `.spec-md-link` span (thanks to the lenient token). Once erasing
+    // would break that structure, the small remnant is dropped whole so the
+    // filename never re-tokenizes into a phantom chip.
+    const deleteCharFromMdLink = (link) => {
+      const rowEl = link.closest('.spec-done-row');
+      const editable = link.parentElement?.closest('[contenteditable]');
+      const linkText = link.textContent || '';
+      const rawIndexAttr = rowEl?.dataset.rawIndex ?? null;
+      const rawIndex = rawIndexAttr != null ? Number(rawIndexAttr) : NaN;
+      if (!Number.isInteger(rawIndex)) return;
+      let baseOffset = 0;
+      if (editable) {
+        try {
+          const pre = document.createRange();
+          pre.selectNodeContents(editable);
+          pre.setEndBefore(link);
+          baseOffset = pre.toString().length;
+        } catch { baseOffset = 0; }
+      }
+      const shrunk = linkText.slice(0, -1);
+      const nextText = /^\[[^\]]+\]\s?\(/.test(shrunk) ? shrunk : '';
+      pendingCaretRestoreRef.current = { rawIndex: rawIndexAttr, rowKey: rowEl?.dataset.rowKey ?? null, offset: baseOffset + nextText.length };
+      setDraftCode((prev) => {
+        const lines = prev.split(/\r?\n/);
+        if (rawIndex >= 0 && rawIndex < lines.length) {
+          const at = lines[rawIndex].indexOf(linkText);
+          if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + linkText.length);
+        }
+        return lines.join('\n');
+      });
+      onUserInput?.();
+    };
+
+    // The node sitting immediately AFTER a collapsed caret (mirror of
+    // refChipBeforeCaret). Used for ArrowRight traversal.
+    const refChipAfterCaret = (range) => {
+      const { startContainer, startOffset } = range;
+      let node = null;
+      if (startContainer.nodeType === Node.ELEMENT_NODE) {
+        node = startContainer.childNodes[startOffset] || null;
+      } else if (startContainer.nodeType === Node.TEXT_NODE) {
+        if (startOffset < (startContainer.textContent?.length ?? 0)) return null; // text still sits after the caret
+        node = startContainer.nextSibling;
+      }
+      return node instanceof HTMLElement && node.classList.contains('spec-ref') ? node : null;
+    };
+
+    // Place a collapsed caret just before / after a node, preferring the adjacent
+    // text node so the caret lands in a real, editable position.
+    const placeCaretBeside = (node, side) => {
+      const sel = window.getSelection();
+      if (!sel) return;
+      const range = document.createRange();
+      const sibling = side === 'after' ? node.nextSibling : node.previousSibling;
+      if (sibling && sibling.nodeType === Node.TEXT_NODE) {
+        range.setStart(sibling, side === 'after' ? 0 : sibling.textContent.length);
+      } else if (side === 'after') {
+        range.setStartAfter(node);
+      } else {
+        range.setStartBefore(node);
+      }
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    };
+
     const handleKeydown = (e) => {
-      if (e.key !== 'Backspace') return;
       const editable = e.target instanceof HTMLElement ? e.target.closest('[contenteditable]') : null;
+
+      // Arrow traversal across an ATOMIC section chip (external/current-section):
+      // one press steps the caret cleanly to the far side of the pill (the browser
+      // otherwise drops the caret at inconsistent spots inside a
+      // contentEditable=false chip). File chips are editable now, so the caret
+      // moves INTO them natively — no interception needed.
+      if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        if (!editable || !el.contains(editable)) return;
+        const sel = window.getSelection();
+        if (sel && sel.isCollapsed && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0);
+          const chip = e.key === 'ArrowRight' ? refChipAfterCaret(range) : refChipBeforeCaret(range);
+          const isAtomic = chip && chip.classList.contains('spec-ref-current-section');
+          if (isAtomic && editable.contains(chip)) {
+            e.preventDefault();
+            placeCaretBeside(chip, e.key === 'ArrowRight' ? 'after' : 'before');
+          }
+        }
+        return;
+      }
+
+      if (e.key !== 'Backspace') return;
       if (!editable || !el.contains(editable)) return;
+
+      const sel = window.getSelection();
+      if (sel && sel.isCollapsed && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        // Caret INSIDE an editable chip (code identifier OR file) → prepend `@`
+        // and drive the completion popup, deleting one character at a time.
+        const inside = editableChipAtCaret(range);
+        if (inside && editable.contains(inside)) {
+          e.preventDefault();
+          editChipDelete(inside, editable);
+          return;
+        }
+        const chip = refChipBeforeCaret(range);
+        if (chip && editable.contains(chip)) {
+          e.preventDefault();
+          // Every editable chip (file, code, external-section) uses the same
+          // `@`-completion editing flow: a literal `@` is prepended and the popup
+          // surfaces the closest match.
+          editChipDelete(chip, editable);
+          return;
+        }
+        // Backspace on the expanded breadcrumb erases one character at a time.
+        const mdLink = mdLinkBeforeCaret(range);
+        if (mdLink && editable.contains(mdLink)) {
+          e.preventDefault();
+          deleteCharFromMdLink(mdLink);
+          return;
+        }
+      }
+
       if ((editable.textContent ?? '').length > 0) return; // still has content
       e.preventDefault();
       const row = editable.closest('.spec-done-row');
@@ -10022,21 +10942,37 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     {doneCmpPos && createPortal(
       <>
         <div className="add-popup-overlay" onMouseDown={() => setDoneCmpPos(null)} />
-        <AddPopup
-          files={addPopupFiles}
-          searchControlled={doneCmpPos.query ?? ''}
-          autoFocusSearch={false}
+        <AtCompletionPopup
+          query={doneCmpPos.query ?? ''}
           onClose={() => setDoneCmpPos(null)}
-          onSelectFile={(item) => {
+          onSelectItem={(item) => {
             applyDoneCompletion(buildCompletionSelection({
               label: item.label,
-              description: item.description,
+              description: item.path,
             }));
+            setDoneCmpPos(null);
+          }}
+          onSelectCommand={(cmd) => {
+            applyDoneCommandText(cmd.label);
             setDoneCmpPos(null);
           }}
           style={{ position: 'fixed', top: doneCmpPos.top, left: doneCmpPos.left, right: doneCmpPos.right }}
         />
       </>,
+      document.body
+    )}
+    {refHoverTip && createPortal(
+      // Wrapped in `theme-dark` so the int-ui-kit `.tooltip` CSS variables
+      // (`--tooltip-bg`, `--tooltip-border`, …), which are scoped to the theme
+      // root, resolve even though the portal mounts on document.body.
+      <div className="theme-dark spec-ref-hover-tooltip-layer">
+        <div
+          className="tooltip text-ui-default spec-ref-hover-tooltip"
+          style={{ position: 'fixed', top: refHoverTip.top, left: refHoverTip.left, transform: 'translate(-50%, -100%)' }}
+        >
+          <span className="tooltip-text">{refHoverTip.path}</span>
+        </div>
+      </div>,
       document.body
     )}
     {commentPopup && (
@@ -11289,6 +12225,15 @@ function createVetSchedulesSpecDocument() {
         { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
         { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
         { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan can keep using static hourly slots while this work is in progress.' },
+      ],
+    },
+    {
+      id: 'references',
+      title: 'Implementation Notes',
+      items: [
+        { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
+        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L14-L20' },
+        { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
       ],
     },
     {
@@ -14448,6 +15393,12 @@ export default function App() {
   const [agentTaskCommentEntries, setAgentTaskCommentEntries] = useState(() => initialActiveAgentTaskState.commentEntries ?? []);
   const [doneCommentResetToken, setDoneCommentResetToken] = useState(0);
   const [highlightedProblemLocation, setHighlightedProblemLocation] = useState(null);
+  // Pending scroll-to-line request for a code file opened from a code chip in
+  // the spec ({ tabId, line, key }). Consumed by the line-reveal effect below.
+  const [pendingEditorLineReveal, setPendingEditorLineReveal] = useState(null);
+  // Pending scroll-to-section request for a doc opened from a reference anchor
+  // (e.g. `#Plan`) — ({ section, key }). Consumed by the section-reveal effect.
+  const [pendingSpecSectionReveal, setPendingSpecSectionReveal] = useState(null);
   const problemsTreeNodesByDisplayRef = useRef(new Map());
   const [generationTabId, setGenerationTabId] = useState(INITIAL_ACTIVE_AGENT_TASK_TAB_ID);
   const [specTopBarStatusesByTab, setSpecTopBarStatusesByTab] = useState({
@@ -15861,14 +16812,25 @@ export default function App() {
     updatePlanDiffUiStateForTab,
   ]);
 
-  const openEditorTabByLabel = useCallback((label) => {
+  const openEditorTabByLabel = useCallback((label, { line = null, section = null } = {}) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
+    const revealLine = Number.isInteger(line) && line > 0 ? line : null;
+    const revealSection = typeof section === 'string' && section.trim().length > 0 ? section.trim() : null;
+    const requestReveal = (tabId) => {
+      if (revealLine) {
+        setPendingEditorLineReveal((prev) => ({ tabId, line: revealLine, key: (prev?.key ?? 0) + 1 }));
+      }
+      if (revealSection) {
+        setPendingSpecSectionReveal((prev) => ({ section: revealSection, key: (prev?.key ?? 0) + 1 }));
+      }
+    };
 
     const normalizedLabel = label.trim();
     const existingTabIndex = ideTabs.findIndex((tab) => tab.label === normalizedLabel);
     if (existingTabIndex >= 0) {
       setScreen('ide');
       setActiveEditorTab(existingTabIndex);
+      requestReveal(ideTabs[existingTabIndex].id);
       return;
     }
 
@@ -15882,6 +16844,7 @@ export default function App() {
     const agentTaskId = AGENT_TASK_BY_LABEL[lowerLabel];
     if (agentTaskId) {
       handleAgentTaskSelect(agentTaskId);
+      requestReveal(null);
       return;
     }
 
@@ -15921,7 +16884,11 @@ export default function App() {
       icon: resolveAgentTaskPlanFileIcon(normalizedLabel),
       closable: true,
     };
-    const finalContent = tabContent ?? {
+    // Prefer the shared source registry (VisitRepository.java, ownerDetails.html,
+    // etc.) so a file opened from a code chip shows the exact content the line
+    // resolver indexed — otherwise it would open empty and the reveal would miss.
+    const registrySource = getSpecSourceFileContent(normalizedLabel);
+    const finalContent = tabContent ?? registrySource ?? {
       language: languageByExtension(normalizedLabel),
       code: previewCode,
     };
@@ -15933,7 +16900,96 @@ export default function App() {
     }));
     setScreen('ide');
     setActiveEditorTab(ideTabs.length);
+    requestReveal(finalTab.id);
   }, [ideTabs, handleAgentTaskSelect]);
+
+  // Reveal a source line after a code chip opens its file: scroll the matching
+  // `.pce-line` into view and briefly flash it. The editor is a library
+  // component with no line API, so we drive its rendered DOM directly and retry
+  // for a few frames while the tab mounts. Best-effort: gives up silently if the
+  // line never appears (e.g. file shorter than expected).
+  useEffect(() => {
+    const reveal = pendingEditorLineReveal;
+    if (!reveal || !Number.isInteger(reveal.line) || reveal.line <= 0) return undefined;
+    if (reveal.tabId && reveal.tabId !== activeEditorTabId) return undefined;
+    let cancelled = false;
+    let rafId = 0;
+    let flashTimeoutId = 0;
+    let attempts = 0;
+    const tryReveal = () => {
+      if (cancelled) return;
+      const editor = document.querySelector('.main-window-editor-content .editor-code .prism-code-editor');
+      const lines = editor ? editor.querySelectorAll('.pce-line') : null;
+      if (lines && lines.length >= reveal.line) {
+        const target = lines[reveal.line - 1];
+        if (target instanceof HTMLElement) {
+          target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          target.classList.add('pce-line-jump');
+          flashTimeoutId = window.setTimeout(() => target.classList.remove('pce-line-jump'), 1200);
+        }
+        setPendingEditorLineReveal(null);
+        return;
+      }
+      attempts += 1;
+      if (attempts > 40) {
+        setPendingEditorLineReveal(null);
+        return;
+      }
+      rafId = requestAnimationFrame(tryReveal);
+    };
+    rafId = requestAnimationFrame(tryReveal);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (flashTimeoutId) clearTimeout(flashTimeoutId);
+    };
+  }, [pendingEditorLineReveal, activeEditorTabId]);
+
+  // Reveal a document section after a reference anchor (e.g. `#Plan`) opens its
+  // doc: scroll the matching heading into view and flash it. Works for the spec
+  // overlay headings (`.spec-done-heading`) and, as a fallback, `## Section`
+  // lines in a plain markdown editor tab. Best-effort with a short retry window
+  // while the target doc mounts/switches.
+  useEffect(() => {
+    const reveal = pendingSpecSectionReveal;
+    if (!reveal || typeof reveal.section !== 'string' || !reveal.section.trim()) return undefined;
+    const wanted = reveal.section.trim().toLowerCase();
+    let cancelled = false;
+    let rafId = 0;
+    let flashTimeoutId = 0;
+    let attempts = 0;
+    const norm = (text) => String(text ?? '').replace(/^#+\s*/, '').trim().toLowerCase();
+    const isVisible = (node) => node instanceof HTMLElement && node.getClientRects().length > 0;
+    const tryReveal = () => {
+      if (cancelled) return;
+      let target = null;
+      document.querySelectorAll('.spec-done-overlay .spec-done-heading').forEach((h) => {
+        if (!target && isVisible(h) && norm(h.textContent) === wanted) target = h;
+      });
+      if (!target) {
+        document
+          .querySelectorAll('.main-window-editor-content .editor-code .prism-code-editor .pce-line')
+          .forEach((l) => { if (!target && isVisible(l) && norm(l.textContent) === wanted) target = l; });
+      }
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const flashEl = target.closest('.spec-done-heading-row') || target;
+        flashEl.classList.add('spec-section-jump');
+        flashTimeoutId = window.setTimeout(() => flashEl.classList.remove('spec-section-jump'), 1300);
+        setPendingSpecSectionReveal(null);
+        return;
+      }
+      attempts += 1;
+      if (attempts > 60) { setPendingSpecSectionReveal(null); return; }
+      rafId = requestAnimationFrame(tryReveal);
+    };
+    rafId = requestAnimationFrame(tryReveal);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (flashTimeoutId) clearTimeout(flashTimeoutId);
+    };
+  }, [pendingSpecSectionReveal, activeEditorTabId]);
 
   const openSpecVersionDiffTab = useCallback(({
     sourceTabId,
