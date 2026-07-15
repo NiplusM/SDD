@@ -6,7 +6,7 @@ export default function AIUXLayoutScreen() {
     <App
       initialScreen="ide"
       initialEditorTabId="aiux-new-session"
-      initialOpenToolWindows={['project']}
+      initialOpenToolWindows={['agents']}
     />
   );
 }

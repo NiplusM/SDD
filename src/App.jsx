@@ -13,11 +13,10 @@ import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading }
 import {
   ThemeProvider,
   MainWindow,
+  CommitWindow,
   MainToolbar,
   MainToolbarIconButton,
   Banner,
-  CommitWindow,
-  DEFAULT_COMMIT_TOOLBAR_BUTTONS,
   SettingsDialog,
   ToolWindow,
   PositionedPopup,
@@ -51,18 +50,18 @@ import './App.css';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'spring-petclinic';
-const PROJECT_ROOT_PATH_DISPLAY = '~/projects/spring-petclinic';
-const BRANCH_NAME = 'feature/visit-booking';
+const PROJECT_NAME = 'commons-math';
+const PROJECT_ROOT_PATH_DISPLAY = '~/commons-math';
+const BRANCH_NAME = 'main';
 const RUN_CONFIGURATION_NAME = 'PetClinicApplication';
-const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
+const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'AccurateMath'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
 const INITIAL_PLAN_DIFF_SOURCE_TAB_ID = '1';
 const INITIAL_PLAN_DIFF_TAB_ID = buildPlanDiffTabId(INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
 const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
-const CHATS_HISTORY_TOOL_WINDOW_ID = 'chats-history';
+const CHATS_HISTORY_TOOL_WINDOW_ID = 'agents';
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
 const AGENT_TASK_GENERATING_STATE_ENABLED = true;
 const AGENT_TASK_USES_INTERMEDIATE_STATES =
@@ -1003,7 +1002,7 @@ function ProjectToolWindowWithAiSessions({
   onShowAllSessions = null,
 }) {
   const [isAiSessionsExpanded, setIsAiSessionsExpanded] = useState(true);
-  const [isProjectContextExpanded, setIsProjectContextExpanded] = useState(true);
+  const [isProjectContextExpanded, setIsProjectContextExpanded] = useState(false);
   const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
   const [areAiSessionActionsVisible, setAreAiSessionActionsVisible] = useState(false);
   const [isShowingAllSessions, setIsShowingAllSessions] = useState(false);
@@ -1061,7 +1060,7 @@ function ProjectToolWindowWithAiSessions({
       icon: <AiChatClaudeIcon />,
       type: 'new-session',
     },
-    ...chatRows.filter((chat) => !specLinkedChatIds.has(chat.id)).map((chat) => ({
+    ...chatRows.map((chat) => ({
       ...chat,
       type: chat.type ?? 'chat',
       icon: <AiChatAgentIcon icon={chat.agent ?? chat.icon ?? 'claude'} />,
@@ -1105,6 +1104,105 @@ function ProjectToolWindowWithAiSessions({
     ] : []),
   ];
 
+  const renderProjectContextRow = (row) => (
+    <button
+      type="button"
+      key={row.id}
+      className="aiux550-project-row"
+      style={{ '--level': row.level ?? 0 }}
+      onClick={row.onToggle}
+    >
+      <span className="aiux550-project-chevron">
+        {!row.leaf ? <Icon name={row.collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} /> : null}
+      </span>
+      <Icon className="aiux550-project-icon" name={row.icon} size={16} />
+      <span className="aiux550-project-label"><span>{row.label}</span></span>
+    </button>
+  );
+
+  const renderAiSessionRow = (row) => {
+    const isSelected = row.id === activeAiSessionRowId;
+    const hasChildren = Array.isArray(row.children) && row.children.length > 0;
+    const isExpanded = expandedChatRows.has(row.id) || shouldShowAllSessions;
+    const diff = row.diff ?? null;
+    const status = row.status ?? null;
+
+    return (
+      <div key={row.id} className="aiux550-project-chat-node">
+        <button
+          type="button"
+          role="button"
+          className={`aiux550-project-chat-row${isSelected ? ' selected' : ''}${hasChildren ? ' expandable' : ''}`}
+          onClick={() => {
+            if (row.type === 'new-session') {
+              onOpenNewSession?.();
+              return;
+            }
+            onOpenChatInTab?.(row.id);
+          }}
+        >
+          <span className="aiux550-project-chat-chevron">
+            {hasChildren ? (
+              <button
+                type="button"
+                aria-label={isExpanded ? `Collapse ${row.title}` : `Expand ${row.title}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleChatRow(row.id);
+                }}
+              >
+                <Icon name={isExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+              </button>
+            ) : null}
+          </span>
+          <span className="aiux550-project-agent">{row.icon ?? <AiChatAgentIcon icon={row.agent ?? 'claude'} />}</span>
+          <span className="aiux550-project-chat-title">
+            {row.cloud ? <ReferenceCloudMarker /> : null}
+            <span>{row.title}</span>
+          </span>
+          <span className="aiux550-project-diff">
+            {diff ? (
+              <>
+                <span>+{diff.added}</span>
+                <span>-{diff.deleted}</span>
+              </>
+            ) : null}
+          </span>
+          <span className="aiux550-project-status">
+            {status === 'loading' ? <span className="aiux543-spinner" /> : null}
+            {status === 'ready' ? <span className="aiux543-ready-dot" /> : null}
+          </span>
+          <time>{row.time}</time>
+        </button>
+        {hasChildren && isExpanded ? (
+          <AiChatRowChildren
+            chatId={row.id}
+            sections={row.children}
+            collapsedSections={collapsedChatSections}
+            onToggleSection={toggleChatSection}
+          />
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderSpecRow = (task) => {
+    const isSelected = task.id === activeAiSessionRowId || task.id === selectedTaskId;
+    return (
+      <button
+        type="button"
+        key={task.id}
+        className={`aiux550-project-row aiux-project-spec-row${isSelected ? ' selected' : ''}`}
+        style={{ '--level': 1 }}
+        onClick={() => onOpenSpecTask?.(task.id)}
+      >
+        <span className="aiux550-project-chevron" />
+        <Icon className="aiux-project-spec-icon aiux550-project-md-icon" name="fileTypes/markdown" size={16} />
+        <span className="aiux550-project-label"><span>{task.label}</span></span>
+      </button>
+    );
+  };
+
   return (
     <ToolWindow
       title="Project"
@@ -1118,8 +1216,53 @@ function ProjectToolWindowWithAiSessions({
       }}
       className="aiux550-project-tool-window project-window main-window-tool-window main-window-tool-window-left"
     >
-      <div className="aiux550-project-tree">
-        <Tree data={projectTreeData} defaultSelectedId="src" />
+      <div
+        ref={scrollContainerRef}
+        className={`aiux550-project-tree${areAiSessionActionsVisible ? ' aiux550-ai-sessions-actions-visible' : ''}${isAiSessionsStuck ? ' aiux550-ai-sessions-stuck' : ''}`}
+        onScroll={updateStuckState}
+      >
+        <section
+          ref={aiSessionsRef}
+          className="aiux550-ai-sessions"
+          onMouseEnter={() => setAreAiSessionActionsVisible(true)}
+          onMouseLeave={() => setAreAiSessionActionsVisible(false)}
+        >
+          <div className="aiux550-ai-sessions-header">
+            <button
+              type="button"
+              className="aiux550-project-row"
+              style={{ '--level': 0 }}
+              onClick={() => setIsAiSessionsExpanded((prev) => !prev)}
+            >
+              <span className="aiux550-project-chevron">
+                <Icon name={isAiSessionsExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+              </span>
+              <span className="aiux550-project-icon aiux550-project-ai-icon">@</span>
+              <span className="aiux550-project-label"><span>AI Sessions</span></span>
+            </button>
+            <div className="aiux550-ai-sessions-actions">
+              <button type="button" className="aiux550-ai-sessions-show-all" onClick={onShowAllSessions}>Show all</button>
+              <button type="button" className="aiux550-ai-sessions-add" aria-label="New AI session" onClick={onOpenNewSession}>
+                <Icon name="general/add" size={16} />
+              </button>
+            </div>
+          </div>
+          {isAiSessionsExpanded ? (
+            <>
+              {visibleProjectContextRows.map(renderProjectContextRow)}
+              <div className="aiux550-ai-session-list">
+                {aiSessionRows.map(renderAiSessionRow)}
+              </div>
+              <div className="aiux-project-specs-section">
+                <div className="aiux-project-specs-list">
+                  {agentTasks.map(renderSpecRow)}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </section>
+        <div className="aiux550-project-separator" />
+        <Tree data={projectTreeData} defaultSelectedId="__none" />
       </div>
     </ToolWindow>
   );
@@ -1243,27 +1386,33 @@ function buildExpandedSpecRowsFromGroups(groups) {
 
 function ChatsHistoryToolWindow({
   ctx,
-  activeChatId = 'request-logging',
+  activeChatId = AIUX_NEW_SESSION_TAB_ID,
   activeSpecId = null,
   onActiveChatIdChange = null,
   agentTasks = AGENT_TASKS,
   chatRows = AI_SESSION_CHATS,
+  onOpenNewSession = null,
   onOpenSpecTask = null,
   onOpenSpecChat = null,
   onOpenChatInTab = null,
+  onSettings = null,
+  onOpenChangesList = null,
 }) {
-  const [isCreateProjectMenuOpen, setIsCreateProjectMenuOpen] = useState(false);
   const [groups, setGroups] = useState(() => buildChatHistoryGroups(agentTasks, chatRows));
   const [expandedProjects, setExpandedProjects] = useState(() => (
     Object.fromEntries(buildChatHistoryGroups(agentTasks, chatRows).map((group) => [group.project ?? group.title, true]))
   ));
-  const [expandedSections, setExpandedSections] = useState({});
+  const [expandedSections, setExpandedSections] = useState({
+    'request-logging:changes': true,
+    'request-logging:context': true,
+  });
   const [expandedRows, setExpandedRows] = useState(() => (
-    buildExpandedSpecRowsFromGroups(buildChatHistoryGroups(agentTasks, chatRows))
+    ({ ...buildExpandedSpecRowsFromGroups(buildChatHistoryGroups(agentTasks, chatRows)), 'request-logging': true, 'spec-visit-booking': true, 'spec-vb-implement': true })
   ));
   const [openProjectPrompt, setOpenProjectPrompt] = useState(null);
-  const selectedId = activeChatId;
-  const closeCreateProjectMenu = () => setIsCreateProjectMenuOpen(false);
+  const [historySelectedId, setHistorySelectedId] = useState(activeChatId || AIUX_NEW_SESSION_TAB_ID);
+  const selectedId = historySelectedId || AIUX_NEW_SESSION_TAB_ID;
+  const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
 
   useEffect(() => {
     const nextGroups = buildChatHistoryGroups(agentTasks, chatRows);
@@ -1284,7 +1433,12 @@ function ChatsHistoryToolWindow({
   }, [agentTasks, chatRows]);
 
   const handleSelectChat = (chatId, specId = null) => {
+    setHistorySelectedId(chatId);
     onActiveChatIdChange?.(chatId);
+    if (chatId === AIUX_NEW_SESSION_TAB_ID) {
+      onOpenNewSession?.();
+      return;
+    }
     if (specId) {
       // Chat under a spec node: open the spec in a center tab AND the chat
       // on the left AI panel (mirrors the New Session "Recent specs" flow).
@@ -1323,53 +1477,60 @@ function ChatsHistoryToolWindow({
       onFocus={() => ctx.setFocusedPanel('left')}
       onFocusCapture={() => ctx.setFocusedPanel('left')}
       onActionClick={(action) => {
-        closeCreateProjectMenu();
         if (action === 'minimize') ctx.setShowLeftPanel(false);
       }}
-      toolbarExtra={(
-        <div className="aiux543-create-project-anchor">
-          <IconButton
-            icon="actions/addDirectory"
-            tooltip="New Project"
-            onClick={() => setIsCreateProjectMenuOpen((prev) => !prev)}
-          />
-          {isCreateProjectMenuOpen ? (
-            <div className="aiux543-create-project-menu" role="menu" aria-label="Create project">
-              {['New Project', 'Get From VCS', 'Open...'].map((item) => (
-                <button key={item} type="button" role="menuitem" onClick={closeCreateProjectMenu}>
-                  {item}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      )}
-      className={`main-window-tool-window main-window-tool-window-left aiux543-history-tool-window${isCreateProjectMenuOpen ? ' create-menu-open' : ''}`}
+      className="main-window-tool-window main-window-tool-window-left aiux543-history-tool-window aiux550-history-tool-window"
     >
       <div className="aiux543-tool-history-content">
+        <div className="aiux543-history-top-actions" aria-label="Chats History actions">
+          <button className="toolbar-button aiux543-history-top-action" type="button" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
+            <div className="toolbar-button-content">
+              <HistoryNewAgentIcon className="toolbar-button-icon" />
+              <span className="toolbar-button-text text-ui-default">New Agent</span>
+            </div>
+          </button>
+          <button type="button" className="aiux543-history-top-action aiux550-new-scope-action" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
+            <HistoryNewScopeIcon />
+            <span><span>New Scope</span><span> with shared context</span></span>
+          </button>
+          <button className="toolbar-button aiux543-history-top-action" type="button">
+            <div className="toolbar-button-content">
+              <HistorySkillsIcon className="toolbar-button-icon" />
+              <span className="toolbar-button-text text-ui-default">Skills</span>
+            </div>
+          </button>
+        </div>
         <label className="aiux543-tool-search-field">
-          <Icon name="toolwindows/find" size={16} />
+          <Aiux550SearchIcon />
           <input placeholder="Search projects or chats" />
         </label>
-        <ReferenceChatList
+        <Aiux550HistoryList
           activeChatId={selectedId}
-          activeSpecId={activeSpecId}
-          groups={groups}
-          expandedProjects={expandedProjects}
+          rows={flatRows}
           expandedRows={expandedRows}
           expandedSections={expandedSections}
-          selectedActive={ctx.focusedPanel === 'left'}
+          selectedActive
           className="aiux543-tool-chat-list"
-          onCreateThread={handleCreateThread}
-          onOpenProject={(projectName) => {
-            setOpenProjectPrompt(projectName);
-          }}
-          onOpenSpecTask={onOpenSpecTask}
           onSelectChat={handleSelectChat}
-          onToggleProject={(projectName) => setExpandedProjects((prev) => ({ ...prev, [projectName]: !(prev[projectName] ?? true) }))}
+          onOpenChangesList={onOpenChangesList}
           onToggleRow={(rowId) => setExpandedRows((prev) => ({ ...prev, [rowId]: !(prev[rowId] ?? false) }))}
-          onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? true) }))}
+          onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? false) }))}
         />
+        <div className="aiux543-history-bottom-region">
+          <div className="aiux543-history-bottom-bar">
+            <button type="button" className="aiux543-history-bottom-settings" onClick={onSettings}>
+              <Icon name="general/settings" size={16} />
+              <span>Settings</span>
+            </button>
+            <button type="button" className="aiux543-history-bottom-plan" aria-expanded="false">
+              <span>JetBrains AI Free</span>
+              <span className="aiux543-history-bottom-plan-usage">
+                <HistoryCreditsIcon className="aiux543-history-credits-icon" />
+                <span>618.04</span>
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
       {openProjectPrompt ? (
         <ReferenceOpenProjectOverlay
@@ -1405,6 +1566,665 @@ function ReferenceOpenProjectOverlay({ projectName, onCancel, onOpenThisWindow }
         </div>
       </div>
     </div>
+  );
+}
+
+function HistoryNewAgentIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={`icon ${className}`.trim()} aria-hidden="true" focusable="false">
+      <path fillRule="evenodd" clipRule="evenodd" d="M7 3H3C1.89543 3 1 3.89543 1 5V11C1 12.1046 1.89543 13 3 13H11C12.1046 13 13 12.1046 13 11V9H12V11C12 11.5523 11.5523 12 11 12H3C2.44772 12 2 11.5523 2 11V5C2 4.44772 2.44772 4 3 4H7V3Z" fill="#CED0D6" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M12.5 0C12.2239 0 12 0.223858 12 0.5V3H9.5C9.22386 3 9 3.22386 9 3.5C9 3.77614 9.22386 4 9.5 4H12V6.5C12 6.77614 12.2239 7 12.5 7C12.7761 7 13 6.77614 13 6.5V4H15.5C15.7761 4 16 3.77614 16 3.5C16 3.22386 15.7761 3 15.5 3H13V0.5C13 0.223858 12.7761 0 12.5 0Z" fill="#CED0D6" />
+    </svg>
+  );
+}
+
+function HistoryNewScopeIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={`icon ${className}`.trim()} aria-hidden="true" focusable="false">
+      <path fillRule="evenodd" clipRule="evenodd" d="M12.5 9C12.7761 9 13 9.22386 13 9.5V12H15.5C15.7761 12 16 12.2239 16 12.5C16 12.7761 15.7761 13 15.5 13H13V15.5C13 15.7761 12.7761 16 12.5 16C12.2239 16 12 15.7761 12 15.5V13H9.5C9.22386 13 9 12.7761 9 12.5C9 12.2239 9.22386 12 9.5 12H12V9.5C12 9.22386 12.2239 9 12.5 9Z" fill="#548AF7" />
+      <path d="M3 3L6.08579 3L8.08579 5H13C13.5523 5 14 5.44772 14 6V8H15V6C15 4.89543 14.1046 4 13 4H8.5L6.79289 2.29289C6.60536 2.10536 6.351 2 6.08579 2H3C1.89543 2 1 2.89543 1 4V12C1 13.1046 1.89543 14 3 14H8V13H3C2.44772 13 2 12.5523 2 12V4C2 3.44772 2.44772 3 3 3Z" fill="#CED0D6" />
+    </svg>
+  );
+}
+
+function HistorySkillsIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={`icon ${className}`.trim()} aria-hidden="true" focusable="false">
+      <rect x="1.5" y="1.5" width="5" height="5" rx="0.5" stroke="#CED0D6" />
+      <rect x="1.5" y="8.5" width="5" height="5" rx="0.5" stroke="#CED0D6" />
+      <rect x="8.5" y="8.5" width="5" height="5" rx="0.5" stroke="#CED0D6" />
+      <rect x="8.5" y="1.5" width="5" height="5" rx="0.5" stroke="#CED0D6" />
+    </svg>
+  );
+}
+
+function HistoryCreditsIcon({ className = '' } = {}) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 13.5 11.6326" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true" focusable="false">
+      <path fillRule="evenodd" clipRule="evenodd" d="M9.41968 3.52849C9.60801 3.34079 9.91336 3.34042 10.1015 3.52849C10.2897 3.71673 10.2896 4.02292 10.1015 4.21122L8.39795 5.91378C8.35801 5.95372 8.31152 5.98307 8.26329 6.00607C8.37391 6.23066 8.4375 6.48272 8.4375 6.75C8.4375 7.68198 7.68198 8.4375 6.75 8.4375C5.81802 8.4375 5.0625 7.68198 5.0625 6.75C5.0625 5.81802 5.81802 5.0625 6.75 5.0625C7.07966 5.0625 7.38661 5.15803 7.64648 5.32146C7.6659 5.28986 7.6888 5.25938 7.71617 5.232L9.41968 3.52849ZM6.75 6.02679C6.35058 6.02679 6.02679 6.35058 6.02679 6.75C6.02679 7.14942 6.35058 7.47321 6.75 7.47321C7.14942 7.47321 7.47321 7.14942 7.47321 6.75C7.47321 6.35058 7.14942 6.02679 6.75 6.02679Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M6.75 0C10.4779 0 13.5 3.02208 13.5 6.75C13.5 8.49088 12.8401 10.0769 11.7577 11.2739C11.5422 11.5123 11.2292 11.6326 10.9078 11.6326H2.59224C2.27082 11.6326 1.95784 11.5123 1.74226 11.2739C0.659904 10.0769 0 8.49088 0 6.75C0 3.02208 3.02208 0 6.75 0ZM6.75 0.964286C3.55464 0.964286 0.964286 3.55464 0.964286 6.75C0.964286 8.04833 1.39343 9.24524 2.11609 10.21C2.32728 10.492 2.669 10.6363 3.02126 10.6363H10.4787C10.831 10.6363 11.1727 10.492 11.3839 10.21C12.1066 9.24524 12.5357 8.04833 12.5357 6.75C12.5357 3.55464 9.94536 0.964286 6.75 0.964286Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Aiux550SearchIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon" aria-hidden="true" focusable="false">
+      <circle cx="6.75" cy="6.75" r="4.75" stroke="#CED0D6" />
+      <path d="M10.1992 10.2L13.4992 13.4959" stroke="#CED0D6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function Aiux550ChevronIcon({ expanded, className = 'icon' }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true" focusable="false">
+      {expanded ? (
+        <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="#B4B8BF" strokeLinecap="round" />
+      ) : (
+        <path d="M6 11.5L9.5 8L6 4.5" stroke="#B4B8BF" strokeLinecap="round" />
+      )}
+    </svg>
+  );
+}
+
+const AIUX550_HISTORY_FALLBACK_ROWS = [
+  { id: 'refresh-fixtures', title: 'Refresh solver test fixtures', agent: 'claude', time: '4h', diff: { added: 12, deleted: 4 }, expandable: true },
+  { id: 'maven-warnings', title: 'Clean up Maven dependency warnings', agent: 'codex', time: '6h', cloud: true },
+  { id: 'nullability-generated', title: 'Check nullability annotations in generated sources', agent: 'junie', time: '9h', diff: { added: 6, deleted: 1 }, expandable: true },
+  { id: 'package-ownership', title: 'Map package ownership before refactor', agent: 'junie', time: '12h' },
+  { id: 'brightness-slider', title: 'Implement gradient brightness slider control', agent: 'junie', time: '8d' },
+  { id: 'preview-states', title: 'Compare generated preview states', agent: 'junie', time: '8d', expandable: true },
+  { id: 'share-summary', title: 'Share current chat summary', agent: 'codex', time: '12d', cloud: true },
+  { id: 'rank-related', title: 'Rank related chats near current file', agent: 'claude', time: '16d', cloud: true, expandable: true },
+  { id: 'project-overview', title: 'Project overview', agent: 'claude', time: '30w' },
+  { id: 'weekly-overview', title: 'Prepare weekly project overview', agent: 'codex', time: '5w', expandable: true },
+  { id: 'archive-overview', title: 'Summarize archived project overview', agent: 'claude', time: '30w' },
+];
+
+// Full tree content for every expandable Chats History row. `request-logging`
+// mirrors the reference layout exactly; the other rows carry on-theme content so
+// no Changes / Context / Sub-threads branch renders empty. File icons are derived
+// from each label's extension; sub-thread leaves render the sub-agent's icon.
+const AIUX550_HISTORY_ROW_CONTENT = {
+  'request-logging': {
+    changes: [
+      { label: 'index.html', status: 'modified' },
+      { label: 'app.js', status: 'added' },
+      { label: 'styles.css', status: 'deleted' },
+    ],
+    context: ['AdapterScript.java', 'FunctionUtils.java', 'pom.xml'],
+    subThreads: [
+      { label: 'Retry & backoff follow-up', agent: 'codex' },
+      { label: 'Log format review', agent: 'claude' },
+    ],
+  },
+  'understand-codebase': {
+    changes: [
+      { label: 'CodebaseMap.md', status: 'added' },
+      { label: 'architecture.md', status: 'added' },
+    ],
+    context: ['AdapterScript.java', 'FunctionUtils.java', 'pom.xml'],
+    subThreads: [{ label: 'Module boundaries', agent: 'claude' }],
+  },
+  'class-three-params-green': {
+    changes: [
+      { label: 'TripleIntConfig.java', status: 'added' },
+      { label: 'TripleIntConfigTest.java', status: 'added' },
+    ],
+    context: ['TripleIntConfig.java', 'pom.xml'],
+    subThreads: [{ label: 'Validation follow-up', agent: 'junie' }],
+  },
+  'refresh-fixtures': {
+    changes: [
+      { label: 'SolverFixtures.java', status: 'modified' },
+      { label: 'fixtures.json', status: 'modified' },
+      { label: 'LegacyFixtures.java', status: 'deleted' },
+    ],
+    context: ['Solver.java', 'SolverTest.java'],
+    subThreads: [{ label: 'Fixture data audit', agent: 'codex' }],
+  },
+  'nullability-generated': {
+    changes: [
+      { label: 'Generated.java', status: 'modified' },
+      { label: 'package-info.java', status: 'added' },
+    ],
+    context: ['NullabilityProcessor.java', 'pom.xml'],
+    subThreads: [{ label: 'Annotation policy', agent: 'junie' }],
+  },
+  'preview-states': {
+    changes: [
+      { label: 'PreviewState.java', status: 'modified' },
+      { label: 'preview.json', status: 'added' },
+    ],
+    context: ['PreviewRenderer.java'],
+    subThreads: [{ label: 'Snapshot diffing', agent: 'claude' }],
+  },
+  'rank-related': {
+    changes: [
+      { label: 'RelatedRanker.java', status: 'modified' },
+      { label: 'RankerTest.java', status: 'added' },
+    ],
+    context: ['ChatIndex.java', 'EmbeddingStore.java'],
+    subThreads: [{ label: 'Scoring heuristics', agent: 'codex' }],
+  },
+  'weekly-overview': {
+    changes: [{ label: 'weekly-report.md', status: 'added' }],
+    context: ['metrics.json', 'contributors.md'],
+    subThreads: [{ label: 'Metrics sources', agent: 'claude' }],
+  },
+  // Chats spawned from the Visit-Booking.md / Vet-Schedules.md specs.
+  'spec-vb-implement': {
+    changes: [
+      { label: 'VisitController.java', status: 'modified' },
+      { label: 'BookingService.java', status: 'added' },
+      { label: 'visits.html', status: 'modified' },
+    ],
+    context: ['Visit-Booking.md', 'VetRepository.java', 'schema.sql'],
+    subThreads: [{ label: 'Slot generation', agent: 'codex' }],
+  },
+  'spec-vb-availability': {
+    changes: [
+      { label: 'AvailabilityChecker.java', status: 'added' },
+      { label: 'VetRepository.java', status: 'modified' },
+    ],
+    context: ['Visit-Booking.md', 'Vet.java'],
+    subThreads: [{ label: 'Timezone handling', agent: 'claude' }],
+  },
+  'spec-vb-review': {
+    changes: [{ label: 'BookingValidator.java', status: 'modified' }],
+    context: ['Visit-Booking.md', 'BookingService.java'],
+    subThreads: [{ label: 'Edge cases', agent: 'junie' }],
+  },
+  'spec-vs-model': {
+    changes: [
+      { label: 'VetSchedule.java', status: 'added' },
+      { label: 'schema.sql', status: 'modified' },
+    ],
+    context: ['Vet-Schedules.md', 'Vet.java'],
+    subThreads: [{ label: 'Weekday enum', agent: 'claude' }],
+  },
+  'spec-vs-offhours': {
+    changes: [
+      { label: 'ScheduleValidator.java', status: 'added' },
+      { label: 'BookingService.java', status: 'modified' },
+    ],
+    context: ['Vet-Schedules.md', 'VetSchedule.java'],
+    subThreads: [{ label: 'Rejection messages', agent: 'codex' }],
+  },
+};
+
+function buildAiux550HistoryChildren(rowId, diff) {
+  const content = AIUX550_HISTORY_ROW_CONTENT[rowId] ?? {};
+  const changeItems = content.changes ?? [];
+  const summary = diff ?? changeItems.reduce(
+    (acc, item) => {
+      if (item.status === 'deleted') acc.deleted += 1;
+      else acc.added += 1;
+      return acc;
+    },
+    { added: 0, deleted: 0 },
+  );
+  return [
+    { id: 'changes', label: 'Changes', summary, items: changeItems },
+    { id: 'context', label: 'Context', items: content.context ?? [] },
+    { id: 'sub-threads', label: 'Sub-threads', items: content.subThreads ?? [] },
+  ];
+}
+
+function withAiux550CollapsedChildren(row) {
+  if (!row.expandable) return row;
+  return { ...row, children: buildAiux550HistoryChildren(row.id, row.diff) };
+}
+
+function buildAiux550HistoryRows() {
+  return [
+    {
+      id: AIUX_NEW_SESSION_TAB_ID,
+      title: 'New Agent',
+      agent: 'claude',
+      time: 'now',
+      type: 'new-session',
+    },
+    {
+      id: 'request-logging',
+      title: 'Add request logging to a Java application',
+      agent: 'claude',
+      time: '2m',
+      status: 'approval',
+      diff: { added: 14, deleted: 23 },
+      children: buildAiux550HistoryChildren('request-logging', { added: 14, deleted: 23 }),
+    },
+    {
+      id: 'understand-codebase',
+      title: 'Understanding the existing Java codebase',
+      agent: 'claude',
+      time: '3m',
+      diff: { added: 5, deleted: 0 },
+      planProgress: { current: 2, total: 5 },
+      children: buildAiux550HistoryChildren('understand-codebase', { added: 5, deleted: 0 }),
+    },
+    {
+      id: 'class-three-params-green',
+      title: 'Create a class with 3 int parameters',
+      agent: 'junie',
+      cloud: true,
+      time: '22h',
+      children: buildAiux550HistoryChildren('class-three-params-green'),
+    },
+    {
+      id: 'reminders',
+      title: 'Implement reminders and notifications',
+      agent: 'claude',
+      time: '1d',
+    },
+    {
+      id: 'related-items',
+      title: 'Add ‘related items’ section',
+      agent: 'claude',
+      cloud: true,
+      time: '16d',
+    },
+    ...AIUX550_HISTORY_FALLBACK_ROWS.map(withAiux550CollapsedChildren),
+  ];
+}
+
+// Spec-driven entries shown above the flat Agents list. Each spec is a `.md`
+// document that owns the chats spawned from it, so it renders as an expandable
+// row whose children are those chats. Each chat, in turn, carries the same
+// Changes / Context / Sub-threads tree as the Agents-section chats.
+const AIUX550_HISTORY_SPECS = [
+  {
+    id: 'spec-visit-booking',
+    kind: 'spec',
+    title: 'Visit-Booking.md',
+    time: '2m',
+    chats: [
+      { id: 'spec-vb-implement', title: 'Implement visit booking flow', agent: 'claude', time: '2m', diff: { added: 42, deleted: 11 } },
+      { id: 'spec-vb-availability', title: 'Add vet availability check', agent: 'junie', time: '18m' },
+      { id: 'spec-vb-review', title: 'Review booking validation', agent: 'codex', time: '1h', cloud: true },
+    ],
+  },
+  {
+    id: 'spec-vet-schedules',
+    kind: 'spec',
+    title: 'Vet-Schedules.md',
+    time: '3h',
+    chats: [
+      { id: 'spec-vs-model', title: 'Model weekday schedules', agent: 'claude', time: '3h', diff: { added: 16, deleted: 2 } },
+      { id: 'spec-vs-offhours', title: 'Reject off-hours bookings', agent: 'junie', time: '5h' },
+    ],
+  },
+].map((spec) => ({
+  ...spec,
+  chats: spec.chats.map((chat) => ({
+    ...chat,
+    children: buildAiux550HistoryChildren(chat.id, chat.diff),
+  })),
+}));
+
+function Aiux550HistoryList({
+  activeChatId,
+  rows,
+  specs = AIUX550_HISTORY_SPECS,
+  expandedRows,
+  expandedSections,
+  selectedActive,
+  className = '',
+  onSelectChat,
+  onOpenChangesList,
+  onToggleRow,
+  onToggleSection,
+}) {
+  const effectiveActiveChatId = rows.some((row) => row.id === activeChatId)
+    ? activeChatId
+    : AIUX_NEW_SESSION_TAB_ID;
+
+  return (
+    <div className={`aiux543-chat-list aiux543-chat-list-flat ${className}`.trim()}>
+      {specs?.length ? (
+        <section>
+          <div className="aiux543-chat-group-rows">
+            <ReferenceChatSectionHeader expanded label="Specs" onToggle={() => {}} />
+            {specs.map((spec) => {
+              const isExpanded = expandedRows[spec.id] ?? false;
+              return (
+                <div className="aiux543-chat-node" key={spec.id}>
+                  <Aiux550HistoryRow
+                    row={spec}
+                    expanded={isExpanded}
+                    selected={spec.id === effectiveActiveChatId}
+                    selectedActive={selectedActive}
+                    onSelect={() => onSelectChat?.(spec.id)}
+                    onToggleExpanded={() => onToggleRow?.(spec.id)}
+                  />
+                  {spec.chats?.length && isExpanded ? (
+                    <div className="aiux543-chat-spec-children">
+                      {spec.chats.map((chat) => {
+                        const chatExpanded = expandedRows[chat.id] ?? false;
+                        return (
+                          <div className="aiux543-chat-node" key={chat.id}>
+                            <Aiux550HistoryRow
+                              row={chat}
+                              nested
+                              expanded={chatExpanded}
+                              selected={chat.id === effectiveActiveChatId}
+                              selectedActive={selectedActive}
+                              onSelect={() => onSelectChat?.(chat.id)}
+                              onToggleExpanded={() => onToggleRow?.(chat.id)}
+                            />
+                            {chat.children?.length && chatExpanded ? (
+                              <Aiux550HistoryRowChildren
+                                sections={chat.children}
+                                rowId={chat.id}
+                                expandedSections={expandedSections}
+                                onToggleSection={onToggleSection}
+                                onOpenChangesList={onOpenChangesList}
+                              />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+      <section>
+        <div className="aiux543-chat-group-rows">
+          <ReferenceChatSectionHeader
+            expanded
+            label="Agents"
+            onToggle={() => {}}
+          />
+          {rows.map((row) => {
+            const isExpanded = expandedRows[row.id] ?? false;
+            return (
+              <div className="aiux543-chat-node" key={row.id}>
+                <Aiux550HistoryRow
+                  row={row}
+                  expanded={isExpanded}
+                  selected={row.id === effectiveActiveChatId}
+                  selectedActive={selectedActive}
+                  onSelect={() => onSelectChat?.(row.id)}
+                  onToggleExpanded={() => onToggleRow?.(row.id)}
+                />
+                {row.children?.length && isExpanded ? (
+                  <Aiux550HistoryRowChildren
+                    sections={row.children}
+                    rowId={row.id}
+                    expandedSections={expandedSections}
+                    onToggleSection={onToggleSection}
+                    onOpenChangesList={onOpenChangesList}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Aiux550HistoryRow({
+  row,
+  expanded,
+  selected,
+  selectedActive,
+  onSelect,
+  onToggleExpanded,
+  nested = false,
+}) {
+  const hasChildren = Boolean(row.children?.length) || Boolean(row.chats?.length);
+  const changeSummary = row.diff;
+  const isSpec = row.kind === 'spec';
+
+  return (
+    <div
+      className={[
+        'aiux543-chat-row',
+        nested ? 'aiux543-chat-subrow' : '',
+        selected ? `selected ${selectedActive ? 'selected-active' : 'selected-inactive'}` : '',
+        hasChildren ? 'expandable' : '',
+        changeSummary ? 'has-change-summary' : '',
+        row.planProgress ? 'has-status has-progress-plan' : '',
+      ].filter(Boolean).join(' ')}
+      onClick={onSelect}
+    >
+      {hasChildren ? (
+        <span
+          className="aiux543-chat-row-chevron"
+          aria-expanded={expanded}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded?.();
+          }}
+        >
+          <Aiux550ChevronIcon expanded={expanded} />
+        </span>
+      ) : (
+        <span className="aiux543-chat-row-chevron-spacer" aria-hidden="true" />
+      )}
+      <span className="aiux543-chat-title">
+        {isSpec ? (
+          <IconMdTask className="aiux543-chat-burst aiux543-chat-md-icon" />
+        ) : (
+          <ReferenceChatAgentIcon agent={row.agent} mode={row.mode} />
+        )}
+        {row.cloud ? <ReferenceCloudMarker /> : null}
+        <span>{row.title}</span>
+      </span>
+      <span className="aiux543-chat-row-meta">
+        {row.status === 'approval' ? (
+          <span className="aiux543-approval-dot-wrap" role="button" tabIndex={0} aria-label="Preview pending approval">
+            <span className="aiux543-chat-activity-dot" aria-label="Awaiting confirmation" />
+            <span className="aiux543-approval-dot-label">Approval</span>
+          </span>
+        ) : null}
+        {row.planProgress ? (
+          <span className="aiux543-progress-plan-wrap">
+            <span className="aiux543-progress-plan-badge" aria-label={`Plan progress: ${row.planProgress.current} of ${row.planProgress.total}`} tabIndex={0}>
+              <span>{row.planProgress.current}/{row.planProgress.total}</span>
+              <span className="aiux543-spinner aiux543-progress-plan-spinner" aria-hidden="true" />
+            </span>
+          </span>
+        ) : null}
+        {changeSummary ? (
+          <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${changeSummary.added}, minus ${changeSummary.deleted}`}>
+            <span className="added">+{changeSummary.added}</span>
+            <span className="deleted">-{changeSummary.deleted}</span>
+          </span>
+        ) : null}
+        <span className="aiux543-chat-time">{row.time}</span>
+      </span>
+    </div>
+  );
+}
+
+function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggleSection, onOpenChangesList }) {
+  return (
+    <div className="aiux543-chat-row-children">
+      {sections.map((section) => {
+        const sectionKey = `${rowId}:${section.id}`;
+        const isExpanded = expandedSections[sectionKey] ?? false;
+        return (
+          <div className="aiux543-chat-row-child-section" key={section.id}>
+            <div
+              className={[
+                'aiux543-chat-tree-row',
+                'aiux543-chat-tree-section',
+                'aiux543-chat-tree-section-header',
+                section.id === 'changes' ? 'aiux543-chat-tree-section-with-action' : '',
+              ].filter(Boolean).join(' ')}
+              aria-expanded={isExpanded}
+            >
+              <button
+                className="aiux543-chat-tree-section-toggle"
+                type="button"
+                aria-expanded={isExpanded}
+                onClick={() => onToggleSection?.(sectionKey)}
+              >
+                <Aiux550ChevronIcon expanded={isExpanded} className="icon aiux543-chat-tree-chevron" />
+                <Aiux550HistoryChildSectionIcon sectionId={section.id} />
+                <span>{section.label}</span>
+              </button>
+              {section.id === 'changes' ? (
+                <button
+                  className="aiux543-chat-tree-section-link"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenChangesList?.(rowId);
+                  }}
+                >
+                  See list
+                </button>
+              ) : null}
+            </div>
+            {isExpanded && section.items?.length ? (
+              <div className="aiux543-chat-tree-children">
+                {section.items.map((item) => {
+                  const isObject = typeof item === 'object' && item !== null;
+                  const label = isObject ? item.label : item;
+                  const status = isObject ? item.status : undefined;
+                  const isSubThread = section.id === 'sub-threads';
+                  return (
+                    <div className="aiux543-chat-tree-item" key={label}>
+                      <button
+                        className={[
+                          'aiux543-chat-tree-row',
+                          'aiux543-chat-tree-leaf',
+                          'aiux543-chat-tree-leaf-openable',
+                          isSubThread ? 'aiux543-chat-tree-subthread-leaf' : '',
+                          !isSubThread && status ? `aiux543-chat-tree-leaf-${status}` : '',
+                        ].filter(Boolean).join(' ')}
+                        type="button"
+                        style={{ '--tree-level': 1 }}
+                      >
+                        <span className="aiux543-chat-tree-chevron-spacer" />
+                        {isSubThread ? (
+                          <ReferenceChatAgentIcon agent={(isObject && item.agent) || 'claude'} mode={isObject ? item.mode : undefined} />
+                        ) : (
+                          <Aiux550TreeLeafIcon label={label} type={isObject ? item.type : undefined} />
+                        )}
+                        <span>{label}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Aiux550HistoryChildSectionIcon({ sectionId }) {
+  if (sectionId === 'changes') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon aiux543-chat-tree-icon" aria-hidden="true" focusable="false">
+        <rect x="2" y="5" width="7" height="1" rx="0.5" fill="#CED0D6" />
+        <rect x="2" y="8" width="5" height="1" rx="0.5" fill="#CED0D6" />
+        <rect x="2" y="2" width="12" height="1" rx="0.5" fill="#CED0D6" />
+        <path d="M8.5 14.5L10.5 12.5L8.5 10.5M5.5 12.5H10M12.5 10.5L10.5 8.5L12.5 6.5M15.5 8.5H11" stroke="#548AF7" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (sectionId === 'context') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon aiux543-chat-tree-icon" aria-hidden="true" focusable="false">
+        <path d="M8.10584 4.34613L8.25344 4.5H8.46667H13C13.8284 4.5 14.5 5.17157 14.5 6V12.1333C14.5 12.9529 13.932 13.5 13.3667 13.5H2.63333C2.06804 13.5 1.5 12.9529 1.5 12.1333V3.86667C1.5 3.04707 2.06804 2.5 2.63333 2.5H6.1217C6.25792 2.5 6.38824 2.55557 6.48253 2.65387L8.10584 4.34613Z" fill="#43454A" stroke="#CED0D6" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon aiux543-chat-tree-icon" aria-hidden="true" focusable="false">
+      <path d="M10 8.5H14C14.8284 8.5 15.5 9.17157 15.5 10V15.0654L13.2773 13.584L13.1514 13.5H10C9.17157 13.5 8.5 12.8284 8.5 12V10C8.5 9.17157 9.17157 8.5 10 8.5Z" stroke="#CED0D6" />
+      <path d="M7 12.7499C4.59166 12.1792 3 10.6818 3 8.77419C3 6.93548 4.67742 5.54839 6.91935 5.54839C8.59035 5.54839 9.78683 6.1856 9.97429 7.00011C9.98285 7.00004 9.99142 7 10 7H10.9875C10.8279 5.57487 9.1555 4.6129 6.87097 4.6129C4.04839 4.6129 2 6.35484 2 8.77419C2 11.2203 4.00509 13.136 7 13.7727V12.7499Z" fill="#CED0D6" />
+      <path d="M7 11.0559C5.77102 10.6244 5 9.79844 5 8.74194C5 7.32258 6.46774 6.59677 8.27419 7.22581L8.132 7.65239C8.01712 7.74392 7.90912 7.8437 7.80888 7.95084C6.74081 7.67768 6 7.99192 6 8.74194C6 9.25818 6.37024 9.71746 7 10.0296V11.0559Z" fill="#CED0D6" />
+      <path d="M13.9943 7C13.8461 4.10003 10.8462 2 6.75806 2C5.67742 2 4.35484 2.22581 3.58065 2.56452C3.19355 2.72581 3 2.91935 3 3.19355C3 3.54839 3.35484 3.77419 3.90323 3.54839C4.67742 3.20968 5.87097 3 6.75806 3C10.2591 3 12.8362 4.666 12.9925 7H13.9943Z" fill="#CED0D6" />
+    </svg>
+  );
+}
+
+function inferAiux550LeafType(label = '') {
+  const lower = label.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+  if (lower.endsWith('.css') || lower.endsWith('.scss')) return 'css';
+  if (lower.endsWith('.java')) return 'java';
+  if (lower.endsWith('.js') || lower.endsWith('.jsx') || lower.endsWith('.mjs')
+    || lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'js';
+  // Markdown, JSON, XML and other plain files share the stacked-lines glyph.
+  return 'text';
+}
+
+function Aiux550TreeLeafIcon({ type, label }) {
+  const resolvedType = type ?? inferAiux550LeafType(label);
+  const props = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 16 16',
+    fill: 'none',
+    xmlns: 'http://www.w3.org/2000/svg',
+    className: 'icon aiux543-chat-tree-icon',
+    'aria-hidden': true,
+    focusable: false,
+  };
+
+  if (resolvedType === 'html') {
+    return (
+      <svg {...props}>
+        <path d="M6.36812 4.9736C6.62969 4.77016 6.67681 4.39319 6.47337 4.13163C6.26992 3.87006 5.89296 3.82294 5.63139 4.02638L0.522461 7.99999L5.63139 11.9736C5.89296 12.177 6.26992 12.1299 6.47337 11.8684C6.67681 11.6068 6.62969 11.2298 6.36812 11.0264L2.47705 7.99999L6.36812 4.9736Z" fill="#57965C" />
+        <path d="M9.63139 4.9736C9.36983 4.77016 9.3227 4.39319 9.52615 4.13163C9.72959 3.87006 10.1066 3.82294 10.3681 4.02638L15.4771 7.99999L10.3681 11.9736C10.1066 12.177 9.72959 12.1299 9.52615 11.8684C9.3227 11.6068 9.36983 11.2298 9.63139 11.0264L13.5225 7.99999L9.63139 4.9736Z" fill="#57965C" />
+      </svg>
+    );
+  }
+
+  if (resolvedType === 'js') {
+    return (
+      <svg {...props}>
+        <path d="M14 4C14 2.89543 13.1046 2 12 2H4C2.89543 2 2 2.89543 2 4V12C2 13.1046 2.89543 14 4 14H12C13.1046 14 14 13.1046 14 12V4Z" fill="#F2C55C" />
+        <path d="M9.55434 11.8593C9.88209 12.0132 10.2583 12.0901 10.6829 12.0901C11.1047 12.0901 11.4795 12.0117 11.8073 11.855C12.135 11.6982 12.3901 11.4831 12.5725 11.2095C12.7549 10.933 12.8461 10.6238 12.8461 10.2818C12.8461 9.99963 12.7834 9.73315 12.658 9.48235C12.5326 9.23155 12.3545 9.02208 12.1236 8.85393C11.8956 8.68578 11.6348 8.57605 11.3413 8.52475L10.3452 8.3623C10.1429 8.3281 9.97899 8.24118 9.85359 8.10153C9.72819 7.95903 9.66549 7.79088 9.66549 7.59708C9.66549 7.43178 9.70824 7.28643 9.79374 7.16103C9.87924 7.03563 9.99894 6.93873 10.1528 6.87033C10.3067 6.80193 10.4849 6.76773 10.6872 6.76773C10.8896 6.76773 11.0677 6.80335 11.2216 6.8746C11.3755 6.94585 11.4952 7.04703 11.5807 7.17813C11.6662 7.30638 11.7089 7.45173 11.7089 7.61418H12.7221C12.7193 7.28073 12.6309 6.98433 12.4571 6.72498C12.2832 6.46563 12.041 6.26328 11.7303 6.11793C11.4225 5.97258 11.0705 5.8999 10.6744 5.8999C10.2868 5.8999 9.93909 5.97543 9.63129 6.12648C9.32349 6.27468 9.08266 6.4813 8.90881 6.74635C8.73781 7.00855 8.65231 7.30495 8.65231 7.63555C8.65231 7.912 8.70931 8.16708 8.82331 8.40078C8.94016 8.63163 9.10546 8.824 9.31921 8.9779C9.53296 9.1318 9.78519 9.2344 10.0759 9.2857L11.0891 9.4567C11.3114 9.49375 11.4895 9.5935 11.6234 9.75595C11.7574 9.91555 11.8244 10.1065 11.8244 10.3288C11.8244 10.5055 11.7773 10.6623 11.6833 10.7991C11.5921 10.933 11.461 11.037 11.29 11.1111C11.119 11.1852 10.9209 11.2223 10.6958 11.2223C10.4649 11.2223 10.2597 11.1824 10.0802 11.1026C9.90346 11.0199 9.76524 10.9045 9.66549 10.7563C9.56574 10.6081 9.51586 10.44 9.51586 10.2519H8.50269C8.50554 10.611 8.59959 10.9302 8.78484 11.2095C8.97009 11.4859 9.22659 11.7025 9.55434 11.8593Z" fill="#1E1F22" />
+        <path d="M5.22179 11H4.21289V12H5.32012C5.64787 12 5.93857 11.9316 6.19222 11.7948C6.44587 11.6551 6.64394 11.4613 6.78644 11.2134C6.92894 10.9654 7.00019 10.6804 7.00019 10.3584L7.00024 6H5.99989L5.99984 10.222C5.99984 10.3759 5.96707 10.5127 5.90152 10.6324C5.83882 10.7492 5.74762 10.8404 5.62792 10.906C5.51107 10.9687 5.37569 11 5.22179 11Z" fill="#1E1F22" />
+      </svg>
+    );
+  }
+
+  if (resolvedType === 'css') {
+    return (
+      <svg {...props}>
+        <path d="M7.99237 15L2.94069 13.6005L1.81494 1H14.1849L13.058 13.5985L7.99237 15Z" fill="#548AF7" />
+        <path d="M4.25747 5.1211L4.1167 3.57568H11.8739L11.5943 6.70361L11.5565 7.1186L11.1693 11.4482L7.99978 12.3249L7.99266 12.327L4.82048 11.4482L4.60352 9.02173H6.15807L6.26832 10.2543L7.993 10.719L7.99463 10.7186L9.7218 10.2533L9.90155 8.249L4.53431 8.249L4.39551 6.70361H10.0358L10.1768 5.1211H4.25747Z" fill="white" />
+      </svg>
+    );
+  }
+
+  if (resolvedType === 'java') {
+    return (
+      <svg {...props}>
+        <rect x="2" y="13" width="12" height="1" rx="0.5" fill="#C77D55" />
+        <path d="M2.5 3C2.5 2.72386 2.72386 2.5 3 2.5H12C12.2761 2.5 12.5 2.72386 12.5 3V8C12.5 9.933 10.933 11.5 9 11.5H6C4.067 11.5 2.5 9.933 2.5 8V3Z" fill="#45322B" stroke="#C77D55" />
+        <path d="M12.5 2.5H14.5C14.7761 2.5 15 2.72386 15 3V4.18121C15 4.78125 14.6424 5.32356 14.0909 5.55993L12.5 6.24173V2.5Z" stroke="#C77D55" />
+      </svg>
+    );
+  }
+
+  // Plain text-like files (xml, config, etc.) — four stacked lines.
+  return (
+    <svg {...props}>
+      <rect x="2" y="12" width="8" height="1" rx="0.5" fill="#CED0D6" />
+      <rect x="2" y="6" width="8" height="1" rx="0.5" fill="#CED0D6" />
+      <rect x="2" y="9" width="12" height="1" rx="0.5" fill="#CED0D6" />
+      <rect x="2" y="3" width="12" height="1" rx="0.5" fill="#CED0D6" />
+    </svg>
   );
 }
 
@@ -1745,17 +2565,17 @@ function ReferenceChatRowChildren({ sections }) {
 }
 
 const MY_PROJECTS = [
-  { id: '1', name: 'spring-petclinic', path: '~/projects/spring-petclinic', initials: 'SP', gradient: ['#548AF7', '#2E4D89'] },
+  { id: '1', name: 'commons-math', path: '~/commons-math', initials: 'CM', gradient: ['#548AF7', '#2E4D89'] },
   { id: '2', name: 'auth-module',     path: '~/projects/auth-module',     initials: 'AM', gradient: ['#8b5cf6', '#6d28d9'] },
   { id: '3', name: 'api-gateway',     path: '~/projects/api-gateway',     initials: 'AG', gradient: ['#10b981', '#059669'] },
 ];
 
 const MY_EDITOR_TABS = [
-  { id: '1', label: 'VisitController.java',          icon: 'fileTypes/java', closable: true },
-  { id: '2', label: 'Visit.java',                    icon: 'fileTypes/java', closable: true },
-  { id: '3', label: 'createOrUpdateVisitForm.html',  icon: 'fileTypes/html', closable: true },
-  { id: '4', label: 'schema.sql',                    icon: 'fileTypes/text', closable: true },
-  { id: '5', label: 'VisitControllerTests.java',     icon: 'fileTypes/java', closable: true },
+  { id: '1', label: 'AdapterScript.java',            icon: 'fileTypes/java', closable: true },
+  { id: '2', label: 'FunctionUtils.java',            icon: 'fileTypes/java', closable: true },
+  { id: '3', label: 'add-hover.svg',                 icon: 'fileTypes/svg', closable: true },
+  { id: '4', label: 'AdapterScriptInterface.java',   icon: 'fileTypes/java', closable: true },
+  { id: '5', label: 'AccurateMath.java',             icon: 'fileTypes/java', closable: true },
 ];
 
 const MY_EDITOR_TAB_CONTENTS = {
@@ -1986,34 +2806,20 @@ const MY_COMMIT_FILES = [
   {
     id: 'changes',
     label: 'Changes',
-    count: '4 files',
+    count: '2 files',
     isExpanded: true,
     children: [
       {
-        id: 'visit-controller',
-        label: 'VisitController.java',
-        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/owner',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-      {
-        id: 'diff-visit',
-        label: 'Visit.java',
-        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/owner',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-      {
         id: 'adapter-script',
         label: 'AdapterScript.java',
-        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/support',
+        path: '~/IdeaProjects/FastMath/src/main/java/com/example',
         icon: 'fileTypes/java',
         status: 'modified',
       },
       {
         id: 'function-utils',
         label: 'FunctionUtils.java',
-        path: '~/IdeaProjects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/support',
+        path: '~/IdeaProjects/FastMath/src/main/java/com/example',
         icon: 'fileTypes/java',
         status: 'modified',
       },
@@ -2026,15 +2832,86 @@ const MY_COMMIT_FILES = [
     isExpanded: false,
     children: [
       {
-        id: 'visit-controller-test',
-        label: 'VisitControllerTests.java',
-        path: '~/IdeaProjects/spring-petclinic/src/test/java/org/springframework/samples/petclinic/owner',
+        id: 'adapter-script-interface',
+        label: 'AdapterScriptInterface.java',
+        path: '~/IdeaProjects/FastMath/src/main/java/com/example',
         icon: 'fileTypes/java',
         status: 'added',
       },
     ],
   },
 ];
+
+function CommitStatusBadge({ status }) {
+  const label = status === 'added' ? 'A' : status === 'deleted' ? 'D' : 'M';
+  return <span className={`commit-reference-status ${status ?? 'modified'}`}>{label}</span>;
+}
+
+function commitFileIconName(fileName = '') {
+  const f = fileName.toLowerCase();
+  if (f.endsWith('.html') || f.endsWith('.htm')) return 'fileTypes/html';
+  if (f.endsWith('.js') || f.endsWith('.jsx')) return 'fileTypes/javaScript';
+  if (f.endsWith('.css') || f.endsWith('.scss')) return 'fileTypes/css';
+  if (f.endsWith('.java')) return 'fileTypes/java';
+  if (f.endsWith('.md')) return 'fileTypes/markdown';
+  if (f.endsWith('.xml')) return 'fileTypes/xml';
+  if (f.endsWith('.json')) return 'fileTypes/json';
+  return 'fileTypes/text';
+}
+
+function normalizeCommitFileStatus(status) {
+  return status === 'added' || status === 'deleted' || status === 'modified' ? status : 'modified';
+}
+
+// Group each chat's Changes into a CommitWindow file group, mirroring the
+// library's `buildChatAssociatedCommitGroups`: the chat's agent icon + title is
+// the group header, its changed files (with per-file status) are the children.
+function buildAiux550CommitGroups() {
+  return buildAiux550HistoryRows()
+    .map((row) => {
+      const changes = row.children?.find((section) => section.id === 'changes');
+      const items = (changes?.items ?? []).filter((item) => typeof item === 'object' && item !== null);
+      if (!items.length) return null;
+      return {
+        id: `chat-changes-${row.id}`,
+        icon: <ReferenceChatAgentIcon agent={row.agent} mode={row.mode} />,
+        label: row.title,
+        count: `${items.length} ${items.length === 1 ? 'file' : 'files'}`,
+        isExpanded: true,
+        children: items.map((item, index) => ({
+          id: `${row.id}-${item.label}-${index}`,
+          label: item.label,
+          path: `~/IdeaProjects/commons-math/AI chats/${row.title}`,
+          icon: commitFileIconName(item.label),
+          status: normalizeCommitFileStatus(item.status),
+        })),
+      };
+    })
+    .filter(Boolean);
+}
+
+// The library renders the Commit tool window with the kit's native CommitWindow
+// (see designers/*/AIUX-543 -> <CommitWindow files={chatAssociatedCommitGroups} />),
+// not a bespoke layout. Use it here so the look matches the library exactly.
+function ReferenceCommitToolWindow({ ctx }) {
+  const files = useMemo(() => buildAiux550CommitGroups(), []);
+  return (
+    <CommitWindow
+      title="Commit"
+      width="100%"
+      height="100%"
+      className="commit-window main-window-tool-window main-window-tool-window-left aiux550-chat-commit-tool-window"
+      commitMessage="Update chat-associated changes"
+      messagePlaceholder="Commit message for selected chat changes"
+      files={files}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
+      onActionClick={(action) => {
+        if (action === 'minimize') ctx.setShowLeftPanel(false);
+      }}
+    />
+  );
+}
 
 const PLAN_CODE_DIFF_PRESETS = {
   0: {
@@ -2207,109 +3084,71 @@ const MY_PROJECT_TREE = [
       { id: 'idea', label: '.idea', icon: 'nodes/folder' },
       {
         id: 'src',
-        label: 'src/main/java',
-        icon: 'nodes/sourceRoot',
+        label: 'src',
+        icon: 'nodes/folder',
         isExpanded: true,
         children: [
           {
-            id: 'owner',
-            label: 'owner',
-            icon: 'nodes/package',
-            isExpanded: true,
-            children: [
-              { id: 'visit',            label: 'Visit',             icon: 'nodes/class' },
-              { id: 'visitCtrl',        label: 'VisitController',   icon: 'nodes/class' },
-              { id: 'visitRepo',        label: 'VisitRepository',   icon: 'nodes/interface' },
-              { id: 'owner-file',       label: 'Owner',             icon: 'nodes/class' },
-              { id: 'pet',              label: 'Pet',               icon: 'nodes/class' },
-              { id: 'petTypeFormatter', label: 'PetTypeFormatter',  icon: 'nodes/class' },
-            ],
-          },
-          {
-            id: 'vet',
-            label: 'vet',
-            icon: 'nodes/package',
-            isExpanded: true,
-            children: [
-              { id: 'vet-file',     label: 'Vet',           icon: 'nodes/class' },
-              { id: 'vetRepo',      label: 'VetRepository', icon: 'nodes/interface' },
-              { id: 'vetFormatter', label: 'VetFormatter',  icon: 'nodes/class' },
-              { id: 'vetSchedule',  label: 'VetSchedule',   icon: 'nodes/class' },
-            ],
-          },
-          {
-            id: 'model',
-            label: 'model',
-            icon: 'nodes/package',
-            isExpanded: true,
-            children: [
-              { id: 'baseEntity', label: 'BaseEntity', icon: 'nodes/class' },
-              { id: 'person',     label: 'Person',     icon: 'nodes/class' },
-            ],
-          },
-        ],
-      },
-      {
-        id: 'resources',
-        label: 'src/main/resources',
-        icon: 'nodes/resourcesRoot',
-        isExpanded: true,
-        children: [
-          {
-            id: 'templates',
-            label: 'templates',
-            icon: 'nodes/folder',
+            id: 'main-java',
+            label: 'java',
+            icon: 'nodes/sourceRoot',
             isExpanded: true,
             children: [
               {
-                id: 'templates-pets',
-                label: 'pets',
-                icon: 'nodes/folder',
+                id: 'analysis',
+                label: 'analysis',
+                icon: 'nodes/package',
                 isExpanded: true,
                 children: [
-                  { id: 'visitForm', label: 'createOrUpdateVisitForm.html', icon: 'fileTypes/html' },
+                  { id: 'bivariate-function', label: 'BivariateFunction', icon: 'nodes/class' },
+                  { id: 'function-utils', label: 'FunctionUtils', icon: 'nodes/class' },
+                  { id: 'multivariate-function', label: 'MultivariateFunction', icon: 'nodes/interface' },
+                  { id: 'trivariate-function', label: 'TrivariateFunction', icon: 'nodes/interface' },
                 ],
               },
               {
-                id: 'templates-owners',
-                label: 'owners',
-                icon: 'nodes/folder',
+                id: 'polynomials',
+                label: 'polynomials',
+                icon: 'nodes/package',
                 isExpanded: true,
                 children: [
-                  { id: 'ownerDetails', label: 'ownerDetails.html', icon: 'fileTypes/html' },
+                  { id: 'polynomial-function', label: 'PolynomialFunction', icon: 'nodes/class' },
+                  { id: 'polynomial-spline-function', label: 'PolynomialSplineFunction', icon: 'nodes/class' },
+                  { id: 'polynomial-lagrange-form', label: 'PolynomialFunctionLagrangeForm', icon: 'nodes/class' },
+                ],
+              },
+              {
+                id: 'solver',
+                label: 'solver',
+                icon: 'nodes/package',
+                isExpanded: true,
+                children: [
+                  { id: 'bisection-solver', label: 'BisectionSolver', icon: 'nodes/class' },
+                  { id: 'brent-solver', label: 'BrentSolver', icon: 'nodes/class' },
+                  { id: 'univariate-solver', label: 'UnivariateSolver', icon: 'nodes/interface' },
                 ],
               },
             ],
           },
-          {
-            id: 'db',
-            label: 'db',
-            icon: 'nodes/folder',
-            isExpanded: true,
-            children: [
-              {
-                id: 'db-h2',
-                label: 'h2',
-                icon: 'nodes/folder',
-                isExpanded: true,
-                children: [
-                  { id: 'schema', label: 'schema.sql', icon: 'fileTypes/text' },
-                  { id: 'data',   label: 'data.sql',   icon: 'fileTypes/text' },
-                ],
-              },
-            ],
-          },
-          { id: 'appProps', label: 'application.properties', icon: 'fileTypes/properties' },
         ],
       },
       {
         id: 'test',
-        label: 'src/test/java',
-        icon: 'nodes/testRoot',
+        label: 'test',
+        icon: 'nodes/folder',
         isExpanded: true,
         children: [
-          { id: 'test1', label: 'VisitControllerTests', icon: 'nodes/class' },
-          { id: 'test2', label: 'ClinicServiceTests',   icon: 'nodes/class' },
+          {
+            id: 'test-java',
+            label: 'java',
+            icon: 'nodes/testRoot',
+            isExpanded: true,
+            children: [
+              { id: 'function-utils-test', label: 'FunctionUtilsTest', icon: 'nodes/class' },
+              { id: 'monitored-function', label: 'MonitoredFunction', icon: 'nodes/class' },
+              { id: 'sum-sync-function', label: 'SumSyncFunction', icon: 'nodes/class' },
+            ],
+          },
         ],
       },
       {
@@ -2318,17 +3157,52 @@ const MY_PROJECT_TREE = [
         icon: 'nodes/excludeRoot',
         isExpanded: true,
         children: [
-          { id: 'target-classes',   label: 'classes',           icon: 'nodes/excludeRoot' },
+          {
+            id: 'target-classes',
+            label: 'classes',
+            icon: 'nodes/excludeRoot',
+            isExpanded: true,
+            children: [
+              {
+                id: 'target-org',
+                label: 'org',
+                icon: 'nodes/package',
+                isExpanded: true,
+                children: [
+                  {
+                    id: 'target-analysis',
+                    label: 'analysis',
+                    icon: 'nodes/package',
+                    isExpanded: true,
+                    children: [
+                      { id: 'function-utils-class', label: 'FunctionUtils.class', icon: 'fileTypes/javaClass' },
+                      { id: 'polynomial-function-class', label: 'PolynomialFunction.class', icon: 'fileTypes/javaClass' },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
           { id: 'target-generated', label: 'generated-sources', icon: 'nodes/excludeRoot' },
+          { id: 'target-annotations', label: 'annotations', icon: 'nodes/folder' },
+          { id: 'target-nullability', label: 'NullabilityInfo', icon: 'fileTypes/text' },
+          { id: 'maven-status', label: 'maven-status', icon: 'nodes/folder' },
+          { id: 'maven-compiler-plugin', label: 'maven-compiler-plugin', icon: 'nodes/folder' },
+          { id: 'input-files', label: 'inputFiles.lst', icon: 'fileTypes/text' },
+          { id: 'build-info', label: 'BuildInfo', icon: 'fileTypes/text' },
         ],
       },
       { id: 'gitignore',         label: '.gitignore',         icon: 'fileTypes/text' },
       { id: 'external-libraries', label: 'External Libraries', icon: 'nodes/library' },
+      { id: 'jdk21', label: 'JDK 21', icon: 'nodes/library' },
+      { id: 'commons-lang', label: 'commons-lang3-3.14.0.jar', icon: 'nodes/ppLibFolder' },
+      { id: 'junit', label: 'junit-jupiter-api-5.10.2.jar', icon: 'nodes/ppLibFolder' },
+      { id: 'hamcrest', label: 'hamcrest-2.2.jar', icon: 'nodes/ppLibFolder' },
     ],
   },
 ];
 
-const PROJECT_ROOT_PATH = '~/projects/spring-petclinic';
+const PROJECT_ROOT_PATH = '~/commons-math';
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
@@ -4362,7 +5236,7 @@ function getCompletionAttachment(item) {
   return null;
 }
 
-const LEFT_TOOL_WINDOW_IDS = new Set(['project', 'commit', 'structure', 'agent-tasks', CHATS_HISTORY_TOOL_WINDOW_ID]);
+const LEFT_TOOL_WINDOW_IDS = new Set(['project', 'commit', 'structure', CHATS_HISTORY_TOOL_WINDOW_ID]);
 const BOTTOM_TOOL_WINDOW_IDS = new Set(['terminal', 'git', 'problems']);
 const BOTTOM_TOOL_WINDOW_TITLES = {
   terminal: 'Terminal',
@@ -12395,45 +13269,73 @@ const AGENT_TASKS = [
 // initial state; Vet-Schedules (t2) intentionally has no related chats yet.
 const AI_SESSION_CHATS = [
   {
-    id: 'spec-chat-agent-task-t1-build',
-    title: 'Build: Visit-Booking',
-    time: '12m',
-    agent: 'claude',
-    type: 'chat',
-    children: [
-      { id: 'specs', label: 'Specs', items: ['Visit-Booking.md'] },
-    ],
-  },
-  {
-    id: 'spec-chat-agent-task-t1-specified',
-    title: 'Specified: Visit-Booking',
-    time: '34m',
-    agent: 'claude',
-    type: 'chat',
-    children: [
-      { id: 'specs', label: 'Specs', items: ['Visit-Booking.md'] },
-    ],
-  },
-  {
     id: 'request-logging',
-    title: 'Add request logging to visits flow',
+    title: 'Add request logging to a Java application',
     time: '2m',
     agent: 'claude',
     type: 'chat',
     cloud: false,
-    diff: { added: 16, deleted: 4 },
+    diff: { added: 14, deleted: 23 },
     children: [
-      { id: 'changes', label: 'Changes', summary: { added: 16, deleted: 4 }, items: [
-        { label: 'RequestLoggingFilter.java', status: 'added' },
-        { label: 'application.yml', status: 'modified' },
-        { label: 'VisitController.java', status: 'modified' },
+      { id: 'changes', label: 'Changes', summary: { added: 14, deleted: 23 }, items: [
+        { label: 'index.html', status: 'modified' },
+        { label: 'app.js', status: 'added' },
+        { label: 'styles.css', status: 'deleted' },
+      ]},
+      { id: 'specs', label: 'Specs', items: ['1.md', '2.md'] },
+      { id: 'sub-threads', label: 'Sub-threads', items: [
+        { label: 'Sub-thread 1', agent: 'codex', chatId: 'maven-config' },
+        { label: 'Validation follow-up', agent: 'gemini', chatId: 'class-three-params' },
+        { label: 'Implementation notes', agent: 'claude', chatId: 'habits-app' },
       ]},
     ],
   },
   {
-    id: 'promote-vet-schedules-spec',
-    title: 'Clarify Vet-Schedules requirements',
-    time: 'now',
+    id: 'understand-codebase',
+    title: 'Understanding the existing Java codebase',
+    time: '3m',
+    agent: 'claude',
+    type: 'chat',
+    status: 'loading',
+    diff: { added: 5, deleted: 0 },
+    children: [
+      { id: 'changes', label: 'Changes', summary: { added: 5, deleted: 0 }, items: [
+        { label: 'CodebaseMap.md', status: 'added' },
+        { label: 'FunctionUtils.java', status: 'modified' },
+        { label: 'pom.xml', status: 'modified' },
+      ]},
+      { id: 'specs', label: 'Specs', items: ['architecture.md', 'entry-points.md'] },
+    ],
+  },
+  {
+    id: 'class-three-params-green',
+    title: 'Create a class with 3 int parameters',
+    time: '22h',
+    agent: 'claude',
+    type: 'chat',
+    cloud: true,
+    status: 'ready',
+    diff: { added: 8, deleted: 2 },
+    children: [
+      { id: 'changes', label: 'Changes', summary: { added: 8, deleted: 2 }, items: [
+        { label: 'TripleIntConfig.java', status: 'modified' },
+        { label: 'TripleIntConfigTest.java', status: 'added' },
+        { label: 'README.md', status: 'deleted' },
+      ]},
+      { id: 'specs', label: 'Specs', items: ['constructor.md', 'validation.md'] },
+    ],
+  },
+  {
+    id: 'reminders',
+    title: 'Implement reminders and notifications',
+    time: '1d',
+    agent: 'claude',
+    type: 'chat',
+  },
+  {
+    id: 'related-items',
+    title: 'Add ‘related items’ section',
+    time: '16d',
     agent: 'claude',
     type: 'chat',
   },
@@ -13760,7 +14662,7 @@ function ChatToolWindow({
 	          {onBackToHistory ? (
 	            <IconButton
 	              icon="general/chevronLeft"
-	              tooltip="Back to Chats History"
+	              tooltip="Back to Agents"
 	              className="ai-chat-toolbar-button ai-chat-back-button"
 	              onClick={onBackToHistory}
 	            />
@@ -15738,9 +16640,9 @@ export default function App({
     const initial = Array.isArray(initialOpenToolWindows) && initialOpenToolWindows.length > 0
       ? initialOpenToolWindows
       : ['commit'];
-    // 'ai' (right-side chat tool window) and 'agent-tasks' are currently hidden;
-    // filter them out if a caller passes them through initial state.
-    return initial.filter((id) => id !== 'ai' && id !== 'agent-tasks');
+    // The legacy right-side AI window is hidden; Agents is a first-class left
+    // tool window in this layout.
+    return initial.filter((id) => id !== 'ai');
   });
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
@@ -15776,9 +16678,9 @@ export default function App({
   }, [commentShortcutHintTarget]);
   const openAiToolWindow = useCallback(() => {
     setScreen('ide');
-    // AI chat reuses the Chats History tool-window slot — it doesn't get its own
+    // AI chat reuses the Agents tool-window slot; it doesn't get its own
     // stripe item. We swap the slot content via chatsHistorySlotShowsAiChat
-    // and make sure the chats-history window is the active left tool window.
+    // and make sure the Agents window is the active left tool window.
     setChatsHistorySlotShowsAiChat(true);
     setIdeOpenWindows((prev) => {
       const filtered = prev.filter((id) => (
@@ -15795,6 +16697,17 @@ export default function App({
       setChatsHistorySlotShowsAiChat(false);
     }
   }, [ideOpenWindows]);
+  // Mirrors the reference `openChatAssociatedCommitList`: the "See list" action in
+  // a chat's Changes section swaps the active left tool window to Commit. The kit
+  // owns which left tool window is visible, so we activate it via its stripe.
+  const openCommitToolWindow = useCallback(() => {
+    setScreen('ide');
+    if (typeof document === 'undefined') return;
+    const stripe = document.querySelector('.main-window .stripe[title="Commit"]');
+    if (stripe instanceof HTMLElement && stripe.getAttribute('aria-pressed') !== 'true') {
+      stripe.click();
+    }
+  }, []);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -16859,7 +17772,7 @@ export default function App({
     setScreen('ide');
     if (revealAgentTasks) {
       setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+        prev.includes(CHATS_HISTORY_TOOL_WINDOW_ID) ? prev : [...prev, CHATS_HISTORY_TOOL_WINDOW_ID]
       ));
     }
 
@@ -17360,7 +18273,7 @@ export default function App({
         setAgentTasksFocusedNodeId(`agent-task-tree-file:${resolvedTaskId}:${issueTarget.index}:0`);
       }
       setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+        prev.includes(CHATS_HISTORY_TOOL_WINDOW_ID) ? prev : [...prev, CHATS_HISTORY_TOOL_WINDOW_ID]
       ));
     }
     setScreen('ide');
@@ -19105,7 +20018,7 @@ export default function App({
     setScreen('ide');
     if (revealAgentTasks) {
       setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+        prev.includes(CHATS_HISTORY_TOOL_WINDOW_ID) ? prev : [...prev, CHATS_HISTORY_TOOL_WINDOW_ID]
       ));
     }
     setIdeTabs((prev) => (
@@ -22506,16 +23419,16 @@ export default function App({
       ? fileNameNode.textContent?.trim()
       : treeNode instanceof HTMLElement
         ? (
-            treeNode.textContent?.includes('Visit.java')
-              ? 'Visit.java'
-              : treeNode.textContent?.includes('VisitController.java')
-                ? 'VisitController.java'
+            treeNode.textContent?.includes('FunctionUtils.java')
+              ? 'FunctionUtils.java'
+              : treeNode.textContent?.includes('AdapterScript.java')
+                ? 'AdapterScript.java'
                 : ''
           )
         : '';
-    const diffRequest = clickedLabel === 'VisitController.java'
+    const diffRequest = clickedLabel === 'AdapterScript.java'
       ? AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST
-      : clickedLabel === 'Visit.java'
+      : clickedLabel === 'FunctionUtils.java'
         ? AI_CHAT_VISIT_DIFF_REQUEST
         : null;
 
@@ -22559,7 +23472,7 @@ export default function App({
     if (taskId) {
       setSelectedTask(taskId);
       setIdeOpenWindows((prev) => (
-        prev.includes('agent-tasks') ? prev : [...prev, 'agent-tasks']
+        prev.includes(CHATS_HISTORY_TOOL_WINDOW_ID) ? prev : [...prev, CHATS_HISTORY_TOOL_WINDOW_ID]
       ));
 
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
@@ -22665,8 +23578,12 @@ export default function App({
                 />
               ),
             }]
-          : [])),
+      : [])),
   ];
+  const projectTreeData = [{
+    ...MY_PROJECT_TREE[0],
+    children: MY_PROJECT_TREE[0].children,
+  }];
   const settingsDialogPortal = isSettingsDialogOpen && typeof document !== 'undefined'
     ? createPortal(
         <div className="theme-dark main-window-overlay main-window-overlay-modal app-settings-dialog-layer" onMouseDown={() => setIsSettingsDialogOpen(false)}>
@@ -22703,13 +23620,13 @@ export default function App({
           width={1100}
           height={800}
           projectName={PROJECT_NAME}
-          projectIcon="SD"
+          projectIcon="CM"
           projectColor="blue"
           branchName={BRANCH_NAME}
           toolbar={(
             <MainToolbar
               projectName={PROJECT_NAME}
-              projectIcon="SD"
+              projectIcon="CM"
               projectColor="blue"
               branchName={BRANCH_NAME}
               runConfig={RUN_CONFIGURATION_NAME}
@@ -22735,15 +23652,15 @@ export default function App({
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
-            { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chats History', section: 'top' },
+            { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Agents', section: 'top' },
             { id: '_sep',        separator: true,                                                   section: 'top'    },
-            // { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
           rightStripeItems={MY_RIGHT_STRIPE}
           defaultOpenToolWindows={['project']}
+          initialLeftPanelWidth={303}
 
           leftPanelContent={(id, ctx) => {
             if (id === 'project') return (
@@ -22754,18 +23671,17 @@ export default function App({
                 ctx={ctx}
               />
             );
-            // if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             if (id === CHATS_HISTORY_TOOL_WINDOW_ID) return (
               <ChatsHistoryToolWindow
-	                ctx={ctx}
-	                activeChatId={selectedAiChatId}
-	                activeSpecId={chatHistoryActiveSpecId}
-	                onActiveChatIdChange={setSelectedAiChatId}
+                ctx={ctx}
+                activeChatId={selectedAiChatId ?? AIUX_NEW_SESSION_TAB_ID}
                 agentTasks={agentTasks}
                 chatRows={aiSessionChatRows}
+                onOpenNewSession={openNewSessionTab}
                 onOpenSpecTask={openSpecTaskOnly}
                 onOpenSpecChat={openSpecChatFromRecents}
                 onOpenChatInTab={openChatInEditorTab}
+                onSettings={() => setIsSettingsDialogOpen(true)}
               />
             );
             return defaultLeftPanelContent(id, ctx);
@@ -22863,23 +23779,19 @@ export default function App({
       index: activePlanDiffTarget.index,
     });
   };
-  const projectTreeData = [{
-    ...MY_PROJECT_TREE[0],
-    children: MY_PROJECT_TREE[0].children,
-  }];
   return (
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideOpenWindows.join('-')}`}
         height={865}
         projectName={PROJECT_NAME}
-        projectIcon="SD"
+        projectIcon="CM"
         projectColor="blue"
         branchName={BRANCH_NAME}
         toolbar={(
           <MainToolbar
             projectName={PROJECT_NAME}
-            projectIcon="SD"
+            projectIcon="CM"
             projectColor="blue"
             branchName={BRANCH_NAME}
             runConfig={RUN_CONFIGURATION_NAME}
@@ -23010,15 +23922,15 @@ export default function App({
 
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
-          { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chats History', section: 'top' },
+          { id: CHATS_HISTORY_TOOL_WINDOW_ID, icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Agents', section: 'top' },
           { id: '_sep',        separator: true,                                                    section: 'top' },
-          // { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
         ]}
         rightStripeItems={MY_RIGHT_STRIPE}
         defaultOpenToolWindows={ideOpenWindows}
+        initialLeftPanelWidth={303}
 
         leftPanelContent={(id, ctx) => {
           if (id === 'project') return (
@@ -23043,34 +23955,23 @@ export default function App({
             }
             return (
               <ChatsHistoryToolWindow
-	                ctx={ctx}
-	                activeChatId={selectedAiChatId}
-	                activeSpecId={chatHistoryActiveSpecId}
-	                onActiveChatIdChange={setSelectedAiChatId}
+                ctx={ctx}
+                activeChatId={selectedAiChatId ?? (isAiuxNewSessionTab ? AIUX_NEW_SESSION_TAB_ID : null)}
+                activeSpecId={selectedTask}
                 agentTasks={agentTasks}
                 chatRows={aiSessionChatRows}
+                onOpenNewSession={openNewSessionTab}
                 onOpenSpecTask={openSpecTaskOnly}
                 onOpenSpecChat={openSpecChatFromRecents}
                 onOpenChatInTab={openChatInEditorTab}
+                onSettings={() => setIsSettingsDialogOpen(true)}
+                onOpenChangesList={openCommitToolWindow}
               />
             );
           }
           if (id === 'commit') return (
-            <CommitWindow
-              title="Commit"
-              width="100%"
-              height="100%"
-              files={MY_COMMIT_FILES}
-              toolbarButtons={DEFAULT_COMMIT_TOOLBAR_BUTTONS}
-              focused={ctx.focusedPanel === 'left'}
-              onFocus={() => ctx.setFocusedPanel('left')}
-              onActionClick={(action) => {
-                if (action === 'minimize') ctx.setShowLeftPanel(false);
-              }}
-              className="main-window-tool-window main-window-tool-window-left"
-            />
+            <ReferenceCommitToolWindow ctx={ctx} />
           );
-          // if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}

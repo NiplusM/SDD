@@ -6952,6 +6952,10 @@ body {
   width: 377px;
 }
 
+.main-window-left-panel-column:has(.aiux550-history-tool-window) {
+  width: 303px !important;
+}
+
 .aiux543-spec-related-chats {
   display: flex;
   flex-direction: column;
@@ -6972,6 +6976,275 @@ body {
 
 .commit-window .commit-file-name {
   cursor: pointer;
+}
+
+.commit-reference-window .tool-window-content {
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.commit-reference-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  background: #191a1c;
+  color: #d1d3d9;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.commit-reference-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 3px 8px;
+  border-bottom: 1px solid #2b2d30;
+  box-sizing: border-box;
+}
+
+.commit-reference-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #b8bcc7;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+}
+
+.commit-reference-toolbar-button:hover,
+.commit-reference-toolbar-button:focus-visible {
+  background: #2b2d30;
+  color: #ffffff;
+  outline: none;
+}
+
+.commit-reference-tree-region {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 5px 8px 8px;
+}
+
+.commit-reference-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.commit-reference-group-row,
+.commit-reference-file-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px 0 2px;
+  color: #d1d3d9;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font: 400 13px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+}
+
+.commit-reference-group-row:hover,
+.commit-reference-group-row:focus-visible,
+.commit-reference-file-row:hover,
+.commit-reference-file-row:focus-visible {
+  background: #2b2d30;
+  outline: none;
+}
+
+.commit-reference-files {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 34px;
+}
+
+.commit-reference-checkbox {
+  width: 13px;
+  height: 13px;
+  margin: 0 7px 0 2px;
+  border: 1px solid #6b7280;
+  border-radius: 3px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.commit-reference-checkbox.checked {
+  background: #3574f0;
+  border-color: #3574f0;
+  position: relative;
+}
+
+.commit-reference-checkbox.checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.commit-reference-group-label,
+.commit-reference-file-row .commit-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-reference-file-row .commit-file-name {
+  color: #6ea8ff;
+}
+
+.commit-reference-file-path {
+  min-width: 0;
+  overflow: hidden;
+  color: #7f838c;
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-reference-count {
+  margin-left: 4px;
+  color: #8c9099;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.commit-reference-status {
+  margin-left: auto;
+  min-width: 16px;
+  color: #83c5ff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: right;
+}
+
+.commit-reference-status.added {
+  color: #6aab73;
+}
+
+.commit-reference-status.deleted {
+  color: #c75450;
+}
+
+.commit-reference-bottom {
+  flex: none;
+  padding: 8px 12px 10px;
+  border-top: 1px solid #2b2d30;
+}
+
+.commit-reference-message {
+  display: block;
+  width: 100%;
+  min-height: 118px;
+  resize: none;
+  padding: 7px 8px;
+  color: #dfe1e5;
+  background: #1f2023;
+  border: 1px solid #3c3f44;
+  border-radius: 4px;
+  box-sizing: border-box;
+  font: 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.commit-reference-message:focus {
+  border-color: #3574f0;
+  outline: none;
+}
+
+.commit-reference-options {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  color: #c9ccd3;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.commit-reference-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 2px;
+}
+
+.commit-reference-options input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.commit-reference-purple-mark {
+  color: #a070e8;
+  font-size: 17px;
+  line-height: 16px;
+}
+
+.commit-reference-summary {
+  margin-left: auto;
+  color: #7f838c;
+  font-size: 12px;
+}
+
+.commit-reference-summary span:first-child {
+  color: #6ea8ff;
+}
+
+.commit-reference-summary span:last-child {
+  color: #6db083;
+}
+
+.commit-reference-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 0 0;
+}
+
+.commit-reference-button {
+  min-width: 0;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 4px;
+  font: 600 13px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-reference-button.secondary {
+  color: #dfe1e5;
+  background: #3c3f44;
+  border: 1px solid #4e5157;
+}
+
+.commit-reference-button.primary {
+  color: #ffffff;
+  background: #3574f0;
+  border: 1px solid #3574f0;
+}
+
+.commit-reference-footer-settings {
+  margin-left: auto;
 }
 
 .ai-chat-window .tool-window-header {
@@ -8892,6 +9165,194 @@ body {
   overflow: hidden;
 }
 
+.aiux550-history-tool-window.aiux543-history-tool-window .tool-window-content {
+  background: #191a1c;
+}
+
+.aiux550-history-tool-window.tool-window {
+  width: 100% !important;
+  min-width: 0;
+}
+
+.aiux550-history-tool-window .tool-window-header {
+  min-height: 40px;
+  padding: 0;
+}
+
+.aiux550-history-tool-window .tool-window-header-content {
+  height: 40px;
+  padding: 8px 7px 8px 12px;
+}
+
+.aiux550-history-tool-window .tool-window-header-title {
+  color: #dfe1e5;
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-history-top-actions {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 18px 10px;
+}
+
+.aiux543-history-top-action {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  height: 26px;
+  min-height: 26px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #d1d3d9;
+  font: 500 13px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: default;
+}
+
+.aiux543-history-top-action:hover,
+.aiux543-history-top-action:focus-visible {
+  background: #34363b8f;
+  outline: none;
+}
+
+.aiux543-history-top-action .toolbar-button-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aiux543-history-top-action .icon,
+.aiux543-history-top-action svg {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: #ced0d6;
+}
+
+.aiux550-new-scope-action {
+  color: #d1d3d9;
+  border: 0;
+  background: transparent;
+  justify-content: flex-start;
+  gap: 8px;
+  /* Match the 6px inner-content inset that .toolbar-button-content gives the
+     other two top actions, so all three icons line up on the left edge. */
+  padding-left: 10px;
+}
+
+.aiux550-new-scope-action:hover,
+.aiux550-new-scope-action:focus-visible {
+  background: #34363b8f;
+}
+
+.aiux550-new-scope-action > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 4px;
+  overflow: hidden;
+}
+
+.aiux550-new-scope-action > span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550-new-scope-action > span > span:last-child {
+  color: #73767c;
+}
+
+.aiux543-history-bottom-region {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 0 18px 11px;
+  background: #191a1c;
+}
+
+.aiux543-history-bottom-bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.aiux543-history-bottom-settings,
+.aiux543-history-bottom-plan {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #d1d3d9;
+  font: 500 13px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: default;
+}
+
+.aiux543-history-bottom-settings {
+  flex: 0 1 auto;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.aiux543-history-bottom-plan {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 0 6px 8px;
+  color: #73767c;
+}
+
+.aiux543-history-bottom-settings:hover,
+.aiux543-history-bottom-settings:focus-visible,
+.aiux543-history-bottom-plan:hover,
+.aiux543-history-bottom-plan:focus-visible {
+  background: #34363b;
+  outline: none;
+}
+
+.aiux543-history-bottom-settings > span,
+.aiux543-history-bottom-plan > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-history-bottom-plan-usage {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: #9fa2a8;
+  font: 500 12px/16px JetBrains Mono, ui-monospace, monospace;
+}
+
+.aiux543-history-credits-icon {
+  color: #868a91;
+}
+
 .aiux543-open-project-overlay {
   z-index: 100;
   background: #00000042;
@@ -8997,6 +9458,15 @@ body {
   display: flex;
 }
 
+.aiux550-history-tool-window .aiux543-tool-search-field {
+  flex-basis: 28px;
+  height: 28px;
+  margin: 5px 18px 12px;
+  border-color: #4e5157;
+  border-radius: 4px;
+  padding: 1px 8px;
+}
+
 .aiux543-tool-search-field input {
   color: #d1d3d9;
   background: transparent;
@@ -9037,6 +9507,20 @@ body {
   width: 100%;
   margin-top: 3px;
   padding-top: 0;
+}
+
+.aiux550-history-tool-window .aiux543-tool-chat-list {
+  flex: 1 1 auto;
+  padding: 0 18px 8px;
+}
+
+.aiux550-history-tool-window .aiux543-chat-list-flat section {
+  gap: 0;
+}
+
+.aiux550-history-tool-window .aiux543-chat-group-rows {
+  gap: 4px;
+  margin: 0;
 }
 
 .aiux543-chat-list::-webkit-scrollbar {
@@ -9237,8 +9721,40 @@ body {
   position: relative;
 }
 
+.aiux550-history-tool-window .aiux543-chat-row {
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  margin-left: 0;
+  padding: 6px 4px;
+}
+
+.aiux550-history-tool-window .aiux543-chat-row.expandable {
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, max-content);
+}
+
+.aiux550-history-tool-window .aiux543-chat-row.has-change-summary {
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+}
+
+.aiux543-chat-row-chevron-spacer {
+  grid-column: 1;
+  width: 16px;
+  height: 16px;
+}
+
 .aiux543-chat-row-clickable {
   cursor: pointer;
+}
+
+/* Chats nested under a spec row (and their Changes/Context/Sub-threads folders)
+   are indented one level together to show the spec owns them. */
+.aiux543-chat-spec-children {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: 16px;
 }
 
 .aiux543-chat-row.has-change-summary {
@@ -9282,7 +9798,7 @@ body {
 .aiux543-chat-row.selected.selected-active:hover,
 .aiux543-chat-row.selected.selected-active:focus,
 .aiux543-chat-row.selected.selected-active:focus-visible {
-  background: #2e436e;
+  background: #2f4a7f;
 }
 
 .aiux543-chat-row.selected.selected-inactive,
@@ -9303,6 +9819,23 @@ body {
 .aiux543-chat-title span:last-child {
   text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.aiux550-history-tool-window .aiux543-chat-title {
+  grid-column: 2;
+}
+
+.aiux543-chat-row-meta {
+  grid-column: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.aiux550-history-tool-window .aiux543-chat-row-meta {
   overflow: hidden;
 }
 
@@ -9333,6 +9866,12 @@ body {
   grid-column: 5;
 }
 
+.aiux550-history-tool-window .aiux543-chat-time,
+.aiux550-history-tool-window .aiux543-chat-row.has-change-summary .aiux543-chat-time {
+  grid-column: auto;
+  flex: 0 0 20px;
+}
+
 .aiux543-chat-change-summary {
   grid-column: 2;
   justify-self: end;
@@ -9345,6 +9884,11 @@ body {
 
 .aiux543-chat-row.has-change-summary .aiux543-chat-change-summary {
   grid-column: 3;
+}
+
+.aiux550-history-tool-window .aiux543-chat-change-summary,
+.aiux550-history-tool-window .aiux543-chat-row.has-change-summary .aiux543-chat-change-summary {
+  grid-column: auto;
 }
 
 .aiux543-chat-change-summary .added {
@@ -9369,6 +9913,66 @@ body {
   width: 7px;
   height: 7px;
   box-shadow: 0 0 0 3px #3574f02e;
+}
+
+.aiux543-approval-dot-wrap,
+.aiux543-progress-plan-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.aiux543-approval-dot-wrap {
+  gap: 4px;
+  color: #9dbdff;
+  background: #263653;
+  border-radius: 999px;
+  padding: 2px 7px 2px 6px;
+  cursor: default;
+  font: 500 11px/14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-approval-dot-wrap:focus,
+.aiux543-approval-dot-wrap:focus-visible {
+  outline: none;
+}
+
+.aiux543-chat-activity-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #548af7;
+  box-shadow: 0 0 0 3px rgba(84, 138, 247, 0.22);
+}
+
+.aiux543-approval-dot-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-progress-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 1px 4px 1px 7px;
+  border-radius: 9px;
+  background: #34363b;
+  color: #dfe1e5;
+  font: 600 11px/14px JetBrains Mono, ui-monospace, monospace;
+}
+
+.aiux543-progress-plan-badge:focus,
+.aiux543-progress-plan-badge:focus-visible {
+  outline: none;
+}
+
+.aiux543-progress-plan-spinner.aiux543-spinner {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
 }
 
 .aiux543-chat-history-section-header {
@@ -9420,6 +10024,11 @@ body {
   display: flex;
 }
 
+.aiux550-history-tool-window .aiux543-chat-row-children {
+  margin: -1px 0 4px 18px;
+  padding: 0 0 2px 12px;
+}
+
 .aiux543-chat-tree-row {
   box-sizing: border-box;
   color: #c4c6cc;
@@ -9441,6 +10050,51 @@ body {
 
 .aiux543-chat-tree-section {
   color: #d1d3d9;
+}
+
+.aiux543-chat-tree-section-header {
+  grid-template-columns: minmax(0, 1fr);
+  padding-right: 0;
+}
+
+.aiux543-chat-tree-section-toggle {
+  display: grid;
+  grid-template-columns: 16px 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.aiux543-chat-tree-section-toggle:focus,
+.aiux543-chat-tree-section-toggle:focus-visible,
+.aiux543-chat-tree-section-link:focus,
+.aiux543-chat-tree-section-link:focus-visible {
+  outline: none;
+}
+
+.aiux543-chat-tree-section-with-action {
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.aiux543-chat-tree-section-link {
+  color: #71a1fe;
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: default;
+}
+
+.aiux543-chat-tree-section-link:hover {
+  color: #9ec0ff;
 }
 
 .aiux543-chat-tree-leaf {
@@ -10205,16 +10859,24 @@ body {
 }
 
 .aiux543-new-layout-page .ux3730-aia-flow-recent-row.aiux550-recent-spec-row {
-  grid-template-columns: 16px auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   cursor: default;
+  position: relative;
 }
 
-.aiux550-recent-spec-chevron {
+/* The expand/collapse chevron sits in the left gutter so the spec's .md icon
+   lines up with the "Recent specs" header and the recent-chat rows, instead of
+   being pushed a column to the right. Selector specificity must beat the
+   `.ux3730-aia-flow-recent-row > *` rule that forces position: static. */
+.aiux543-new-layout-page .aiux550-recent-spec-row .aiux550-recent-spec-chevron {
+  position: absolute;
+  left: -20px;
+  top: 0;
+  bottom: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 16px;
-  height: 16px;
   color: #a8abb3;
 }
 
@@ -10249,7 +10911,7 @@ body {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding-left: 36px;
+  padding-left: 20px;
   margin-bottom: 2px;
 }
 

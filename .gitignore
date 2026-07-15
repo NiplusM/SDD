@@ -11,3 +11,7 @@ playwright-page.png
 .junie/
 
 *.local
+
+# Downloaded reference library dump (not part of the project)
+tmp/
+*.har
