@@ -10,6 +10,7 @@ import {
   PlanDiffCommentBadge,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
+import { ChatsHistoryToolWindow } from './ChatsHistory.jsx';
 import {
   ThemeProvider,
   MainWindow,
@@ -2632,6 +2633,10 @@ const EDITOR_PROBLEMS_BY_LABEL = {
 const MY_LEFT_STRIPE = DEFAULT_LEFT_STRIPE_ITEMS.filter(i =>
   ['project', 'commit', 'structure'].includes(i.id)
 );
+
+// Chats moved to editor tabs + a left "Chat History" tool window, so the
+// right-side AI Assistant stripe icon / tool window is removed.
+const MY_RIGHT_STRIPE = DEFAULT_RIGHT_STRIPE_ITEMS.filter((i) => i.id !== 'ai');
 
 const AGENT_TASKS_ICON = (
   <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -12744,7 +12749,7 @@ const AI_CHAT_OLDER_THAN_7_ITEMS = [
 
 const AI_CHAT_SCENARIOS = {
   'refactor-time-slots': {
-    title: 'Refactor VisitController time slots',
+    title: 'Refactor VisitController.java time slots',
     userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
     assistantParagraphs: [
       'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
@@ -12776,7 +12781,7 @@ public List<LocalTime> populateTimeSlots() {
     diffRequest: AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST,
   },
   'visit-model-attributes': {
-    title: 'Review Visit model fields',
+    title: 'Review Visit.java model fields',
     messageId: 'chat-history-visit-model-attributes',
     userPrompt: 'Review Visit.java and make sure the visit date, time, vet, pet, and description fields match the appointment booking flow.',
     assistantParagraphs: [
@@ -13274,6 +13279,250 @@ function SyntaxCode({ code, language = 'java' }) {
   );
 }
 
+function AiChatTabView({
+  chatId,
+  scenarios = {},
+  sentMessages = [],
+  onSendMessage = null,
+  fallbackTitle = 'AI Chat',
+  onAddContextPopupOpen = null,
+  plainFileGutterCommentsEnabled = false,
+  onPlainFileGutterCommentsEnabledChange = null,
+  diffGutterCommentsEnabled = true,
+  onDiffGutterCommentsEnabledChange = null,
+  fileCommentsOptionIsNew = false,
+  diffCommentsOptionIsNew = false,
+  onFileCommentsOptionSeen = null,
+  onDiffCommentsOptionSeen = null,
+}) {
+  const [addContextPopupRect, setAddContextPopupRect] = useState(null);
+  const scenario = scenarios?.[chatId] ?? {
+    title: fallbackTitle,
+    userPrompt: fallbackTitle,
+    assistantParagraphs: [
+      'I opened this existing chat in the editor tab with the current project context.',
+    ],
+    result: [
+      'The conversation is ready to continue from this point.',
+    ],
+    command: 'Prepared project context',
+  };
+  const messageId = scenario?.messageId ?? `editor-chat-${chatId}`;
+  const initialComposerText = typeof scenario?.initialComposerText === 'string' ? scenario.initialComposerText : '';
+  const [composerText, setComposerText] = useState(initialComposerText);
+  const composerRef = useRef(null);
+  const scrollRef = useRef(null);
+  const conversationTurns = Array.isArray(scenario?.conversationTurns)
+    ? scenario.conversationTurns
+    : [];
+  const focusComposerAtEnd = useCallback(() => {
+    const focus = () => {
+      const textarea = composerRef.current;
+      if (!textarea) return;
+      textarea.focus({ preventScroll: true });
+      const caretPosition = textarea.value.length;
+      textarea.setSelectionRange(caretPosition, caretPosition);
+    };
+    requestAnimationFrame(() => requestAnimationFrame(focus));
+  }, []);
+
+  useEffect(() => {
+    setComposerText(initialComposerText);
+    focusComposerAtEnd();
+  }, [chatId, focusComposerAtEnd, initialComposerText]);
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) return;
+    scrollElement.scrollTop = scrollElement.scrollHeight;
+  }, [chatId, sentMessages.length]);
+
+  const handleSend = () => {
+    const trimmed = composerText.trim();
+    if (!trimmed) return;
+    onSendMessage?.(chatId, trimmed);
+    setComposerText('');
+  };
+
+  return (
+    <div className="aiux543-conversation">
+      <div ref={scrollRef} className="aiux543-conversation-scroll">
+        {conversationTurns.length > 0 ? (
+          conversationTurns.map((turn, index) => (
+            turn?.role === 'user' ? (
+              <div key={`turn-${index}`} className="aiux543-user-message aiux543-thread-user-message" data-ai-chat-message-id={`${messageId}-turn-${index}`}>
+                <p>{turn.text}</p>
+                <span className="aiux543-kebab" aria-hidden="true">
+                  <Icon name="general/moreVertical" size={16} />
+                </span>
+              </div>
+            ) : (
+              <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
+                <h3>Claude Agent</h3>
+                {(Array.isArray(turn?.paragraphs) ? turn.paragraphs : [turn?.text].filter(Boolean)).map((paragraph, paragraphIndex) => (
+                  <p key={`turn-${index}-paragraph-${paragraphIndex}`}>{paragraph}</p>
+                ))}
+              </article>
+            )
+          ))
+        ) : (
+          <>
+            {scenario?.userPrompt && (
+              <div className="aiux543-user-message" data-ai-chat-message-id={messageId}>
+                <p>{scenario.userPrompt}</p>
+                <span className="aiux543-kebab" aria-hidden="true">
+                  <Icon name="general/moreVertical" size={16} />
+                </span>
+              </div>
+            )}
+
+            {scenario?.assistantParagraphs?.length > 0 && (
+              <article className="aiux543-answer">
+                <h3>What changed</h3>
+                {scenario.assistantParagraphs.map((paragraph, idx) => (
+                  <p key={`assistant-${idx}`}>{paragraph}</p>
+                ))}
+              </article>
+            )}
+          </>
+        )}
+
+        {scenario?.changeCard && (
+          <section className="aiux543-code-card">
+            <header>
+              <Icon className="aiux543-file-icon" name="fileTypes/java" size={16} />
+              <strong>{scenario.changeCard.name}</strong>
+              <span className="aiux543-diff-inline">{scenario.changeCard.added}</span>
+              <span>{scenario.changeCard.removed}</span>
+              <em>Edited</em>
+            </header>
+            <SyntaxCode code={scenario.changeCard.code} />
+          </section>
+        )}
+
+        {Array.isArray(scenario?.result) && scenario.result.length > 0 && (
+          <article className="aiux543-answer">
+            <h3>Result</h3>
+            {scenario.result.map((paragraph, idx) => (
+              <p key={`result-${idx}`}>{paragraph}</p>
+            ))}
+          </article>
+        )}
+
+        {scenario?.command && (
+          <section className="aiux543-detail-trail">
+            <article className="aiux543-detail-card">
+              <h3>How to verify</h3>
+              <p>{scenario.command}</p>
+            </article>
+          </section>
+        )}
+
+        {sentMessages.map((message) => (
+          message.role === 'assistant' ? (
+            <article key={message.id} className="aiux543-answer">
+              <h3>Claude Agent</h3>
+              <p>
+                {message.text}
+                {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
+              </p>
+            </article>
+          ) : (
+            <div key={message.id} className="aiux543-user-message" data-ai-chat-message-id={message.id}>
+              <p>{message.text}</p>
+              <span className="aiux543-kebab" aria-hidden="true">
+                <Icon name="general/moreVertical" size={16} />
+              </span>
+            </div>
+          )
+        ))}
+      </div>
+
+      <div className="aiux543-composer-sticky">
+        <div className="aiux543-chat-local-card">
+          <button type="button" className="aiux543-chat-dropdown">
+            <span>Local</span>
+            <Icon name="general/chevronDown" size={16} />
+          </button>
+        </div>
+        <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
+          <div className="aiux543-chat-input-row">
+            <textarea
+              ref={composerRef}
+              className="aiux543-chat-input"
+              rows={1}
+              value={composerText}
+              placeholder="Type task, use @mentions or /commands"
+              aria-label="Task prompt"
+              onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+          </div>
+          <div className="aiux543-chat-toolbar">
+            <div className="aiux543-chat-toolbar-left">
+              <button
+                className="aiux543-chat-icon-button"
+                type="button"
+                aria-label="Add context"
+                aria-expanded={Boolean(addContextPopupRect)}
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  if (addContextPopupRect) {
+                    setAddContextPopupRect(null);
+                  } else {
+                    onAddContextPopupOpen?.();
+                    setAddContextPopupRect(rect);
+                  }
+                }}
+              >
+                <Icon name="general/add" size={16} />
+              </button>
+              <button className="aiux543-chat-dropdown" type="button">
+                Default
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+            </div>
+            <div className="aiux543-chat-toolbar-right">
+              <button type="button" className="aiux543-chat-icon-button" aria-label="Generating">
+                <AiChatProgressIcon />
+              </button>
+              <button type="button" className="aiux543-chat-icon-button" aria-label="Send" onClick={handleSend} disabled={!composerText.trim()}>
+                <AiChatSendIcon />
+              </button>
+            </div>
+          </div>
+        </div>
+        <footer className="aiux543-editor-footer">
+          <span className="aiux543-editor-footer-left">
+            <span>Claude Agent</span>
+            <span>Opus 4.5</span>
+          </span>
+          <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
+        </footer>
+      </div>
+      {addContextPopupRect && (
+        <AiChatAddContextPopup
+          triggerRect={addContextPopupRect}
+          onDismiss={() => setAddContextPopupRect(null)}
+          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
+          diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+          onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
+          fileCommentsOptionIsNew={fileCommentsOptionIsNew}
+          diffCommentsOptionIsNew={diffCommentsOptionIsNew}
+          onFileCommentsOptionSeen={onFileCommentsOptionSeen}
+          onDiffCommentsOptionSeen={onDiffCommentsOptionSeen}
+        />
+      )}
+    </div>
+  );
+}
+
 const AI_ASSISTANT_SETTINGS_SECTIONS = [
   {
     id: 'ai-assistant-general',
@@ -13753,7 +14002,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'ai']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'chat-history']);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
@@ -13787,31 +14036,13 @@ export default function App() {
     }, 7000);
     return () => window.clearTimeout(timeoutId);
   }, [commentShortcutHintTarget]);
-  const openAiToolWindow = useCallback(() => {
-    setScreen('ide');
-    setIdeOpenWindows((prev) => (
-      prev.includes('ai') ? prev : [...prev, 'ai']
-    ));
-
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-    const revealAiPanel = () => {
-      const chatWindow = document.querySelector('.ai-chat-window');
-      if (chatWindow instanceof HTMLElement && chatWindow.getClientRects().length > 0) {
-        return;
-      }
-
-      const aiStripe = document.querySelector('.main-window-stripe-right [title="AI Assistant"]');
-      if (aiStripe instanceof HTMLElement) {
-        aiStripe.click();
-      }
-    };
-
-    window.requestAnimationFrame(() => {
-      revealAiPanel();
-      window.setTimeout(revealAiPanel, 0);
-    });
-  }, []);
+  // Chats now open as editor tabs (not a right tool window). openChatInEditorTab
+  // is defined later, so route through a ref to avoid a TDZ during render.
+  const openChatInEditorTabRef = useRef(null);
+  const openAiToolWindow = useCallback((chatId = null) => {
+    const targetId = typeof chatId === 'string' && chatId ? chatId : selectedAiChatId;
+    openChatInEditorTabRef.current?.(targetId);
+  }, [selectedAiChatId]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -13938,11 +14169,11 @@ export default function App() {
     }));
     if (select) {
       setSelectedAiChatId(id);
-      openAiToolWindow();
+      openChatInEditorTabRef.current?.(id, { title, icon });
     }
 
     return session;
-  }, [openAiToolWindow]);
+  }, []);
   const [runStatesByTab, setRunStatesByTab] = useState({});
   const [specDocumentRunRequestsByTab, setSpecDocumentRunRequestsByTab] = useState({});
   const [acRunResult, setAcRunResult] = useState(() => initialVisitBookingTaskState.acRunResult ?? null); // null | string[] — statuses per AC checkbox
@@ -15376,6 +15607,44 @@ export default function App() {
     selectedAiChatId,
     updatePlanDiffUiStateForTab,
   ]);
+
+  const openChatInEditorTab = useCallback((chatId, metaOverride = null) => {
+    if (!chatId) return;
+    const chatTabId = `ai-chat-${chatId}`;
+    const scenario = getAiChatScenarioById(chatId);
+    const listItem = getAiChatListItemById(chatId);
+    const chatTitle = metaOverride?.title ?? scenario?.title ?? listItem?.title ?? 'AI Chat';
+    const chatTab = {
+      id: chatTabId,
+      label: chatTitle,
+      icon: <AiChatAgentIcon icon={metaOverride?.icon ?? listItem?.icon ?? 'claude'} title={chatTitle} />,
+      closable: true,
+    };
+    setSelectedAiChatId(chatId);
+    setScreen('ide');
+    const existingIndex = ideTabs.findIndex((tab) => tab.id === chatTabId);
+    if (existingIndex >= 0) {
+      setIdeTabs((prev) => prev.map((tab) => (tab.id === chatTabId ? { ...tab, ...chatTab } : tab)));
+      setActiveEditorTab(existingIndex);
+      return;
+    }
+    const insertIndex = Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
+    setIdeTabs((prev) => [
+      ...prev.slice(0, insertIndex),
+      chatTab,
+      ...prev.slice(insertIndex),
+    ]);
+    setIdeTabContents((prev) => (prev[chatTabId]
+      ? prev
+      : { ...prev, [chatTabId]: { language: 'text', code: '' } }));
+    setActiveEditorTab(insertIndex);
+  }, [
+    activeEditorTab,
+    getAiChatListItemById,
+    getAiChatScenarioById,
+    ideTabs,
+  ]);
+  openChatInEditorTabRef.current = openChatInEditorTab;
 
   const openEditorTabByLabel = useCallback((label) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
@@ -18286,6 +18555,8 @@ export default function App() {
   const activeTabId = activeEditorTabMeta?.id ?? null;
   const activeTabContent = activeEditorTabContentEntry;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
+  const isAiChatTab = Boolean(activeTabId?.startsWith('ai-chat-'));
+  const activeAiChatTabChatId = isAiChatTab ? activeTabId.slice('ai-chat-'.length) : null;
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
@@ -20555,13 +20826,14 @@ export default function App() {
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
+            { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top'   },
             { id: '_sep',        separator: true,                                                   section: 'top'    },
             { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks',            section: 'top'    },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
           ]}
-          rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
+          rightStripeItems={MY_RIGHT_STRIPE}
           defaultOpenToolWindows={['project']}
 
           leftPanelContent={(id, ctx) => {
@@ -20573,10 +20845,11 @@ export default function App() {
                 ctx={ctx}
               />
             );
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={selectedAiChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onSettings={() => setIsSettingsDialogOpen(true)} />;
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
-	          rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} showNewContextOptionsIndicator={showNewContextOptionsIndicator} onAddContextPopupOpen={handleAiChatAddContextPopupOpen} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
+	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
           bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
           statusBarProps={{
@@ -20738,7 +21011,28 @@ export default function App() {
           }));
         }}
         editorTopBar={
-          isAgentTaskTab
+          isAiChatTab
+            ? (
+              <div className="aiux543-chat-editor-host">
+                <AiChatTabView
+                  chatId={activeAiChatTabChatId}
+                  scenarios={aiChatScenarios}
+                  sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
+                  fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
+                  onSendMessage={(targetChatId, text) => handleAiChatMessageSent?.(targetChatId, text)}
+                  onAddContextPopupOpen={handleAiChatAddContextPopupOpen}
+                  plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+                  onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
+                  diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+                  onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
+                  fileCommentsOptionIsNew={fileCommentsOptionIsNew}
+                  diffCommentsOptionIsNew={diffCommentsOptionIsNew}
+                  onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)}
+                  onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
+                />
+              </div>
+            )
+            : isAgentTaskTab
             ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
             : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
@@ -20797,13 +21091,14 @@ export default function App() {
 
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
+          { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top' },
           { id: '_sep',        separator: true,                                                    section: 'top' },
           { id: 'agent-tasks', icon: AGENT_TASKS_ICON, tooltip: 'Agent Tasks', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
         ]}
-        rightStripeItems={DEFAULT_RIGHT_STRIPE_ITEMS}
+        rightStripeItems={MY_RIGHT_STRIPE}
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
@@ -20822,10 +21117,11 @@ export default function App() {
               className="main-window-tool-window main-window-tool-window-left"
             />
           );
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={selectedAiChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
-	        rightPanelContent={(id, ctx) => (id === 'ai' ? <ChatToolWindow ctx={ctx} onOpenDiffTab={openPlanDiffTab} onClearDiffComments={handleChatDiffCommentsClear} onClearAllDiffAttachments={handleClearAllComposerDiffAttachments} onRemoveComposerAttachment={handleRemoveComposerAttachment} onOpenPlainFileArchive={handleOpenPlainFileArchive} onOpenSddDocument={handleOpenSddDocument} onOpenAttachmentSource={handleOpenAttachmentSource} onNewChat={createEmptyAiChatSession} diffComments={aiChatComposerDiffComments} diffCommentCount={aiChatComposerDiffCommentCount} sddCommentEntries={normalizedSpecChatCommentEntries} sddCommentCount={specChatCommentCount} sddRelatedCommentIssues={activeRelatedDiffCommentIssues} composerDiffAttachments={aiChatComposerDiffAttachments} scrollTarget={chatScrollTarget} selectedChatId={selectedAiChatId} onSelectedChatIdChange={setSelectedAiChatId} sentChatMessages={selectedAiChatSentMessages} sentChatMessagesByChatId={aiChatSentMessagesByChatId} onSentChatMessagesChange={handleSelectedAiChatSentMessagesChange} onChatMessageSent={handleAiChatMessageSent} chatScenarios={aiChatScenarios} recentChatItems={aiChatRecentItems} olderChatItems={AI_CHAT_OLDER_THAN_7_ITEMS} plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled} onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled} diffGutterCommentsEnabled={diffGutterCommentsEnabled} onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled} fileCommentsOptionIsNew={fileCommentsOptionIsNew} diffCommentsOptionIsNew={diffCommentsOptionIsNew} showNewContextOptionsIndicator={showNewContextOptionsIndicator} onAddContextPopupOpen={handleAiChatAddContextPopupOpen} onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)} onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)} showFileCommentsSuggestionBanner={showFileCommentsSuggestionBanner} onEnableFileCommentsFromBanner={() => { setPlainFileGutterCommentsEnabled(true); setShowFileCommentsSuggestionBanner(false); setFileCommentsOptionIsNew(false); }} onDismissFileCommentsSuggestionBanner={() => setShowFileCommentsSuggestionBanner(false)} onCommentAttachmentResponseStart={handleCommentAttachmentResponseStart} onCommentAttachmentResponseComplete={handleCommentAttachmentResponseComplete} /> : defaultRightPanelContent(id, ctx))}
+	        rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}
 
         statusBarProps={{
