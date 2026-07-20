@@ -8526,6 +8526,10 @@ body {
   color: #6db083;
 }
 
+.aiux543-diff-inline-removed {
+  color: #db6d6d;
+}
+
 
 .aiux543-code-card pre {
 
@@ -11880,4 +11884,1412 @@ body {
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
+}
+
+/* Chat opened as a center editor tab: render the change-card code in full
+   (the narrow right panel clamped the card to ~79px and the code to 90px).
+   Let the card grow to its content in the roomy center layout. */
+.aiux543-chat-editor-host .aiux543-code-card {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+.aiux543-chat-editor-host .aiux543-code-card pre {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+/* "+" (add context) button in the chat editor tab: blue-dot indicator for new
+   context options, mirroring the old right-panel .ai-chat-plus-button. */
+.aiux543-chat-icon-button.has-new-context-options {
+  position: relative;
+}
+.aiux543-chat-icon-button.has-new-context-options::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #1E1F22;
+  border-radius: 50%;
+  background: #3570E4;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* Chat editor tab: attachment chips under the user prompt + clickable change card
+   (mirrors the right-panel chat's context attachments and diff-opening card). */
+.aiux543-user-attachments {
+  width: min(750px, 100%);
+  margin: -4px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.aiux543-user-attachment-chip {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #2b2d30;
+  font: inherit;
+}
+.aiux543-user-attachment-chip:hover {
+  background: #35373b;
+}
+.aiux543-code-card-clickable {
+  cursor: pointer;
+}
+.aiux543-code-card-clickable:hover {
+  border-color: #4d5157;
+}
+
+/* Diff-comment attachment chips in the chat editor-tab composer (mirrors the
+   right-panel chat's composer attachments after a diff comment is written). */
+.aiux543-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+.aiux543-composer-attachment-chip {
+  cursor: pointer;
+}
+.aiux543-composer-attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #a8abb3;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+}
+.aiux543-composer-attachment-remove:hover {
+  color: #ced0d6;
+}
+
+/* === AI Note comment affordances (ported from tmp/SDD-Code-review): badge hover-preview + tooltips === */
+
+.plan-diff-row-gutter:has(.plan-diff-hidden-comment-preview) {
+
+  overflow: visible;
+  z-index: 40;
+}
+
+
+.plan-diff-gutter-ai-note-tooltip-trigger {
+
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  min-height: 22px;
+}
+
+
+.ai-chat-attachment-comment-preview.plan-diff-hidden-comment-preview {
+
+  position: fixed;
+  bottom: auto;
+  left: auto;
+  z-index: 2147483000;
+  display: flex;
+  box-sizing: border-box;
+  min-width: min(240px, calc(100vw - 16px));
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: min(240px, calc(100vh - 16px));
+  overflow: auto;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #393B40;
+  border-radius: 8px;
+  background: #26282C;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
+  opacity: 1;
+  pointer-events: none;
+  transform: none;
+  white-space: normal;
+}
+
+
+.ai-chat-attachment-comment-preview.plan-diff-hidden-comment-preview .ai-chat-attachment-comment-preview-item {
+
+  display: -webkit-box;
+  color: #DFE1E5;
+  font-size: 12px;
+  line-height: 17px;
+  -webkit-line-clamp: 8;
+}
+
+
+.ai-chat-attachment-comment-preview.plan-diff-hidden-comment-preview.is-visible {
+
+  opacity: 1;
+  transform: none;
+}
+
+
+.tooltip.ai-note-tooltip {
+
+  z-index: 2147483000;
+  max-width: min(280px, calc(100vw - 16px));
+  gap: 0;
+  padding: 5px 8px;
+  line-height: 18px;
+}
+
+
+.tooltip.ai-note-tooltip.plan-diff-ai-note-tooltip {
+
+  z-index: 2147483647;
+}
+
+
+.tooltip.ai-note-tooltip .tooltip-text {
+
+  white-space: normal;
+}
+
+
+/* === AI Note submit split-button (primary + action menu), ported from tmp/SDD-Code-review === */
+
+.diff-comment-primary-split {
+
+  display: inline-flex;
+  align-items: stretch;
+  height: 24px;
+  overflow: hidden;
+  color: var(--button-primary-text, #FFFFFF);
+  background: var(--button-primary-bg, #3574F0);
+  border: 1px solid var(--button-primary-bg, #3574F0);
+  border-radius: 4px;
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+
+.diff-comment-primary-split:hover:not(.is-disabled),
+.diff-comment-primary-split:focus-within:not(.is-disabled),
+.diff-comment-primary-split.is-open:not(.is-disabled) {
+
+  background: var(--button-primary-bg-hover, #2F65CA);
+  border-color: var(--button-primary-bg-hover, #2F65CA);
+}
+
+
+.diff-comment-primary-split.is-disabled {
+
+  color: var(--text-disabled);
+  background: transparent;
+  border-color: var(--control-border-disabled);
+  cursor: not-allowed;
+}
+
+
+.diff-comment-primary-split-main,
+.diff-comment-primary-split-menu {
+
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  cursor: pointer;
+}
+
+
+.diff-comment-primary-split-main {
+
+  min-width: 0;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+
+.diff-comment-primary-split-menu {
+
+  width: 24px;
+  padding: 0 4px;
+}
+
+
+.diff-comment-primary-split-main:disabled,
+.diff-comment-primary-split-menu:disabled {
+
+  cursor: not-allowed;
+}
+
+
+.diff-comment-primary-split-separator {
+
+  align-self: stretch;
+  width: 1px;
+  margin: 3px 0;
+  background: rgba(255, 255, 255, .32);
+}
+
+
+.diff-comment-primary-split.is-disabled .diff-comment-primary-split-separator {
+
+  background: var(--control-border-disabled);
+}
+
+
+.diff-comment-primary-split-main:not(:disabled):active,
+.diff-comment-primary-split-menu:not(:disabled):active {
+
+  background: rgba(0, 0, 0, .12);
+}
+
+
+.diff-comment-primary-split-main:focus-visible,
+.diff-comment-primary-split-menu:focus-visible {
+
+  outline: 2px solid var(--control-focus-border-brand, #548AF7);
+  outline-offset: -2px;
+}
+
+
+.diff-comment-submit-action-popup {
+
+  min-width: 160px;
+}
+
+
+/* Sent chat messages reuse the right-panel ChatUserCard/ChatAssistantMessage
+   components; inside the center chat editor tab, constrain them to the same
+   readable 750px column as the rest of the conversation so they don't break
+   the layout after sending. */
+.aiux543-conversation-scroll .ai-chat-user-card,
+.aiux543-conversation-scroll .ai-chat-ai-message {
+  box-sizing: border-box;
+  width: min(750px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* === Approval activity dot + hover preview popup (ported from aia-design gleb/AIUX-543) === */
+.aiux543-approval-dot-wrap {
+  position: relative;
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 2px 7px 2px 6px;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(53 112 228 / 14%);
+  color: #8db6ff;
+  cursor: default;
+}
+
+.aiux543-approval-dot-label {
+  color: currentColor;
+  font: 600 11px/15px Inter, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+.aiux543-approval-preview {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  width: 268px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  box-sizing: border-box;
+  padding: 9px;
+  border: 1px solid #3c3f44;
+  border-radius: 8px;
+  background: #26282c;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 44%);
+  color: #d1d3d9;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux543-approval-preview::before {
+  position: absolute;
+  right: 32px;
+  bottom: 100%;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #3c3f44;
+  border-left: 1px solid #3c3f44;
+  background: #26282c;
+  content: "";
+  transform: translateY(5px) rotate(45deg);
+}
+
+.aiux543-approval-preview-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiux543-approval-preview-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #3570e4;
+  box-shadow: 0 0 0 2px rgb(53 112 228 / 18%);
+}
+
+.aiux543-approval-preview-head > span:nth-child(2) {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #dfe1e5;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-approval-preview-head button,
+.aiux543-approval-preview-actions button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #71a1fe;
+  cursor: default;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux543-approval-preview-head button {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+}
+
+.aiux543-approval-preview-head button:hover,
+.aiux543-approval-preview-head button:focus-visible,
+.aiux543-approval-preview-actions button:hover,
+.aiux543-approval-preview-actions button:focus-visible {
+  background: rgb(76 80 90 / 55%);
+  outline: none;
+}
+
+.aiux543-approval-preview p {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  color: #b8bbc3;
+}
+
+.aiux543-approval-preview-command {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #1f2023;
+  color: #b8bbc3;
+  font: 500 12px/16px "JetBrains Mono", ui-monospace, monospace;
+}
+
+.aiux543-approval-preview-command .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: #9fa2a8;
+}
+
+.aiux543-approval-preview-command span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-approval-preview-actions {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.aiux543-approval-preview-actions button {
+  display: inline-flex;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  gap: 5px;
+  justify-content: flex-start;
+  padding: 4px 6px;
+  color: #d1d3d9;
+}
+
+.aiux543-approval-preview-actions button:first-child {
+  background: #19345f;
+  color: #e7f0ff;
+}
+
+.aiux543-approval-preview-actions button:last-child {
+  grid-column: 1 / -1;
+}
+
+.aiux543-approval-preview-actions .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: #9fa2a8;
+}
+
+.aiux543-approval-preview-actions button:first-child .icon {
+  color: #89b4ff;
+}
+
+.aiux543-approval-preview-actions span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* === Plan-progress badge hover popup (ported from aia-design gleb/AIUX-543) === */
+.aiux543-progress-plan-wrap {
+  position: relative;
+  display: inline-flex;
+  grid-column: auto;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.aiux543-progress-plan-badge {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 12px;
+  background: #33353b;
+  color: #9fa2a8;
+  cursor: default;
+  font: 500 12px/15px "JetBrains Mono", ui-monospace, monospace;
+  padding: 2px 4px 2px 8px;
+  white-space: nowrap;
+}
+
+.aiux543-progress-plan-badge:focus-visible {
+  outline: 1px solid #548af7;
+  outline-offset: 1px;
+}
+
+.aiux543-progress-plan-spinner.aiux543-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  box-sizing: border-box;
+  border-width: 2px;
+}
+
+.aiux543-progress-plan-popup {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-sizing: border-box;
+  border: 1px solid #3c3f44;
+  border-radius: 8px;
+  background: #26282c;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 44%);
+  color: #ced0d6;
+  padding: 9px;
+  pointer-events: none;
+}
+
+.aiux543-progress-plan-popup::before {
+  position: absolute;
+  left: var(--progress-plan-pointer-left, 32px);
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #3c3f44;
+  border-left: 1px solid #3c3f44;
+  background: #26282c;
+  content: "";
+}
+
+.aiux543-progress-plan-popup.below::before {
+  top: -6px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.aiux543-progress-plan-popup.above::before {
+  top: 100%;
+  transform: translate(-50%, -5px) rotate(225deg);
+}
+
+.aiux543-progress-plan-step {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  min-width: 0;
+  align-items: start;
+  column-gap: 6px;
+  box-sizing: border-box;
+  padding: 3px 0;
+}
+
+.aiux543-progress-plan-step:last-child {
+  padding-bottom: 3px;
+}
+
+.aiux543-progress-plan-marker {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+}
+
+.aiux543-progress-plan-marker::before {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6c707e;
+  content: "";
+}
+
+.aiux543-progress-plan-step.done .aiux543-progress-plan-marker::before {
+  background: #6c707e;
+}
+
+.aiux543-progress-plan-step.active .aiux543-progress-plan-marker::before {
+  display: none;
+}
+
+.aiux543-progress-plan-step-spinner.aiux543-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  box-sizing: border-box;
+  border-width: 2px;
+}
+
+.aiux543-progress-plan-text {
+  min-width: 0;
+  color: #ced0d6;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  white-space: normal;
+}
+
+.aiux543-progress-plan-step.done .aiux543-progress-plan-text {
+  color: #4c4f56;
+  text-decoration: line-through;
+}
+
+
+/* ============================================================
+   Agent-run cycle (Phase 1): composer busy UI + note resolution
+   Ported from gleb/AIUX-543 (plan artifact, Todo checklist,
+   working-commands preview) + net-new resolution states.
+   ============================================================ */
+
+.aiux543-composer-sticky.is-agent-running {
+  gap: 0;
+}
+
+/* "AI Notes" review checklist that butts against the top of the composer */
+.aiux550-loading-plan {
+  display: flex;
+  width: min(750px, 100%);
+  min-height: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+  margin-right: auto;
+  margin-left: auto;
+  margin-bottom: -1px;
+  padding: 8px 12px 6px;
+  border: 1px solid #33353b;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: #26282c;
+  color: #ced0d6;
+}
+
+.aiux550-loading-plan-header {
+  display: flex;
+  width: 100%;
+  height: 24px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* rendered as a <button> toggle */
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiux550-loading-plan-header > .icon,
+.aiux550-loading-plan-header > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: #a0a3a9;
+  transition: transform 0.12s ease;
+}
+
+/* Collapsed: chevron points up — "expand upward" to review the details. */
+.aiux550-loading-plan-header.is-collapsed > .icon,
+.aiux550-loading-plan-header.is-collapsed > svg {
+  transform: rotate(180deg);
+}
+
+.aiux550-loading-plan-title {
+  color: #dfe1e5;
+  font: 600 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-loading-plan-count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6f737a;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-list {
+  display: flex;
+  min-width: 0;
+  max-height: 184px;
+  overflow-y: auto;
+  flex-direction: column;
+  padding: 8px 0 0;
+}
+
+.aiux550-loading-plan-row {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* Review tree: file-grouped list of surfaced comments (file header + severity
+   comment rows), each row navigable to the comment in the code. */
+.aiux550-review-tree {
+  display: flex;
+  min-width: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  flex-direction: column;
+  padding: 6px 0 0;
+}
+
+.aiux550-review-file-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.aiux550-review-file-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 2px;
+}
+
+.aiux550-review-file-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.aiux550-review-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dfe1e5;
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-comment-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 -4px;
+  padding: 4px 4px 4px 22px;
+  border-radius: 4px;
+  animation: aiux550-review-row-in 0.18s ease-out;
+}
+
+.aiux550-review-comment-row.is-clickable {
+  cursor: pointer;
+}
+
+.aiux550-review-comment-row.is-clickable:hover {
+  background: var(--selection-bg-hovered, rgba(255, 255, 255, 0.06));
+}
+
+.aiux550-review-sev-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 1px;
+}
+
+.aiux550-review-comment-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d1d3d9;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+@keyframes aiux550-review-row-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.aiux550-loading-plan-marker {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+}
+
+.aiux550-loading-plan-marker::before {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6c707e;
+  content: "";
+}
+
+.aiux550-loading-plan-row.active .aiux550-loading-plan-marker::before,
+.aiux550-loading-plan-row.done .aiux550-loading-plan-marker::before {
+  display: none;
+}
+
+.aiux550-loading-plan-row.done .aiux550-loading-plan-marker > .icon,
+.aiux550-loading-plan-row.done .aiux550-loading-plan-marker > svg {
+  width: 16px;
+  height: 16px;
+  color: #6f737a;
+}
+
+.aiux550-loading-plan-spinner.aiux543-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  box-sizing: border-box;
+  border-width: 2px;
+}
+
+/* File block: file name on top, comment counts per status below. */
+.aiux550-loading-plan-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.aiux550-loading-plan-file + .aiux550-loading-plan-file {
+  border-top: 1px solid #33353b;
+}
+
+.aiux550-loading-plan-file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aiux550-loading-plan-file-head > .icon,
+.aiux550-loading-plan-file-head > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.aiux550-loading-plan-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dcdee2;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-file-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding-left: 24px;
+}
+
+.aiux550-loading-plan-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9598a0;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-stat.is-done {
+  color: #6db083;
+}
+
+.aiux550-loading-plan-stat-marker {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.aiux550-loading-plan-stat.is-pending .aiux550-loading-plan-stat-marker::before {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6c707e;
+  content: "";
+}
+
+.aiux550-loading-plan-stat .icon,
+.aiux550-loading-plan-stat svg {
+  width: 14px;
+  height: 14px;
+}
+
+.aiux550-loading-plan-note {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* "Solved" status pill — shown on resolved notes (done card items and answered
+   question threads) instead of striking the text through. */
+.spec-done-status-solved {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  height: 16px;
+  padding: 0 6px 0 5px;
+  border-radius: 4px;
+  background: rgba(87, 150, 92, 0.16);
+  color: #6db083;
+  font: 600 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-loading-plan-row .spec-done-status-solved {
+  margin-top: 2px;
+}
+
+.spec-done-status-solved > .icon,
+.spec-done-status-solved > svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Hint next to a "Solved" badge: it will be cleared on the next agent run. */
+.spec-done-status-solved-hint {
+  color: #6f737a;
+  font: 400 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+/* Severity status pill — Critical (red), Warning (yellow), Info (blue). */
+.spec-done-status-severity {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font: 600 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.spec-done-status-severity.is-critical {
+  background: rgba(219, 92, 92, 0.16);
+  color: #e0696b;
+}
+
+.spec-done-status-severity.is-warning {
+  background: rgba(242, 197, 92, 0.16);
+  color: #e0b552;
+}
+
+.spec-done-status-severity.is-info {
+  background: rgba(84, 138, 247, 0.18);
+  color: #6ea1fe;
+}
+
+
+.aiux550-loading-plan-text {
+  min-width: 0;
+  color: #dcdee2;
+  font: 400 13px/20px Inter, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.aiux550-loading-plan-note-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6f737a;
+  font: 400 11px/15px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-row.done .aiux550-loading-plan-text {
+  color: #9598a0;
+}
+
+/* Stop button (replaces Send while a run is in progress) */
+.aiux543-chat-stop-button .aiux543-chat-stop-square {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #cfd1d8;
+}
+
+.aiux543-chat-stop-button:hover .aiux543-chat-stop-square {
+  background: #fff;
+}
+
+/* In-code AI Note resolution states shown after the run completes */
+/* Agent reply embedded as a light nested thread INSIDE the same note card:
+   a left connector line + indent — no second card, no extra background. */
+.spec-done-comment-agent-reply {
+  --spec-done-comment-agent-reply-content-indent: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Agent-authored comment (e.g. a review comment): it IS the comment, not a
+   reply nested under a user note, so drop the connector top margin. Its outer
+   paddings and ⋯ position come from the normal comment item — structurally the
+   same component — while the body + actions align under the "Claude Agent"
+   byline (the default reply content indent). */
+.spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
+  margin-top: 0;
+  /* Body + actions sit at the item indent (like a user comment's body). */
+  --spec-done-comment-agent-reply-content-indent: 0px;
+}
+
+/* The byline (avatar + "Claude Agent" + severity + line) sits at the group
+   level — where a user comment's context header sits — while the body stays at
+   the item indent. So the two comments line up identically. */
+.spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply-head {
+  margin-left: -26px;
+}
+
+/* Line label sits in the byline, muted like the other meta. */
+.spec-done-comment-agent-reply-line {
+  color: #6f737a;
+  white-space: nowrap;
+}
+
+/* While Quick fix / Resolve is being actioned, the avatar slot shows the loader. */
+.spec-done-comment-agent-reply-avatar.is-processing .icon,
+.spec-done-comment-agent-reply-avatar.is-processing svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Body text matches a normal (user-left) comment's text — same colour, weight
+   and wrapping — so an agent comment reads identically. */
+.spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply-text {
+  color: var(--text-primary, #dfe1e5);
+  font: 400 13px/20px Inter, system-ui, sans-serif;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.spec-done-comment-agent-reply-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.spec-done-comment-agent-reply-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.spec-done-comment-agent-reply-avatar {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.spec-done-comment-agent-reply-avatar .icon,
+.spec-done-comment-agent-reply-avatar svg {
+  width: 16px;
+  height: 16px;
+}
+
+.spec-done-comment-agent-reply-name {
+  color: #d1d3d9;
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.spec-done-comment-agent-reply-time {
+  color: #6f737a;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.spec-done-comment-agent-reply-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #71a1fe;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.spec-done-comment-agent-reply-link:hover {
+  text-decoration: underline;
+}
+
+.spec-done-comment-agent-reply-badge {
+  flex: 0 0 auto;
+}
+
+.spec-done-comment-agent-reply-text {
+  margin: 0;
+  margin-left: var(--spec-done-comment-agent-reply-content-indent);
+  color: #c4c7cd;
+  font: 400 13px/19px Inter, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.spec-done-comment-agent-reply-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: var(--spec-done-comment-agent-reply-content-indent);
+}
+
+.spec-done-comment-agent-user-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0 var(--spec-done-comment-agent-reply-content-indent);
+  padding-top: 8px;
+  border-top: 1px solid var(--popup-border, #33353b);
+}
+
+.spec-done-comment-agent-user-reply-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.spec-done-comment-agent-user-reply-name {
+  color: #d1d3d9;
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+}
+
+.spec-done-comment-agent-user-reply-text {
+  margin: 0;
+  color: #c4c7cd;
+  font: 400 13px/19px Inter, system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.spec-done-comment-agent-reply-compose {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Match the width of the primary "Write an AI Note" composer. The reply
+     field lives inside the comment row, which reserves a right-hand column
+     for the ⋯ more-menu (20px button + 2px gap) and uses 8px row padding
+     instead of the popup's 12px inline padding, so it falls 18px short on
+     the right (20 + 2 − (12 − 8)). Breaking out by 18px lines it up exactly;
+     width:auto (not 100%) is required so the negative margin actually widens
+     the box. The left edge already matches, so only the right is adjusted. */
+  width: auto;
+  margin: 0 -18px 0 0;
+  padding: 4px 0 0;
+}
+
+.spec-done-comment-agent-reply-compose .spec-done-comment-popup-footer {
+  justify-content: flex-end;
+}
+
+.spec-done-comment-agent-resolution {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #3c3f44;
+  border-radius: 8px;
+  background: #26282c;
+}
+
+.spec-done-comment-agent-resolution.is-resolved {
+  border-color: #2f5138;
+  background: #1f2a22;
+}
+
+.spec-done-comment-agent-resolution.is-quickfix {
+  border-color: #3a4b63;
+  background: #1e2530;
+}
+
+.spec-done-comment-agent-resolution-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  color: #868a91;
+}
+
+.spec-done-comment-agent-resolution.is-resolved .spec-done-comment-agent-resolution-icon {
+  color: #6db083;
+}
+
+.spec-done-comment-agent-resolution.is-quickfix .spec-done-comment-agent-resolution-icon {
+  color: #71a1fe;
+}
+
+.spec-done-comment-agent-resolution-body {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-done-comment-agent-resolution-label {
+  color: #cfd1d8;
+  font: 600 12px/16px Inter, system-ui, sans-serif;
+}
+
+.spec-done-comment-agent-resolution-text {
+  margin: 0;
+  color: #9fa2a8;
+  font: 400 12px/17px Inter, system-ui, sans-serif;
+}
+
+.spec-done-comment-agent-resolution-action {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 10px;
+  border: 1px solid #3a4b63;
+  border-radius: 4px;
+  background: #2b3a52;
+  color: #cde0ff;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.spec-done-comment-agent-resolution-action:hover {
+  background: #33445f;
+}
+
+
+/* ============================================================
+   Chats-History "AI Notes" folder (per-chat comment review)
+   ============================================================ */
+
+.aiux550-ainotes-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #a0a3a9;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-ainotes-badge .icon,
+.aiux550-ainotes-badge svg {
+  width: 14px;
+  height: 14px;
+  color: #868a91;
+}
+
+/* Same pill reused on the chat row itself as the live comment counter. */
+.aiux543-chat-row-meta .aiux550-ainotes-badge {
+  margin-left: 0;
+}
+
+.aiux550-chat-run-counter-spinner.aiux543-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  box-sizing: border-box;
+  border-width: 2px;
+}
+
+.aiux550-ainotes-leaf {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  cursor: default;
+}
+
+/* File leaves inside the AI Notes folder (files, not comment bodies). */
+.aiux550-ainotes-file-leaf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.aiux550-ainotes-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ced0d6;
+  font: 400 12px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-ainotes-file-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  color: #6f737a;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
+/* Per-file severity breakdown in the AI Review folder (Critical/Warning/Info). */
+.aiux550-ainotes-file-severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.aiux550-ainotes-sev-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #b4b8bf;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-ainotes-sev-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.aiux550-ainotes-file-count .icon,
+.aiux550-ainotes-file-count svg {
+  width: 12px;
+  height: 12px;
+  color: #6f737a;
+}
+
+.aiux550-ainotes-leaf-marker {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-top: 2px;
+}
+
+.aiux550-ainotes-leaf-marker::before {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6c707e;
+  content: "";
+}
+
+.aiux550-ainotes-leaf.is-active .aiux550-ainotes-leaf-marker::before,
+.aiux550-ainotes-leaf.is-done .aiux550-ainotes-leaf-marker::before {
+  display: none;
+}
+
+.aiux550-ainotes-leaf-marker .icon,
+.aiux550-ainotes-leaf-marker svg {
+  width: 14px;
+  height: 14px;
+  color: #6f737a;
+}
+
+.aiux550-ainotes-leaf-spinner.aiux543-spinner {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  box-sizing: border-box;
+  border-width: 2px;
+}
+
+.aiux550-ainotes-leaf-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ced0d6;
+  font: 400 12px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-ainotes-leaf.is-done .aiux550-ainotes-leaf-text {
+  color: #6f737a;
 }

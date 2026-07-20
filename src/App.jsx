@@ -11,6 +11,8 @@ import {
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import { ChatsHistoryToolWindow } from './ChatsHistory.jsx';
+import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
+import { textLooksLikeQuestion } from './commentCounts.js';
 import {
   ThemeProvider,
   MainWindow,
@@ -3041,7 +3043,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
       lineNumber: Number.isInteger(rawIndex) ? rawIndex + 1 : null,
       secondaryText: Number.isInteger(rawIndex)
         ? `Line ${rawIndex + 1}`
-        : (entry.sectionTitle || 'Comment'),
+        : (entry.sectionTitle || 'AI Note'),
     }));
   });
 }
@@ -3049,7 +3051,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
 function getDiffCommentRowSecondaryText(row, sourceLabel = '') {
   const normalizedSourceLabel = typeof sourceLabel === 'string' && sourceLabel.trim().length > 0
     ? sourceLabel.trim()
-    : 'Comment';
+    : 'AI Note';
   const rowNumber = Number.isInteger(row?.newNumber)
     ? row.newNumber
     : (Number.isInteger(row?.oldNumber) ? row.oldNumber : null);
@@ -3331,7 +3333,7 @@ function buildDocumentEntryCommentIssuesForTab(tabId, commentEntryGroups = []) {
 
 function getCommentIssueSourceLabel(issue = null) {
   const secondaryText = typeof issue?.secondaryText === 'string' ? issue.secondaryText.trim() : '';
-  if (!secondaryText) return 'Comment';
+  if (!secondaryText) return 'AI Note';
 
   return secondaryText.replace(/:\d+$/u, '');
 }
@@ -3364,7 +3366,7 @@ function getCommentIssueSourceLabelWithoutLine(issue = null) {
     .trim();
 }
 
-function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'Comment') {
+function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'AI Note') {
   const hasExternalSource = Boolean(issue?.sourceKind);
   const sourceLabel = hasExternalSource
     ? getCommentIssueSourceLabel(issue)
@@ -3373,7 +3375,7 @@ function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'Comm
   const secondaryText = [sourceLabel, lineLabel].filter(Boolean).join(' · ');
 
   return {
-    label: issue?.label ?? 'Comment',
+    label: issue?.label ?? 'AI Note',
     secondaryText,
   };
 }
@@ -3402,7 +3404,7 @@ function buildCommentSourceSummaries({
   };
   const addSource = ({ key, label, icon = null, count = 0, comments = [], navigationTabId = null, navigationRowId = null, rawIndex = null, lineNumber = null }) => {
     const normalizedKey = key || label;
-    const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'Comment';
+    const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'AI Note';
     const normalizedCount = Number.isFinite(count) ? count : 0;
     if (!normalizedKey || normalizedCount <= 0) return;
 
@@ -3590,6 +3592,21 @@ function flattenStoredDiffCommentsState(diffComments = {}) {
       seenComments.add(normalizedComment);
       return true;
     });
+}
+
+// Drop every comment marked `solved` (accepted / quick-fixed). Used to sweep
+// resolved notes out of the gutter on the next agent request. Returns null if
+// nothing changed so callers can skip a state update.
+function stripSolvedDiffComments(diffComments = {}) {
+  const normalized = normalizeStoredDiffCommentsState(diffComments);
+  const next = {};
+  let removed = 0;
+  Object.entries(normalized).forEach(([rowId, comments]) => {
+    const kept = comments.filter((comment) => !(comment && typeof comment === 'object' && comment.solved === true));
+    removed += comments.length - kept.length;
+    if (kept.length > 0) next[rowId] = kept;
+  });
+  return removed > 0 ? next : null;
 }
 
 function mergeStoredDiffCommentsStates(...states) {
@@ -4238,7 +4255,7 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
   const commentsGroupNode = commentNodes.length > 0
     ? {
         id: 'active-problems-comments',
-        label: 'Comments',
+        label: 'AI Notes',
         icon: <ProblemsCommentNodeIcon />,
         secondaryText: String(commentNodes.length),
         isExpanded: true,
@@ -5771,7 +5788,7 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
       <button
         type="button"
         className={`spec-done-comment-btn${isOpen ? ' is-open' : ''}${hasComments ? ' has-comments' : ''}`}
-        aria-label={hasComments ? `${commentCount} comment${commentCount === 1 ? '' : 's'}` : 'Add comment'}
+        aria-label={hasComments ? `${commentCount} ${commentCount === 1 ? 'AI Note' : 'AI Notes'}` : 'Add AI Note'}
         data-demo-id={demoId ?? undefined}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
@@ -5911,7 +5928,7 @@ function DoneCommentPopup({
       showCompose={showCompose}
       defaultSubmitAttachMode="new"
       submitAttachModes={['new']}
-      submitButtonLabel="Add a Comment"
+      submitButtonLabel="Attach AI Note"
       showSubmitTargetLabel={false}
       onChange={onChange}
       onCancel={onCancel}
@@ -7678,7 +7695,7 @@ function getTextareaEditorCommentLineLabel(snapshot = null) {
 
 const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'suggest', label: 'Suggest action', accent: 'warning', iconName: 'codeInsight/intentionBulb' },
-  { id: 'comment', label: 'Comment', iconName: 'general/balloon' },
+  { id: 'comment', label: 'AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
   { id: 'separator-ai', type: 'separator' },
   { id: 'bold', label: 'Bold', text: 'B', textClassName: 'spec-done-selection-toolbar-text-bold' },
   { id: 'italic', label: 'Italic', text: 'I', textClassName: 'spec-done-selection-toolbar-text-italic' },
@@ -9530,7 +9547,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           <div className="spec-external-comments-section">
             <div className="spec-external-comments-header">
               <ProblemsCommentNodeIcon />
-              <span className="spec-external-comments-title">Comments</span>
+              <span className="spec-external-comments-title">AI Notes</span>
               <span className="spec-external-comments-count">{externalSpecCommentIssues.length}</span>
             </div>
             <div className="spec-external-comments-list">
@@ -10968,10 +10985,19 @@ function getAgentTaskTabId(taskId) {
   return getPresetAgentTaskDefinition(taskId)?.tab?.id ?? `agent-task-${taskId}`;
 }
 
+const DEFAULT_OPEN_CHAT_ID = 'refactor-time-slots';
+const DEFAULT_OPEN_CHAT_TAB_ID = `ai-chat-${DEFAULT_OPEN_CHAT_ID}`;
+
 function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
 
   return [
+    {
+      id: DEFAULT_OPEN_CHAT_TAB_ID,
+      label: 'Refactor VisitController.java time slots',
+      icon: <AiChatAgentIcon icon="claude" title="Refactor VisitController.java time slots" />,
+      closable: true,
+    },
     visitControllerTab,
     {
       id: INITIAL_PLAN_DIFF_TAB_ID,
@@ -11035,6 +11061,7 @@ function buildInitialEditorTabContents() {
       initialDiffComments: {},
       diffCommentsReadOnly: false,
     },
+    [DEFAULT_OPEN_CHAT_TAB_ID]: { language: 'text', code: '' },
   };
 
   return ['t1'].reduce((contents, taskId) => {
@@ -11532,6 +11559,7 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
       : ''
   );
   const addComment = (items, comment, sourceLabel = '') => {
+    if (comment && typeof comment === 'object' && comment.author === 'agent') return items;
     const trimmedComment = getStoredCommentText(comment).trim();
     if (!trimmedComment) return items;
 
@@ -11547,14 +11575,14 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   };
 
   const items = [];
-  flattenStoredDiffCommentsState(attachment.diffComments).forEach((comment) => {
+  Object.values(normalizeStoredDiffCommentsState(attachment.diffComments)).flat().forEach((comment) => {
     addComment(items, comment, attachment.label);
   });
   normalizeSpecVersionCommentEntries(attachment.sddCommentEntries).forEach((entry) => {
     const documentSourceLabel = attachment.isSddDocument ? attachment.label : entry.sourceLabel;
     (entry.comments ?? []).forEach((comment) => addComment(items, comment, documentSourceLabel));
     const entrySourceLabel = entry.sourceLabel || entry.sectionTitle || entry.sourceNavigationTabId || attachment.label;
-    flattenStoredDiffCommentsState(entry.diffComments).forEach((comment) => addComment(items, comment, entrySourceLabel));
+    Object.values(normalizeStoredDiffCommentsState(entry.diffComments)).flat().forEach((comment) => addComment(items, comment, entrySourceLabel));
   });
   (Array.isArray(attachment.sddRelatedCommentIssues) ? attachment.sddRelatedCommentIssues : []).forEach((issue) => {
     addComment(items, issue?.label, getCommentIssueSourceLabelWithoutLine(issue));
@@ -11980,8 +12008,8 @@ function ChatToolWindow({
       onCommentAttachmentResponseStart?.({ chatId: targetChatId, attachments: commentAttachments });
       onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: commentAttachments });
       const fullResponse = commentAttachments.length === 1
-        ? 'I reviewed the attached comment and will use it as context for this response.'
-        : `I reviewed ${commentAttachments.length} attached comment threads and will use them as context for this response.`;
+        ? 'I reviewed the attached AI Note and will use it as context for this response.'
+        : `I reviewed ${commentAttachments.length} attached AI Notes threads and will use them as context for this response.`;
       const timerKey = `${targetChatId}:${assistantMessageId}`;
       let index = 0;
       const streamNextChunk = () => {
@@ -12260,12 +12288,12 @@ function ChatToolWindow({
             showCloseButton
             onClose={onDismissFileCommentsSuggestionBanner}
             actions={[{
-              label: 'Enable File Comments',
+              label: 'Enable File AI Notes',
               type: 'primary',
               onClick: onEnableFileCommentsFromBanner,
             }]}
           >
-            You can now leave comments directly on editor files.
+            You can now leave AI Notes directly on editor files.
           </Banner>
         )}
 
@@ -12353,7 +12381,7 @@ function ChatToolWindow({
                             {sourceComments.length > 0 && (
                               <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-row-comment-preview" role="tooltip">
                                 <span className="ai-chat-attachment-comment-preview-title">
-                                  {sourceComments.length === 1 ? 'Comment' : `Comments · ${sourceComments.length}`}
+                                  {sourceComments.length === 1 ? 'AI Note' : `AI Notes · `}
                                 </span>
                                 {visibleSourceComments.map((comment, index) => (
                                   <span key={`${source.key}-source-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
@@ -12375,7 +12403,7 @@ function ChatToolWindow({
                   {commentPreviewItems.length > 0 && !isSourceListOpen && (
                     <span className="ai-chat-attachment-comment-preview ai-chat-composer-comment-preview" role="tooltip">
                       <span className="ai-chat-attachment-comment-preview-title">
-                        {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
+                        {commentPreviewItems.length === 1 ? 'AI Note' : `AI Notes · `}
                       </span>
 	                      {visibleCommentPreviewItems.map((comment, index) => (
 	                        <span
@@ -12536,10 +12564,10 @@ function AiChatAddContextPopup({
               onFileCommentsOptionSeen?.();
               onPlainFileGutterCommentsEnabledChange?.((prev) => !prev);
             }}
-            tooltip="Turns on gutter comment controls in files. Comments you add are attached to the selected chat as prompt context."
+            tooltip={AI_NOTE_FILE_HINT}
             badge={fileCommentsOptionIsNew ? 'New' : ''}
           >
-            Enable File Comments
+            Enable File AI Notes
           </AiChatContextToggleCell>
           <AiChatContextToggleCell
             checked={diffGutterCommentsEnabled}
@@ -12547,10 +12575,10 @@ function AiChatAddContextPopup({
               onDiffCommentsOptionSeen?.();
               onDiffGutterCommentsEnabledChange?.((prev) => !prev);
             }}
-            tooltip="Turns on gutter comment controls in diff views. Comments you add are attached to the selected chat as prompt context."
+            tooltip={AI_NOTE_DIFF_HINT}
             badge={diffCommentsOptionIsNew ? 'New' : ''}
           >
-            Enable Diff Comments
+            Enable Diff AI Notes
           </AiChatContextToggleCell>
 
           <AiChatAddContextSeparator />
@@ -12747,6 +12775,45 @@ const AI_CHAT_OLDER_THAN_7_ITEMS = [
   },
 ];
 
+function buildSpecStatusScenarioEntries(specId, label) {
+  return {
+    [`${specId}-build`]: {
+      title: `Build: ${label}`,
+      userPrompt: `Build ${label} and run the checks defined by this specification.`,
+      assistantParagraphs: [
+        `I loaded ${label} as the source specification for this Build chat.`,
+        'The build context is scoped to the attached MD document, including any unresolved document AI Notes that are currently attached to it.',
+        'I will use the specification plan and acceptance criteria as the execution target before reporting the result back here.',
+      ],
+      changeCard: null,
+      result: [
+        `${label} is attached as the active SDD document for this chat.`,
+        'Build actions from this chat will use that document context.',
+      ],
+      command: `agent run "${label}" --section "Plan"`,
+      attachmentLabel: label,
+      attachments: [{ id: `sdd-${specId}-build`, label, icon: 'fileTypes/markdown' }],
+    },
+    [`${specId}-specify`]: {
+      title: `Specified: ${label}`,
+      userPrompt: `Specify ${label} using the current MD document as context.`,
+      assistantParagraphs: [
+        `I loaded ${label} as the source specification for this Specified chat.`,
+        'The chat is tied to the attached MD document, so specification updates and related AI Notes are evaluated against that document context.',
+        'I will use the current document structure to refine the plan, acceptance criteria, and implementation notes.',
+      ],
+      changeCard: null,
+      result: [
+        `${label} is attached as the active SDD document for this chat.`,
+        'Specify actions from this chat will keep using that document context.',
+      ],
+      command: `agent run "${label}" --specify`,
+      attachmentLabel: label,
+      attachments: [{ id: `sdd-${specId}-specify`, label, icon: 'fileTypes/markdown' }],
+    },
+  };
+}
+
 const AI_CHAT_SCENARIOS = {
   'refactor-time-slots': {
     title: 'Refactor VisitController.java time slots',
@@ -12835,6 +12902,10 @@ public Vet getVet() {
     command: 'Running ./gradlew test --tests VisitControllerTests',
     attachmentLabel: null,
   },
+  // Spec status chats — two per spec (Build + Specify), mirroring the previous
+  // implementation's ensureSpecStatusChat('Build') / ('Specified') sessions.
+  ...buildSpecStatusScenarioEntries('spec-visit-booking', 'Visit-Booking.md'),
+  ...buildSpecStatusScenarioEntries('spec-vet-schedules', 'Vet-Schedules.md'),
 };
 
 function ChatListRow({ item, selected = false, active = false, onSelect = null, nested = false, hideMeta = false, showActiveBadge = true }) {
@@ -13134,7 +13205,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                     {commentPreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-sent-comment-preview" role="tooltip">
                         <span className="ai-chat-attachment-comment-preview-title">
-                          {commentPreviewItems.length === 1 ? 'Comment' : `Comments · ${commentPreviewItems.length}`}
+                          {commentPreviewItems.length === 1 ? 'AI Note' : `AI Notes · `}
                         </span>
 	                        {visibleCommentPreviewItems.map((comment, index) => (
 	                          <span
@@ -13279,13 +13350,289 @@ function SyntaxCode({ code, language = 'java' }) {
   );
 }
 
+// Agent-run cycle scaffolding for the chat tab (Phase 1): while the simulated
+// agent works, the composer shows a single "AI Notes" review checklist attached
+// to the top of the input, listing the actual notes the user left; when the run
+// completes the in-code AI Notes resolve to reply / quick-fix / resolved / a
+// fresh agent note.
+
+// Resolution variants applied to each pending AI Note when the run completes.
+const AGENT_RUN_RESOLUTIONS = ['reply', 'quickfix', 'resolved', 'agent-comment'];
+const AGENT_RUN_RESOLUTION_LABEL = {
+  reply: 'Claude Agent replied',
+  quickfix: 'Quick fix available',
+  resolved: 'Resolved by Claude Agent',
+  'agent-comment': 'Claude Agent added a note',
+};
+const AGENT_RUN_RESOLUTION_ICON = {
+  reply: 'general/balloon',
+  quickfix: 'vcs/diff',
+  resolved: 'general/checkmark',
+  'agent-comment': 'general/balloon',
+};
+const AGENT_RUN_RESOLUTION_REPLY = {
+  reply: 'Looked into this — moved the slot boundary so the note is addressed. See the summary in chat.',
+  quickfix: 'I can apply this change automatically.',
+  resolved: 'Addressed in this iteration and marked resolved.',
+  'agent-comment': 'Left a follow-up here — please confirm the extracted service name before I continue.',
+};
+// Severity badge shown on the agent's reply card (Figma: red "Critical" pill).
+const AGENT_RUN_RESOLUTION_SEVERITY = {
+  reply: 'Suggestion',
+  quickfix: 'Critical',
+  resolved: 'Resolved',
+  'agent-comment': 'Follow-up',
+};
+// Severity statuses shown on an answered note (no "Suggestion"): the demo
+// cycles these so all three colours appear — Critical (red), Warning (yellow),
+// Info (blue).
+const AGENT_RUN_NOTE_SEVERITIES = ['Critical', 'Warning', 'Info'];
+// Maps a severity label to its coloured status-pill modifier class.
+const SEVERITY_TONE_CLASS = { critical: 'is-critical', warning: 'is-warning', info: 'is-info' };
+
+// Findings the agent "leaves in the code" when the user asks for a review
+// (/review or "review this"). Each becomes an agent-authored review comment
+// with a severity the user can navigate, reply to, quick-fix or resolve.
+const AGENT_REVIEW_FINDINGS = [
+  // The agent comments on the diff first — the changed code is reviewed before
+  // the surrounding files.
+  {
+    text: 'The eager timeSlots init runs on every controller construction — confirm this is the intended lifecycle.',
+    sourceLabel: 'Diff VisitController.java',
+    tabId: INITIAL_PLAN_DIFF_TAB_ID,
+    rowId: 'plan-code-3-added-3',
+    lineLabel: 'Diff · added',
+    severity: 'Critical',
+    fixLabel: 'Extract a provider',
+  },
+  {
+    text: 'This removed 9–16 loop hardcoded the slot window; keep the range in a shared constant.',
+    sourceLabel: 'Diff VisitController.java',
+    tabId: INITIAL_PLAN_DIFF_TAB_ID,
+    rowId: 'plan-code-3-removed-3',
+    lineLabel: 'Diff · removed',
+    severity: 'Warning',
+    fixLabel: 'Extract constant',
+  },
+  // Then the surrounding files.
+  {
+    text: 'scheduleId is used before a null/range check — validate it before dispatch.',
+    sourceLabel: 'VisitController.java',
+    tabId: '1',
+    rowId: 'plain-line-20',
+    lineLabel: 'Line 20',
+    severity: 'Critical',
+    fixLabel: 'Add null check',
+  },
+  {
+    text: 'Visit exposes its mutable Date field directly — return a defensive copy.',
+    sourceLabel: 'Visit.java',
+    tabId: '2',
+    rowId: 'plain-line-26',
+    lineLabel: 'Line 26',
+    severity: 'Info',
+    fixLabel: 'Return defensive copy',
+  },
+];
+
+// The latest user turn in a note's thread: the reply-to-agent if the user
+// left one, otherwise the note itself.
+function getLatestThreadUserText(comment) {
+  if (comment && typeof comment === 'object' && typeof comment.userReply === 'string' && comment.userReply.trim().length > 0) {
+    return comment.userReply;
+  }
+  return getStoredCommentText(comment);
+}
+
+// The thread stays open (the agent answers and it lingers in the gutter) only
+// while the latest user turn is a question ("?"). A note with no "?", or a
+// follow-up like "do it", is an instruction: the agent actions it in chat and
+// the note is removed from the diff so it disappears.
+function threadExpectsAgentReply(comment) {
+  return textLooksLikeQuestion(getLatestThreadUserText(comment));
+}
+
+// Resolve a pending AI-note snapshot once an agent run completes:
+//  - a "Quick fix" note is executed and marked Solved (stays until swept);
+//  - an open question keeps its answered thread;
+//  - everything else (plain instructions) was actioned in chat → dropped.
+function applyAiNoteQuestionResolution(current) {
+  let severityCounter = 0;
+  return Object.entries(normalizeStoredDiffCommentsState(current)).reduce((acc, [rowId, rowComments]) => {
+    const resolved = rowComments
+      .filter((comment) => comment?.quickFix || threadExpectsAgentReply(comment))
+      .map((comment) => {
+        const base = (comment && typeof comment === 'object') ? comment : { text: comment };
+        const severity = AGENT_RUN_NOTE_SEVERITIES[severityCounter % AGENT_RUN_NOTE_SEVERITIES.length];
+        severityCounter += 1;
+        const wasQuickFix = Boolean(base.quickFix);
+        return {
+          ...base,
+          text: getStoredCommentText(comment),
+          pending: false,
+          resolution: 'reply',
+          agentReply: AGENT_RUN_RESOLUTION_REPLY.reply,
+          severity,
+          quickFix: false,
+          // Quick fix applied → Solved; it lingers until the next agent run sweeps it.
+          solved: wasQuickFix || Boolean(base.solved),
+        };
+      });
+    if (resolved.length > 0) acc[rowId] = resolved;
+    return acc;
+  }, {});
+}
+
+function agentRunFileIconName(fileName = '') {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.java')) return 'fileTypes/java';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'fileTypes/html';
+  return 'fileTypes/text';
+}
+
+// Round severity status icon for a review comment: red "!" (critical), yellow
+// "!" (warning), blue "i" (info).
+function ReviewSeverityIcon({ severity }) {
+  const s = String(severity || '').toLowerCase();
+  const fill = s === 'critical' ? '#DB5C5C' : s === 'warning' ? '#F2C55C' : '#548AF7';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="icon aiux550-review-sev-icon" aria-label={severity || 'info'}>
+      <circle cx="8" cy="8" r="7" fill={fill} />
+      {s === 'info'
+        ? <path d="M8 6.9v4M8 5.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+        : <path d="M8 4.4v4.2M8 11.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
+// Card attached to the top of the composer.
+//  - For a note-processing run it's an execution checklist (done/active/pending,
+//    "N/N completed").
+//  - For a REVIEW run (kind === 'review') nothing is executed — the agent surfaces
+//    comments, so it's a file-grouped tree of the comments it left (file header +
+//    severity-tagged comment rows), with a summary of files/comments/severities.
+function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null }) {
+  const items = Array.isArray(notes) ? notes : [];
+  const total = items.length;
+  const doneCount = items.filter((note) => note.state === 'done').length;
+  const isDone = status === 'done';
+  const isReview = kind === 'review';
+  const [collapsed, setCollapsed] = useState(false);
+  // Auto-collapse once the run finishes; the user can re-expand via the chevron.
+  useEffect(() => {
+    if (isDone) setCollapsed(true);
+  }, [isDone]);
+
+  // In a review run the comments appear one by one: reveal only the notes the
+  // run has reached so far (state !== 'pending') until it finishes.
+  const revealedItems = isReview && !isDone
+    ? items.filter((note) => note.state !== 'pending')
+    : items;
+  const displayItems = revealedItems.length > 0
+    ? revealedItems
+    : [{ id: 'placeholder', text: isReview ? 'Reviewing…' : 'Reviewing AI Notes…', state: 'active' }];
+
+  // Review: group the surfaced comments by file and build a summary line
+  // ("N files, M comments: X critical, Y warning, Z info").
+  const reviewGroups = [];
+  const severityTotals = { critical: 0, warning: 0, info: 0 };
+  if (isReview) {
+    const byFile = new Map();
+    displayItems.forEach((note) => {
+      // Keep the "Diff …" label distinct so diff comments are their own group.
+      const file = (note.sourceLabel || 'File').trim() || 'File';
+      if (!byFile.has(file)) {
+        byFile.set(file, { file, isDiff: /^diff\s+/i.test(file), notes: [] });
+        reviewGroups.push(byFile.get(file));
+      }
+      byFile.get(file).notes.push(note);
+      const sev = String(note.severity || '').toLowerCase();
+      if (sev in severityTotals) severityTotals[sev] += 1;
+    });
+  }
+  const severitySummary = ['critical', 'warning', 'info']
+    .filter((sev) => severityTotals[sev] > 0)
+    .map((sev) => `${severityTotals[sev]} ${sev}`)
+    .join(', ');
+  const headerCount = isReview
+    ? (!isDone && displayItems.length < items.length
+        ? 'Reviewing…'
+        : `${reviewGroups.length} file${reviewGroups.length === 1 ? '' : 's'}, ${total} comment${total === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}`)
+    : `${doneCount}/${total} completed`;
+
+  return (
+    <section className="aiux550-loading-plan" aria-label={isReview ? 'AI Review comments' : 'AI Review checklist'}>
+      <button
+        type="button"
+        className={`aiux550-loading-plan-header${collapsed ? ' is-collapsed' : ''}`}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((value) => !value)}
+      >
+        <Icon name="general/chevronDown" size={16} />
+        <span className="aiux550-loading-plan-title">AI Review</span>
+        <span className="aiux550-loading-plan-count">{headerCount}</span>
+      </button>
+      {!collapsed && (isReview ? (
+        <div className="aiux550-review-tree">
+          {reviewGroups.map((group) => (
+            <div className="aiux550-review-file-group" key={group.file}>
+              <div className="aiux550-review-file-head">
+                <Icon name={group.isDiff ? 'vcs/diff' : agentRunFileIconName(group.file)} size={16} className="aiux550-review-file-icon" />
+                <span className="aiux550-review-file-name">{group.file}</span>
+              </div>
+              {group.notes.map((note, index) => {
+                const canOpen = Boolean(note.openTarget) && typeof onOpenTarget === 'function';
+                return (
+                  <div
+                    className={`aiux550-review-comment-row${canOpen ? ' is-clickable' : ''}`}
+                    key={note.id ?? index}
+                    role={canOpen ? 'button' : undefined}
+                    tabIndex={canOpen ? 0 : undefined}
+                    onClick={canOpen ? () => onOpenTarget(note.openTarget) : undefined}
+                    onKeyDown={canOpen ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenTarget(note.openTarget); } } : undefined}
+                  >
+                    <ReviewSeverityIcon severity={note.severity} />
+                    <span className="aiux550-review-comment-text">{note.text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="aiux550-loading-plan-list">
+          {displayItems.map((note, index) => {
+            const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
+            const fileLabel = (note.sourceLabel || '').replace(/^Diff\s+/i, '').trim();
+            return (
+              <div className={`aiux550-loading-plan-row ${state}`} key={note.id ?? index}>
+                <CheckStatus status={state === 'done' ? 'passed' : 'pending'} isLoading={state === 'active'} />
+                <span className="aiux550-loading-plan-note">
+                  <span className="aiux550-loading-plan-text">{note.text}</span>
+                  {fileLabel.length > 0 && (
+                    <span className="aiux550-loading-plan-note-meta">{fileLabel}</span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function AiChatTabView({
   chatId,
   scenarios = {},
   sentMessages = [],
   onSendMessage = null,
+  onOpenDiffTab = null,
+  composerDiffAttachments = [],
+  onRemoveComposerAttachment = null,
   fallbackTitle = 'AI Chat',
   onAddContextPopupOpen = null,
+  showNewContextOptionsIndicator = false,
   plainFileGutterCommentsEnabled = false,
   onPlainFileGutterCommentsEnabledChange = null,
   diffGutterCommentsEnabled = true,
@@ -13294,8 +13641,12 @@ function AiChatTabView({
   diffCommentsOptionIsNew = false,
   onFileCommentsOptionSeen = null,
   onDiffCommentsOptionSeen = null,
+  agentRun = null,
+  onStopMessage = null,
+  onOpenReviewTarget = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
+  const isAgentRunProcessing = agentRun?.status === 'processing';
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
     userPrompt: fallbackTitle,
@@ -13334,13 +13685,17 @@ function AiChatTabView({
   useEffect(() => {
     const scrollElement = scrollRef.current;
     if (!scrollElement) return;
-    scrollElement.scrollTop = scrollElement.scrollHeight;
+    // Opening a chat shows it from the top (prompt → answer → changes → result);
+    // only jump to the latest once the user has sent a message.
+    scrollElement.scrollTop = sentMessages.length > 0 ? scrollElement.scrollHeight : 0;
   }, [chatId, sentMessages.length]);
 
+  const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+    .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
+  const canSend = composerText.trim().length > 0 || hasComposerCommentAttachment;
   const handleSend = () => {
-    const trimmed = composerText.trim();
-    if (!trimmed) return;
-    onSendMessage?.(chatId, trimmed);
+    if (!canSend) return;
+    onSendMessage?.(chatId, composerText.trim(), composerDiffAttachments);
     setComposerText('');
   };
 
@@ -13376,6 +13731,33 @@ function AiChatTabView({
               </div>
             )}
 
+            {Array.isArray(scenario?.attachments) && scenario.attachments.length > 0 && (
+              <div className="aiux543-user-attachments">
+                {scenario.attachments.map((attachment) => {
+                  const openDiff = attachment.diffRequest && onOpenDiffTab
+                    ? () => onOpenDiffTab(attachment.diffRequest)
+                    : (scenario.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(scenario.diffRequest) : null);
+                  return (
+                    <button
+                      key={attachment.id ?? attachment.label}
+                      type="button"
+                      className="ai-chat-attachment-chip aiux543-user-attachment-chip"
+                      onClick={openDiff ?? undefined}
+                    >
+                      <AiChatAttachmentIcon icon={attachment.icon} />
+                      <span className="ai-chat-attachment-name">{attachment.label}</span>
+                      {attachment.commentCount > 0 && (
+                        <span className="ai-chat-attachment-comment-count">
+                          <Icon name="general/balloon" size={16} />
+                          {attachment.commentCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {scenario?.assistantParagraphs?.length > 0 && (
               <article className="aiux543-answer">
                 <h3>What changed</h3>
@@ -13388,12 +13770,22 @@ function AiChatTabView({
         )}
 
         {scenario?.changeCard && (
-          <section className="aiux543-code-card">
+          <section
+            className={`aiux543-code-card${scenario.diffRequest && onOpenDiffTab ? ' aiux543-code-card-clickable' : ''}`}
+            role={scenario.diffRequest && onOpenDiffTab ? 'button' : undefined}
+            tabIndex={scenario.diffRequest && onOpenDiffTab ? 0 : undefined}
+            onClick={scenario.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(scenario.diffRequest) : undefined}
+            onKeyDown={scenario.diffRequest && onOpenDiffTab ? (event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              onOpenDiffTab(scenario.diffRequest);
+            } : undefined}
+          >
             <header>
               <Icon className="aiux543-file-icon" name="fileTypes/java" size={16} />
               <strong>{scenario.changeCard.name}</strong>
               <span className="aiux543-diff-inline">{scenario.changeCard.added}</span>
-              <span>{scenario.changeCard.removed}</span>
+              <span className="aiux543-diff-inline aiux543-diff-inline-removed">{scenario.changeCard.removed}</span>
               <em>Edited</em>
             </header>
             <SyntaxCode code={scenario.changeCard.code} />
@@ -13428,23 +13820,33 @@ function AiChatTabView({
               </p>
             </article>
           ) : (
-            <div key={message.id} className="aiux543-user-message" data-ai-chat-message-id={message.id}>
-              <p>{message.text}</p>
-              <span className="aiux543-kebab" aria-hidden="true">
-                <Icon name="general/moreVertical" size={16} />
-              </span>
-            </div>
+            <ChatUserCard
+              key={message.id}
+              messageId={message.id}
+              attachments={message.attachments}
+              onAttachmentOpen={onOpenDiffTab ? (attachment) => {
+                if (attachment?.diffRequest) onOpenDiffTab(attachment.diffRequest);
+              } : null}
+            >
+              {message.text}
+            </ChatUserCard>
           )
         ))}
       </div>
 
-      <div className="aiux543-composer-sticky">
-        <div className="aiux543-chat-local-card">
-          <button type="button" className="aiux543-chat-dropdown">
-            <span>Local</span>
-            <Icon name="general/chevronDown" size={16} />
-          </button>
-        </div>
+      <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}`}>
+        {/* Hidden for now — the "Local" scope block will be reintroduced later. */}
+        {false && (
+          <div className="aiux543-chat-local-card">
+            <button type="button" className="aiux543-chat-dropdown">
+              <span>Local</span>
+              <Icon name="general/chevronDown" size={16} />
+            </button>
+          </div>
+        )}
+        {(isAgentRunProcessing || (agentRun?.status === 'done' && agentRun?.kind === 'review' && (agentRun?.notes?.length ?? 0) > 0)) && (
+          <AgentRunLoadingPlan notes={agentRun?.notes} status={agentRun?.status} kind={agentRun?.kind} onOpenTarget={onOpenReviewTarget} />
+        )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           <div className="aiux543-chat-input-row">
             <textarea
@@ -13463,10 +13865,46 @@ function AiChatTabView({
               }}
             />
           </div>
+          {Array.isArray(composerDiffAttachments) && composerDiffAttachments.length > 0 && (
+            <div className="aiux543-composer-attachments" onClick={(event) => event.stopPropagation()}>
+              {composerDiffAttachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className="ai-chat-attachment-chip aiux543-composer-attachment-chip"
+                  role={onOpenDiffTab && attachment.diffRequest ? 'button' : undefined}
+                  tabIndex={onOpenDiffTab && attachment.diffRequest ? 0 : undefined}
+                  onClick={onOpenDiffTab && attachment.diffRequest ? () => onOpenDiffTab(attachment.diffRequest) : undefined}
+                >
+                  <AiChatAttachmentIcon icon={attachment.icon} />
+                  <span className="ai-chat-attachment-name">{attachment.label}</span>
+                  {attachment.commentCount > 0 && (
+                    <span className="ai-chat-attachment-comment-count">
+                      <Icon name="general/balloon" size={16} />
+                      {attachment.commentCount}
+                    </span>
+                  )}
+                  {onRemoveComposerAttachment && (
+                    <button
+                      type="button"
+                      className="aiux543-composer-attachment-remove"
+                      aria-label={`Remove ${attachment.label ?? 'attachment'}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRemoveComposerAttachment(attachment, { chatId });
+                      }}
+                    >
+                      <Icon name="windows/closeSmall" size={16} />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="aiux543-chat-toolbar">
             <div className="aiux543-chat-toolbar-left">
               <button
-                className="aiux543-chat-icon-button"
+                className={`aiux543-chat-icon-button${showNewContextOptionsIndicator ? ' has-new-context-options' : ''}`}
                 type="button"
                 aria-label="Add context"
                 aria-expanded={Boolean(addContextPopupRect)}
@@ -13491,9 +13929,20 @@ function AiChatTabView({
               <button type="button" className="aiux543-chat-icon-button" aria-label="Generating">
                 <AiChatProgressIcon />
               </button>
-              <button type="button" className="aiux543-chat-icon-button" aria-label="Send" onClick={handleSend} disabled={!composerText.trim()}>
-                <AiChatSendIcon />
-              </button>
+              {isAgentRunProcessing ? (
+                <button
+                  type="button"
+                  className="aiux543-chat-icon-button aiux543-chat-stop-button"
+                  aria-label="Stop"
+                  onClick={() => onStopMessage?.(chatId)}
+                >
+                  <span className="aiux543-chat-stop-square" aria-hidden="true" />
+                </button>
+              ) : (
+                <button type="button" className="aiux543-chat-icon-button" aria-label="Send" onClick={handleSend} disabled={!canSend}>
+                  <AiChatSendIcon />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -13550,9 +13999,9 @@ const AI_ASSISTANT_SETTINGS_SECTIONS = [
   },
   {
     id: 'ai-assistant-comments',
-    label: 'Comments',
+    label: 'AI Notes',
     icon: 'general/balloon',
-    description: 'Comment entry points in files and diffs.',
+    description: 'AI Note entry points in files and diffs.',
   },
 ];
 
@@ -13631,7 +14080,7 @@ function AppSettingsDefaultContent({ path }) {
       <div className="settings-group app-settings-dialog-placeholder">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">{path[path.length - 1]?.label ?? 'Settings'}</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Select Tools, AI Assistant, or Comments to configure AI comment workflows.
+          Select Tools, AI Assistant, or AI Notes to configure AI Note workflows.
         </div>
       </div>
     </>
@@ -13656,7 +14105,7 @@ function AppSettingsToolsContent({ path, onSelectAiAssistant }) {
           <span className="app-settings-dialog-nav-card-body">
             <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">AI Assistant</span>
             <span className="app-settings-dialog-nav-card-description text-ui-small">
-              Chat, comments, and code-review context settings.
+              Chat, AI Notes, and code-review context settings.
             </span>
           </span>
           <Icon name="general/chevronRight" size={16} className="app-settings-dialog-nav-card-chevron" />
@@ -13673,7 +14122,7 @@ function AppSettingsAiAssistantContent({ path, onSelectSection }) {
       <div className="settings-group">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Assistant</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Manage how assistant features collect context and connect code comments to chat sessions.
+          Manage how assistant features collect context and connect code AI Notes to chat sessions.
         </div>
       </div>
       <div className="settings-group app-settings-dialog-card-group">
@@ -13845,8 +14294,8 @@ function AppSettingsCodeReviewContent({ path }) {
           onChange={setSummarizeDiffs}
         />
         <Checkbox
-          label="Suggest Fixes for Review Comments"
-          hint="Offer concrete code edits when a review comment describes a problem."
+          label="Suggest Fixes for Review AI Notes"
+          hint="Offer concrete code edits when a review AI Note describes a problem."
           checked={suggestFixes}
           onChange={setSuggestFixes}
         />
@@ -13872,21 +14321,21 @@ function AppSettingsCommentsContent({
     <>
       <AppSettingsBreadcrumb path={path} />
       <div className="settings-group">
-        <div className="app-settings-dialog-page-title text-ui-default-semibold">Comments</div>
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Notes</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Choose where the AI Assistant can collect code comments as chat context.
+          Choose where the AI Assistant can collect code AI Notes as chat context.
         </div>
       </div>
       <div className="settings-group app-settings-dialog-options-group">
         <Checkbox
-          label="Enable Comments in Files"
-          hint="Show gutter comment controls in editor files and attach those comments to the selected chat."
+          label="Enable AI Notes in Files"
+          hint={AI_NOTE_FILE_HINT}
           checked={plainFileGutterCommentsEnabled}
           onChange={onPlainFileGutterCommentsEnabledChange}
         />
         <Checkbox
-          label="Enable Comments in Diffs"
-          hint="Show gutter comment controls in diff views and attach those comments to the selected chat."
+          label="Enable AI Notes in Diffs"
+          hint={AI_NOTE_DIFF_HINT}
           checked={diffGutterCommentsEnabled}
           onChange={onDiffGutterCommentsEnabledChange}
         />
@@ -13993,8 +14442,8 @@ export default function App() {
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
-    const visitControllerTabIndex = initialTabs.findIndex((tab) => tab.id === '1');
-    return visitControllerTabIndex >= 0 ? visitControllerTabIndex : 0;
+    const defaultChatTabIndex = initialTabs.findIndex((tab) => tab.id === DEFAULT_OPEN_CHAT_TAB_ID);
+    return defaultChatTabIndex >= 0 ? defaultChatTabIndex : 0;
   });
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
@@ -14002,7 +14451,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['commit', 'chat-history']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(['chat-history', 'commit']);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
@@ -14011,8 +14460,12 @@ export default function App() {
   const [showFileCommentsSuggestionBanner, setShowFileCommentsSuggestionBanner] = useState(false);
   const [chatScrollTarget, setChatScrollTarget] = useState(null);
   const [selectedAiChatId, setSelectedAiChatId] = useState('refactor-time-slots');
+  const [aiChatAutoSendRequest, setAiChatAutoSendRequest] = useState(null);
+  const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  // Per-chat agent-run cycle: { status: 'processing' | 'done', iteration }.
+  const [agentRunByChatId, setAgentRunByChatId] = useState({});
   const [commentShortcutHintTarget, setCommentShortcutHintTarget] = useState(null);
   const [hasShownCommentShortcutHint, setHasShownCommentShortcutHint] = useState(false);
   const aiChatStreamingTimersRef = useRef({});
@@ -18557,6 +19010,12 @@ export default function App() {
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
   const isAiChatTab = Boolean(activeTabId?.startsWith('ai-chat-'));
   const activeAiChatTabChatId = isAiChatTab ? activeTabId.slice('ai-chat-'.length) : null;
+  // Keep the "selected chat" (which drives composer diff attachments, sessions,
+  // etc.) in sync with the chat tab the user is viewing.
+  useEffect(() => {
+    if (!activeAiChatTabChatId) return;
+    setSelectedAiChatId((prev) => (prev === activeAiChatTabChatId ? prev : activeAiChatTabChatId));
+  }, [activeAiChatTabChatId]);
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
@@ -18627,7 +19086,7 @@ export default function App() {
         userPrompt: `Build ${label} and run the checks defined by this specification.`,
         assistantParagraphs: [
           `I loaded ${label} as the source specification for this Build chat.`,
-          'The build context is scoped to the attached MD document, including any unresolved document comments that are currently attached to it.',
+          'The build context is scoped to the attached MD document, including any unresolved document AI Notes that are currently attached to it.',
           'I will use the specification plan and acceptance criteria as the execution target before reporting the result back here.',
         ],
         result: [
@@ -18644,7 +19103,7 @@ export default function App() {
         userPrompt: `Specify ${label} using the current MD document as context.`,
         assistantParagraphs: [
           `I loaded ${label} as the source specification for this Specified chat.`,
-          'The chat is tied to the attached MD document, so specification updates and related comments are evaluated against that document context.',
+          'The chat is tied to the attached MD document, so specification updates and related AI Notes are evaluated against that document context.',
           'I will use the current document structure to refine the plan, acceptance criteria, and implementation notes.',
         ],
         result: [
@@ -19463,9 +19922,18 @@ export default function App() {
       toVersion: currentVersion,
     });
   };
+  // Assigned below once its dependencies (chat streaming, agent runs) exist.
+  const resolveReviewCommentRef = useRef(null);
   const handleActivePlanDiffCommentsChange = useCallback((comments, metadata = {}) => {
     if (activePlanDiffCommentsReadOnly) {
       return;
+    }
+
+    // Quick fix / Resolve on an agent review comment: run the agent's action in
+    // chat (streamed response) and drop the matching review finding from the
+    // "AI Review" folder — then persist the comment removal below.
+    if (metadata?.resolveAction) {
+      resolveReviewCommentRef.current?.(metadata.resolveAction);
     }
 
     const nextComments = normalizeStoredDiffCommentsState(comments);
@@ -19768,6 +20236,27 @@ export default function App() {
           },
         };
       });
+    }
+
+    if ((metadata?.submitAction === 'send-to-agent' || metadata?.submitAction === 'send-all-to-agent') && hasNextComments) {
+      // "Send AI Note to Agent" / "Send All AI Notes to Agent" from the editor:
+      // send to the agent in the background WITHOUT navigating to the chat tab —
+      // the user stays in the editor (the run's spinners show in-code, the
+      // Chats-History folder updates). We still point the composer memo at the
+      // target chat so the auto-send effect picks up the attachment, but we do
+      // NOT open the chat tab.
+      //
+      // "Send AI Note to Agent" (and reply / quick-fix) sends ONLY the note that
+      // was just submitted — scope the auto-send to that single comment. Only
+      // "Send All AI Notes to Agent" batches every attached note.
+      const submittedRowId = typeof metadata?.rowId === 'string' && metadata.rowId.length > 0
+        ? metadata.rowId
+        : (Array.isArray(metadata?.rowIds) ? metadata.rowIds[metadata.rowIds.length - 1] : null);
+      const only = metadata?.submitAction === 'send-all-to-agent' || !submittedRowId || typeof metadata?.comment !== 'string'
+        ? null
+        : { rowId: submittedRowId, text: metadata.comment.trim() };
+      setSelectedAiChatId(targetChatId);
+      setAiChatAutoSendRequest({ chatId: targetChatId, nonce: Date.now(), only });
     }
 
     if (!activePlanDiffTarget || !activePlanDiffSourceTabId) return;
@@ -20363,6 +20852,500 @@ export default function App() {
     }
   }, [getPendingCommentRowsByTabIdFromAttachments, getPendingCommentSnapshotsByTabIdFromAttachments, getPendingDocumentCommentSnapshotsByTabIdFromAttachments]);
 
+  // Resolve a comment-attachment run: turn the "pending" in-code AI Notes into
+  // one of the agent-run resolution variants (reply / quick fix / resolved /
+  // agent note) instead of simply clearing them. The pending snapshot overlay
+  // carries the note content (the base diff comments are cleared on send), so we
+  // rewrite the overlay in place and drop the gutter loaders.
+  const resolveCommentAttachmentResponse = useCallback(({ attachments = [], chatId: contextChatId = null } = {}) => {
+    const completedRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
+    const completedSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
+    const completedDocumentSnapshotsByTabId = getPendingDocumentCommentSnapshotsByTabIdFromAttachments(attachments);
+
+    if (
+      Object.keys(completedRowsByTabId).length === 0
+      && Object.keys(completedSnapshotsByTabId).length === 0
+      && Object.keys(completedDocumentSnapshotsByTabId).length === 0
+    ) return;
+
+    // Turn off the gutter spinners.
+    if (Object.keys(completedRowsByTabId).length > 0) {
+      setPendingDiffCommentRowsByTabId((prev) => {
+        const next = { ...prev };
+        Object.entries(completedRowsByTabId).forEach(([diffTabId, completedRowIds]) => {
+          const completedRowIdSet = new Set(completedRowIds);
+          const remainingRowIds = (next[diffTabId] ?? []).filter((rowId) => !completedRowIdSet.has(rowId));
+          if (remainingRowIds.length > 0) {
+            next[diffTabId] = remainingRowIds;
+            return;
+          }
+          delete next[diffTabId];
+        });
+        return next;
+      });
+    }
+
+    const applyResolutionToSnapshot = (current) => applyAiNoteQuestionResolution(current);
+
+    if (Object.keys(completedSnapshotsByTabId).length > 0) {
+      setPendingDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.keys(completedSnapshotsByTabId).forEach((tabId) => {
+          next[tabId] = applyResolutionToSnapshot(prev[tabId]);
+        });
+        return next;
+      });
+    }
+    if (Object.keys(completedDocumentSnapshotsByTabId).length > 0) {
+      setPendingDocumentDiffCommentSnapshotsByTabId((prev) => {
+        const next = { ...prev };
+        Object.keys(completedDocumentSnapshotsByTabId).forEach((tabId) => {
+          next[tabId] = applyResolutionToSnapshot(prev[tabId]);
+        });
+        return next;
+      });
+    }
+
+    // NOTE: "the agent left a new comment" is represented purely by the
+    // `agent-comment` resolution variant rendered under a note (see
+    // AGENT_RUN_RESOLUTIONS). We intentionally do NOT inject a separate seeded
+    // session note here — doing so rendered the same note twice (once as the
+    // local group, once as the session group, since the mirror-dedup can't match
+    // when the pending overlay and session diverge) and stacked across re-runs.
+
+    // The agent replied to the attached notes → the thread grew by one agent
+    // reply per note. Update the attachment's comment counter (and its preview
+    // comments) on the sent message in that chat so the "💬 N" badge reflects it.
+    const replyChatId = typeof contextChatId === 'string' && contextChatId.length > 0
+      ? contextChatId
+      : selectedAiChatId;
+    const resolvedTabIds = new Set(Object.keys(completedSnapshotsByTabId));
+    if (replyChatId && resolvedTabIds.size > 0) {
+      const withAgentReplies = (diffComments) => (
+        Object.entries(normalizeStoredDiffCommentsState(diffComments)).reduce((acc, [rowId, rowComments]) => {
+          const next = [];
+          rowComments.forEach((comment) => {
+            next.push(comment);
+            // Only open question threads get an agent reply; plain instructions,
+            // "do it" follow-ups and quick-fixed notes are actioned silently.
+            if (!comment?.quickFix && threadExpectsAgentReply(comment)) {
+              next.push({ text: AGENT_RUN_RESOLUTION_REPLY.reply, author: 'agent', resolution: 'reply' });
+            }
+          });
+          acc[rowId] = next;
+          return acc;
+        }, {})
+      );
+      handleSelectedAiChatSentMessagesChange((prev) => prev.map((message) => {
+        if (!Array.isArray(message.attachments) || message.attachments.length === 0) return message;
+        let changed = false;
+        const attachments = message.attachments.map((attachment) => {
+          if (!attachment?.diffTabId || !resolvedTabIds.has(attachment.diffTabId) || attachment.agentRepliesApplied) {
+            return attachment;
+          }
+          changed = true;
+          const nextDiffComments = withAgentReplies(attachment.diffComments);
+          const nextCount = Object.values(nextDiffComments).reduce((sum, arr) => sum + arr.length, 0);
+          return { ...attachment, diffComments: nextDiffComments, commentCount: nextCount, agentRepliesApplied: true };
+        });
+        return changed ? { ...message, attachments } : message;
+      }), replyChatId);
+    }
+  }, [
+    getPendingCommentRowsByTabIdFromAttachments,
+    getPendingCommentSnapshotsByTabIdFromAttachments,
+    getPendingDocumentCommentSnapshotsByTabIdFromAttachments,
+    handleSelectedAiChatSentMessagesChange,
+    selectedAiChatId,
+  ]);
+
+  // Reuses the right-panel chat's send/comment-attachment logic for the chat
+  // editor tabs: append the user message (+ streamed assistant reply when comment
+  // attachments are present), fire the comment-response lifecycle, and clear the
+  // consumed diff attachments — mirroring ChatToolWindow.handleSendMessage.
+  const aiChatTabCommentResponseTimersRef = useRef({});
+  // Sweep every "Solved" note out of the gutter — runs on the next agent
+  // request so accepted/quick-fixed notes don't pile up. Clears them from the
+  // run overlays (pending snapshots) and the persisted tab comment stores.
+  const sweepSolvedComments = useCallback(() => {
+    const stripMap = (map) => {
+      let changed = false;
+      const next = {};
+      Object.entries(map || {}).forEach(([tabId, comments]) => {
+        const stripped = stripSolvedDiffComments(comments);
+        if (stripped) { changed = true; next[tabId] = stripped; } else next[tabId] = comments;
+      });
+      return changed ? next : map;
+    };
+    setPendingDiffCommentSnapshotsByTabId((prev) => stripMap(prev));
+    setPendingDocumentDiffCommentSnapshotsByTabId((prev) => stripMap(prev));
+    setIdeTabContents((prev) => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev).forEach(([tabId, content]) => {
+        if (!content) { next[tabId] = content; return; }
+        let nextContent = content;
+        const strippedInitial = stripSolvedDiffComments(content.initialDiffComments);
+        if (strippedInitial) nextContent = { ...nextContent, initialDiffComments: strippedInitial };
+        const sessions = content.diffSessionCommentsByChatId;
+        if (sessions && typeof sessions === 'object') {
+          let sessionsChanged = false;
+          const nextSessions = {};
+          Object.entries(sessions).forEach(([cid, session]) => {
+            const strippedComments = session && stripSolvedDiffComments(session.comments);
+            if (strippedComments) { sessionsChanged = true; nextSessions[cid] = { ...session, comments: strippedComments }; }
+            else nextSessions[cid] = session;
+          });
+          if (sessionsChanged) nextContent = { ...nextContent, diffSessionCommentsByChatId: nextSessions };
+        }
+        if (nextContent !== content) changed = true;
+        next[tabId] = nextContent;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const handleAiChatTabSend = useCallback((chatId, text, attachments = []) => {
+    if (!chatId) return;
+    const messageText = (text ?? '').trim();
+    const messageAttachments = (Array.isArray(attachments) ? attachments : [])
+      .map((attachment) => snapshotAiChatMessageAttachment(attachment));
+    const commentAttachments = messageAttachments.filter((attachment) => (
+      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+    if (!messageText && commentAttachments.length === 0) return;
+
+    // Any agent request sweeps previously-Solved notes.
+    sweepSolvedComments();
+
+    const targetChatId = chatId;
+    // "Review this" / /review with no attached notes → the agent authors review
+    // comments in the code (with severities) instead of answering a prompt.
+    const isReviewCommand = commentAttachments.length === 0
+      && /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
+    const shouldStreamCommentResponse = commentAttachments.length > 0;
+    const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
+    const stamp = Date.now();
+    const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
+    const newMessage = {
+      id: `${targetChatId}-${stamp}-${baseCount}`,
+      text: messageText,
+      attachments: messageAttachments,
+    };
+    const assistantMessageId = `${targetChatId}-assistant-${stamp}-${baseCount}`;
+    const assistantMessage = shouldRunAgent
+      ? { id: assistantMessageId, role: 'assistant', text: '', streaming: true }
+      : null;
+
+    handleSelectedAiChatSentMessagesChange(
+      (prev) => (assistantMessage ? [...prev, newMessage, assistantMessage] : [...prev, newMessage]),
+      targetChatId,
+    );
+
+    if (shouldRunAgent) {
+      if (shouldStreamCommentResponse) {
+        handleCommentAttachmentResponseStart({ chatId: targetChatId, attachments: commentAttachments });
+        handleClearAllComposerDiffAttachments({ chatId: targetChatId, attachments: commentAttachments });
+      }
+      if (isReviewCommand) {
+        // The agent leaves its comments directly in the files' gutters. File
+        // gutter comments must be on for them to show.
+        setPlainFileGutterCommentsEnabled(true);
+        setIdeTabContents((prev) => {
+          const next = { ...prev };
+          AGENT_REVIEW_FINDINGS.forEach((finding) => {
+            const content = next[finding.tabId];
+            if (!content) return;
+            const rowId = finding.rowId;
+            const existing = normalizeStoredDiffCommentsState(content.initialDiffComments);
+            const reviewComment = {
+              text: finding.text,
+              author: 'agent',
+              resolution: 'reply',
+              severity: finding.severity,
+              // The finding IS the agent's message — rendered in the agent block,
+              // so it reads as one agent-authored comment (not note + reply).
+              agentReply: finding.text,
+              fixLabel: finding.fixLabel || null,
+              sourceLabel: finding.sourceLabel || null,
+              lineLabel: finding.lineLabel || null,
+            };
+            next[finding.tabId] = {
+              ...content,
+              initialDiffComments: { ...existing, [rowId]: [...(existing[rowId] ?? []), reviewComment] },
+              diffCommentsReadOnly: false,
+            };
+          });
+          return next;
+        });
+      }
+      // Build the run checklist. For a review, the items are the agent's findings
+      // (each with a severity); otherwise they are the notes the user left.
+      const noteItems = [];
+      if (isReviewCommand) {
+        AGENT_REVIEW_FINDINGS.forEach((finding, i) => {
+          noteItems.push({
+            id: `review-${i}`,
+            text: finding.text,
+            sourceLabel: finding.sourceLabel || '',
+            severity: finding.severity || null,
+            state: 'pending',
+            openTarget: {
+              diffTabId: finding.tabId ?? null,
+              sourceLabel: finding.sourceLabel ?? null,
+              rowId: finding.rowId ?? null,
+            },
+          });
+        });
+      } else {
+        const seenNoteKeys = new Set();
+        commentAttachments.forEach((attachment) => {
+          // Where clicking this file in the Chats-History tree should navigate —
+          // into the file body (the tab that actually holds the note).
+          const openTarget = {
+            diffTabId: attachment.diffTabId ?? null,
+            sourceLabel: attachment.label ?? null,
+            diffRequest: attachment.diffRequest ?? null,
+          };
+          getAiChatAttachmentCommentPreviewItems(attachment).forEach((item) => {
+            const key = (item.text ?? '').trim().toLowerCase();
+            if (!key || seenNoteKeys.has(key)) return;
+            seenNoteKeys.add(key);
+            noteItems.push({
+              id: `note-${noteItems.length}`,
+              text: item.text,
+              sourceLabel: item.sourceLabel || '',
+              state: 'pending',
+              openTarget,
+            });
+          });
+        });
+      }
+      if (noteItems.length > 0) noteItems[0].state = 'active';
+      // Enter the "processing" run state: the composer shows the review checklist
+      // (kept collapsed after a review run) and the in-code notes spin.
+      setAgentRunByChatId((prev) => ({
+        ...prev,
+        [targetChatId]: {
+          status: 'processing',
+          kind: isReviewCommand ? 'review' : undefined,
+          iteration: (prev[targetChatId]?.iteration ?? 0) + 1,
+          notes: noteItems,
+        },
+      }));
+      const reviewFileCount = new Set(AGENT_REVIEW_FINDINGS.map((f) => f.sourceLabel)).size;
+      const fullResponse = isReviewCommand
+        ? `Reviewed ${reviewFileCount} file${reviewFileCount === 1 ? '' : 's'} and left ${AGENT_REVIEW_FINDINGS.length} comment${AGENT_REVIEW_FINDINGS.length === 1 ? '' : 's'} in the code — see them in the diff and in the AI Review folder.`
+        : commentAttachments.length === 1
+        ? 'I reviewed the attached AI Note and applied the changes — see the resolved notes in the diff.'
+        : `I reviewed ${commentAttachments.length} attached AI Notes and applied the changes — see the resolved notes in the diff.`;
+      const timerKey = `${targetChatId}:${assistantMessageId}`;
+      // Keep the busy UI on screen long enough to read before resolving.
+      const runFloorMs = 2600;
+      const runStartedAt = Date.now();
+      // Progressively tick the checklist notes done across the run so the header
+      // count animates (1/N → 2/N …). One deterministic timer per step, keyed
+      // `${chatId}:notes:${step}` so handleAiChatTabStop cancels them all.
+      if (noteItems.length > 1) {
+        const stepMs = Math.max(450, Math.floor(runFloorMs / noteItems.length));
+        for (let step = 1; step < noteItems.length; step += 1) {
+          const stepKey = `${targetChatId}:notes:${step}`;
+          aiChatTabCommentResponseTimersRef.current[stepKey] = window.setTimeout(() => {
+            delete aiChatTabCommentResponseTimersRef.current[stepKey];
+            setAgentRunByChatId((prev) => {
+              const run = prev[targetChatId];
+              if (!run || run.status !== 'processing' || !Array.isArray(run.notes)) return prev;
+              const nextNotes = run.notes.map((note, i) => ({
+                ...note,
+                state: i < step ? 'done' : i === step ? 'active' : 'pending',
+              }));
+              return { ...prev, [targetChatId]: { ...run, notes: nextNotes } };
+            });
+          }, stepMs * step);
+        }
+      }
+      let index = 0;
+      const finishRun = () => {
+        resolveCommentAttachmentResponse({ chatId: targetChatId, attachments: commentAttachments });
+        setAgentRunByChatId((prev) => {
+          const run = prev[targetChatId];
+          // Flip any lingering active/pending notes to done so the persisted
+          // Chats-History "AI Notes" folder shows no stuck spinner.
+          const finalizedNotes = Array.isArray(run?.notes)
+            ? run.notes.map((note) => ({ ...note, state: 'done' }))
+            : run?.notes;
+          return {
+            ...prev,
+            [targetChatId]: { ...(run ?? {}), status: 'done', notes: finalizedNotes },
+          };
+        });
+      };
+      const streamNextChunk = () => {
+        delete aiChatTabCommentResponseTimersRef.current[timerKey];
+        index = Math.min(fullResponse.length, index + 2);
+        const nextText = fullResponse.slice(0, index);
+        const isComplete = index >= fullResponse.length;
+        handleSelectedAiChatSentMessagesChange(
+          (prev) => prev.map((message) => (
+            message.id === assistantMessageId
+              ? { ...message, text: nextText, streaming: !isComplete }
+              : message
+          )),
+          targetChatId,
+        );
+        if (isComplete) {
+          const elapsed = Date.now() - runStartedAt;
+          const remaining = Math.max(0, runFloorMs - elapsed);
+          aiChatTabCommentResponseTimersRef.current[timerKey] = window.setTimeout(finishRun, remaining);
+          return;
+        }
+        aiChatTabCommentResponseTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 96);
+      };
+      aiChatTabCommentResponseTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 240);
+    } else if (messageAttachments.length > 0) {
+      handleClearAllComposerDiffAttachments({ chatId: targetChatId, attachments: messageAttachments });
+    }
+
+    handleAiChatMessageSent({ chatId: targetChatId, message: newMessage });
+  }, [
+    aiChatSentMessagesByChatId,
+    handleAiChatMessageSent,
+    handleClearAllComposerDiffAttachments,
+    handleCommentAttachmentResponseStart,
+    resolveCommentAttachmentResponse,
+    handleSelectedAiChatSentMessagesChange,
+  ]);
+
+  // Stop the agent run early: cancel any pending stream timers for the chat and
+  // resolve whatever in-code notes are still pending so nothing spins forever.
+  const handleAiChatTabStop = useCallback((chatId) => {
+    if (!chatId) return;
+    Object.keys(aiChatTabCommentResponseTimersRef.current).forEach((timerKey) => {
+      if (!timerKey.startsWith(`${chatId}:`)) return;
+      window.clearTimeout(aiChatTabCommentResponseTimersRef.current[timerKey]);
+      delete aiChatTabCommentResponseTimersRef.current[timerKey];
+    });
+    // Stop the streaming caret on the last assistant message.
+    handleSelectedAiChatSentMessagesChange(
+      (prev) => prev.map((message) => (
+        message.role === 'assistant' && message.streaming
+          ? { ...message, streaming: false }
+          : message
+      )),
+      chatId,
+    );
+    // Turn every remaining pending note into a resolution.
+    const applyResolutionToSnapshot = (current) => applyAiNoteQuestionResolution(current);
+    const resolveAllPending = (prev) => {
+      const next = {};
+      Object.keys(prev).forEach((tabId) => {
+        next[tabId] = applyResolutionToSnapshot(prev[tabId]);
+      });
+      return next;
+    };
+    setPendingDiffCommentRowsByTabId({});
+    setPendingDiffCommentSnapshotsByTabId(resolveAllPending);
+    setPendingDocumentDiffCommentSnapshotsByTabId(resolveAllPending);
+    setAgentRunByChatId((prev) => ({
+      ...prev,
+      [chatId]: { ...(prev[chatId] ?? {}), status: 'done' },
+    }));
+  }, [handleSelectedAiChatSentMessagesChange]);
+
+  // Navigate to the file/diff a comment lives in — shared by the Chats-History
+  // "AI Review" folder and the review card above the composer.
+  const openCommentTarget = useCallback((target) => {
+    if (!target) return;
+    const openIdx = target.diffTabId ? ideTabs.findIndex((t) => t.id === target.diffTabId) : -1;
+    if (openIdx >= 0) { setScreen('ide'); setActiveEditorTab(openIdx); return; }
+    if (target.sourceLabel) { openEditorTabByLabel(target.sourceLabel); return; }
+    if (target.diffRequest) openPlanDiffTab(target.diffRequest);
+  }, [ideTabs, openEditorTabByLabel, openPlanDiffTab]);
+
+  // Stream a short assistant message into a chat (used for agent actions like
+  // applying a quick fix / resolving a review comment).
+  const streamAssistantMessage = useCallback((chatId, fullText) => {
+    if (!chatId || !fullText) return;
+    const stamp = Date.now();
+    const assistantMessageId = `${chatId}-agent-action-${stamp}`;
+    handleSelectedAiChatSentMessagesChange(
+      (prev) => [...prev, { id: assistantMessageId, role: 'assistant', text: '', streaming: true }],
+      chatId,
+    );
+    const timerKey = `${chatId}:${assistantMessageId}`;
+    let index = 0;
+    const step = () => {
+      delete aiChatTabCommentResponseTimersRef.current[timerKey];
+      index = Math.min(fullText.length, index + 2);
+      const done = index >= fullText.length;
+      handleSelectedAiChatSentMessagesChange(
+        (prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, text: fullText.slice(0, index), streaming: !done } : m)),
+        chatId,
+      );
+      if (!done) aiChatTabCommentResponseTimersRef.current[timerKey] = window.setTimeout(step, 42);
+    };
+    aiChatTabCommentResponseTimersRef.current[timerKey] = window.setTimeout(step, 140);
+  }, [handleSelectedAiChatSentMessagesChange]);
+
+  // Action a review comment: post the agent's response in the chat that owns the
+  // review, and drop the matching finding from that run's "AI Review" folder.
+  const resolveReviewComment = useCallback((action = {}) => {
+    const text = typeof action.text === 'string' ? action.text.trim() : '';
+    if (!text) return;
+    let targetChatId = selectedAiChatId;
+    Object.entries(agentRunByChatId).forEach(([cid, run]) => {
+      if (run?.kind === 'review' && Array.isArray(run.notes) && run.notes.some((n) => (n?.text || '').trim() === text)) {
+        targetChatId = cid;
+      }
+    });
+    setAgentRunByChatId((prev) => {
+      const run = prev[targetChatId];
+      if (!run || !Array.isArray(run.notes)) return prev;
+      const notes = run.notes.filter((n) => (n?.text || '').trim() !== text);
+      return notes.length === run.notes.length ? prev : { ...prev, [targetChatId]: { ...run, notes } };
+    });
+    const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
+    const response = action.kind === 'quickfix'
+      ? `Applied "${action.fixLabel || 'the fix'}"${where ? ` in ${where}` : ''} and updated the code.`
+      : `Resolved${where ? ` in ${where}` : ''}: ${text}`;
+    streamAssistantMessage(targetChatId, response);
+  }, [agentRunByChatId, selectedAiChatId, streamAssistantMessage]);
+  resolveReviewCommentRef.current = resolveReviewComment;
+
+  // Consume the "Send AI Note to Agent" request once the target chat tab is
+  // active and its note attachment is ready in the composer, then auto-send it.
+  useEffect(() => {
+    if (!aiChatAutoSendRequest) return;
+    if (handledAutoSendNonceRef.current === aiChatAutoSendRequest.nonce) return;
+    const targetChatId = aiChatAutoSendRequest.chatId;
+    if (selectedAiChatId !== targetChatId) return;
+    const withComments = aiChatComposerDiffAttachments.filter((attachment) => (
+      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+    // Scoped ("Send AI Note to Agent" / reply / quick-fix): send only the one
+    // submitted comment. Unscoped ("Send All"): send every attached note.
+    const scope = aiChatAutoSendRequest.only;
+    let noteAttachments = withComments;
+    if (scope) {
+      noteAttachments = [];
+      for (const attachment of withComments) {
+        const rowComments = normalizeStoredDiffCommentsState(attachment.diffComments)[scope.rowId];
+        if (!rowComments || rowComments.length === 0) continue;
+        // Prefer the exact note that was submitted; if the text can't be matched
+        // (e.g. a "do it" reply, whose text differs from the note), fall back to
+        // just this row's note(s) — still only the single note, never the batch.
+        const match = rowComments.find((comment) => getStoredCommentText(comment).trim() === scope.text);
+        const picked = match ? [match] : rowComments;
+        noteAttachments = [{ ...attachment, diffComments: { [scope.rowId]: picked }, commentCount: picked.length }];
+        break;
+      }
+    }
+    if (noteAttachments.length === 0) return;
+    handledAutoSendNonceRef.current = aiChatAutoSendRequest.nonce;
+    handleAiChatTabSend(targetChatId, '', noteAttachments);
+    setAiChatAutoSendRequest(null);
+  }, [aiChatAutoSendRequest, aiChatComposerDiffAttachments, selectedAiChatId, handleAiChatTabSend]);
+
   const handleOpenSddDocument = useCallback((context = {}) => {
     const sourceTabId = context?.sourceTabId
       ?? getSourceTabIdFromSddAttachment(context?.attachment)
@@ -20845,7 +21828,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={selectedAiChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
@@ -21019,8 +22002,12 @@ export default function App() {
                   scenarios={aiChatScenarios}
                   sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
-                  onSendMessage={(targetChatId, text) => handleAiChatMessageSent?.(targetChatId, text)}
+                  onSendMessage={(targetChatId, text, attachments) => handleAiChatTabSend(targetChatId, text, attachments)}
+                  onOpenDiffTab={openPlanDiffTab}
+                  composerDiffAttachments={aiChatComposerDiffAttachments}
+                  onRemoveComposerAttachment={handleRemoveComposerAttachment}
                   onAddContextPopupOpen={handleAiChatAddContextPopupOpen}
+                  showNewContextOptionsIndicator={showNewContextOptionsIndicator}
                   plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
                   onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                   diffGutterCommentsEnabled={diffGutterCommentsEnabled}
@@ -21029,6 +22016,9 @@ export default function App() {
                   diffCommentsOptionIsNew={diffCommentsOptionIsNew}
                   onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)}
                   onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
+                  agentRun={agentRunByChatId[activeAiChatTabChatId] ?? null}
+                  onStopMessage={handleAiChatTabStop}
+                  onOpenReviewTarget={openCommentTarget}
                 />
               </div>
             )
@@ -21117,7 +22107,7 @@ export default function App() {
               className="main-window-tool-window main-window-tool-window-left"
             />
           );
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={selectedAiChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}

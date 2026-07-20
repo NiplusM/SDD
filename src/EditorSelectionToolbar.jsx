@@ -1,7 +1,10 @@
 import { createPortal } from 'react-dom';
-import { Icon } from '@jetbrains/int-ui-kit';
+import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
+import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
+  { id: 'comment', kind: 'icon', iconName: 'general/balloon', ariaLabel: 'AI Note', title: AI_NOTE_FILE_HINT },
+  { id: 'comment-separator', kind: 'separator' },
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'ask-ai', kind: 'iconText', iconName: 'aiAssistant/aiAssistantColored', text: 'Ask AI', ariaLabel: 'Ask AI' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
@@ -40,13 +43,12 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
           item.className ?? '',
         ].filter(Boolean).join(' ');
 
-        return (
+        const button = (
           <button
             key={item.id}
             type="button"
             className={className}
             aria-label={item.ariaLabel}
-            title={item.ariaLabel}
             onMouseDown={preventSelectionReset}
             onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect())}
           >
@@ -64,6 +66,12 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
             )}
           </button>
         );
+
+        return item.title ? (
+          <Tooltip key={item.id} text={item.title} placement="bottom" delay={650} className="ai-note-tooltip">
+            {button}
+          </Tooltip>
+        ) : button;
       })}
     </div>,
     document.body

@@ -1,33 +1,74 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, ToolWindow } from '@jetbrains/int-ui-kit';
 import { AiChatCodexIcon } from './AiChatListParts.jsx';
 
+// Round severity status icon for the AI Review folder: red "!" (critical),
+// yellow "!" (warning), blue "i" (info).
+function AiNotesSeverityIcon({ severity }) {
+  const s = String(severity || '').toLowerCase();
+  const fill = s === 'critical' ? '#DB5C5C' : s === 'warning' ? '#F2C55C' : '#548AF7';
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="icon aiux550-ainotes-sev-icon" aria-hidden="true">
+      <circle cx="8" cy="8" r="7" fill={fill} />
+      {s === 'info'
+        ? <path d="M8 6.9v4M8 5.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+        : <path d="M8 4.4v4.2M8 11.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />}
+    </svg>
+  );
+}
+
 const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
+const AIA_COMPOSER_NPM_INIT_PERMISSION_PROMPT =
+  'Allow running npm init -y in the current repository to create a default package.json?';
 
 function ChatsHistoryToolWindow({
   ctx,
-  activeChatId = AIUX_NEW_SESSION_TAB_ID,
+  activeChatId = null,
+  agentRunByChatId = {},
   onOpenNewSession = null,
   onOpenChatInTab = null,
   onOpenSpecChat = null,
   onSettings = null,
   onOpenChangesList = null,
+  onOpenFile = null,
 }) {
-  const [expandedSections, setExpandedSections] = useState({
-    'request-logging:changes': true,
-    'request-logging:context': true,
-  });
+  // Everything collapsed by default except the refactoring chat, which is
+  // expanded (its Changes / Context / Sub-threads sections stay collapsed).
+  const [expandedSections, setExpandedSections] = useState({});
   const [expandedRows, setExpandedRows] = useState({
-    'request-logging': true,
-    'spec-visit-booking': true,
-    'spec-vb-implement': true,
+    'refactor-time-slots': true,
   });
-  const [historySelectedId, setHistorySelectedId] = useState(activeChatId || AIUX_NEW_SESSION_TAB_ID);
-  const selectedId = historySelectedId || AIUX_NEW_SESSION_TAB_ID;
+  // Selection follows the active chat editor tab. When no chat tab is active
+  // (e.g. a code file or the default view), nothing is highlighted.
+  const selectedId = activeChatId ?? null;
   const flatRows = useMemo(() => buildAiux550HistoryRows(), []);
 
+  // When an agent run starts for a chat, auto-reveal its node and the new
+  // "AI Notes" folder so the comments are visible the moment processing begins.
+  useEffect(() => {
+    const active = Object.entries(agentRunByChatId)
+      .filter(([, run]) => run?.status === 'processing')
+      .map(([chatId]) => chatId);
+    if (active.length === 0) return;
+    setExpandedRows((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      active.forEach((chatId) => { if (!next[chatId]) { next[chatId] = true; changed = true; } });
+      return changed ? next : prev;
+    });
+    setExpandedSections((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      active.forEach((chatId) => {
+        const key = `${chatId}:ai-notes`;
+        if (!next[key]) { next[key] = true; changed = true; }
+      });
+      return changed ? next : prev;
+    });
+  }, [agentRunByChatId]);
+
   const handleSelectChat = (chatId, specId = null) => {
-    setHistorySelectedId(chatId);
     if (chatId === AIUX_NEW_SESSION_TAB_ID) {
       onOpenNewSession?.();
       return;
@@ -81,6 +122,7 @@ function ChatsHistoryToolWindow({
         </label>
         <Aiux550HistoryList
           activeChatId={selectedId}
+          agentRunByChatId={agentRunByChatId}
           rows={flatRows}
           expandedRows={expandedRows}
           expandedSections={expandedSections}
@@ -88,6 +130,7 @@ function ChatsHistoryToolWindow({
           className="aiux543-tool-chat-list"
           onSelectChat={handleSelectChat}
           onOpenChangesList={onOpenChangesList}
+          onOpenFile={onOpenFile}
           onToggleRow={(rowId) => setExpandedRows((prev) => ({ ...prev, [rowId]: !(prev[rowId] ?? false) }))}
           onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? false) }))}
         />
@@ -391,6 +434,8 @@ function buildAiux550HistoryRows() {
 // document that owns the chats spawned from it, so it renders as an expandable
 // row whose children are those chats. Each chat, in turn, carries the same
 // Changes / Context / Sub-threads tree as the Agents-section chats.
+// Each spec owns exactly two chats — Build and Specify — matching the previous
+// implementation's spec status chats (ensureSpecStatusChat 'Build'/'Specified').
 const AIUX550_HISTORY_SPECS = [
   {
     id: 'spec-visit-booking',
@@ -398,9 +443,8 @@ const AIUX550_HISTORY_SPECS = [
     title: 'Visit-Booking.md',
     time: '2m',
     chats: [
-      { id: 'spec-vb-implement', title: 'Implement visit booking flow', agent: 'claude', time: '2m', diff: { added: 42, deleted: 11 } },
-      { id: 'spec-vb-availability', title: 'Add vet availability check', agent: 'junie', time: '18m' },
-      { id: 'spec-vb-review', title: 'Review booking validation', agent: 'codex', time: '1h', cloud: true },
+      { id: 'spec-visit-booking-build', title: 'Build', agent: 'claude', time: '2m' },
+      { id: 'spec-visit-booking-specify', title: 'Specified', agent: 'claude', time: '18m' },
     ],
   },
   {
@@ -409,8 +453,8 @@ const AIUX550_HISTORY_SPECS = [
     title: 'Vet-Schedules.md',
     time: '3h',
     chats: [
-      { id: 'spec-vs-model', title: 'Model weekday schedules', agent: 'claude', time: '3h', diff: { added: 16, deleted: 2 } },
-      { id: 'spec-vs-offhours', title: 'Reject off-hours bookings', agent: 'junie', time: '5h' },
+      { id: 'spec-vet-schedules-build', title: 'Build', agent: 'claude', time: '3h' },
+      { id: 'spec-vet-schedules-specify', title: 'Specified', agent: 'claude', time: '5h' },
     ],
   },
 ].map((spec) => ({
@@ -423,6 +467,7 @@ const AIUX550_HISTORY_SPECS = [
 
 function Aiux550HistoryList({
   activeChatId,
+  agentRunByChatId = {},
   rows,
   specs = AIUX550_HISTORY_SPECS,
   expandedRows,
@@ -431,12 +476,22 @@ function Aiux550HistoryList({
   className = '',
   onSelectChat,
   onOpenChangesList,
+  onOpenFile,
   onToggleRow,
   onToggleSection,
 }) {
-  const effectiveActiveChatId = rows.some((row) => row.id === activeChatId)
-    ? activeChatId
-    : AIUX_NEW_SESSION_TAB_ID;
+  // No forced fallback: when activeChatId doesn't match a row, nothing is
+  // highlighted (avoids a default blue selection on load).
+  const effectiveActiveChatId = activeChatId ?? null;
+
+  // Prepend an expandable "AI Notes" folder (real left comments) to a chat's
+  // children while/after an agent run for that chat has notes.
+  const withAiNotes = (node) => {
+    const run = agentRunByChatId[node.id];
+    if (!run?.notes?.length) return node;
+    const aiNotesSection = { id: 'ai-notes', label: 'AI Review', notes: run.notes };
+    return { ...node, children: [aiNotesSection, ...(node.children ?? [])] };
+  };
 
   return (
     <div className={`aiux543-chat-list aiux543-chat-list-flat ${className}`.trim()}>
@@ -450,6 +505,7 @@ function Aiux550HistoryList({
                 <div className="aiux543-chat-node" key={spec.id}>
                   <Aiux550HistoryRow
                     row={spec}
+                    agentRun={agentRunByChatId[spec.id] ?? null}
                     expanded={isExpanded}
                     selected={spec.id === effectiveActiveChatId}
                     selectedActive={selectedActive}
@@ -458,12 +514,14 @@ function Aiux550HistoryList({
                   />
                   {spec.chats?.length && isExpanded ? (
                     <div className="aiux543-chat-spec-children">
-                      {spec.chats.map((chat) => {
+                      {spec.chats.map((rawChat) => {
+                        const chat = withAiNotes(rawChat);
                         const chatExpanded = expandedRows[chat.id] ?? false;
                         return (
                           <div className="aiux543-chat-node" key={chat.id}>
                             <Aiux550HistoryRow
                               row={chat}
+                              agentRun={agentRunByChatId[chat.id] ?? null}
                               nested
                               expanded={chatExpanded}
                               selected={chat.id === effectiveActiveChatId}
@@ -478,6 +536,7 @@ function Aiux550HistoryList({
                                 expandedSections={expandedSections}
                                 onToggleSection={onToggleSection}
                                 onOpenChangesList={onOpenChangesList}
+                                onOpenFile={onOpenFile}
                               />
                             ) : null}
                           </div>
@@ -498,12 +557,14 @@ function Aiux550HistoryList({
             label="Agents"
             onToggle={() => {}}
           />
-          {rows.map((row) => {
+          {rows.map((rawRow) => {
+            const row = withAiNotes(rawRow);
             const isExpanded = expandedRows[row.id] ?? false;
             return (
               <div className="aiux543-chat-node" key={row.id}>
                 <Aiux550HistoryRow
                   row={row}
+                  agentRun={agentRunByChatId[row.id] ?? null}
                   expanded={isExpanded}
                   selected={row.id === effectiveActiveChatId}
                   selectedActive={selectedActive}
@@ -517,6 +578,7 @@ function Aiux550HistoryList({
                     expandedSections={expandedSections}
                     onToggleSection={onToggleSection}
                     onOpenChangesList={onOpenChangesList}
+                    onOpenFile={onOpenFile}
                   />
                 ) : null}
               </div>
@@ -530,6 +592,7 @@ function Aiux550HistoryList({
 
 function Aiux550HistoryRow({
   row,
+  agentRun = null,
   expanded,
   selected,
   selectedActive,
@@ -538,8 +601,19 @@ function Aiux550HistoryRow({
   nested = false,
 }) {
   const hasChildren = Boolean(row.children?.length) || Boolean(row.chats?.length);
-  const changeSummary = row.diff;
   const isSpec = row.kind === 'spec';
+  // Live agent-run status drives the node: while the agent works the row shows
+  // the progress badge (and hides the static +/-); once done, the change summary
+  // returns — a visible running → done transition on the node itself.
+  const isRunning = agentRun?.status === 'processing';
+  const isRunDone = agentRun?.status === 'done';
+  const changeSummary = isRunning
+    ? null
+    : (row.diff ?? (isRunDone ? { added: 3, deleted: 1 } : null));
+  // The live comment counter lives ONLY on the "AI Notes" folder, not the row.
+  // The generic ProgressPlanBadge stays only for static planProgress rows.
+  const showProgressBadge = Boolean(row.planProgress);
+  const showApprovalDot = !isRunning && row.status === 'approval';
 
   return (
     <div
@@ -549,7 +623,8 @@ function Aiux550HistoryRow({
         selected ? `selected ${selectedActive ? 'selected-active' : 'selected-inactive'}` : '',
         hasChildren ? 'expandable' : '',
         changeSummary ? 'has-change-summary' : '',
-        row.planProgress ? 'has-status has-progress-plan' : '',
+        showProgressBadge ? 'has-status has-progress-plan' : '',
+        isRunning ? 'is-agent-running' : '',
       ].filter(Boolean).join(' ')}
       onClick={onSelect}
     >
@@ -577,19 +652,11 @@ function Aiux550HistoryRow({
         <span>{row.title}</span>
       </span>
       <span className="aiux543-chat-row-meta">
-        {row.status === 'approval' ? (
-          <span className="aiux543-approval-dot-wrap" role="button" tabIndex={0} aria-label="Preview pending approval">
-            <span className="aiux543-chat-activity-dot" aria-label="Awaiting confirmation" />
-            <span className="aiux543-approval-dot-label">Approval</span>
-          </span>
+        {showApprovalDot ? (
+          <ApprovalActivityDot onOpenChat={onSelect} />
         ) : null}
-        {row.planProgress ? (
-          <span className="aiux543-progress-plan-wrap">
-            <span className="aiux543-progress-plan-badge" aria-label={`Plan progress: ${row.planProgress.current} of ${row.planProgress.total}`} tabIndex={0}>
-              <span>{row.planProgress.current}/{row.planProgress.total}</span>
-              <span className="aiux543-spinner aiux543-progress-plan-spinner" aria-hidden="true" />
-            </span>
-          </span>
+        {showProgressBadge ? (
+          <ProgressPlanBadge />
         ) : null}
         {changeSummary ? (
           <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${changeSummary.added}, minus ${changeSummary.deleted}`}>
@@ -603,12 +670,291 @@ function Aiux550HistoryRow({
   );
 }
 
-function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggleSection, onOpenChangesList }) {
+const loadingPlanSteps = [
+  { id: 'verify', state: 'done', text: 'Verify rendering and usage to ensure nothing overrides center burst.' },
+  { id: 'review', state: 'active', text: 'Review codebase to locate where confetti particle initial position and velocity a reset.' },
+  { id: 'origin', state: 'pending', text: 'Update renderer/physics if needed to respect new origin with existing gravity/wind.' },
+  { id: 'tests', state: 'pending', text: 'Build or run any tests to ensure no errors.' },
+  { id: 'summary', state: 'pending', text: 'Summarize changes and submit.' },
+];
+
+function ProgressPlanBadge({ className = '', prefix = null } = {}) {
+  const badgeRef = useRef(null);
+  const hideTimerRef = useRef(null);
+  const [popupVisible, setPopupVisible] = useState(false);
+  const [popupPosition, setPopupPosition] = useState({
+    left: 16,
+    pointerLeft: 32,
+    placement: 'below',
+    top: 16,
+    width: 300,
+  });
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current == null) return;
+    window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = null;
+  }, []);
+  const showPopup = useCallback(() => {
+    clearHideTimer();
+    const badgeRect = badgeRef.current?.getBoundingClientRect();
+    if (!badgeRect) return;
+
+    const viewportPadding = 12;
+    const popupGap = 8;
+    const preferredWidth = 300;
+    const width = Math.min(preferredWidth, Math.max(260, window.innerWidth - viewportPadding * 2));
+    const left = Math.min(
+      Math.max(viewportPadding, badgeRect.left + badgeRect.width / 2 - width / 2),
+      window.innerWidth - width - viewportPadding,
+    );
+    const placement = 'below';
+    const top = badgeRect.bottom + popupGap;
+    const pointerLeft = Math.min(
+      width - 24,
+      Math.max(24, badgeRect.left + badgeRect.width / 2 - left),
+    );
+
+    setPopupPosition({ left, pointerLeft, placement, top, width });
+    setPopupVisible(true);
+  }, [clearHideTimer]);
+  const hidePopup = useCallback((delay = 0) => {
+    clearHideTimer();
+    if (delay > 0) {
+      hideTimerRef.current = window.setTimeout(() => {
+        hideTimerRef.current = null;
+        setPopupVisible(false);
+      }, delay);
+      return;
+    }
+    setPopupVisible(false);
+  }, [clearHideTimer]);
+
+  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
+
+  return (
+    <span
+      className={['aiux543-progress-plan-wrap', className].filter(Boolean).join(' ')}
+      onMouseEnter={showPopup}
+      onMouseMove={showPopup}
+      onMouseLeave={() => hidePopup(120)}
+      onPointerEnter={showPopup}
+      onPointerMove={showPopup}
+      onPointerLeave={() => hidePopup(120)}
+      onFocus={showPopup}
+      onBlur={() => hidePopup()}
+    >
+      <span
+        className="aiux543-progress-plan-badge"
+        aria-label="Plan progress: 2 of 5"
+        onClick={(event) => {
+          event.stopPropagation();
+          showPopup();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') hidePopup();
+        }}
+        ref={badgeRef}
+        tabIndex={0}
+      >
+        {prefix ? <span className="aiux543-progress-plan-prefix">{prefix}</span> : null}
+        <span>2/5</span>
+        <span className="aiux543-spinner aiux543-progress-plan-spinner" aria-hidden="true" />
+      </span>
+      {popupVisible ? createPortal(
+        <span
+          className={`aiux543-progress-plan-popup ${popupPosition.placement}`}
+          role="tooltip"
+          style={{
+            '--progress-plan-pointer-left': `${popupPosition.pointerLeft}px`,
+            left: `${popupPosition.left}px`,
+            top: `${popupPosition.top}px`,
+            width: `${popupPosition.width}px`,
+          }}
+        >
+          {loadingPlanSteps.map((step) => (
+            <span className={`aiux543-progress-plan-step ${step.state}`} key={step.id}>
+              <span className="aiux543-progress-plan-marker" aria-hidden="true">
+                {step.state === 'active' ? (
+                  <span className="aiux543-spinner aiux543-progress-plan-step-spinner" />
+                ) : null}
+              </span>
+              <span className="aiux543-progress-plan-text">{step.text}</span>
+            </span>
+          ))}
+        </span>,
+        document.body,
+      ) : null}
+    </span>
+  );
+}
+
+function ApprovalActivityDot({ onOpenChat }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewRect, setPreviewRect] = useState(null);
+  const anchorRef = useRef(null);
+  const hideTimerRef = useRef(null);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current == null) return;
+    window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = null;
+  }, []);
+
+  const showPreview = useCallback(() => {
+    clearHideTimer();
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPreviewRect({
+      top: rect.top,
+      right: window.innerWidth - rect.right,
+      bottom: rect.bottom,
+      left: rect.left,
+    });
+    setPreviewOpen(true);
+  }, [clearHideTimer]);
+
+  const scheduleHidePreview = useCallback(() => {
+    clearHideTimer();
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = null;
+      setPreviewOpen(false);
+    }, 120);
+  }, [clearHideTimer]);
+
+  useEffect(() => () => clearHideTimer(), [clearHideTimer]);
+
+  return (
+    <span
+      ref={anchorRef}
+      className="aiux543-approval-dot-wrap"
+      role="button"
+      tabIndex={0}
+      aria-label="Preview pending approval"
+      onClick={(event) => {
+        event.stopPropagation();
+        showPreview();
+      }}
+      onFocus={showPreview}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        showPreview();
+      }}
+      onMouseEnter={showPreview}
+      onMouseMove={showPreview}
+      onMouseLeave={scheduleHidePreview}
+      onPointerEnter={showPreview}
+      onPointerLeave={scheduleHidePreview}
+    >
+      <span className="aiux543-chat-activity-dot" aria-label="Awaiting confirmation" />
+      <span className="aiux543-approval-dot-label">Approval</span>
+      {previewOpen && previewRect ? createPortal(
+        <ApprovalActivityPreview
+          anchorRect={previewRect}
+          onOpenChat={onOpenChat}
+          onPointerEnter={showPreview}
+          onPointerLeave={scheduleHidePreview}
+          onMouseEnter={showPreview}
+          onMouseMove={showPreview}
+          onMouseLeave={scheduleHidePreview}
+        />,
+        document.body,
+      ) : null}
+    </span>
+  );
+}
+
+function ApprovalActivityPreview({
+  anchorRect,
+  onOpenChat,
+  onMouseEnter,
+  onMouseLeave,
+  onMouseMove,
+  onPointerEnter,
+  onPointerLeave,
+}) {
+  const previewWidth = 268;
+  const right = Math.max(12, Math.min(window.innerWidth - previewWidth - 12, anchorRect.right - 34));
+  const top = Math.min(window.innerHeight - 188, anchorRect.bottom + 9);
+  const safeTop = Math.max(12, top);
+  const actions = [
+    { icon: 'general/checkmark', label: 'Yes' },
+    { icon: 'general/checkmark', label: 'Always allow' },
+    { icon: 'general/closeSmall', label: 'No, adjust task' },
+  ];
+
+  return (
+    <div
+      className="aiux543-approval-preview"
+      style={{ top: safeTop, right }}
+      onClick={(event) => event.stopPropagation()}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onMouseMove={onMouseMove}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      role="dialog"
+      aria-label="Pending command approval preview"
+    >
+      <div className="aiux543-approval-preview-head">
+        <span className="aiux543-approval-preview-dot" aria-hidden="true" />
+        <span>Needs approval</span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenChat?.();
+          }}
+        >
+          Open chat
+        </button>
+      </div>
+      <p>{AIA_COMPOSER_NPM_INIT_PERMISSION_PROMPT}</p>
+      <div className="aiux543-approval-preview-command">
+        <Icon name="toolwindows/terminal" size={14} />
+        <span>npm init -y</span>
+      </div>
+      <div className="aiux543-approval-preview-actions" aria-label="Approval choices">
+        {actions.map((action) => (
+          <button key={action.label} type="button">
+            <Icon name={action.icon} size={14} />
+            <span>{action.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggleSection, onOpenChangesList, onOpenFile }) {
   return (
     <div className="aiux543-chat-row-children">
       {sections.map((section) => {
         const sectionKey = `${rowId}:${section.id}`;
         const isExpanded = expandedSections[sectionKey] ?? false;
+        const isAiNotes = section.id === 'ai-notes';
+        const aiNotes = isAiNotes && Array.isArray(section.notes) ? section.notes : [];
+        // Folder lists the FILES/diffs that carry comments (not the comment
+        // bodies). Keep the source label as-is so a diff reads as a diff
+        // (e.g. "Diff VisitController.java") and gets the diff icon.
+        const aiNotesFiles = [];
+        if (isAiNotes) {
+          const byFile = new Map();
+          aiNotes.forEach((note) => {
+            const file = (note.sourceLabel || 'Untitled').trim() || 'Untitled';
+            const isDiff = /^diff\s+/i.test(file);
+            if (!byFile.has(file)) {
+              byFile.set(file, { file, isDiff, count: 0, severity: { critical: 0, warning: 0, info: 0 }, openTarget: note.openTarget ?? null });
+              aiNotesFiles.push(byFile.get(file));
+            }
+            const group = byFile.get(file);
+            group.count += 1;
+            const severityKey = typeof note.severity === 'string' ? note.severity.toLowerCase() : '';
+            if (severityKey in group.severity) group.severity[severityKey] += 1;
+            if (!group.openTarget && note.openTarget) group.openTarget = note.openTarget;
+          });
+        }
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
             <div
@@ -616,7 +962,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 'aiux543-chat-tree-row',
                 'aiux543-chat-tree-section',
                 'aiux543-chat-tree-section-header',
-                section.id === 'changes' ? 'aiux543-chat-tree-section-with-action' : '',
+                (section.id === 'changes' || isAiNotes) ? 'aiux543-chat-tree-section-with-action' : '',
               ].filter(Boolean).join(' ')}
               aria-expanded={isExpanded}
             >
@@ -643,7 +989,46 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 </button>
               ) : null}
             </div>
-            {isExpanded && section.items?.length ? (
+            {isExpanded && isAiNotes ? (
+              <div className="aiux543-chat-tree-children">
+                {aiNotesFiles.map((group) => (
+                  <div className="aiux543-chat-tree-item" key={group.file}>
+                    <button
+                      type="button"
+                      className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux550-ainotes-file-leaf"
+                      style={{ '--tree-level': 1 }}
+                      onClick={() => onOpenFile?.(group.openTarget)}
+                    >
+                      <span className="aiux543-chat-tree-chevron-spacer" />
+                      {group.isDiff ? (
+                        <Icon name="vcs/diff" size={16} className="icon aiux543-chat-tree-icon" />
+                      ) : (
+                        <Aiux550TreeLeafIcon label={group.file} />
+                      )}
+                      <span className="aiux550-ainotes-file-name">{group.file}</span>
+                      {(group.severity.critical + group.severity.warning + group.severity.info) > 0 && (
+                        <span className="aiux550-ainotes-file-severity" aria-label={`${group.severity.critical} critical, ${group.severity.warning} warning, ${group.severity.info} info`}>
+                          {group.severity.critical > 0 && (
+                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="critical" />{group.severity.critical}</span>
+                          )}
+                          {group.severity.warning > 0 && (
+                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="warning" />{group.severity.warning}</span>
+                          )}
+                          {group.severity.info > 0 && (
+                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="info" />{group.severity.info}</span>
+                          )}
+                        </span>
+                      )}
+                      <span className="aiux550-ainotes-file-count" aria-label={`${group.count} AI Notes`}>
+                        <Icon name="general/balloon" size={12} />
+                        <span>{group.count}</span>
+                      </span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {isExpanded && !isAiNotes && section.items?.length ? (
               <div className="aiux543-chat-tree-children">
                 {section.items.map((item) => {
                   const isObject = typeof item === 'object' && item !== null;
@@ -684,6 +1069,10 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
 }
 
 function Aiux550HistoryChildSectionIcon({ sectionId }) {
+  if (sectionId === 'ai-notes') {
+    return <Icon name="general/balloon" size={16} className="icon aiux543-chat-tree-icon" />;
+  }
+
   if (sectionId === 'changes') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon aiux543-chat-tree-icon" aria-hidden="true" focusable="false">
