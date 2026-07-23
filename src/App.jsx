@@ -5364,17 +5364,13 @@ function shouldShowDoneRunIcon(line, { hidePlanRun = false, hideAcRun = false } 
 
 function CheckStatus({ status, outdated = false, isLoading = false, variant = null }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
-  const statusIcon = (() => {
-    if (variant === 'empty') return <IconStatusEmpty />;
-    if (isLoading) return <IconStatusExecuting />;
-    if (normalizedStatus === 'passed') return <IconDone />;
-    if (normalizedStatus === 'pending' || normalizedStatus === 'stale' || normalizedStatus === 'skipped') return <IconStatusMinus />;
-    return <IconStatusIssue />;
-  })();
+  const isChecked = normalizedStatus === 'passed';
+  const visualStatus = isChecked ? 'passed' : 'pending';
+  const statusIcon = isChecked ? <IconDone /> : <IconStatusEmpty />;
 
   return (
     <span
-      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}${isLoading ? ' is-loading' : ''}${variant ? ` spec-check-status-${variant}` : ''}`}
+      className={`spec-check-status spec-check-status-${visualStatus}${outdated ? ' is-outdated' : ''}`}
       aria-label={normalizedStatus}
       title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
     >
@@ -5452,11 +5448,11 @@ function AcCheckRow({
   return (
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
-        {isOutdated
-          ? <CheckStatus status="stale" outdated />
-          : useCheckbox
-          ? <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
-          : <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />}
+        <Checkbox
+          className="spec-done-checkbox"
+          checked={!isOutdated && visualStatus === 'passed'}
+          onChange={() => {}}
+        />
         <span>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasToggle && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
@@ -6427,10 +6423,11 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       data-plan-nesting-level={isNested ? nestingLevel : undefined}
       style={planLineStyle}
     >
-      {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} variant={isParentScopePending ? 'empty' : null} />
-        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
-      }
+      <Checkbox
+        className="spec-done-checkbox"
+        checked={Boolean(statusItem && !hasPlanComment && statusItem.status === 'passed')}
+        onChange={() => {}}
+      />
       <span className="spec-done-plan-text">{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
       {canShowDiff && !isNested && (
