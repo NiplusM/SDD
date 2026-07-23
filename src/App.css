@@ -9,6 +9,7 @@ html,
 body,
 #root {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -283,6 +284,7 @@ body {
 .spec-done-scroll {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
   padding: 8px 0 0;
@@ -1791,6 +1793,11 @@ body {
   pointer-events: none;
 }
 
+.spec-done-checkbox .checkbox-box.checkbox-checked {
+  background: #868A91;
+  border-color: #868A91;
+}
+
 /* ── AC expandable sub-checks ──────────────────────────────────────────────── */
 .ac-check-row {
   flex-direction: column;
@@ -2106,7 +2113,11 @@ body {
   min-width: 0;
   white-space: normal !important;
   overflow-wrap: anywhere;
-  line-height: 1.5;
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+  letter-spacing: 0;
 }
 
 .spec-done-plan-main .spec-check-status {
@@ -2126,9 +2137,9 @@ body {
 }
 
 .spec-done-plan-child-line .spec-done-plan-text {
-  font-size: 12.5px;
-  font-weight: 450;
-  line-height: 1.55;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
   color: var(--spec-plan-nested-text);
 }
 
