@@ -9,6 +9,7 @@ html,
 body,
 #root {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -236,6 +237,7 @@ body {
 .spec-done-scroll {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
   position: relative;
@@ -2007,6 +2009,11 @@ body {
   pointer-events: none;
 }
 
+.spec-done-checkbox .checkbox-box.checkbox-checked {
+  background: #868A91;
+  border-color: #868A91;
+}
+
 /* ── AC expandable sub-checks ──────────────────────────────────────────────── */
 .ac-check-row {
   flex-direction: column;
@@ -2363,14 +2370,14 @@ body {
     var(--spec-plan-subitem-indent)
     + ((var(--spec-plan-nesting-level, 1) - 1) * var(--spec-plan-nesting-step))
   );
-  padding: 0;
+  padding: 2px 0;
 }
 
 .spec-done-plan-child-line .spec-done-plan-text {
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: 22px;
-  color: inherit;
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 1.55;
+  color: var(--spec-plan-nested-text);
 }
 
 .spec-plan-subitem-list {
