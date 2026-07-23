@@ -495,6 +495,11 @@ const PLAN_BUILD_CLIP_PARENT_DONE_DELAY_MS = 450;
 const PLAN_BUILD_CLIP_GROUP_TRANSITION_DELAY_MS = 900;
 const PLAN_BUILD_CLIP_VISIT_ENTITY_CHILD_STEP_DELAYS_MS = [15000, 3200];
 const PLAN_BUILD_CLIP_FINISH_DELAY_MS = 520;
+const PLAN_REVIEW_CLIP_INSPECT_DELAY_MS = 1400;
+const PLAN_REVIEW_CLIP_FIX_DELAY_MS = 4300;
+const PLAN_REVIEW_CLIP_CHECK_START_DELAY_MS = 9400;
+const PLAN_REVIEW_CLIP_CHECK_STEP_DELAY_MS = 850;
+const PLAN_REVIEW_CLIP_COMPLETE_HOLD_MS = 1800;
 const PLAN_BUILD_CLIP_SUMMARIES = [
   'Working on the schema: `vet`/`time` columns, unique constraint, and seed data across `h2`, `mysql`, `postgres`...',
   'Working on `Visit.java`: mapping the vet relation and the visit time field...',
@@ -5527,17 +5532,13 @@ function shouldShowDoneRunIcon(line, { hidePlanRun = false, hideAcRun = false } 
 
 function CheckStatus({ status, outdated = false, isLoading = false, variant = null }) {
   const normalizedStatus = typeof status === 'string' && status.trim().length > 0 ? status : 'pending';
-  const statusIcon = (() => {
-    if (variant === 'empty') return <IconStatusEmpty />;
-    if (isLoading) return <IconStatusExecuting />;
-    if (normalizedStatus === 'passed') return <IconDone />;
-    if (normalizedStatus === 'pending' || normalizedStatus === 'stale' || normalizedStatus === 'skipped') return <IconStatusMinus />;
-    return <IconStatusIssue />;
-  })();
+  const isChecked = normalizedStatus === 'passed';
+  const visualStatus = isChecked ? 'passed' : 'pending';
+  const statusIcon = isChecked ? <IconDone /> : <IconStatusEmpty />;
 
   return (
     <span
-      className={`spec-check-status spec-check-status-${normalizedStatus}${outdated ? ' is-outdated' : ''}${isLoading ? ' is-loading' : ''}${variant ? ` spec-check-status-${variant}` : ''}`}
+      className={`spec-check-status spec-check-status-${visualStatus}${outdated ? ' is-outdated' : ''}`}
       aria-label={normalizedStatus}
       title={outdated ? `${normalizedStatus} (outdated)` : normalizedStatus}
     >
@@ -5578,7 +5579,6 @@ function AcCheckRow({
   const problemCount = checks.filter(c => c.status === 'failed').length || checkItem.problemCount || 0;
   const hasChecks = checks.length > 0;
   const isOutdated = isRunStatusItemOutdated(checkItem);
-  const hasToggle = !isOutdated && (hasChecks || problemCount > 0);
 
   const handleProposalAccept = () => {
     setProposalAccepted(true);
@@ -5611,15 +5611,18 @@ function AcCheckRow({
                 : (checkItem.issue?.severity === 'error'
                     ? 'error'
                     : checkItem.status))));
+  const hasToggle = !isOutdated
+    && visualStatus === 'passed'
+    && (hasChecks || problemCount > 0);
 
   return (
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}${isRunning ? ' is-running' : ''}`}>
-        {isOutdated
-          ? <CheckStatus status="stale" outdated />
-          : useCheckbox
-          ? <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
-          : <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />}
+        <Checkbox
+          className="spec-done-checkbox"
+          checked={!isOutdated && visualStatus === 'passed'}
+          onChange={() => {}}
+        />
         <span>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasToggle && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
@@ -5631,7 +5634,7 @@ function AcCheckRow({
         )}
         {commentAdornment}
       </div>
-      {expanded && (
+      {expanded && hasToggle && (
         <div className="ac-subcheck-list">
           {checks.map((check, i) => (
             <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
@@ -6934,7 +6937,7 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, isInRunningScope = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, isRunning = false, isInRunningScope = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
@@ -6951,10 +6954,11 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       data-plan-nesting-level={isNested ? nestingLevel : undefined}
       style={planLineStyle}
     >
-      {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'stale' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} variant={isParentScopePending ? 'empty' : null} />
-        : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />
-      }
+      <Checkbox
+        className="spec-done-checkbox"
+        checked={Boolean(statusItem && statusItem.status === 'passed')}
+        onChange={() => {}}
+      />
       <span className="spec-done-plan-text">{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
       {canShowDiff && !isNested && (
@@ -9159,7 +9163,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             return (
             <Fragment key={stableKey}>
             <div
-              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'fixing' ? ' spec-done-row-fixing' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase !== 'fixing' ? ' spec-done-row-updated' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
+              className={`spec-done-row${rowMeta.isTopLevelAcItem ? ' spec-done-row-ac-item' : ''}${rowMeta.isFirstTopLevelAcItem ? ' spec-done-row-ac-item-first' : ''}${rowMeta.isTopLevelPlanParent ? ' spec-done-row-plan-parent' : ''}${rowMeta.isFirstTopLevelPlanParent ? ' spec-done-row-plan-parent-first' : ''}${rowMeta.isFlatTopLevelPlanParent ? ' spec-done-row-plan-parent-flat' : ''}${rowMeta.isNestedPlanChild ? ' spec-done-row-plan-child' : ''}${rowMeta.isFirstNestedPlanChild ? ' spec-done-row-plan-child-first' : ''}${isRestoringPlanRow ? ' spec-done-row-plan-restoring' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'fixing' ? ' spec-done-row-fixing' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'updated' ? ' spec-done-row-updated' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'comment-arriving' ? ' spec-done-row-comment-arriving' : ''}${isUpdatedSpecRow && updatedRowTarget?.phase === 'status-arriving' ? ' spec-done-row-status-arriving' : ''}${showIssueLineHighlight ? ' spec-done-issue-row' : ''}${isProblemHighlightedRow ? ' spec-done-problems-row' : ''}${isRunOutdated ? ' spec-done-run-outdated-row' : ''}`}
               data-row-index={rowIndex}
               data-row-key={stableKey}
               data-demo-id={demoTargetId ? `spec-row-${demoTargetId}` : undefined}
@@ -9540,7 +9544,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const shouldRenderDoneOverlay = genState === 'done' || preserveDoneOverlayDuringBusy;
   const doneEnhanceSessionKey = specSessionKey ?? '__default__';
   const isDoneEnhanceLocked = Boolean(doneEnhanceLocksBySession[doneEnhanceSessionKey]);
-  const isTaskRunRunning = false;
+  const isTaskRunRunning = runState === 'running';
   const runningToolbarSummary = typeof activeRunRequest?.summary === 'string' && activeRunRequest.summary.trim().length > 0
     ? activeRunRequest.summary
     : 'Building...';
@@ -10512,6 +10516,10 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
   const isVisitBookingPreset = normalizedTabId === 'agent-task-t1' || normalizedLabel === 'visit-booking.md';
   const fixedAcStatuses = buildPassedAcStatusesFromDocument(documentSections);
   const fixedPlanStatuses = buildPassedPlanStatusesFromDocument(documentSections);
+  const initialAcStatuses = fixedAcStatuses.map((status) => ({
+    ...status,
+    status: 'pending',
+  }));
 
   return {
     initialCode: isVisitBookingPreset ? serializeSpecDocument(documentSections) : ' ',
@@ -10522,7 +10530,7 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
       documentSections,
       genState: 'done',
       planBaseStatuses: isVisitBookingPreset ? fixedPlanStatuses : PLAN_RUN_STATUSES,
-      acBaseStatuses: isVisitBookingPreset ? fixedAcStatuses : AC_RUN_STATUSES,
+      acBaseStatuses: isVisitBookingPreset ? initialAcStatuses : AC_RUN_STATUSES,
       seedRunResults: true,
     }),
   };
@@ -11601,7 +11609,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['agent-tasks']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [editorTabsHost, setEditorTabsHost] = useState(null);
   const [terminalTabsState, setTerminalTabsState] = useState([]);
   const [activeTerminalTabId, setActiveTerminalTabId] = useState(null);
@@ -11631,6 +11639,7 @@ export default function App() {
   const currentTerminalRunTabIdRef = useRef(null);
   const currentRunSourceTabIdRef = useRef(null);
   const statusRevealTimeoutsRef = useRef({ ac: [], plan: [] });
+  const diffReturnRevealTimeoutsRef = useRef([]);
   const planBuildClipTimeoutsRef = useRef([]);
   const chainedRunTimeoutRef = useRef(null);
   const acWarningFlowRef = useRef(null);
@@ -12531,6 +12540,146 @@ export default function App() {
     setRunStateForTab,
   ]);
 
+  const startPlanReviewClip = useCallback((sourceTabId, initialPlanStatuses = null) => {
+    if (!sourceTabId || !Array.isArray(initialPlanStatuses)) return;
+
+    const affectedIndices = initialPlanStatuses
+      .map((statusItem, index) => (
+        statusItem?.status !== 'passed' ? index : null
+      ))
+      .filter((index) => Number.isInteger(index));
+
+    if (affectedIndices.length === 0) {
+      return;
+    }
+
+    clearPlanBuildClip();
+    clearStatusReveal('plan');
+
+    const primaryAffectedIndex = affectedIndices[0];
+    const affectedIndexSet = new Set(affectedIndices);
+    const planSection = (generatedDocument ?? []).find((section) => (
+      normalizeSpecSectionTitle(section?.title) === 'plan'
+    ));
+    const planItems = (planSection?.items ?? []).filter((item) => item?.type === 'check');
+    const lineGroups = [];
+    const lineBasedStatuses = [];
+
+    planItems.forEach((item, parentIndex) => {
+      const inheritedStatus = initialPlanStatuses[parentIndex] ?? { status: 'pending' };
+      const parentLineIndex = lineBasedStatuses.length;
+      lineBasedStatuses.push(inheritedStatus);
+
+      const childLineIndices = (item.children ?? [])
+        .filter((child) => child?.type === 'check')
+        .map(() => {
+          const childLineIndex = lineBasedStatuses.length;
+          lineBasedStatuses.push(inheritedStatus);
+          return childLineIndex;
+        });
+
+      lineGroups.push({
+        parentIndex,
+        parentLineIndex,
+        childLineIndices,
+      });
+    });
+
+    const affectedLineGroups = lineGroups.filter((group) => affectedIndexSet.has(group.parentIndex));
+    const affectedLineIndices = affectedLineGroups.flatMap((group) => [
+      ...group.childLineIndices,
+      group.parentLineIndex,
+    ]);
+    const updateStoredPlanStatuses = (nextStatuses) => {
+      setPlanRunResult(nextStatuses);
+      setInteractiveTaskStates((prev) => ({
+        ...prev,
+        [sourceTabId]: {
+          ...(prev[sourceTabId] ?? {}),
+          planRunResult: nextStatuses,
+        },
+      }));
+    };
+    const setReviewRequest = (summary) => {
+      setPlanBuildClipRequestsByTab((prev) => ({
+        ...prev,
+        [sourceTabId]: {
+          mode: 'review',
+          sourceTabId,
+          sectionTitle: 'Plan',
+          checkTarget: {
+            kind: 'plan',
+            index: primaryAffectedIndex,
+          },
+          summary,
+        },
+      }));
+    };
+    const scheduleReviewStep = (callback, delay) => {
+      const timeoutId = window.setTimeout(() => {
+        planBuildClipTimeoutsRef.current = planBuildClipTimeoutsRef.current.filter((id) => id !== timeoutId);
+        callback();
+      }, delay);
+      planBuildClipTimeoutsRef.current.push(timeoutId);
+    };
+
+    const reviewStatuses = lineBasedStatuses.map((statusItem, lineIndex) => {
+      const isAffectedLine = affectedLineGroups.some((group) => (
+        group.parentLineIndex === lineIndex || group.childLineIndices.includes(lineIndex)
+      ));
+
+      return isAffectedLine
+        ? { ...(statusItem ?? {}), status: 'pending' }
+        : statusItem;
+    });
+    const completedTopLevelStatuses = initialPlanStatuses.map((statusItem, index) => (
+      affectedIndexSet.has(index)
+        ? { ...(statusItem ?? {}), status: 'passed' }
+        : statusItem
+    ));
+
+    currentRunSourceTabIdRef.current = sourceTabId;
+    setRunStateForTab('running', sourceTabId);
+    setReviewRequest('Reviewing comments and identifying the scope of rework');
+
+    scheduleReviewStep(() => {
+      updateStoredPlanStatuses(reviewStatuses);
+    }, PLAN_REVIEW_CLIP_INSPECT_DELAY_MS);
+
+    scheduleReviewStep(() => {
+      setReviewRequest('Updating VisitController to address the comment');
+    }, PLAN_REVIEW_CLIP_FIX_DELAY_MS);
+
+    let progressiveStatuses = [...reviewStatuses];
+    affectedLineIndices.forEach((lineIndex, checkIndex) => {
+      scheduleReviewStep(() => {
+        progressiveStatuses = progressiveStatuses.map((statusItem, statusIndex) => (
+          statusIndex === lineIndex
+            ? { ...(statusItem ?? {}), status: 'passed' }
+            : statusItem
+        ));
+        updateStoredPlanStatuses(progressiveStatuses);
+      }, PLAN_REVIEW_CLIP_CHECK_START_DELAY_MS + (checkIndex * PLAN_REVIEW_CLIP_CHECK_STEP_DELAY_MS));
+    });
+
+    const reviewCompleteDelay = PLAN_REVIEW_CLIP_CHECK_START_DELAY_MS
+      + (affectedLineIndices.length * PLAN_REVIEW_CLIP_CHECK_STEP_DELAY_MS);
+
+    scheduleReviewStep(() => {
+      updateStoredPlanStatuses(completedTopLevelStatuses);
+      clearPlanBuildClip(sourceTabId);
+      setRunStateForTab('default', sourceTabId);
+      if (currentRunSourceTabIdRef.current === sourceTabId) {
+        currentRunSourceTabIdRef.current = null;
+      }
+    }, reviewCompleteDelay + PLAN_REVIEW_CLIP_COMPLETE_HOLD_MS);
+  }, [
+    clearPlanBuildClip,
+    clearStatusReveal,
+    generatedDocument,
+    setRunStateForTab,
+  ]);
+
   const getTaskRuntimeState = useCallback((tabId) => {
     if (!tabId) return null;
 
@@ -12718,6 +12867,8 @@ export default function App() {
     comments,
     sectionTitle = null,
     line = '',
+    syncRunStatus = true,
+    forceRuntimeSync = false,
   }) => {
     const normalizedTarget = normalizeCommentTarget(target);
     if (!sourceTabId || !normalizedTarget) return;
@@ -12755,11 +12906,13 @@ export default function App() {
         nextComments,
         metadata,
       );
-      const nextPlanRunResult = applyDiffCommentStateToPlanRunResult(
-        currentTaskState?.planRunResult,
-        normalizedTarget,
-        hasNextComments,
-      );
+      const nextPlanRunResult = syncRunStatus
+        ? applyDiffCommentStateToPlanRunResult(
+            currentTaskState?.planRunResult,
+            normalizedTarget,
+            hasNextComments,
+          )
+        : currentTaskState?.planRunResult;
 
       if (
         JSON.stringify(currentTaskState?.commentEntries ?? []) === JSON.stringify(nextCommentEntries)
@@ -12778,20 +12931,85 @@ export default function App() {
       };
     });
 
-    if (sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
+    if (forceRuntimeSync || sourceTabId === activeSourceEditorTabId || sourceTabId === generationTabId) {
       setAgentTaskCommentEntries((prev) => replaceCommentEntriesForTarget(
         prev,
         normalizedTarget,
         nextComments,
         metadata,
       ));
-      setPlanRunResult((prev) => applyDiffCommentStateToPlanRunResult(
-        prev,
-        normalizedTarget,
-        hasNextComments,
-      ));
+      if (syncRunStatus) {
+        setPlanRunResult((prev) => applyDiffCommentStateToPlanRunResult(
+          prev,
+          normalizedTarget,
+          hasNextComments,
+        ));
+      }
     }
   }, [activeSourceEditorTabId, generationTabId, getTaskRuntimeState]);
+
+  const beginPendingDiffReturnReveal = useCallback((sourceTabId, pendingSync) => {
+    const normalizedTarget = normalizeCommentTarget(pendingSync?.target);
+    if (!sourceTabId || !normalizedTarget) return;
+
+    diffReturnRevealTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    diffReturnRevealTimeoutsRef.current = [];
+
+    setIdeTabContents((prev) => {
+      let didChange = false;
+      const next = Object.fromEntries(Object.entries(prev).map(([tabId, entry]) => {
+        if (entry?.pendingSpecSync?.sourceTabId !== sourceTabId) {
+          return [tabId, entry];
+        }
+
+        didChange = true;
+        const { pendingSpecSync: _pendingSpecSync, ...rest } = entry;
+        return [tabId, rest];
+      }));
+      return didChange ? next : prev;
+    });
+
+    const commentTimeoutId = window.setTimeout(() => {
+      syncDiffCommentsToTaskTarget({
+        ...pendingSync,
+        sourceTabId,
+        target: normalizedTarget,
+        syncRunStatus: false,
+        forceRuntimeSync: true,
+      });
+      setUpdatedSpecRowTarget({
+        ...normalizedTarget,
+        phase: 'comment-arriving',
+        requestKey: Date.now(),
+      });
+    }, 180);
+
+    const statusTimeoutId = window.setTimeout(() => {
+      syncDiffCommentsToTaskTarget({
+        ...pendingSync,
+        sourceTabId,
+        target: normalizedTarget,
+        syncRunStatus: true,
+        forceRuntimeSync: true,
+      });
+      setUpdatedSpecRowTarget({
+        ...normalizedTarget,
+        phase: 'status-arriving',
+        requestKey: Date.now(),
+      });
+    }, 620);
+
+    const cleanupTimeoutId = window.setTimeout(() => {
+      setUpdatedSpecRowTarget(null);
+      diffReturnRevealTimeoutsRef.current = [];
+    }, 1220);
+
+    diffReturnRevealTimeoutsRef.current = [
+      commentTimeoutId,
+      statusTimeoutId,
+      cleanupTimeoutId,
+    ];
+  }, [syncDiffCommentsToTaskTarget]);
 
   const handleAgentTaskSelect = useCallback((task) => {
     const resolvedTask = typeof task === 'string'
@@ -12890,6 +13108,35 @@ export default function App() {
       tabId: nextTab.id,
       label: nextTab.label,
     }).initialTaskState;
+    const matchingDiffEntry = Object.values(ideTabContents)
+      .find((entry) => entry?.diffSourceTabId === nextTab.id && entry?.diffTarget);
+    const storedPendingDiffSync = matchingDiffEntry?.pendingSpecSync ?? null;
+    const matchingDiffTarget = normalizeCommentTarget(matchingDiffEntry?.diffTarget);
+    const matchingDiffComments = normalizeStoredDiffCommentsState(matchingDiffEntry?.initialDiffComments);
+    const sourceDiffComments = matchingDiffEntry && matchingDiffTarget
+      ? buildPlanDiffInitialComments(
+          getCommentEntriesForTaskTab(nextTab.id),
+          matchingDiffEntry.diffData,
+          matchingDiffTarget,
+        )
+      : {};
+    const hasUnsyncedDiffComments = Boolean(
+      matchingDiffEntry
+      && matchingDiffTarget
+      && JSON.stringify(matchingDiffComments)
+        !== JSON.stringify(normalizeStoredDiffCommentsState(sourceDiffComments))
+    );
+    const pendingDiffSync = storedPendingDiffSync ?? (
+      hasUnsyncedDiffComments
+        ? {
+            sourceTabId: nextTab.id,
+            target: matchingDiffTarget,
+            comments: matchingDiffComments,
+            sectionTitle: matchingDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+            line: matchingDiffEntry.diffLineText ?? '',
+          }
+        : null
+    );
 
     setInteractiveTaskStates((prev) => (
       prev[nextTab.id]
@@ -12898,7 +13145,20 @@ export default function App() {
     ));
 
     applyInteractiveTaskState(nextTab.id, nextTaskState);
-  }, [agentTasks, applyInteractiveTaskState, ideTabs, interactiveTaskStates, restoreSpecDoneScrollForTab, selectedTask]);
+    if (pendingDiffSync) {
+      beginPendingDiffReturnReveal(nextTab.id, pendingDiffSync);
+    }
+  }, [
+    agentTasks,
+    applyInteractiveTaskState,
+    beginPendingDiffReturnReveal,
+    getCommentEntriesForTaskTab,
+    ideTabContents,
+    ideTabs,
+    interactiveTaskStates,
+    restoreSpecDoneScrollForTab,
+    selectedTask,
+  ]);
 
   const requestProblemHighlight = useCallback((rawIndex) => {
     if (!Number.isInteger(rawIndex) || rawIndex < 0) return;
@@ -13762,6 +14022,33 @@ export default function App() {
           label: nextActiveTab.label,
         }).initialTaskState)
       : null;
+    const closingDiffEntry = ideTabContents[closingTab?.id] ?? null;
+    const closingDiffTarget = normalizeCommentTarget(closingDiffEntry?.diffTarget);
+    const closingDiffComments = normalizeStoredDiffCommentsState(closingDiffEntry?.initialDiffComments);
+    const closingSourceComments = closingDiffEntry?.diffSourceTabId && closingDiffTarget
+      ? buildPlanDiffInitialComments(
+          getCommentEntriesForTaskTab(closingDiffEntry.diffSourceTabId),
+          closingDiffEntry.diffData,
+          closingDiffTarget,
+        )
+      : {};
+    const closingHasUnsyncedComments = Boolean(
+      closingDiffEntry?.diffSourceTabId
+      && closingDiffTarget
+      && JSON.stringify(closingDiffComments)
+        !== JSON.stringify(normalizeStoredDiffCommentsState(closingSourceComments))
+    );
+    const closingPendingDiffSync = closingDiffEntry?.pendingSpecSync ?? (
+      closingHasUnsyncedComments
+        ? {
+            sourceTabId: closingDiffEntry.diffSourceTabId,
+            target: closingDiffTarget,
+            comments: closingDiffComments,
+            sectionTitle: closingDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+            line: closingDiffEntry.diffLineText ?? '',
+          }
+        : null
+    );
 
     setIdeTabs(nextTabs);
     setActiveEditorTab(nextActiveTabIndex);
@@ -13803,6 +14090,9 @@ export default function App() {
       }
 
       applyInteractiveTaskState(nextActiveTab.id, nextInteractiveTaskState);
+      if (closingPendingDiffSync?.sourceTabId === nextActiveTab.id) {
+        beginPendingDiffReturnReveal(nextActiveTab.id, closingPendingDiffSync);
+      }
       return;
     }
 
@@ -13813,9 +14103,12 @@ export default function App() {
     activeEditorTab,
     agentTasks,
     applyInteractiveTaskState,
+    beginPendingDiffReturnReveal,
     clearAgentTaskRuntime,
     generationTabId,
+    getCommentEntriesForTaskTab,
     highlightedProblemLocation,
+    ideTabContents,
     ideTabs,
     interactiveTaskStates,
     selectedTask,
@@ -14648,6 +14941,8 @@ export default function App() {
     statusRevealTimeoutsRef.current.ac.forEach((timeoutId) => window.clearTimeout(timeoutId));
     statusRevealTimeoutsRef.current.plan.forEach((timeoutId) => window.clearTimeout(timeoutId));
     statusRevealTimeoutsRef.current = { ac: [], plan: [] };
+    diffReturnRevealTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    diffReturnRevealTimeoutsRef.current = [];
     if (chainedRunTimeoutRef.current) {
       window.clearTimeout(chainedRunTimeoutRef.current);
       chainedRunTimeoutRef.current = null;
@@ -16410,6 +16705,20 @@ export default function App() {
     const resolvedRunSectionTitle = typeof sectionTitle === 'string' && sectionTitle.trim().length > 0
       ? sectionTitle
       : 'Plan';
+    const sourceTabIdBeforeCommit = generationTabId ?? activeEditorTabId;
+    const shouldReviewCommentedPlan = (
+      resolvedRunSectionTitle.toLowerCase() === 'plan'
+      && !runTarget
+      && agentTaskCommentEntries.length > 0
+      && Array.isArray(activeAgentTaskPlanRunResult)
+      && activeAgentTaskPlanRunResult.some((statusItem) => statusItem?.status !== 'passed')
+    );
+
+    if (shouldReviewCommentedPlan) {
+      startPlanReviewClip(sourceTabIdBeforeCommit, activeAgentTaskPlanRunResult);
+      return;
+    }
+
     const commitResult = commitDoneSpecUpdate({
       applyPendingComments: false,
       runSectionTitle: resolvedRunSectionTitle,
@@ -16722,9 +17031,18 @@ export default function App() {
     ? (doneOverlayUiStates[visibleEditorStateTabId] ?? null)
     : null;
   const activePlanDiffData = isDiffTab ? (activeTabContent?.diffData ?? null) : null;
-  const activePlanDiffTarget = isDiffTab
-    ? normalizeCommentTarget(activeTabContent?.diffTarget)
-    : null;
+  const activePlanDiffTarget = useMemo(
+    () => (
+      isDiffTab
+        ? normalizeCommentTarget(activeTabContent?.diffTarget)
+        : null
+    ),
+    [
+      activeTabContent?.diffTarget?.index,
+      activeTabContent?.diffTarget?.kind,
+      isDiffTab,
+    ],
+  );
   const activePlanDiffSourceTabId = isDiffTab
     ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
     : null;
@@ -16751,30 +17069,41 @@ export default function App() {
     });
   };
   const handleActivePlanDiffCommentsChange = useCallback((comments) => {
+    const commentTarget = activePlanDiffTarget ?? { kind: 'plan', index: 4 };
+    const pendingSpecSync = activePlanDiffSourceTabId
+      ? {
+          sourceTabId: activePlanDiffSourceTabId,
+          target: commentTarget,
+          comments,
+          sectionTitle: commentTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+          line: activePlanDiffLineText,
+        }
+      : null;
+
     if (activeTabId) {
       setIdeTabContents((prev) => {
         const existing = prev[activeTabId];
         if (!existing) return prev;
-        return { ...prev, [activeTabId]: { ...existing, initialDiffComments: comments } };
+        const existingComments = normalizeStoredDiffCommentsState(existing.initialDiffComments);
+        const nextComments = normalizeStoredDiffCommentsState(comments);
+        if (JSON.stringify(existingComments) === JSON.stringify(nextComments)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [activeTabId]: {
+            ...existing,
+            initialDiffComments: nextComments,
+            pendingSpecSync,
+          },
+        };
       });
     }
-
-    const commentTarget = activePlanDiffTarget ?? { kind: 'plan', index: 4 };
-    if (!activePlanDiffSourceTabId) return;
-
-    syncDiffCommentsToTaskTarget({
-      sourceTabId: activePlanDiffSourceTabId,
-      target: commentTarget,
-      comments,
-      sectionTitle: commentTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
-      line: activePlanDiffLineText,
-    });
   }, [
     activeTabId,
     activePlanDiffLineText,
     activePlanDiffSourceTabId,
     activePlanDiffTarget,
-    syncDiffCommentsToTaskTarget,
   ]);
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
@@ -16833,11 +17162,35 @@ export default function App() {
       : { id: activePlanDiffSourceTabId, label: '' };
     const taskId = getAgentTaskIdForEditorTab(sourceTab, agentTasks)
       ?? (activePlanDiffSourceTabId.startsWith('agent-task-') ? activePlanDiffSourceTabId.slice('agent-task-'.length) : null);
+    const storedPendingSync = activeTabId
+      ? ideTabContents[activeTabId]?.pendingSpecSync
+      : null;
+    const sourceDiffComments = buildPlanDiffInitialComments(
+      getCommentEntriesForTaskTab(activePlanDiffSourceTabId),
+      activePlanDiffData,
+      activePlanDiffTarget,
+    );
+    const hasUnsyncedComments = JSON.stringify(normalizeStoredDiffCommentsState(activePlanDiffComments))
+      !== JSON.stringify(normalizeStoredDiffCommentsState(sourceDiffComments));
+    const pendingSync = storedPendingSync ?? (
+      hasUnsyncedComments && activePlanDiffTarget
+        ? {
+            sourceTabId: activePlanDiffSourceTabId,
+            target: activePlanDiffTarget,
+            comments: activePlanDiffComments,
+            sectionTitle: activePlanDiffTarget.kind === 'plan' ? 'Plan' : 'Acceptance Criteria',
+            line: activePlanDiffLineText,
+          }
+        : null
+    );
 
     setScreen('ide');
 
     if (sourceTabIndex >= 0) {
       setActiveEditorTab(sourceTabIndex);
+      if (pendingSync) {
+        beginPendingDiffReturnReveal(activePlanDiffSourceTabId, pendingSync);
+      }
       scheduleSpecDoneRowCenter('section-item:plan-5', {
         topOffset: 94,
         highlightPlanBlock: true,
@@ -16849,7 +17202,19 @@ export default function App() {
 
       setAgentTasksFocusedNodeId(buildAgentTaskTreeTaskNodeId(taskId));
     }
-  }, [activePlanDiffSourceTabId, activePlanDiffTarget, agentTasks, ideTabs]);
+  }, [
+    activePlanDiffComments,
+    activePlanDiffData,
+    activePlanDiffLineText,
+    activePlanDiffSourceTabId,
+    activePlanDiffTarget,
+    activeTabId,
+    agentTasks,
+    beginPendingDiffReturnReveal,
+    getCommentEntriesForTaskTab,
+    ideTabContents,
+    ideTabs,
+  ]);
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
@@ -17120,7 +17485,12 @@ export default function App() {
                 genState="done"
                 genProgress={1}
                 onSend={() => {}}
-                onStop={() => {}}
+                onStop={() => {
+                  const sourceTabId = currentRunSourceTabIdRef.current ?? activeEditorTabId;
+                  clearPlanBuildClip(sourceTabId);
+                  setRunStateForTab('default', sourceTabId);
+                  currentRunSourceTabIdRef.current = null;
+                }}
                 onRegenerate={() => {}}
                 onDoneRegenerate={() => {}}
                 onFixIssue={handleDoneIssueFix}
@@ -17132,7 +17502,7 @@ export default function App() {
                 currentCode={activeAgentTaskCode}
                 documentSections={activeAgentTaskDocumentSections}
                 onOpenProblems={openAndFocusIdeProblemsToolWindow}
-                onOpenTerminal={() => {}}
+                onOpenTerminal={handleDoneOpenTerminal}
                 addPopupFiles={addPopupFiles}
                 acRunResult={activeAgentTaskAcRunResult}
                 planRunResult={activeAgentTaskPlanRunResult}
@@ -17146,8 +17516,8 @@ export default function App() {
                 onDoneCommentsChange={handleDoneCommentsChange}
                 commentResetToken={doneCommentResetToken}
                 preserveDoneOverlayDuringBusy={false}
-                runState="idle"
-                activeRunRequest={null}
+                runState={runState}
+                activeRunRequest={activeEditorRunRequest}
                 doneOverlayUiState={activeDoneOverlayUiState}
                 onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange}
                 specSessionKey={activeEditorTabId}

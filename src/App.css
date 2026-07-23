@@ -9,6 +9,7 @@ html,
 body,
 #root {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -253,6 +254,7 @@ body {
 .spec-done-scroll {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
   position: relative;
@@ -638,6 +640,18 @@ body {
   will-change: opacity, transform;
 }
 
+.spec-done-row-comment-arriving .spec-done-gutter-comment-slot {
+  animation: spec-comment-arrive 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: left center;
+  will-change: opacity, transform, background;
+}
+
+.spec-done-row-status-arriving .spec-done-checkbox .checkbox-box {
+  animation: spec-checkbox-status-arrive 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
 @keyframes spec-plan-row-restore-in {
   from {
     opacity: 0;
@@ -646,6 +660,35 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spec-comment-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(-3px) scale(0.92);
+    background: rgba(134, 138, 145, 0);
+  }
+  64% {
+    opacity: 1;
+    transform: translateX(0) scale(1.04);
+    background: rgba(134, 138, 145, 0.14);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    background: transparent;
+  }
+}
+
+@keyframes spec-checkbox-status-arrive {
+  0% {
+    opacity: 0.58;
+    transform: scale(0.88);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -1572,17 +1615,21 @@ body {
   color: #CED0D6;
 }
 
+.spec-done-comment-popup-posted-text,
+.spec-done-comment-popup-textarea {
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500 !important;
+  line-height: 22px;
+  letter-spacing: 0;
+  font-kerning: auto;
+  font-variant-ligatures: normal;
+}
+
 .spec-done-comment-popup-posted-text {
   flex: 1 1 auto;
   min-width: 0;
   color: #DFE1E5;
-  font-family: Inter, -apple-system, sans-serif;
-  font-size: 13px;
-  font-weight: 400 !important;
-  line-height: 18px;
-  letter-spacing: 0;
-  font-synthesis: none;
-  -webkit-font-smoothing: antialiased;
   overflow-wrap: anywhere;
   white-space: normal;
 }
@@ -1733,23 +1780,14 @@ body {
 .spec-done-comment-popup-textarea {
   box-sizing: border-box;
   width: 100%;
-  height: 20px;
-  min-height: 20px;
-  max-height: 20px;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
   padding: 1px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: #DFE1E5;
-  font-family: Inter, -apple-system, sans-serif;
-  font-size: 13px;
-  font-weight: 400 !important;
-  line-height: 18px;
-  letter-spacing: 0;
-  font-synthesis: none;
-  font-kerning: none;
-  font-variant-ligatures: none;
-  -webkit-font-smoothing: antialiased;
   overflow: hidden;
   white-space: pre;
   overflow-wrap: normal;
@@ -1988,6 +2026,11 @@ body {
   gap: 0;
   padding: 3px 0;
   pointer-events: none;
+}
+
+.spec-done-checkbox .checkbox-box.checkbox-checked {
+  background: #868A91;
+  border-color: #868A91;
 }
 
 /* ── AC expandable sub-checks ──────────────────────────────────────────────── */
@@ -2306,7 +2349,11 @@ body {
   min-width: 0;
   white-space: normal !important;
   overflow-wrap: anywhere;
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 22px;
+  letter-spacing: 0;
 }
 
 .spec-done-plan-main .spec-check-status {
@@ -2324,14 +2371,14 @@ body {
     var(--spec-plan-subitem-indent)
     + ((var(--spec-plan-nesting-level, 1) - 1) * var(--spec-plan-nesting-step))
   );
-  padding: 0;
+  padding: 2px 0;
 }
 
 .spec-done-plan-child-line .spec-done-plan-text {
-  font-size: inherit;
-  font-weight: inherit;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 22px;
-  color: inherit;
+  color: var(--spec-plan-nested-text);
 }
 
 .spec-plan-subitem-list {
