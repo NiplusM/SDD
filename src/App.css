@@ -2202,6 +2202,10 @@ body {
   padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 26px);
 }
 
+.spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored {
+  padding-right: var(--spec-done-comment-popup-inline-padding);
+}
+
 .spec-done-comment-popup-group.has-multiple-comments .spec-done-comment-popup-list {
   padding-bottom: 4px;
 }
@@ -3770,6 +3774,357 @@ body {
   grid-template-columns: 28px 18px;
 }
 
+.plan-diff-split-code {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  padding: 0 18px 28px;
+  box-sizing: border-box;
+  background: #1b1c1f;
+}
+
+.plan-diff-overlay--split .plan-diff-code {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.plan-diff-split-pane {
+  min-width: 0;
+  width: 100%;
+}
+
+.plan-diff-split-pane .plan-diff-row {
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 62px minmax(0, 1fr);
+}
+
+.plan-diff-split-pane-left .plan-diff-row {
+  grid-template-columns: minmax(0, 1fr) 62px;
+}
+
+.plan-diff-split-pane .plan-diff-row-gutter {
+  grid-template-columns: 28px 18px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.plan-diff-split-pane-left .plan-diff-row-gutter {
+  grid-column: 2;
+  grid-row: 1;
+  justify-content: end;
+  border-right: 0;
+  border-left: 1px solid var(--plan-diff-gutter-divider);
+}
+
+.plan-diff-split-pane-left .plan-diff-row-code {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.plan-diff-split-pane-left .plan-diff-row-code {
+  padding-right: 12px;
+}
+
+.plan-diff-split-pane-right .plan-diff-row-code {
+  padding-left: 12px;
+}
+
+.plan-diff-split-pane-right .plan-diff-row-gutter {
+  border-right: 1px solid var(--plan-diff-gutter-divider);
+}
+
+.plan-diff-split-pane-left .plan-diff-line-number {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.plan-diff-split-pane .plan-diff-row-code-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.plan-diff-row-split-placeholder {
+  cursor: default;
+  pointer-events: none;
+  background: #1b1c1f;
+}
+
+.plan-diff-row-split-placeholder .plan-diff-row-code,
+.plan-diff-row-split-placeholder .plan-diff-row-gutter {
+  background: #1b1c1f;
+}
+
+.plan-diff-row-split-placeholder .plan-diff-gutter-icon-slot {
+  opacity: 0;
+}
+
+.plan-diff-split-pane .plan-diff-row-comment .plan-diff-inline-comment {
+  padding: 8px 10px 16px 34px;
+}
+
+/* "Comments" (aside) view: code column on the left, finding cards stacked in a
+   column on the right — the comment block is pulled out of the inline gutter. */
+.plan-diff-overlay--aside .plan-diff-aside {
+  /* Flexbox (not grid) so the code column reliably shrinks + scrolls instead of
+     expanding against long lines and pushing the comments column off-screen. */
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
+}
+
+.plan-diff-aside-code {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Size from the flex track, not the (max-content) code width, so long lines
+     scroll inside this column instead of stretching the whole row. */
+  contain: inline-size;
+  overflow-x: auto;
+  border-right: 1px solid #2b2d31;
+}
+
+.plan-diff-aside-comments {
+  flex: 0 0 360px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: #1b1c1f;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.plan-diff-aside-comment.cmp-popup.spec-done-comment-popup {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border-color: var(--popup-border);
+  color: #dfe1e5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-diff-aside-comment.cmp-popup.spec-done-comment-popup:hover,
+.plan-diff-aside-comment.cmp-popup.spec-done-comment-popup:focus-visible {
+  border-color: #4b5059;
+  outline: none;
+}
+
+.plan-diff-aside-comment .spec-done-comment-popup-groups {
+  padding: 10px 0 8px;
+}
+
+.plan-diff-aside-comment .spec-done-comment-popup-item {
+  padding-right: 10px;
+}
+
+.plan-diff-aside-comment .plan-diff-aside-comment-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.plan-diff-aside-comment-meta {
+  margin-left: var(--spec-done-comment-agent-reply-content-indent, 0);
+  color: var(--text-subtle, #8C8F97);
+  line-height: 16px;
+}
+
+/* ── "Panel" review layout: file cards with code stacked on the LEFT, all
+   comment cards collected in ONE shared column on the RIGHT. ──────────────── */
+.aiux-review-overview-scroll.is-panel {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  padding: 0;
+}
+
+.aiux-review-panel-left {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: overlay;
+  padding: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tool-window-scrollbar-thumb-visible) var(--tool-window-scrollbar-track);
+}
+
+.aiux-review-panel-right {
+  --aiux-review-panel-card-gap: 12px;
+  --aiux-review-panel-heading-gap: 8px;
+  flex: 0 0 380px;
+  width: 380px;
+  overflow-y: auto;
+  /* Unified with the review tab background; no separator. */
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--aiux-review-panel-card-gap);
+  padding: 12px;
+}
+
+/* Category (severity) groups for the shared comments column. */
+.aiux-review-panel-cat {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.aiux-review-panel-cat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--aiux-review-panel-heading-gap);
+  color: #b4b8bf;
+  font: 600 11px/14px Inter, system-ui, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.aiux-review-panel-cat-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+/* File headings use the file name verbatim (not an uppercased severity word). */
+.aiux-review-panel-cat.is-file .aiux-review-panel-cat-label,
+.aiux-review-panel-cat-head.is-file .aiux-review-panel-cat-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  color: #dfe1e5;
+}
+
+.aiux-review-panel-cat-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a8f98;
+}
+
+.aiux-review-panel-cat.is-critical .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-critical .aiux-review-panel-cat-dot { background: #e5654e; }
+.aiux-review-panel-cat.is-warning .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-warning .aiux-review-panel-cat-dot { background: #e3b341; }
+.aiux-review-panel-cat.is-info .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-info .aiux-review-panel-cat-dot { background: #5a9cf8; }
+.aiux-review-panel-cat.is-replied .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-replied .aiux-review-panel-cat-dot { background: #8c9cff; }
+.aiux-review-panel-cat.is-resolved .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-resolved .aiux-review-panel-cat-dot { background: #5fb865; }
+.aiux-review-panel-cat-dot.is-resolved { background: #5fb865; }
+
+.aiux-review-panel-cat-icon {
+  flex: 0 0 16px;
+  color: #b4b8bf;
+}
+
+.aiux-review-panel-cat-head .aiux550-ainotes-sev-icon {
+  flex: 0 0 16px;
+}
+
+.aiux-review-panel-cat-count {
+  flex: 0 0 auto;
+  color: #6f737a;
+  font-weight: 500;
+}
+
+.aiux-review-panel-cat-resolve {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #548af7;
+  font: 500 11px/14px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.aiux-review-panel-cat-resolve:hover {
+  background: rgba(84, 138, 247, 0.12);
+}
+
+/* Each file's comments-only overlay just flows its cards into the shared column;
+   strip the code-scroller chrome (max-content width, monospace, padding). */
+.aiux-review-panel-right .plan-diff-overlay {
+  position: relative;
+  inset: auto;
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.aiux-review-panel-right .plan-diff-overlay + .plan-diff-overlay {
+  margin-top: var(--aiux-review-panel-card-gap);
+}
+
+.aiux-review-panel-right .plan-diff-scroll {
+  overflow: visible;
+  height: auto;
+}
+
+.aiux-review-panel-right .plan-diff-code {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.aiux-review-panel-right .plan-diff-comments-only {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aiux-review-panel-card-gap);
+}
+
+/* Hide files that contributed no visible comments (empty overlay) so the column
+   isn't padded by blank overlays. */
+.aiux-review-panel-right .plan-diff-comments-only:empty {
+  display: none;
+}
+
+.aiux-review-panel-right .spec-done-comment-popup-more-btn {
+  display: none;
+}
+
+/* The stacked diff overlay is overflow:visible and its rows use width:max-content
+   — which would balloon the file to the longest line. Pin definite widths in
+   panel mode so the code scrolls inside its own column instead. */
+.aiux-review-overview-scroll.is-panel .aiux-review-overview-file-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.aiux-review-overview-scroll.is-panel .aiux-review-overview-file-body .plan-diff-overlay {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiux-review-overview-scroll.is-panel .plan-diff-code-only {
+  min-width: 0;
+  overflow-x: auto;
+  contain: inline-size;
+}
+
 .plan-diff-line-number {
   display: flex;
   align-items: center;
@@ -3812,6 +4167,10 @@ body {
     color var(--motion-duration-fast) var(--motion-ease-soft),
     opacity var(--motion-duration-fast) var(--motion-ease-soft);
   opacity: 0;
+}
+
+.plan-diff-gutter-icon-slot:focus {
+  outline: none;
 }
 
 .plan-diff-gutter-icon-slot,
@@ -3859,6 +4218,15 @@ body {
 
 .plan-diff-gutter-icon-slot.has-comments {
   color: #A8ADB7;
+}
+
+.plan-diff-gutter-icon-slot.has-hidden-comments {
+  color: #C2C7D0;
+  opacity: 1;
+}
+
+.plan-diff-gutter-icon-slot.has-hidden-comments:not(.has-renderable-comments) {
+  background: transparent;
 }
 
 .plan-diff-gutter-icon-slot.has-comments .plan-diff-comment-count {
@@ -4016,6 +4384,9 @@ body {
 
 .plan-diff-row-comment .plan-diff-inline-comment {
   padding-top: 6px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .plan-diff-row-comment > .plan-diff-row-gutter {
@@ -4026,9 +4397,16 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 8px;
   padding: 12px;
+}
+
+.plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
+  width: clamp(300px, 66%, 640px);
+  min-width: 0;
+  max-width: min(100%, 640px);
+  box-sizing: border-box;
 }
 
 .spec-done-row-comment .spec-done-inline-comment-thread {
@@ -4060,6 +4438,15 @@ body {
 
 .plan-diff-inline-comment .spec-done-comment-popup-context-loader * {
   animation-play-state: running !important;
+}
+
+/* The blanket `animation: none` above also froze the agent-reply avatar spinner
+   (shown while a quick fix / resolve is processing). Re-enable it. */
+.plan-diff-inline-comment .spec-done-comment-agent-reply-avatar.is-processing .loader-spinner,
+.plan-diff-inline-comment .spec-done-comment-agent-reply-avatar.is-processing svg {
+  animation: loader-spin 1s linear infinite !important;
+  transform-origin: center;
+  transform-box: fill-box;
 }
 
 .plan-diff-comment-entry {
@@ -4099,17 +4486,21 @@ body {
   opacity: 0;
 }
 
-.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-main,
-.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-main,
-.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge-main,
-.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge-main {
+.plan-diff-comment-badge:not(.can-add) .plan-diff-comment-badge-add {
+  display: none;
+}
+
+.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge.can-add .plan-diff-comment-badge-main,
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge.can-add .plan-diff-comment-badge-main,
+.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge.can-add .plan-diff-comment-badge-main,
+.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge.can-add .plan-diff-comment-badge-main {
   opacity: 0;
 }
 
-.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge-add,
-.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge-add,
-.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge-add,
-.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge-add {
+.plan-diff-gutter-icon-slot.has-comments:hover .plan-diff-comment-badge.can-add .plan-diff-comment-badge-add,
+.plan-diff-gutter-icon-slot.has-comments:focus-visible .plan-diff-comment-badge.can-add .plan-diff-comment-badge-add,
+.spec-done-comment-slot.has-comments:hover .plan-diff-comment-badge.can-add .plan-diff-comment-badge-add,
+.spec-done-comment-slot.has-comments:focus-within .plan-diff-comment-badge.can-add .plan-diff-comment-badge-add {
   opacity: 1;
 }
 
@@ -6729,6 +7120,122 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Agent's reply shown under the note in the attachment hover preview. */
+.ai-chat-attachment-comment-preview-reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #b7bac0;
+}
+
+.ai-chat-attachment-comment-preview-reply .ai-chat-claude-icon,
+.ai-chat-attachment-comment-preview-reply svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.ai-chat-attachment-comment-preview-reply-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+}
+
+/* Library-rendered hover card: the positioned wrapper only handles show-on-hover
+   + placement; the visual chrome comes from the design-system Popup inside it. */
+.ai-chat-attachment-comment-preview.ai-chat-attachment-comment-preview-library {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.ai-chat-attachment-hover-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  color: #DFE1E5;
+  font: 400 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: normal;
+}
+
+.ai-chat-attachment-hover-title {
+  color: #A8ADB7;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.ai-chat-attachment-hover-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-chat-attachment-hover-note + .ai-chat-attachment-hover-note {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-chat-attachment-hover-meta {
+  color: #8B8E96;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.ai-chat-attachment-hover-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow-wrap: anywhere;
+}
+
+.ai-chat-attachment-hover-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ai-chat-attachment-hover-reply-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #A8ADB7;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-chat-attachment-hover-reply-head svg {
+  flex: 0 0 auto;
+}
+
+.ai-chat-attachment-hover-reply-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow-wrap: anywhere;
+  color: #C9CCD2;
+}
+
+.ai-chat-attachment-hover-more {
+  color: #8B8E96;
+  font-size: 11px;
+}
+
 .ai-chat-attachment-comment-preview-title {
   color: #A8ADB7;
   font-size: 11px;
@@ -7098,6 +7605,44 @@ body {
   color: #73767C;
   font-size: 11px;
   line-height: 16px;
+}
+
+/* "Updated" flag on a composer attachment chip — the agent replied, so the
+   comment count changed. Sits as a badge in the chip's top-right corner. */
+.ai-chat-attachment-updated-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #548af7;
+  box-shadow: 0 0 0 2px #2b2d31;
+}
+
+/* Severity flag on a composer attachment chip (e.g. a critical comment). */
+.ai-chat-attachment-severity-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f737a;
+}
+
+.ai-chat-attachment-severity-dot.is-critical {
+  background: #db5c5c;
+  box-shadow: 0 0 0 3px rgba(219, 92, 92, 0.18);
+}
+
+.ai-chat-attachment-severity-dot.is-warning {
+  background: #e3ae4d;
+  box-shadow: 0 0 0 3px rgba(227, 174, 77, 0.18);
+}
+
+.ai-chat-attachment-severity-dot.is-info {
+  background: #548af7;
+  box-shadow: 0 0 0 3px rgba(84, 138, 247, 0.18);
 }
 
 .ai-chat-attachment-sources-toggle {
@@ -8864,6 +9409,15 @@ body {
 
   color: #73767c;
   opacity: 1;
+}
+
+/* Gray "Waiting…" placeholder shown in place of the textarea while a comment
+   run is processing — top-aligned to sit where the idle placeholder text does. */
+.aiux543-chat-input-waiting {
+  display: flex;
+  align-items: flex-start;
+  color: #73767c;
+  cursor: default;
 }
 
 
@@ -12539,16 +13093,7 @@ body {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  /* rendered as a <button> toggle */
-  appearance: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  cursor: default;
 }
 
 .aiux550-loading-plan-header > .icon,
@@ -12557,13 +13102,11 @@ body {
   height: 16px;
   flex: 0 0 16px;
   color: #a0a3a9;
-  transition: transform 0.12s ease;
 }
 
-/* Collapsed: chevron points up — "expand upward" to review the details. */
-.aiux550-loading-plan-header.is-collapsed > .icon,
-.aiux550-loading-plan-header.is-collapsed > svg {
-  transform: rotate(180deg);
+/* Done: the review (balloon) icon, matching the Chat History AI Review row. */
+.aiux550-loading-plan-header > .aiux550-loading-plan-status-icon {
+  color: #a0a3a9;
 }
 
 .aiux550-loading-plan-title {
@@ -12579,6 +13122,33 @@ body {
   white-space: nowrap;
   color: #6f737a;
   font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+/* Processing status text — a touch brighter than the done summary. */
+.aiux550-loading-plan-progress {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a0a3a9;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+/* Right-aligned link to the review diff (target wired up later). */
+.aiux550-loading-plan-diff-link {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #548af7;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aiux550-loading-plan-diff-link:hover {
+  text-decoration: underline;
 }
 
 .aiux550-loading-plan-list {
@@ -12598,37 +13168,77 @@ body {
   padding: 4px 0;
 }
 
-/* Review tree: file-grouped list of surfaced comments (file header + severity
-   comment rows), each row navigable to the comment in the code. */
-.aiux550-review-tree {
+/* File-grouped comments shown while the agent works. Review runs and AI Note
+   processing runs use this same structure: file header + comment body rows. */
+.aiux550-agent-comment-tree {
   display: flex;
   min-width: 0;
   max-height: 220px;
   overflow-y: auto;
   flex-direction: column;
-  padding: 6px 0 0;
+  gap: 6px;
+  padding: 8px 0 0 16px;
 }
 
-.aiux550-review-file-group {
+.aiux550-agent-comment-section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aiux550-agent-comment-section + .aiux550-agent-comment-section {
+  padding-top: 8px;
+  border-top: 1px solid #33353b;
+}
+
+.aiux550-agent-comment-section-title {
+  /* Align under the component header title: the tree already indents 16px, and the
+     header title sits at chevron(16)+gap(8)=24px, so add 8px here to line up. */
+  padding: 0 2px 0 8px;
+  color: #8e939d;
+  font: 600 11px/14px Inter, system-ui, sans-serif;
+  text-transform: uppercase;
+}
+
+.aiux550-agent-comment-file-group {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
-.aiux550-review-file-head {
+.aiux550-agent-comment-file-group + .aiux550-agent-comment-file-group {
+  padding-top: 6px;
+  border-top: 1px solid #33353b;
+}
+
+.aiux550-agent-comment-file-head {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 4px 2px;
+  padding: 0 2px 2px;
 }
 
-.aiux550-review-file-icon {
+.aiux550-agent-comment-file-icon {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
 }
 
-.aiux550-review-file-name {
+.aiux550-agent-comment-file-loader {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.aiux550-agent-comment-file-loader svg {
+  width: 16px;
+  height: 16px;
+}
+
+.aiux550-agent-comment-file-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12637,39 +13247,83 @@ body {
   font: 600 13px/16px Inter, system-ui, sans-serif;
 }
 
-.aiux550-review-comment-row {
+.aiux550-agent-comment-row {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  width: calc(100% + 8px);
   min-width: 0;
   margin: 0 -4px;
-  padding: 4px 4px 4px 22px;
+  padding: 4px 4px 4px 28px;
+  box-sizing: border-box;
+  border: 0;
   border-radius: 4px;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   animation: aiux550-review-row-in 0.18s ease-out;
 }
 
-.aiux550-review-comment-row.is-clickable {
+.aiux550-agent-comment-row.is-clickable {
   cursor: pointer;
 }
 
-.aiux550-review-comment-row.is-clickable:hover {
+.aiux550-agent-comment-row.is-clickable:hover {
   background: var(--selection-bg-hovered, rgba(255, 255, 255, 0.06));
 }
 
-.aiux550-review-sev-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  margin-top: 1px;
+.aiux550-agent-comment-body {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.aiux550-review-comment-text {
+.aiux550-agent-comment-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  color: #d1d3d9;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-agent-comment-meta-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiux550-agent-comment-meta {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d1d3d9;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
+  color: #6f737a;
+  font: 400 11px/15px Inter, system-ui, sans-serif;
+}
+
+.aiux550-agent-comment-state {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-agent-comment-state.is-active {
+  background: rgba(84, 138, 247, 0.14);
+  color: #7ca7ff;
+}
+
+.aiux550-agent-comment-state.is-queued {
+  background: rgba(255, 255, 255, 0.06);
+  color: #8e939d;
 }
 
 @keyframes aiux550-review-row-in {
@@ -12927,6 +13581,7 @@ body {
 
 /* Line label sits in the byline, muted like the other meta. */
 .spec-done-comment-agent-reply-line {
+  margin-left: var(--spec-done-comment-agent-reply-content-indent);
   color: #6f737a;
   white-space: nowrap;
 }
@@ -12981,6 +13636,22 @@ body {
   white-space: nowrap;
 }
 
+/* Resolved review comment: kept as a record, dimmed, with a status badge. */
+.spec-done-comment-agent-reply.is-resolved {
+  opacity: 0.55;
+}
+
+.spec-done-comment-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #2b3a2e;
+  color: #7bcf90;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
 .spec-done-comment-agent-reply-time {
   color: #6f737a;
   font: 400 12px/16px Inter, system-ui, sans-serif;
@@ -12995,10 +13666,22 @@ body {
   font: 500 13px/16px Inter, system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .spec-done-comment-agent-reply-link:hover {
   text-decoration: underline;
+}
+
+/* The change CTA names the exact agent action; keep it as one readable label. */
+.spec-done-comment-agent-reply-link.is-change-cta {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .spec-done-comment-agent-reply-badge {
@@ -13015,16 +13698,18 @@ body {
 
 .spec-done-comment-agent-reply-actions {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   margin-left: var(--spec-done-comment-agent-reply-content-indent);
+  min-width: 0;
 }
 
 .spec-done-comment-agent-user-reply {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 8px 0 0 var(--spec-done-comment-agent-reply-content-indent);
+  margin: 8px 0 0;
   padding-top: 8px;
   border-top: 1px solid var(--popup-border, #33353b);
 }
@@ -13032,7 +13717,24 @@ body {
 .spec-done-comment-agent-user-reply-head {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+
+.spec-done-comment-agent-user-reply-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: #a8adb7;
+}
+
+.spec-done-comment-agent-user-reply-icon .icon,
+.spec-done-comment-agent-user-reply-icon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .spec-done-comment-agent-user-reply-name {
@@ -13042,9 +13744,27 @@ body {
 
 .spec-done-comment-agent-user-reply-text {
   margin: 0;
+  margin-left: 24px;
   color: #c4c7cd;
   font: 400 13px/19px Inter, system-ui, sans-serif;
   overflow-wrap: anywhere;
+}
+
+.spec-done-comment-agent-follow-up-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--popup-border, #33353b);
+}
+
+.spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-head {
+  margin-left: 0 !important;
+}
+
+.spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-text {
+  margin-left: 24px;
 }
 
 .spec-done-comment-agent-reply-compose {
@@ -13052,20 +13772,19 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Match the width of the primary "Write an AI Note" composer. The reply
-     field lives inside the comment row, which reserves a right-hand column
-     for the ⋯ more-menu (20px button + 2px gap) and uses 8px row padding
-     instead of the popup's 12px inline padding, so it falls 18px short on
-     the right (20 + 2 − (12 − 8)). Breaking out by 18px lines it up exactly;
-     width:auto (not 100%) is required so the negative margin actually widens
-     the box. The left edge already matches, so only the right is adjusted. */
-  width: auto;
-  margin: 0 -18px 0 0;
+  width: 100%;
+  margin: 0;
   padding: 4px 0 0;
 }
 
 .spec-done-comment-agent-reply-compose .spec-done-comment-popup-footer {
   justify-content: flex-end;
+  padding: 0;
+  border-top: 0;
+}
+
+.spec-done-comment-agent-reply-compose .spec-done-comment-popup-actions {
+  gap: 8px;
 }
 
 .spec-done-comment-agent-resolution {
@@ -13204,6 +13923,74 @@ body {
   font: 400 12px/18px Inter, system-ui, sans-serif;
 }
 
+/* AI Review is a non-expandable summary row (icon + label + status badge). While
+   processing, a loader sits in the action column; when done it becomes the
+   "View diff" link. */
+.aiux550-ainotes-summary {
+  cursor: default;
+}
+
+.aiux550-ainotes-summary-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/* The "AI Review" word yields first (it has the balloon icon next to it); the
+   status badge keeps its full size. */
+.aiux550-ainotes-summary-label > :first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Push the status badge to the right of the row, next to the "View diff" link. */
+.aiux550-ainotes-summary-status {
+  margin-left: auto;
+}
+
+/* "In progress" status text while the review is still being assembled. */
+.aiux550-ainotes-progress-text {
+  flex: 0 0 auto;
+  color: #a0a3a9;
+  white-space: nowrap;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+}
+
+/* Loader shown in the action column while the review is still processing. */
+.aiux550-ainotes-loader {
+  flex: 0 0 auto;
+  color: #a0a3a9;
+}
+
+/* Expressive "Done" status — a green sibling of the blue Approval pill. Reused by
+   the composer review card and the Chat History AI Review row. */
+.aiux550-review-done-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 6px;
+  border-radius: 999px;
+  color: #7bcf90;
+  background: #22371f;
+  font: 500 11px/14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-review-done-dot {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5fb865;
+  box-shadow: 0 0 0 3px rgba(95, 184, 101, 0.22);
+}
+
 .aiux550-ainotes-file-count {
   display: inline-flex;
   align-items: center;
@@ -13211,6 +13998,72 @@ body {
   flex: 0 0 auto;
   color: #6f737a;
   font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
+/* Custom Commit tool window: reuses the library's own commit-* classes (styled by
+   int-ui-kit's styles.css) so the toolbar / tree / bottom panel match the original.
+   Only the bits the library doesn't have — the collapsible group header, the file
+   row layout, and the reused severity counters — are styled here. */
+.commit-custom {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Rows reuse the library .tree-node chrome (height/padding/hover/indent). Only the
+   file icon sizing and name/path flex need tweaks so the severity counters sit
+   between the (non-shrinking) filename and the ellipsized path. */
+.commit-file-node .commit-file-row-icon {
+  flex: 0 0 16px;
+}
+
+/* The icon+name form a clickable button that navigates to the file; it fills the
+   row and ellipsizes, leaving the severity counters pinned right. */
+.commit-file-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.commit-file-node .commit-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.commit-amend-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.commit-amend-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-default, #ced0d6);
+  cursor: pointer;
+}
+
+.commit-message-area {
+  padding: 4px 12px 0;
+}
+
+.commit-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Per-file severity breakdown in the AI Review folder (Critical/Warning/Info). */
@@ -13292,4 +14145,757 @@ body {
 
 .aiux550-ainotes-leaf.is-done .aiux550-ainotes-leaf-text {
   color: #6f737a;
+}
+
+/* ─── Aggregated review-diff overview tab ──────────────────────────────────── */
+.aiux-review-overview-anchor {
+  display: none;
+}
+
+.aiux-review-overview {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: #1b1c1f;
+}
+
+.aiux-review-overview-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid #2b2d31;
+  background: #1b1c1f;
+}
+
+/* Review navigation inside a single-file diff toolbar (file arrows + files popup
+   trigger + comment arrows). */
+.aiux-review-diffnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Review context carried into a single file's toolbar: chat name + status. */
+.aiux-review-diffnav-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-right: 2px;
+}
+
+.aiux-review-diffnav-context > svg,
+.aiux-review-diffnav-context > .icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.aiux-review-diffnav-chat-name {
+  min-width: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dfe1e5;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-diffnav-summary {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: #6f737a;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-diffnav-complete {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.aiux-review-diffnav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #a0a3a9;
+  cursor: pointer;
+}
+
+.aiux-review-diffnav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.aiux-review-diffnav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.aiux-review-diffnav-icon.is-prev,
+.aiux-review-diffnav-icon.is-up {
+  transform: rotate(180deg);
+}
+
+.aiux-review-diffnav-count {
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: #548af7;
+  font: 400 13px/24px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aiux-review-diffnav-count:hover {
+  text-decoration: underline;
+}
+
+.aiux-review-diffnav-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: #3c3f45;
+}
+
+.aiux-review-diffnav-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ced0d6;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Shared severity-filter control (overview toolbar + single-diff toolbar). */
+.aiux-review-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.aiux-review-filter-trigger-wrap {
+  display: inline-flex;
+}
+
+.aiux-review-filter-trigger.toolbar-button {
+  height: 24px;
+  min-height: 24px;
+}
+
+.aiux-review-filter-trigger-group.toolbar-button {
+  width: 132px;
+}
+
+.aiux-review-filter-trigger-severity.toolbar-button {
+  width: 168px;
+}
+
+.aiux-review-filter-trigger .toolbar-button-content {
+  width: 100%;
+  max-width: 220px;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.aiux-review-filter-trigger .toolbar-button-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux-review-filter-trigger .toolbar-button-content > svg:last-child,
+.aiux-review-filter-trigger .toolbar-button-content > .icon:last-child {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.aiux-review-menu-popup {
+  min-width: 188px;
+  padding: 4px;
+  border: 1px solid var(--border-color, #3C4048);
+  border-radius: 6px;
+  background: var(--popup-background, var(--background-color, #2B2D33));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+}
+
+.aiux-review-menu-popup-cell.popup-cell {
+  min-height: 28px;
+}
+
+.aiux-review-menu-popup-cell .popup-cell-icon {
+  width: 18px;
+}
+
+.aiux-review-menu-check-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #B9C7F4;
+}
+
+.aiux-review-menu-popup-cell-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiux-review-menu-popup-cell-content .aiux550-ainotes-sev-icon {
+  flex: 0 0 14px;
+}
+
+.aiux-review-menu-popup-cell-content .aiux-review-panel-cat-dot {
+  flex: 0 0 8px;
+}
+
+.aiux-review-resolved-toggle {
+  gap: 6px;
+  border-color: #3C4048;
+  background: #25272D;
+}
+
+.aiux-review-resolved-toggle:hover {
+  border-color: #4C515C;
+  background: #2D3037;
+}
+
+.aiux-review-resolved-toggle.is-active {
+  border-color: rgba(84, 138, 247, 0.58);
+  background: rgba(84, 138, 247, 0.14);
+}
+
+.aiux-review-resolved-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #D9DDE5;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.aiux-review-resolved-toggle-state {
+  color: #AEB4C0;
+}
+
+.aiux-review-resolved-toggle.is-active .aiux-review-resolved-toggle-state {
+  color: #C7D6FF;
+}
+
+.aiux-review-filter-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: #3c3f45;
+}
+
+/* Section header inserted into the overview stack when grouping is active. */
+.aiux-review-overview-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 1226px;
+  margin: 0 auto var(--aiux-review-panel-heading-gap, 8px);
+  padding: 0 2px;
+  background: transparent;
+}
+
+.aiux-review-overview-group-title {
+  color: inherit;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: inherit;
+}
+
+.aiux-review-overview-group-head .aiux550-ainotes-sev-icon {
+  flex: 0 0 16px;
+}
+
+.aiux-review-overview-group-head.is-critical .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-warning .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-info .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-open .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-resolved .aiux-review-overview-group-title {
+  color: inherit;
+}
+
+.aiux-review-overview-group-count {
+  color: #6f737a;
+  font: inherit;
+}
+
+/* Chat/summary block and the file navigation sit together on the left, with the
+   same gap as the items inside the chat/summary block. */
+.aiux-review-overview-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiux-review-overview-nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiux-review-overview-navbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #a0a3a9;
+  cursor: pointer;
+}
+
+.aiux-review-overview-navbtn:hover:not(:disabled) {
+  background: #2b2d31;
+}
+
+.aiux-review-overview-navbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.aiux-review-overview-navicon.is-prev {
+  transform: rotate(180deg);
+}
+
+.aiux-review-overview-count {
+  color: #a0a3a9;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+/* "N out of M files" is a hyperlink that opens the review file-tree popup. */
+.aiux-review-overview-count-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #548af7;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aiux-review-overview-count-link:hover {
+  text-decoration: underline;
+}
+
+/* File-tree popup — same content as the old expandable review card above the
+   composer, reusing its .aiux550-agent-comment-* tree styles. */
+.aiux-review-files-popup {
+  display: flex;
+  width: 420px;
+  max-width: 90vw;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #33353b;
+  border-radius: 8px;
+  background: #26282c;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* Portaled to <body> (outside the themed tool window), so set light text
+     explicitly — the commit-* / tree-node classes otherwise inherit black. */
+  color: #ced0d6;
+}
+
+.aiux-review-files-popup .commit-group-label {
+  color: #dfe1e5;
+}
+
+.aiux-review-files-popup .commit-group-count {
+  color: #8b8f98;
+}
+
+.aiux-review-files-popup .commit-file-name {
+  color: #ced0d6;
+}
+
+.aiux-review-files-popup .is-resolved-group .commit-file-open {
+  opacity: 0.6;
+}
+
+.aiux-review-resolved-count {
+  flex: 0 0 auto;
+  color: #6f737a;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-files-popup-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 34px;
+  padding: 4px 7px 4px 12px;
+  border-bottom: 1px solid #40434a;
+}
+
+.aiux-review-files-popup-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #d1d3d9;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-files-popup-filter {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.aiux-review-files-popup-filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  min-width: 160px;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid #43454a;
+  border-radius: 8px;
+  background: #2b2d31;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.aiux-review-files-popup-filter-item {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #ced0d6;
+  font: 400 13px/16px Inter, system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiux-review-files-popup-filter-item:hover {
+  background: #3a3d42;
+}
+
+.aiux-review-files-popup-filter-item.is-active {
+  color: #dfe1e5;
+  background: #2a4371;
+}
+
+.aiux-review-files-popup-tree {
+  max-height: 320px;
+  overflow: auto;
+  padding: 4px 0 8px;
+}
+
+/* In the narrow popup keep the severity counters right next to the filename
+   instead of pinned to the far right (which left a large empty gap). */
+.aiux-review-files-popup .commit-file-node {
+  gap: 6px;
+}
+
+.aiux-review-files-popup .commit-file-open {
+  flex: 0 1 auto;
+}
+
+.aiux-review-files-popup .commit-file-node .commit-file-name {
+  flex: 0 1 auto;
+}
+
+.aiux-review-overview-target {
+  display: flex;
+  flex: 0 1 auto;
+  /* Allow the target to shrink so the chat name truncates instead of the file
+     nav overflowing into the action controls when the summary grows (e.g. once
+     "· N resolved" appears). */
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: #ced0d6;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-overview-hash {
+  color: #dfe1e5;
+  font-weight: 500;
+}
+
+.aiux-review-overview-arrows {
+  color: #6f737a;
+}
+
+.aiux-review-overview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Split/Unified segmented control — the library SegmentedControl with icon
+   labels; only alignment is nudged so it sits inline in the toolbar. */
+.aiux-review-overview-viewtoggle {
+  flex: 0 0 auto;
+}
+
+.aiux-review-overview-viewtoggle .segmented-button-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux-review-overview-viewtoggle-text {
+  height: 26px;
+  min-height: 26px;
+  border-radius: 4px;
+}
+
+.aiux-review-overview-viewtoggle-text .segmented-control-background {
+  height: 22px;
+  border-radius: 4px;
+}
+
+.aiux-review-overview-viewtoggle-text .segmented-button {
+  min-height: 22px;
+  height: 22px;
+  min-width: 40px;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.aiux-review-overview-viewtoggle-text .segmented-button-content {
+  min-height: 14px;
+  font: 500 11px/14px Inter, system-ui, sans-serif;
+}
+
+/* Clickable chat context (replaces the git-hash label) → navigates to the chat. */
+.aiux-review-overview-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #ced0d6;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.aiux-review-overview-chat:hover:not(:disabled) {
+  background: #2b2d31;
+}
+
+.aiux-review-overview-chat:disabled {
+  cursor: default;
+}
+
+.aiux-review-overview-chat > svg,
+.aiux-review-overview-chat > .icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.aiux-review-overview-chat-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dfe1e5;
+}
+
+.aiux-review-overview-sep {
+  color: #4b5059;
+}
+
+.aiux-review-overview-summary-total {
+  /* Keep the counts fully visible; the chat name truncates first. */
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: #6f737a;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+/* Review status pill uses the shared green `aiux550-review-done-badge` style so
+   it matches the "Open" badge in Chats History and the AI Review card; only the
+   text changes ("Open" → "All resolved") as findings are handled. */
+
+.aiux-review-overview-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ced0d6;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aiux-review-overview-btn {
+  height: 24px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.aiux-review-overview-btn.is-secondary {
+  border-color: #4b4d52;
+  background: transparent;
+  color: #ced0d6;
+}
+
+.aiux-review-overview-btn.is-secondary:hover {
+  background: #2b2d31;
+}
+
+.aiux-review-overview-btn.is-primary {
+  background: #3574f0;
+  color: #fff;
+}
+
+.aiux-review-overview-btn.is-primary:hover {
+  background: #4a82f2;
+}
+
+.aiux-review-overview-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #1b1c1f;
+}
+
+.aiux-review-overview-file {
+  max-width: 1226px;
+  margin: 0 auto 12px;
+  border: 1px solid #393b40;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #191a1c;
+}
+
+.aiux-review-overview-file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #393b40;
+}
+
+/* Right-aligned per-card controls: Split/Unified toggle + Resolve all. */
+.aiux-review-overview-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Clickable filename+summary → opens the file's full diff tab. */
+.aiux-review-overview-file-open {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.aiux-review-overview-file-icon {
+  flex: 0 0 16px;
+  align-self: center;
+  color: #a0a3a9;
+}
+
+.aiux-review-overview-file-name {
+  flex: 0 0 auto;
+  color: #dfe1e5;
+  font: 600 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux-review-overview-file-open:hover .aiux-review-overview-file-name {
+  text-decoration: underline;
+}
+
+.aiux-review-overview-file-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6f737a;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+}
+
+/* "Resolve all" CTA on each file card header, grouped right after the summary. */
+.aiux-review-overview-file-resolve {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #548af7;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.aiux-review-overview-file-resolve:hover {
+  background: #2b2d31;
+  color: #6b9bf7;
+}
+
+.aiux-review-overview-file-body {
+  position: relative;
+}
+
+/* Un-absolute the stacked diff overlay so each file flows in the document and the
+   outer container scrolls (instead of each overlay filling the viewport). */
+.aiux-review-overview-file-body .plan-diff-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.aiux-review-overview-file-body .plan-diff-scroll {
+  height: auto;
+  overflow: visible;
+}
+
+.aiux-review-overview-file-body .plan-diff-code {
+  min-height: 0;
 }

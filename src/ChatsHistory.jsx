@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, ToolWindow } from '@jetbrains/int-ui-kit';
+import { Icon, Loader, ToolWindow } from '@jetbrains/int-ui-kit';
 import { AiChatCodexIcon } from './AiChatListParts.jsx';
 
 // Round severity status icon for the AI Review folder: red "!" (critical),
@@ -31,6 +31,8 @@ function ChatsHistoryToolWindow({
   onOpenSpecChat = null,
   onSettings = null,
   onOpenChangesList = null,
+  onOpenCommit = null,
+  onOpenReviewDiff = null,
   onOpenFile = null,
 }) {
   // Everything collapsed by default except the refactoring chat, which is
@@ -130,6 +132,8 @@ function ChatsHistoryToolWindow({
           className="aiux543-tool-chat-list"
           onSelectChat={handleSelectChat}
           onOpenChangesList={onOpenChangesList}
+          onOpenCommit={onOpenCommit}
+          onOpenReviewDiff={onOpenReviewDiff}
           onOpenFile={onOpenFile}
           onToggleRow={(rowId) => setExpandedRows((prev) => ({ ...prev, [rowId]: !(prev[rowId] ?? false) }))}
           onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? false) }))}
@@ -436,6 +440,9 @@ function buildAiux550HistoryRows() {
 // Changes / Context / Sub-threads tree as the Agents-section chats.
 // Each spec owns exactly two chats — Build and Specify — matching the previous
 // implementation's spec status chats (ensureSpecStatusChat 'Build'/'Specified').
+// Temporarily hide the "Specs" section from Chats History (data kept for later).
+const SHOW_HISTORY_SPECS = false;
+
 const AIUX550_HISTORY_SPECS = [
   {
     id: 'spec-visit-booking',
@@ -476,6 +483,8 @@ function Aiux550HistoryList({
   className = '',
   onSelectChat,
   onOpenChangesList,
+  onOpenCommit,
+  onOpenReviewDiff,
   onOpenFile,
   onToggleRow,
   onToggleSection,
@@ -484,18 +493,28 @@ function Aiux550HistoryList({
   // highlighted (avoids a default blue selection on load).
   const effectiveActiveChatId = activeChatId ?? null;
 
-  // Prepend an expandable "AI Notes" folder (real left comments) to a chat's
-  // children while/after an agent run for that chat has notes.
+  // Prepend an expandable "AI Review" folder to a chat's children only for an
+  // explicit /review run. A plain "execute comments" run also carries notes, but
+  // it shouldn't leave an "AI Review" block lingering in history after it
+  // finishes — its result lives in the chat + the diff. While such a run is
+  // still processing we show the folder so its progress is visible.
+  // Show the "AI Review" folder (with severity counters) whenever the run has
+  // notes — i.e. while processing OR while agent replies/findings still await an
+  // explicit user action (apply the change / resolve). finishRun prunes notes that
+  // don't await action, and resolving/quick-fixing removes them, so the folder
+  // disappears once everything is handled.
   const withAiNotes = (node) => {
     const run = agentRunByChatId[node.id];
-    if (!run?.notes?.length) return node;
-    const aiNotesSection = { id: 'ai-notes', label: 'AI Review', notes: run.notes };
+    // Only an explicit /review run gets an "AI Review" folder in history. A plain
+    // "send comment to agent" run keeps its result in the chat + the diff/chip.
+    if (run?.kind !== 'review' || !run?.notes?.length) return node;
+    const aiNotesSection = { id: 'ai-notes', label: 'AI Review', notes: run.notes, status: run.status };
     return { ...node, children: [aiNotesSection, ...(node.children ?? [])] };
   };
 
   return (
     <div className={`aiux543-chat-list aiux543-chat-list-flat ${className}`.trim()}>
-      {specs?.length ? (
+      {SHOW_HISTORY_SPECS && specs?.length ? (
         <section>
           <div className="aiux543-chat-group-rows">
             <ReferenceChatSectionHeader expanded label="Specs" onToggle={() => {}} />
@@ -536,6 +555,8 @@ function Aiux550HistoryList({
                                 expandedSections={expandedSections}
                                 onToggleSection={onToggleSection}
                                 onOpenChangesList={onOpenChangesList}
+                                onOpenCommit={onOpenCommit}
+                                onOpenReviewDiff={onOpenReviewDiff}
                                 onOpenFile={onOpenFile}
                               />
                             ) : null}
@@ -578,6 +599,8 @@ function Aiux550HistoryList({
                     expandedSections={expandedSections}
                     onToggleSection={onToggleSection}
                     onOpenChangesList={onOpenChangesList}
+                    onOpenCommit={onOpenCommit}
+                    onOpenReviewDiff={onOpenReviewDiff}
                     onOpenFile={onOpenFile}
                   />
                 ) : null}
@@ -927,7 +950,7 @@ function ApprovalActivityPreview({
   );
 }
 
-function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggleSection, onOpenChangesList, onOpenFile }) {
+function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggleSection, onOpenChangesList, onOpenCommit, onOpenReviewDiff, onOpenFile }) {
   return (
     <div className="aiux543-chat-row-children">
       {sections.map((section) => {
@@ -935,26 +958,14 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         const isExpanded = expandedSections[sectionKey] ?? false;
         const isAiNotes = section.id === 'ai-notes';
         const aiNotes = isAiNotes && Array.isArray(section.notes) ? section.notes : [];
-        // Folder lists the FILES/diffs that carry comments (not the comment
-        // bodies). Keep the source label as-is so a diff reads as a diff
-        // (e.g. "Diff VisitController.java") and gets the diff icon.
-        const aiNotesFiles = [];
-        if (isAiNotes) {
-          const byFile = new Map();
-          aiNotes.forEach((note) => {
-            const file = (note.sourceLabel || 'Untitled').trim() || 'Untitled';
-            const isDiff = /^diff\s+/i.test(file);
-            if (!byFile.has(file)) {
-              byFile.set(file, { file, isDiff, count: 0, severity: { critical: 0, warning: 0, info: 0 }, openTarget: note.openTarget ?? null });
-              aiNotesFiles.push(byFile.get(file));
-            }
-            const group = byFile.get(file);
-            group.count += 1;
-            const severityKey = typeof note.severity === 'string' ? note.severity.toLowerCase() : '';
-            if (severityKey in group.severity) group.severity[severityKey] += 1;
-            if (!group.openTarget && note.openTarget) group.openTarget = note.openTarget;
-          });
-        }
+        // The AI Review section is a single, non-expandable summary row: it shows
+        // the file/comment totals and a "See list" escape hatch. The per-file /
+        // per-comment detail lives in the diff gutters and the Commit tool window,
+        // so we don't render a file tree here (it doesn't scale to large reviews).
+        // While processing, a loader sits in the action column; once done it shows
+        // a green "Done" badge and the "View diff" link. The full file / comment
+        // breakdown lives in the composer card and behind "View diff".
+        const isAiNotesDone = isAiNotes && section.status === 'done';
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
             <div
@@ -964,18 +975,37 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 'aiux543-chat-tree-section-header',
                 (section.id === 'changes' || isAiNotes) ? 'aiux543-chat-tree-section-with-action' : '',
               ].filter(Boolean).join(' ')}
-              aria-expanded={isExpanded}
+              aria-expanded={isAiNotes ? undefined : isExpanded}
             >
-              <button
-                className="aiux543-chat-tree-section-toggle"
-                type="button"
-                aria-expanded={isExpanded}
-                onClick={() => onToggleSection?.(sectionKey)}
-              >
-                <Aiux550ChevronIcon expanded={isExpanded} className="icon aiux543-chat-tree-chevron" />
-                <Aiux550HistoryChildSectionIcon sectionId={section.id} />
-                <span>{section.label}</span>
-              </button>
+              {isAiNotes ? (
+                // Non-expandable summary row: review icon + label + "Open" badge.
+                <span className="aiux543-chat-tree-section-toggle aiux550-ainotes-summary">
+                  <span className="aiux543-chat-tree-chevron-spacer" aria-hidden="true" />
+                  <Aiux550HistoryChildSectionIcon sectionId={section.id} />
+                  <span className="aiux550-ainotes-summary-label">
+                    <span>{section.label}</span>
+                    {isAiNotesDone ? (
+                      <span className="aiux550-review-done-badge aiux550-ainotes-summary-status">
+                        <span className="aiux550-review-done-dot" aria-hidden="true" />
+                        Open
+                      </span>
+                    ) : (
+                      <span className="aiux550-ainotes-summary-status aiux550-ainotes-progress-text">In progress</span>
+                    )}
+                  </span>
+                </span>
+              ) : (
+                <button
+                  className="aiux543-chat-tree-section-toggle"
+                  type="button"
+                  aria-expanded={isExpanded}
+                  onClick={() => onToggleSection?.(sectionKey)}
+                >
+                  <Aiux550ChevronIcon expanded={isExpanded} className="icon aiux543-chat-tree-chevron" />
+                  <Aiux550HistoryChildSectionIcon sectionId={section.id} />
+                  <span>{section.label}</span>
+                </button>
+              )}
               {section.id === 'changes' ? (
                 <button
                   className="aiux543-chat-tree-section-link"
@@ -988,46 +1018,24 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                   See list
                 </button>
               ) : null}
+              {isAiNotes ? (
+                isAiNotesDone ? (
+                  // Opens the aggregated review-diff overview tab (same as the card).
+                  <button
+                    className="aiux543-chat-tree-section-link"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenReviewDiff?.(rowId);
+                    }}
+                  >
+                    View diff
+                  </button>
+                ) : (
+                  <Loader className="aiux550-ainotes-loader" size={16} />
+                )
+              ) : null}
             </div>
-            {isExpanded && isAiNotes ? (
-              <div className="aiux543-chat-tree-children">
-                {aiNotesFiles.map((group) => (
-                  <div className="aiux543-chat-tree-item" key={group.file}>
-                    <button
-                      type="button"
-                      className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux550-ainotes-file-leaf"
-                      style={{ '--tree-level': 1 }}
-                      onClick={() => onOpenFile?.(group.openTarget)}
-                    >
-                      <span className="aiux543-chat-tree-chevron-spacer" />
-                      {group.isDiff ? (
-                        <Icon name="vcs/diff" size={16} className="icon aiux543-chat-tree-icon" />
-                      ) : (
-                        <Aiux550TreeLeafIcon label={group.file} />
-                      )}
-                      <span className="aiux550-ainotes-file-name">{group.file}</span>
-                      {(group.severity.critical + group.severity.warning + group.severity.info) > 0 && (
-                        <span className="aiux550-ainotes-file-severity" aria-label={`${group.severity.critical} critical, ${group.severity.warning} warning, ${group.severity.info} info`}>
-                          {group.severity.critical > 0 && (
-                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="critical" />{group.severity.critical}</span>
-                          )}
-                          {group.severity.warning > 0 && (
-                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="warning" />{group.severity.warning}</span>
-                          )}
-                          {group.severity.info > 0 && (
-                            <span className="aiux550-ainotes-sev-item"><AiNotesSeverityIcon severity="info" />{group.severity.info}</span>
-                          )}
-                        </span>
-                      )}
-                      <span className="aiux550-ainotes-file-count" aria-label={`${group.count} AI Notes`}>
-                        <Icon name="general/balloon" size={12} />
-                        <span>{group.count}</span>
-                      </span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
             {isExpanded && !isAiNotes && section.items?.length ? (
               <div className="aiux543-chat-tree-children">
                 {section.items.map((item) => {
@@ -1233,4 +1241,4 @@ function IconMdTask({ className = '' } = {}) {
   );
 }
 
-export { ChatsHistoryToolWindow, AIUX_NEW_SESSION_TAB_ID };
+export { ChatsHistoryToolWindow, AIUX_NEW_SESSION_TAB_ID, AiNotesSeverityIcon };

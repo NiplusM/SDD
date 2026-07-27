@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
   PlanDiffEditorArea,
+  PlanDiffOverlay,
   tokenizeCodeFragment,
   arePlanDiffUiStatesEqual,
   normalizePlanDiffUiState,
@@ -10,17 +11,15 @@ import {
   PlanDiffCommentBadge,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
-import { ChatsHistoryToolWindow } from './ChatsHistory.jsx';
+import { ChatsHistoryToolWindow, AiNotesSeverityIcon } from './ChatsHistory.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
-import { textLooksLikeQuestion } from './commentCounts.js';
+import { textLooksLikeQuestion, countCommentThreadMessages } from './commentCounts.js';
 import {
   ThemeProvider,
   MainWindow,
   MainToolbar,
   MainToolbarIconButton,
   Banner,
-  CommitWindow,
-  DEFAULT_COMMIT_TOOLBAR_BUTTONS,
   SettingsDialog,
   ToolWindow,
   PositionedPopup,
@@ -30,7 +29,9 @@ import {
   Loader,
   Icon,
   IconButton,
+  ToolbarButton,
   Button,
+  SegmentedControl,
   Input,
   Checkbox,
   Badge,
@@ -516,59 +517,350 @@ class VisitControllerTests {
   },
 };
 
-const MY_COMMIT_FILES = [
+// Flat source of truth for the Commit tool window. Each file carries the fields
+// CommitWindow renders ({id,label,path,icon,status}) plus metadata the filter uses
+// to regroup the list: `severity` (for "by severity"), `functionality` (a module
+// label for "by functionality") and `changeCount` (number of changes in the file).
+// Source of truth for the Commit tool window. Each file carries the render fields
+// ({id,label,path,icon,status}) plus: `category` (review-result bucket used by the
+// "by review result" grouping) and `severityCounts` (per-file finding counts that
+// drive the reused Chats-History severity counters).
+// Labels match real editor tabs (MY_EDITOR_TABS) so clicking a row navigates to
+// the file.
+const COMMIT_CHANGE_FILES = [
   {
-    id: 'changes',
-    label: 'Changes',
-    count: '4 files',
-    isExpanded: true,
-    children: [
-      {
-        id: 'visit-controller',
-        label: 'VisitController.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-      {
-        id: 'diff-visit',
-        label: 'Visit.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-      {
-        id: 'adapter-script',
-        label: 'AdapterScript.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-      {
-        id: 'function-utils',
-        label: 'FunctionUtils.java',
-        path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/support',
-        icon: 'fileTypes/java',
-        status: 'modified',
-      },
-    ],
+    id: 'visit-controller',
+    label: 'VisitController.java',
+    path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+    icon: 'fileTypes/java',
+    status: 'modified',
+    category: 'Security',
+    severityCounts: { critical: 2, warning: 1, info: 0 },
   },
   {
-    id: 'unversioned',
-    label: 'Unversioned Files',
-    count: '1 file',
-    isExpanded: false,
-    children: [
-      {
-        id: 'visit-controller-test',
-        label: 'VisitControllerTests.java',
-        path: '~/IdeaProjects/payment-service/src/test/java/org/springframework/samples/petclinic/owner',
-        icon: 'fileTypes/java',
-        status: 'added',
-      },
-    ],
+    id: 'diff-visit',
+    label: 'Visit.java',
+    path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
+    icon: 'fileTypes/java',
+    status: 'modified',
+    category: 'Correctness',
+    severityCounts: { critical: 0, warning: 0, info: 1 },
+  },
+  {
+    id: 'visit-form',
+    label: 'createOrUpdateVisitForm.html',
+    path: '~/IdeaProjects/payment-service/src/main/resources/templates/pets',
+    icon: 'fileTypes/html',
+    status: 'modified',
+    category: 'Performance',
+    severityCounts: { critical: 0, warning: 1, info: 1 },
+  },
+  {
+    id: 'schema-sql',
+    label: 'schema.sql',
+    path: '~/IdeaProjects/payment-service/src/main/resources/db/hsqldb',
+    icon: 'fileTypes/text',
+    status: 'modified',
+    category: 'Reliability',
+    severityCounts: { critical: 0, warning: 2, info: 0 },
+  },
+  {
+    id: 'visit-controller-test',
+    label: 'VisitControllerTests.java',
+    path: '~/IdeaProjects/payment-service/src/test/java/org/springframework/samples/petclinic/owner',
+    icon: 'fileTypes/java',
+    status: 'added',
+    category: 'Testing',
+    severityCounts: { critical: 1, warning: 0, info: 3 },
   },
 ];
+
+// Severity ordering for the Commit tool window: critical first, then warning, info.
+const COMMIT_SEVERITY_ORDER = ['critical', 'warning', 'info'];
+const COMMIT_SEVERITY_LABEL = { critical: 'Critical', warning: 'Warning', info: 'Info' };
+
+function commitFilesPluralized(n, noun) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+function commitFileFindings(file) {
+  const c = file?.severityCounts ?? {};
+  return (c.critical ?? 0) + (c.warning ?? 0) + (c.info ?? 0);
+}
+
+// A file's primary severity = the most severe bucket that has findings.
+function commitFilePrimarySeverity(file) {
+  return COMMIT_SEVERITY_ORDER.find((sev) => (file?.severityCounts?.[sev] ?? 0) > 0) ?? null;
+}
+
+// Group summary shown next to the group label, e.g. "2 files · 4 findings".
+function commitGroupCount(files) {
+  const findings = files.reduce((sum, f) => sum + commitFileFindings(f), 0);
+  return `${commitFilesPluralized(files.length, 'file')} · ${commitFilesPluralized(findings, 'finding')}`;
+}
+
+// Build the grouped file tree for the active filter mode. Children are the full
+// file objects (so the custom rows can render the severity counters).
+function buildCommitGroups(files = COMMIT_CHANGE_FILES, mode = 'directory') {
+  if (mode === 'severity') {
+    return COMMIT_SEVERITY_ORDER
+      .map((sev) => {
+        const bucket = files
+          .filter((f) => commitFilePrimarySeverity(f) === sev)
+          .sort((a, b) => commitFileFindings(b) - commitFileFindings(a));
+        if (bucket.length === 0) return null;
+        return {
+          id: `commit-sev-${sev}`,
+          label: COMMIT_SEVERITY_LABEL[sev],
+          count: commitGroupCount(bucket),
+          isExpanded: true,
+          children: bucket,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  if (mode === 'category') {
+    const severityRank = (file) => {
+      const idx = COMMIT_SEVERITY_ORDER.indexOf(commitFilePrimarySeverity(file));
+      return idx === -1 ? COMMIT_SEVERITY_ORDER.length : idx;
+    };
+    const names = [...new Set(files.map((f) => f.category || 'Other'))].sort((a, b) => a.localeCompare(b));
+    return names.map((name) => {
+      const bucket = files
+        .filter((f) => (f.category || 'Other') === name)
+        .sort((a, b) => severityRank(a) - severityRank(b) || commitFileFindings(b) - commitFileFindings(a));
+      return {
+        id: `commit-cat-${name}`,
+        label: name,
+        count: commitGroupCount(bucket),
+        isExpanded: true,
+        children: bucket,
+      };
+    });
+  }
+
+  // 'directory' (default): the original Changes / Unversioned split.
+  const changed = files.filter((f) => f.status !== 'added');
+  const unversioned = files.filter((f) => f.status === 'added');
+  const groups = [];
+  if (changed.length > 0) {
+    groups.push({
+      id: 'changes',
+      label: 'Changes',
+      count: commitFilesPluralized(changed.length, 'file'),
+      isExpanded: true,
+      children: changed,
+    });
+  }
+  if (unversioned.length > 0) {
+    groups.push({
+      id: 'unversioned',
+      label: 'Unversioned Files',
+      count: commitFilesPluralized(unversioned.length, 'file'),
+      isExpanded: true,
+      children: unversioned,
+    });
+  }
+  return groups;
+}
+
+// Reused Chats-History per-file severity counter: a coloured severity icon +
+// count for each non-empty bucket (see AiNotesSeverityIcon / .aiux550-ainotes-*).
+function CommitSeverityCounters({ counts }) {
+  const c = counts ?? {};
+  const total = (c.critical ?? 0) + (c.warning ?? 0) + (c.info ?? 0);
+  if (total === 0) return null;
+  return (
+    <span
+      className="aiux550-ainotes-file-severity"
+      aria-label={`${c.critical ?? 0} critical, ${c.warning ?? 0} warning, ${c.info ?? 0} info`}
+    >
+      {COMMIT_SEVERITY_ORDER.map((sev) => (
+        (c[sev] ?? 0) > 0 ? (
+          <span className="aiux550-ainotes-sev-item" key={sev}>
+            <AiNotesSeverityIcon severity={sev} />{c[sev]}
+          </span>
+        ) : null
+      ))}
+    </span>
+  );
+}
+
+// The Commit tool window's group-by options (filter icon in the toolbar).
+const COMMIT_GROUP_MODES = [
+  { id: 'directory', label: 'By directory' },
+  { id: 'severity', label: 'By severity' },
+  { id: 'category', label: 'By review result' },
+];
+
+// Custom Commit tool window. Replaces the library CommitWindow so each file row can
+// show the reused Chats-History severity counters (the library rows have no badge
+// slot). Keeps the commit chrome: toolbar + group-by filter, a grouped/collapsible
+// file tree with checkboxes, and the bottom panel (amend + summary + Commit).
+function CommitToolWindow({ ctx, onOpenFile = null }) {
+  const [groupMode, setGroupMode] = useState('directory');
+  const [filterRect, setFilterRect] = useState(null);
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+  const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
+  const [amend, setAmend] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, groupMode), [groupMode]);
+
+  const toggleGroup = (id) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleFile = (id) => setCheckedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // Footer summary from the checked files' statuses.
+  const summary = useMemo(() => {
+    const tally = { modified: 0, added: 0, deleted: 0 };
+    COMMIT_CHANGE_FILES.forEach((f) => {
+      if (checkedIds.has(f.id) && tally[f.status] !== undefined) tally[f.status] += 1;
+    });
+    return ['modified', 'added', 'deleted']
+      .filter((k) => tally[k] > 0)
+      .map((k) => `${tally[k]} ${k}`)
+      .join(', ');
+  }, [checkedIds]);
+
+  const openFilter = (event) => {
+    const rect = event?.currentTarget?.getBoundingClientRect?.() ?? null;
+    setFilterRect((prev) => (prev ? null : rect));
+  };
+
+  return (
+    <ToolWindow
+      title="Commit"
+      width="100%"
+      height="100%"
+      actions={['more', 'minimize']}
+      focused={ctx.focusedPanel === 'left'}
+      onFocus={() => ctx.setFocusedPanel('left')}
+      onActionClick={(action) => { if (action === 'minimize') ctx.setShowLeftPanel(false); }}
+      className="commit-tool-window main-window-tool-window main-window-tool-window-left"
+    >
+      <div className="commit-custom">
+        <div className="commit-toolbar">
+          <IconButton icon="general/refresh" tooltip="Refresh" />
+          <IconButton icon="vcs/revert" tooltip="Rollback" />
+          <IconButton icon="vcs/patch" tooltip="Create Patch" />
+          <IconButton icon="aiAssistant/aiAssistantColored" tooltip="AI Self-Review" />
+          <IconButton icon="general/show" tooltip="Show" />
+          <IconButton icon="general/expandAll" tooltip="Expand All" onClick={() => setCollapsedGroups(new Set())} />
+          <IconButton icon="general/collapseAll" tooltip="Collapse All" onClick={() => setCollapsedGroups(new Set(groups.map((g) => g.id)))} />
+          <IconButton icon="general/filter" tooltip="Group by…" onClick={openFilter} />
+        </div>
+
+        <div className="commit-tree">
+          {groups.map((group) => {
+            const collapsed = collapsedGroups.has(group.id);
+            const groupChecked = group.children.every((f) => checkedIds.has(f.id));
+            const toggleGroupChecked = () => setCheckedIds((prev) => {
+              const next = new Set(prev);
+              const allOn = group.children.every((f) => next.has(f.id));
+              group.children.forEach((f) => { if (allOn) next.delete(f.id); else next.add(f.id); });
+              return next;
+            });
+            return (
+              <div className="tree-node-container commit-custom-group" key={group.id}>
+                {/* Group row = library TreeNode level 1 (paddingLeft 16). */}
+                <div className="tree-node text-ui-default commit-group-node" style={{ paddingLeft: '16px' }}>
+                  <button
+                    type="button"
+                    className="tree-node-toggle"
+                    aria-expanded={!collapsed}
+                    aria-label={collapsed ? 'Expand' : 'Collapse'}
+                    onClick={() => toggleGroup(group.id)}
+                  >
+                    <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
+                  </button>
+                  <Checkbox checked={groupChecked} onChange={toggleGroupChecked} />
+                  <span className="commit-group-label">{group.label}</span>
+                  <span className="commit-group-count">{group.count}</span>
+                </div>
+                {!collapsed && group.children.map((file) => (
+                  /* File row = library TreeNode level 2 (paddingLeft 32, no toggle). */
+                  <div className="tree-node text-ui-default commit-file-node" style={{ paddingLeft: '32px' }} key={file.id}>
+                    {/* Spacer where the group's chevron sits, so the file's checkbox
+                        aligns under the group's checkbox (proper nesting). */}
+                    <span className="tree-node-spacer" />
+                    <Checkbox
+                      checked={checkedIds.has(file.id)}
+                      onChange={() => toggleFile(file.id)}
+                    />
+                    <button
+                      type="button"
+                      className="commit-file-open"
+                      onClick={() => onOpenFile?.(file)}
+                      title={`Open ${file.label}`}
+                    >
+                      <Icon name={file.icon} size={16} className="commit-file-row-icon" />
+                      <span className={`commit-file-name commit-status-${file.status}`}>{file.label}</span>
+                    </button>
+                    <CommitSeverityCounters counts={file.severityCounts} />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="commit-bottom-panel">
+          <div className="commit-amend-toolbar">
+            <div className="commit-amend-left">
+              <label className="commit-amend-label">
+                <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
+                <span>Amend</span>
+              </label>
+              <IconButton icon="general/history" tooltip="Show History" />
+              <IconButton icon="aiAssistant/aiAssistantColored" tooltip="Generate Commit Message" />
+            </div>
+            <span className="commit-modified-count">{summary}</span>
+          </div>
+          <div className="commit-message-area">
+            <textarea
+              className="commit-message-textarea"
+              placeholder="Commit message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+            />
+          </div>
+          <div className="commit-actions">
+            <div className="commit-buttons">
+              <Button type="primary" disabled={checkedIds.size === 0}>Commit</Button>
+              <Button type="secondary" disabled={checkedIds.size === 0}>Commit and Push...</Button>
+            </div>
+            <IconButton icon="general/settings" tooltip="Commit Options" />
+          </div>
+        </div>
+      </div>
+
+      {filterRect && (
+        <PositionedPopup triggerRect={filterRect} onDismiss={() => setFilterRect(null)} gap={4}>
+          <Popup visible className="commit-filter-popup" onClose={() => setFilterRect(null)}>
+            {COMMIT_GROUP_MODES.map((option) => (
+              <PopupCell
+                key={option.id}
+                selected={groupMode === option.id}
+                onClick={() => { setGroupMode(option.id); setFilterRect(null); }}
+              >
+                {option.label}
+              </PopupCell>
+            ))}
+          </Popup>
+        </PositionedPopup>
+      )}
+    </ToolWindow>
+  );
+}
 
 const PLAN_CODE_DIFF_PRESETS = {
   0: {
@@ -3033,7 +3325,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
 
     const rawIndex = Number.isInteger(entry.rawIndex) ? entry.rawIndex : null;
 
-    return (entry.comments ?? []).map((comment, commentIndex) => ({
+    return (entry.comments ?? []).filter((comment) => !isStoredCommentHidden(comment)).map((comment, commentIndex) => ({
       id: `comment-${entry.rowIndex ?? entryIndex}-${commentIndex}`,
       severity: 'comment',
       label: getStoredCommentText(comment),
@@ -3153,7 +3445,7 @@ function buildCommentIssuesFromEntryDiffComments(commentEntries = [], sourceLabe
       : (Number.isInteger(entry?.rawIndex) ? entry.rawIndex + 1 : null);
 
     return Object.entries(diffComments).flatMap(([rowId, comments]) => (
-      comments.map((comment, commentIndex) => ({
+      comments.filter((comment) => !isStoredCommentHidden(comment)).map((comment, commentIndex) => ({
         id: `entry-diff-comment-${entry.id ?? entryIndex}-${rowId}-${commentIndex}`,
         sourceKind: 'diff',
         severity: 'comment',
@@ -3215,8 +3507,12 @@ function areCommentListsEqual(left = [], right = []) {
 
 function countLogicalCommentEntries(commentEntries = []) {
   return normalizeSpecVersionCommentEntries(commentEntries).reduce((sum, entry) => {
-    const directComments = Array.isArray(entry?.comments) ? entry.comments : [];
-    const diffComments = flattenStoredDiffCommentsState(entry?.diffComments);
+    const directComments = Array.isArray(entry?.comments)
+      ? entry.comments.filter((comment) => !isStoredCommentHidden(comment))
+      : [];
+    const diffComments = Object.values(normalizeStoredDiffCommentsState(entry?.diffComments))
+      .flat()
+      .filter((comment) => !isStoredCommentHidden(comment));
 
     if (diffComments.length > 0 && areCommentListsEqual(directComments, diffComments)) {
       return sum + diffComments.length;
@@ -3232,7 +3528,9 @@ function countDirectCommentEntries(commentEntries = []) {
       return sum;
     }
 
-    return sum + (Array.isArray(entry?.comments) ? entry.comments.length : 0);
+    return sum + (Array.isArray(entry?.comments)
+      ? entry.comments.filter((comment) => !isStoredCommentHidden(comment)).length
+      : 0);
   }, 0);
 }
 
@@ -3990,6 +4288,13 @@ function buildRowCommentsStateFromEntries(rowMetaList = [], commentEntries = [])
           const text = getStoredCommentText(comment).trim();
           if (text.length === 0) return entries;
           const lineLabel = getStoredCommentLineLabel(comment);
+          if (comment && typeof comment === 'object') {
+            return [...entries, {
+              ...comment,
+              text,
+              ...(lineLabel.length > 0 ? { lineLabel } : {}),
+            }];
+          }
           return [...entries, lineLabel.length > 0 ? { text, lineLabel } : text];
         }, [])
       : [];
@@ -5825,6 +6130,16 @@ function DoneInlineCommentPreview({ comment }) {
   );
 }
 
+function isStoredCommentHidden(comment) {
+  return Boolean(comment && typeof comment === 'object' && comment.hidden);
+}
+
+function setStoredCommentHidden(comment, hidden) {
+  return comment && typeof comment === 'object'
+    ? { ...comment, hidden }
+    : { text: getStoredCommentText(comment), hidden };
+}
+
 function DoneCommentAdornment({ comments = [], isOpen = false, onOpen, demoId = null }) {
   const commentCount = comments.length;
   const latestComment = commentCount > 0 ? comments[commentCount - 1] : '';
@@ -5888,6 +6203,8 @@ function DoneCommentPopup({
   onSubmit,
   onStartEdit,
   onDelete,
+  onHide,
+  onHideAll,
   preserveEditorSelection = false,
   selectionSnapshot = null,
   footerMetaLabel = '',
@@ -5935,6 +6252,8 @@ function DoneCommentPopup({
       onSubmit={onSubmit}
       onStartEdit={onStartEdit}
       onDelete={onDelete}
+      onHide={onHide}
+      onHideAll={onHideAll}
       preserveEditorSelection={preserveEditorSelection}
     />
   );
@@ -8559,7 +8878,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
-    const buildCommentEntry = (text) => text;
+    const buildCommentEntry = (text, previousComment = null) => (
+      previousComment && typeof previousComment === 'object'
+        ? { ...previousComment, text, hidden: false }
+        : text
+    );
     if (Number.isInteger(editingIndex)) {
       updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
         index === editingIndex ? buildCommentEntry(nextValue, comment) : comment
@@ -8584,6 +8907,29 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       return prev;
     });
   }, [updateRowComments]);
+
+  const handleCommentHide = useCallback((rowKey, rowCommentKey, commentIndex) => {
+    updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
+      index === commentIndex ? setStoredCommentHidden(comment, true) : comment
+    )));
+    setCommentPopup((prev) => {
+      if (!prev || prev.rowKey !== rowKey) return prev;
+      if (prev.editingIndex === commentIndex) {
+        return { ...prev, value: '', editingIndex: null };
+      }
+      return prev;
+    });
+  }, [updateRowComments]);
+
+  const handleHideAllComments = useCallback(() => {
+    setRowComments((prev) => Object.entries(prev).reduce((nextState, [rowCommentKey, comments]) => ({
+      ...nextState,
+      [rowCommentKey]: Array.isArray(comments)
+        ? comments.map((comment) => setStoredCommentHidden(comment, true))
+        : [],
+    }), {}));
+    setCommentPopup(null);
+  }, []);
 
   const handleCommentEditStart = useCallback((rowKey, rowCommentKey, commentIndex) => {
     setCommentPopup((prev) => {
@@ -9007,7 +9353,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     [hiddenInlineCommentEntries],
   );
   const totalCommentCount = hiddenInlineCommentCount + Object.values(rowComments).reduce(
-    (sum, comments) => sum + (Array.isArray(comments) ? comments.length : 0),
+    (sum, comments) => sum + (Array.isArray(comments) ? comments.filter((comment) => !isStoredCommentHidden(comment)).length : 0),
     0,
   );
   const hasPendingEnhanceChanges = hasEditedLines;
@@ -9272,7 +9618,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const hasRunnableGutterAction = showRunIcon || Boolean(effectiveCheckTarget);
             const showIssueLineHighlight = Boolean(effectiveIssueSeverity) && (activeIssueRowKey === stableKey || isHoveredIssueRow || isNavigatedIssueRow || isIssuePopupOpen);
             const commentsForRow = rowComments[rowCommentKey] ?? [];
-            const commentCount = commentsForRow.length;
+            const visibleCommentsForRow = commentsForRow
+              .map((comment, commentIndex) => ({ comment, commentIndex }))
+              .filter(({ comment }) => !isStoredCommentHidden(comment));
+            const commentCount = visibleCommentsForRow.length;
             const rowLineLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
@@ -9286,7 +9635,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
-                comments={commentsForRow}
+                comments={visibleCommentsForRow.map(({ comment }) => comment)}
                 isOpen={isCommentPopupOpen}
                 demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
                 onOpen={(rect, options = {}) => {
@@ -9315,7 +9664,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   sessionLabel: 'Document',
                   messageId: null,
                   chatId: null,
-                  comments: commentsForRow.map((comment, commentIndex) => ({
+                  comments: visibleCommentsForRow.map(({ comment, commentIndex }) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
                     text: getStoredCommentText(comment),
                     lineLabel: '',
@@ -9522,6 +9871,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       commentContextSessionLabel={commentContextSessionLabel}
                       onStartEdit={(commentIndex) => handleInlineCommentEditStart(rowMeta, rowCommentKey, commentIndex)}
                       onDelete={(commentIndex) => handleCommentDelete(stableKey, rowCommentKey, commentIndex)}
+                      onHide={(commentIndex) => handleCommentHide(stableKey, rowCommentKey, commentIndex)}
+                      onHideAll={handleHideAllComments}
                       onCancel={() => {}}
                       onSubmit={() => {}}
                     />
@@ -9634,6 +9985,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           }}
           onStartEdit={(commentIndex) => handleCommentEditStart(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
           onDelete={(commentIndex) => handleCommentDelete(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
+          onHide={(commentIndex) => handleCommentHide(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
+          onHideAll={handleHideAllComments}
           onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
           onSubmit={handleCommentSubmit}
         />
@@ -11559,24 +11912,52 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
       : ''
   );
   const addComment = (items, comment, sourceLabel = '') => {
-    if (comment && typeof comment === 'object' && comment.author === 'agent') return items;
-    const trimmedComment = getStoredCommentText(comment).trim();
+    const agentUserReply = comment && typeof comment === 'object' && comment.author === 'agent' && typeof comment.userReply === 'string'
+      ? comment.userReply.trim()
+      : '';
+    if (comment && typeof comment === 'object' && comment.author === 'agent' && agentUserReply.length === 0) return items;
+    const trimmedComment = getLatestThreadUserText(comment).trim();
     if (!trimmedComment) return items;
 
     const normalizedSourceLabel = normalizePreviewSourceLabel(sourceLabel);
+    const lineLabel = getStoredCommentLineLabel(comment);
+    // The agent's reply in the thread (shown under the note on hover), so the
+    // preview carries the whole exchange, not just the question.
+    const agentReply = comment && typeof comment === 'object' && typeof comment.agentReply === 'string'
+      ? comment.agentReply.trim()
+      : '';
     const normalizedComment = `${normalizedSourceLabel.toLowerCase()}|${trimmedComment.toLowerCase()}`;
     if (seenComments.has(normalizedComment)) return items;
     seenComments.add(normalizedComment);
     items.push({
       text: trimmedComment,
       sourceLabel: normalizedSourceLabel,
+      lineLabel,
+      agentReply,
     });
     return items;
   };
 
   const items = [];
-  Object.values(normalizeStoredDiffCommentsState(attachment.diffComments)).flat().forEach((comment) => {
-    addComment(items, comment, attachment.label);
+  // Row-aware so a reply can be linked to its note. The agent reply lives in one
+  // of two shapes: as an `agentReply` field on the note (live composer chip), or
+  // as a separate { author: 'agent' } entry right after it (sent-message
+  // snapshot). Handle both so hover shows the reply everywhere.
+  Object.values(normalizeStoredDiffCommentsState(attachment.diffComments)).forEach((rowComments) => {
+    let lastItem = null;
+    (Array.isArray(rowComments) ? rowComments : []).forEach((comment) => {
+      const isAgentReplyEntry = comment && typeof comment === 'object'
+        && comment.author === 'agent'
+        && !(typeof comment.userReply === 'string' && comment.userReply.trim().length > 0);
+      if (isAgentReplyEntry) {
+        const replyText = getStoredCommentText(comment).trim();
+        if (lastItem && replyText && !lastItem.agentReply) lastItem.agentReply = replyText;
+        return;
+      }
+      const before = items.length;
+      addComment(items, comment, attachment.label);
+      if (items.length > before) lastItem = items[items.length - 1];
+    });
   });
   normalizeSpecVersionCommentEntries(attachment.sddCommentEntries).forEach((entry) => {
     const documentSourceLabel = attachment.isSddDocument ? attachment.label : entry.sourceLabel;
@@ -11589,6 +11970,45 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   });
 
   return items;
+}
+
+// Hover-card content for an attachment's comments. Uses the design system's
+// Popup as the card surface (chrome/elevation) so the preview matches library
+// styling; the multi-line note + agent reply are laid out inside it (PopupCell
+// would truncate the text to a single menu row, so it isn't used here).
+function AttachmentCommentHoverCard({ items = [] }) {
+  const visible = items.slice(0, 3);
+  const hidden = Math.max(0, items.length - visible.length);
+  if (visible.length === 0) return null;
+  return (
+    <Popup visible className="ai-chat-attachment-hover-popup">
+      <div className="ai-chat-attachment-hover-title">
+        {items.length === 1 ? 'AI Note' : `AI Notes · ${items.length}`}
+      </div>
+      {visible.map((item, index) => (
+        <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
+          {(item.sourceLabel || item.lineLabel) && (
+            <div className="ai-chat-attachment-hover-meta">
+              {[item.sourceLabel, item.lineLabel].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          <div className="ai-chat-attachment-hover-text">{item.text}</div>
+          {item.agentReply && (
+            <div className="ai-chat-attachment-hover-reply">
+              <span className="ai-chat-attachment-hover-reply-head">
+                <AiChatClaudeIcon />
+                <span>Claude Agent</span>
+              </span>
+              <div className="ai-chat-attachment-hover-reply-text">{item.agentReply}</div>
+            </div>
+          )}
+        </div>
+      ))}
+      {hidden > 0 && (
+        <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
+      )}
+    </Popup>
+  );
 }
 
 function getAiChatAttachmentSourcePreviewItems(attachment = null) {
@@ -12008,8 +12428,8 @@ function ChatToolWindow({
       onCommentAttachmentResponseStart?.({ chatId: targetChatId, attachments: commentAttachments });
       onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: commentAttachments });
       const fullResponse = commentAttachments.length === 1
-        ? 'I reviewed the attached AI Note and will use it as context for this response.'
-        : `I reviewed ${commentAttachments.length} attached AI Notes threads and will use them as context for this response.`;
+        ? 'I reviewed the attached comment and will use it as context for this response.'
+        : `I reviewed ${commentAttachments.length} attached comment threads and will use them as context for this response.`;
       const timerKey = `${targetChatId}:${assistantMessageId}`;
       let index = 0;
       const streamNextChunk = () => {
@@ -12401,30 +12821,8 @@ function ChatToolWindow({
                     </span>
                   )}
                   {commentPreviewItems.length > 0 && !isSourceListOpen && (
-                    <span className="ai-chat-attachment-comment-preview ai-chat-composer-comment-preview" role="tooltip">
-                      <span className="ai-chat-attachment-comment-preview-title">
-                        {commentPreviewItems.length === 1 ? 'AI Note' : `AI Notes · `}
-                      </span>
-	                      {visibleCommentPreviewItems.map((comment, index) => (
-	                        <span
-                            key={`${attachment.id}-composer-comment-preview-${index}`}
-                            className={`ai-chat-attachment-comment-preview-item${comment.sourceLabel ? ' has-source-label' : ''}`}
-                          >
-                            {comment.sourceLabel && (
-                              <span className="ai-chat-attachment-comment-preview-source">
-                                {comment.sourceLabel}
-                              </span>
-                            )}
-                            <span className="ai-chat-attachment-comment-preview-text">
-	                            {comment.text}
-                            </span>
-	                        </span>
-	                      ))}
-                      {hiddenCommentPreviewCount > 0 && (
-                        <span className="ai-chat-attachment-comment-preview-more">
-                          {`+${hiddenCommentPreviewCount} more`}
-                        </span>
-                      )}
+                    <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
+                      <AttachmentCommentHoverCard items={commentPreviewItems} />
                     </span>
                   )}
                   <button
@@ -13203,30 +13601,8 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                       </span>
                     )}
                     {commentPreviewItems.length > 0 ? (
-                      <span className="ai-chat-attachment-comment-preview ai-chat-sent-comment-preview" role="tooltip">
-                        <span className="ai-chat-attachment-comment-preview-title">
-                          {commentPreviewItems.length === 1 ? 'AI Note' : `AI Notes · `}
-                        </span>
-	                        {visibleCommentPreviewItems.map((comment, index) => (
-	                          <span
-                              key={`${attachment.id}-comment-preview-${index}`}
-                              className={`ai-chat-attachment-comment-preview-item${comment.sourceLabel ? ' has-source-label' : ''}`}
-                            >
-                              {comment.sourceLabel && (
-                                <span className="ai-chat-attachment-comment-preview-source">
-                                  {comment.sourceLabel}
-                                </span>
-                              )}
-                              <span className="ai-chat-attachment-comment-preview-text">
-	                              {comment.text}
-                              </span>
-	                          </span>
-	                        ))}
-                        {hiddenCommentPreviewCount > 0 && (
-                          <span className="ai-chat-attachment-comment-preview-more">
-                            {`+${hiddenCommentPreviewCount} more`}
-                          </span>
-                        )}
+                      <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
+                        <AttachmentCommentHoverCard items={commentPreviewItems} />
                       </span>
                     ) : sourcePreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-preview" role="tooltip">
@@ -13371,11 +13747,14 @@ const AGENT_RUN_RESOLUTION_ICON = {
   'agent-comment': 'general/balloon',
 };
 const AGENT_RUN_RESOLUTION_REPLY = {
-  reply: 'Looked into this — moved the slot boundary so the note is addressed. See the summary in chat.',
+  reply: 'Looked into this — the slot window is hardcoded here. I can move the boundary into a shared constant.',
   quickfix: 'I can apply this change automatically.',
   resolved: 'Addressed in this iteration and marked resolved.',
   'agent-comment': 'Left a follow-up here — please confirm the extracted service name before I continue.',
 };
+// The explicit change an agent reply offers to apply, shown as the quick-fix
+// action label on the reply card (instead of a generic "Quick fix").
+const AGENT_RUN_RESOLUTION_FIX_LABEL = 'Extract slot-boundary constant';
 // Severity badge shown on the agent's reply card (Figma: red "Critical" pill).
 const AGENT_RUN_RESOLUTION_SEVERITY = {
   reply: 'Suggestion',
@@ -13401,7 +13780,7 @@ const AGENT_REVIEW_FINDINGS = [
     sourceLabel: 'Diff VisitController.java',
     tabId: INITIAL_PLAN_DIFF_TAB_ID,
     rowId: 'plan-code-3-added-3',
-    lineLabel: 'Diff · added',
+    lineLabel: 'Line 17',
     severity: 'Critical',
     fixLabel: 'Extract a provider',
   },
@@ -13410,7 +13789,7 @@ const AGENT_REVIEW_FINDINGS = [
     sourceLabel: 'Diff VisitController.java',
     tabId: INITIAL_PLAN_DIFF_TAB_ID,
     rowId: 'plan-code-3-removed-3',
-    lineLabel: 'Diff · removed',
+    lineLabel: 'Line 15',
     severity: 'Warning',
     fixLabel: 'Extract constant',
   },
@@ -13472,10 +13851,16 @@ function applyAiNoteQuestionResolution(current) {
           pending: false,
           resolution: 'reply',
           agentReply: AGENT_RUN_RESOLUTION_REPLY.reply,
+          fixLabel: AGENT_RUN_RESOLUTION_FIX_LABEL,
           severity,
           quickFix: false,
-          // Quick fix applied → Solved; it lingers until the next agent run sweeps it.
+          // Quick fix applied → one unified "resolved" status (same as an
+          // explicit Resolve), auto-collapsed to the gutter. `solved` is kept so
+          // the existing next-agent-run sweep still clears it.
           solved: wasQuickFix || Boolean(base.solved),
+          resolved: wasQuickFix || Boolean(base.resolved),
+          resolvedKind: wasQuickFix ? 'applied' : base.resolvedKind,
+          hidden: wasQuickFix ? true : Boolean(base.hidden),
         };
       });
     if (resolved.length > 0) acc[rowId] = resolved;
@@ -13490,134 +13875,1239 @@ function agentRunFileIconName(fileName = '') {
   return 'fileTypes/text';
 }
 
-// Round severity status icon for a review comment: red "!" (critical), yellow
-// "!" (warning), blue "i" (info).
-function ReviewSeverityIcon({ severity }) {
-  const s = String(severity || '').toLowerCase();
-  const fill = s === 'critical' ? '#DB5C5C' : s === 'warning' ? '#F2C55C' : '#548AF7';
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="icon aiux550-review-sev-icon" aria-label={severity || 'info'}>
-      <circle cx="8" cy="8" r="7" fill={fill} />
-      {s === 'info'
-        ? <path d="M8 6.9v4M8 5.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
-        : <path d="M8 4.4v4.2M8 11.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />}
-    </svg>
+function normalizeAgentRunLineLabel(lineLabel = '') {
+  const normalized = String(lineLabel || '').trim();
+  if (!normalized) return '';
+
+  const singleLineMatch = normalized.match(/^(?:AI Note|Comment) on line (\d+)$/iu);
+  if (singleLineMatch) return `Line ${singleLineMatch[1]}`;
+
+  const rangeLineMatch = normalized.match(/^(?:AI Notes|Comments) on lines (\d+) to (\d+)$/iu);
+  if (rangeLineMatch) return `Lines ${rangeLineMatch[1]}-${rangeLineMatch[2]}`;
+
+  const lineMatch = normalized.match(/^Line\s+(\d+)$/iu);
+  if (lineMatch) return `Line ${lineMatch[1]}`;
+
+  const linesMatch = normalized.match(/^Lines\s+(\d+)-(\d+)$/iu);
+  if (linesMatch) return `Lines ${linesMatch[1]}-${linesMatch[2]}`;
+
+  return normalized;
+}
+
+// ─── Aggregated review diff overview ─────────────────────────────────────────
+// Both "View diff" CTAs (composer card + Chat History AI Review row) open a single
+// shared tab that stacks every reviewed file's diff — reusing the existing diff
+// renderer (PlanDiffOverlay) with its inline comments — as a read-only overview.
+const REVIEW_DIFF_TAB_ID = 'review-diff-overview';
+const REVIEW_DIFF_HASH = '384b5dd';
+const REVIEW_DIFF_TAB_LABEL = `Diff ${REVIEW_DIFF_HASH} – Local`;
+
+// How many context lines to keep before/after the commented region in each
+// overview card (the full file/diff is available in the file's own tab).
+const REVIEW_DIFF_CONTEXT_LINES = 5;
+
+// Trim a file's rows to a window around the commented rows so each overview card
+// shows only a few lines of context, not the whole file.
+function windowReviewDiffRows(rows = [], commentRowIds = [], context = REVIEW_DIFF_CONTEXT_LINES) {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+  const commented = new Set(commentRowIds);
+  const indices = [];
+  rows.forEach((row, index) => { if (commented.has(row?.id)) indices.push(index); });
+  if (indices.length === 0) return rows;
+  const start = Math.max(0, Math.min(...indices) - context);
+  const end = Math.min(rows.length, Math.max(...indices) + context + 1);
+  return rows.slice(start, end);
+}
+
+function reviewDiffFilePath(sourceLabel = '') {
+  const label = String(sourceLabel).replace(/^diff\s+/iu, '').trim();
+  const match = COMMIT_CHANGE_FILES.find((file) => file.label === label);
+  return match?.path ?? '';
+}
+
+// Group the review findings by their source tab (preserving order) and resolve
+// each group's diff data + inline comments from the live tab contents. Mirrors
+// the "N files, M comments" the composer card / history row already report.
+function buildReviewDiffFiles(findings = [], tabContents = {}) {
+  const order = [];
+  const byTab = new Map();
+  (Array.isArray(findings) ? findings : []).forEach((finding) => {
+    const tabId = finding?.tabId;
+    if (tabId == null) return;
+    if (!byTab.has(tabId)) {
+      byTab.set(tabId, { tabId, name: finding.sourceLabel || 'File', isDiff: /^diff\s/iu.test(finding.sourceLabel || '') });
+      order.push(byTab.get(tabId));
+    }
+  });
+  return order
+    .map((entry) => {
+      const content = tabContents[entry.tabId] ?? {};
+      const baseDiffData = content.diffData ?? content.plainFileData ?? null;
+      if (!baseDiffData) return null;
+      const comments = normalizeStoredDiffCommentsState(content.initialDiffComments);
+      // Per-file tally, split by resolved status. Severity totals count OPEN
+      // comments only (so resolved ones don't inflate the severity), plus a
+      // separate resolved count so surfaces can show "N open · M resolved".
+      const severityTotals = { critical: 0, warning: 0, info: 0 };
+      let commentCount = 0;
+      let resolvedCount = 0;
+      Object.values(comments).forEach((list) => {
+        (Array.isArray(list) ? list : []).forEach((comment) => {
+          commentCount += 1;
+          if (comment?.resolved) { resolvedCount += 1; return; }
+          const sev = String(comment?.severity || '').toLowerCase();
+          if (sev in severityTotals) severityTotals[sev] += 1;
+        });
+      });
+      const openCount = commentCount - resolvedCount;
+      const severitySummary = ['critical', 'warning', 'info']
+        .filter((sev) => severityTotals[sev] > 0)
+        .map((sev) => `${severityTotals[sev]} ${sev}`)
+        .join(', ');
+	      const summary = `${openCount} comment${openCount === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}${resolvedCount > 0 ? ` · ${resolvedCount} resolved` : ''}`;
+	      const rowsForOverview = windowReviewDiffRows(
+	        baseDiffData.rows ?? [],
+	        Object.keys(comments),
+	        REVIEW_DIFF_CONTEXT_LINES,
+	      );
+	      return {
+	        ...entry,
+	        // Drop focusRowId so mounting a stacked instance doesn't auto-scroll the
+	        // whole overview to that file. Diff review cards keep the full row set
+	        // so split gutters can show continuous old/new line numbering.
+	        diffData: {
+	          ...baseDiffData,
+	          focusRowId: null,
+	          rows: rowsForOverview,
+	        },
+        isPlain: !content.diffData && Boolean(content.plainFileData),
+        comments,
+        commentCount,
+        openCount,
+        resolvedCount,
+        severityTotals,
+        summary,
+        path: reviewDiffFilePath(entry.name),
+      };
+    })
+    .filter(Boolean);
+}
+
+const REVIEW_GROUP_MODES = [
+  { id: 'file', label: 'By file' },
+  { id: 'severity', label: 'By severity' },
+  { id: 'status', label: 'By status' },
+];
+
+// Group the overview's stacked files into sections. Severity grouping mirrors
+// the popup: a file appears under EVERY severity it has, and each section only
+// shows that severity's comments (section.severity is fed to the per-file diff
+// as a severity filter). Status grouping splits Open vs Resolved the same way.
+// File/status/severity grouping is shared by both review layouts, so every
+// visible list gets the same group header semantics.
+function groupReviewFilesForStack(files = [], mode = 'file', severityFilter = 'all') {
+  const list = Array.isArray(files) ? files : [];
+  const selectedFilters = normalizeReviewSeverityFilter(severityFilter);
+  const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => selectedFilters.includes(sev));
+  const includesResolved = selectedFilters.includes(REVIEW_RESOLVED_FILTER_ID);
+  const countOpenFindings = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS) => (
+    bucket.reduce((sum, file) => (
+      sum + severities.reduce((fileSum, sev) => fileSum + (file.severityTotals?.[sev] ?? 0), 0)
+    ), 0)
+  );
+  const countResolvedFindings = (bucket) => (
+    bucket.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0)
+  );
+  // The 'resolved' filter reveals handled comments across every section, so
+  // each section pins its own filter (severity | 'all' | 'resolved') and the
+  // per-file diff renders exactly that set regardless of the global filter.
+  if (mode === 'severity') {
+    if (selectedOpenSeverities.length === 0 && includesResolved) {
+      const resolvedOnly = list.filter((file) => (file.resolvedCount ?? 0) > 0);
+      return resolvedOnly.length > 0
+        ? [{ id: 'sev-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolvedOnly, count: countResolvedFindings(resolvedOnly) }]
+        : [];
+    }
+    const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
+    const sections = [];
+    order.forEach(([sev, label]) => {
+      if (!selectedFilters.includes(sev)) return;
+      const bucket = list.filter((file) => (file.severityTotals?.[sev] ?? 0) > 0);
+      if (bucket.length > 0) {
+        sections.push({ id: `sev-${sev}`, tone: sev, label, severity: [sev], severityIcon: sev, files: bucket, count: countOpenFindings(bucket, [sev]) });
+      }
+    });
+    if (includesResolved) {
+      const resolvedOnly = list.filter((file) => (file.resolvedCount ?? 0) > 0);
+      if (resolvedOnly.length > 0) {
+        sections.push({ id: 'sev-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolvedOnly, count: countResolvedFindings(resolvedOnly) });
+      }
+    }
+    return sections;
+  }
+  if (mode === 'status') {
+    const open = list.filter((file) => selectedOpenSeverities.some((sev) => (file.severityTotals?.[sev] ?? 0) > 0));
+    const resolved = list.filter((file) => (file.resolvedCount ?? 0) > 0);
+    const sections = [];
+    if (open.length > 0) sections.push({ id: 'status-open', tone: 'open', label: 'Open', severity: selectedOpenSeverities, files: open, count: countOpenFindings(open, selectedOpenSeverities) });
+    if (resolved.length > 0) sections.push({ id: 'status-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolved, count: countResolvedFindings(resolved) });
+    return sections;
+  }
+  return list
+    .map((file) => ({
+      id: `file-${file.tabId}`,
+      tone: 'file',
+      label: file.name,
+      icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
+      severity: selectedFilters,
+      files: [file],
+      count: countOpenFindings([file], selectedOpenSeverities) + (includesResolved ? countResolvedFindings([file]) : 0),
+    }))
+    .filter((section) => section.count > 0);
+}
+
+// Severity grouping for the review popup: unlike the Commit window's
+// group-by-primary-severity (one bucket per file), a file appears under EVERY
+// severity it has, so Critical / Warning / Info are always their own sections.
+function reviewGroupCount(bucket, findings) {
+  return `${bucket.length} file${bucket.length === 1 ? '' : 's'} · ${findings} finding${findings === 1 ? '' : 's'}`;
+}
+
+// A collapsed "Resolved" bucket appended to the review file groups (files that
+// have any resolved comment), so handled work stays visible but out of the way.
+function buildResolvedReviewGroup(files = []) {
+  const bucket = files.filter((file) => (file.resolvedCount ?? 0) > 0);
+  if (bucket.length === 0) return null;
+  const total = bucket.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
+  return {
+    id: 'review-resolved',
+    label: 'Resolved',
+    count: reviewGroupCount(bucket, total),
+    children: bucket,
+    resolved: true,
+    defaultCollapsed: true,
+  };
+}
+
+function buildReviewSeverityGroups(files = []) {
+  const groups = COMMIT_SEVERITY_ORDER
+    .map((sev) => {
+      const bucket = files.filter((file) => (file.severityCounts?.[sev] ?? 0) > 0);
+      if (bucket.length === 0) return null;
+      const findings = bucket.reduce((sum, file) => sum + (file.severityCounts?.[sev] ?? 0), 0);
+      return {
+        id: `review-sev-${sev}`,
+        label: COMMIT_SEVERITY_LABEL[sev],
+        count: reviewGroupCount(bucket, findings),
+        children: bucket,
+        severity: sev,
+      };
+    })
+    .filter(Boolean);
+  const resolvedGroup = buildResolvedReviewGroup(files);
+  return resolvedGroup ? [...groups, resolvedGroup] : groups;
+}
+
+// "By status" grouping: an Open bucket (files with unresolved comments) and a
+// collapsed Resolved bucket.
+function buildReviewStatusGroups(files = []) {
+  const openFiles = files.filter((file) => (file.openCount ?? 0) > 0);
+  const groups = [];
+  if (openFiles.length > 0) {
+    const total = openFiles.reduce((sum, file) => sum + (file.openCount ?? 0), 0);
+    groups.push({
+      id: 'status-open',
+      label: 'Open',
+      count: reviewGroupCount(openFiles, total),
+      children: openFiles,
+    });
+  }
+  const resolvedGroup = buildResolvedReviewGroup(files);
+  if (resolvedGroup) groups.push({ ...resolvedGroup, id: 'status-resolved' });
+  return groups;
+}
+
+// Overall "N files, M comments: X critical, …" headline across all review files
+// (matches the summary shown on the composer card above the input).
+function formatReviewOverviewSummary(files = [], { compact = false } = {}) {
+  const totals = { critical: 0, warning: 0, info: 0 };
+  let open = 0;
+  let resolved = 0;
+  files.forEach((file) => {
+    open += file.openCount ?? file.commentCount ?? 0;
+    resolved += file.resolvedCount ?? 0;
+    ['critical', 'warning', 'info'].forEach((sev) => { totals[sev] += file.severityTotals?.[sev] ?? 0; });
+  });
+  const fileCount = files.length;
+  // Compact form for the tab bar (where space is now shared with the view
+  // toggle): counts only, no per-severity breakdown (that's a click away in the
+  // files popup / group-by). Full form keeps the severity split for the popup.
+  if (compact) {
+    // Running tally: open vs resolved, so it stays meaningful as cards are
+    // resolved and collapse out of view.
+    const parts = [`${fileCount} file${fileCount === 1 ? '' : 's'}`, `${open} open`];
+    if (resolved > 0) parts.push(`${resolved} resolved`);
+    return parts.join(' · ');
+  }
+  const severitySummary = ['critical', 'warning', 'info']
+    .filter((sev) => totals[sev] > 0)
+    .map((sev) => `${totals[sev]} ${sev}`)
+    .join(', ');
+  return `${fileCount} file${fileCount === 1 ? '' : 's'}, ${open} comment${open === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}${resolved > 0 ? ` · ${resolved} resolved` : ''}`;
+}
+
+// Reusable "review files" popup — a grouped file tree (severity / review result)
+// with local grouping for browsing files. Changing this popup's grouping does
+// not regroup or filter the review tab content itself.
+function ReviewFilesPopup({ files = [], triggerRect = null, onDismiss = null, onOpenFileTab = null, groupMode = null, onGroupModeChange = null }) {
+  // Group mode is controlled only for explicit callers; the review file-stepper
+  // deliberately leaves it local so the popup is just navigation.
+  const [localGroupMode, setLocalGroupMode] = useState('file');
+  const fileGroupMode = groupMode ?? localGroupMode;
+  const setFileGroupMode = (mode) => { onGroupModeChange ? onGroupModeChange(mode) : setLocalGroupMode(mode); };
+  // Holds group ids the user has FLIPPED from their default collapse state.
+  const [flippedFileGroups, setFlippedFileGroups] = useState(() => new Set());
+  const [filesFilterOpen, setFilesFilterOpen] = useState(false);
+  const fileGroupModes = REVIEW_GROUP_MODES;
+  const summary = formatReviewOverviewSummary(files);
+  const commitLikeFiles = files.map((file) => {
+    const strippedLabel = file.name.replace(/^diff\s+/iu, '').trim();
+    const commitMatch = COMMIT_CHANGE_FILES.find((entry) => entry.label === strippedLabel);
+    return {
+      id: file.tabId,
+      tabId: file.tabId,
+      label: file.name,
+      path: file.path,
+      icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
+      status: 'modified',
+      category: commitMatch?.category || 'Review',
+      severityCounts: file.severityTotals,
+      openCount: file.openCount ?? 0,
+      resolvedCount: file.resolvedCount ?? 0,
+    };
+  });
+  const fileGroups = fileGroupMode === 'severity'
+    ? buildReviewSeverityGroups(commitLikeFiles)
+    : fileGroupMode === 'status'
+      ? buildReviewStatusGroups(commitLikeFiles)
+      : [{
+          id: 'files',
+          label: 'Files',
+          count: `${commitLikeFiles.length} file${commitLikeFiles.length === 1 ? '' : 's'}`,
+          children: commitLikeFiles,
+        }];
+  // A group is collapsed by its default (Resolved starts collapsed) unless the
+  // user flipped it.
+  const isGroupCollapsed = (group) => (
+    flippedFileGroups.has(group.id) ? !group.defaultCollapsed : Boolean(group.defaultCollapsed)
+  );
+  const toggleFileGroup = (id) => setFlippedFileGroups((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  if (!triggerRect) return null;
+
+  return createPortal(
+    <PositionedPopup triggerRect={triggerRect} onDismiss={onDismiss} gap={4}>
+      <div className="aiux-review-files-popup">
+        <div className="aiux-review-files-popup-head">
+          <span className="aiux-review-files-popup-summary">{summary}</span>
+          <div className="aiux-review-files-popup-filter">
+            <IconButton icon="general/filter" tooltip="Group by…" onClick={() => setFilesFilterOpen((v) => !v)} />
+            {filesFilterOpen && (
+              <div className="aiux-review-files-popup-filter-menu">
+                {fileGroupModes.map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`aiux-review-files-popup-filter-item${fileGroupMode === option.id ? ' is-active' : ''}`}
+                    onClick={() => { setFileGroupMode(option.id); setFilesFilterOpen(false); }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="aiux-review-files-popup-tree commit-custom">
+          {fileGroups.map((group) => {
+            const collapsed = isGroupCollapsed(group);
+            return (
+              <div className={`tree-node-container commit-custom-group${group.resolved ? ' is-resolved-group' : ''}`} key={group.id}>
+                <div className="tree-node text-ui-default commit-group-node" style={{ paddingLeft: '16px' }}>
+                  <button
+                    type="button"
+                    className="tree-node-toggle"
+                    aria-expanded={!collapsed}
+                    aria-label={collapsed ? 'Expand' : 'Collapse'}
+                    onClick={() => toggleFileGroup(group.id)}
+                  >
+                    <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
+                  </button>
+                  <span className="commit-group-label">{group.label}</span>
+                  <span className="commit-group-count">{group.count}</span>
+                </div>
+                {!collapsed && group.children.map((file) => (
+                  <div className="tree-node text-ui-default commit-file-node" style={{ paddingLeft: '16px' }} key={file.id}>
+                    <span className="tree-node-spacer" />
+                    <button
+                      type="button"
+                      className="commit-file-open"
+                      onClick={() => onOpenFileTab?.(file.tabId)}
+                      title={`Open ${file.label}`}
+                    >
+                      <Icon name={file.icon} size={16} className="commit-file-row-icon" />
+                      <span className="commit-file-name">{file.label}</span>
+                    </button>
+                    {group.resolved ? (
+                      <span className="aiux-review-resolved-count">{file.resolvedCount} resolved</span>
+                    ) : group.severity ? (
+                      <CommitSeverityCounters counts={{ [group.severity]: file.severityCounts?.[group.severity] ?? 0 }} />
+                    ) : (
+                      <CommitSeverityCounters counts={file.severityCounts} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </PositionedPopup>,
+    document.body,
   );
 }
 
-// Card attached to the top of the composer.
-//  - For a note-processing run it's an execution checklist (done/active/pending,
-//    "N/N completed").
-//  - For a REVIEW run (kind === 'review') nothing is executed — the agent surfaces
-//    comments, so it's a file-grouped tree of the comments it left (file header +
-//    severity-tagged comment rows), with a summary of files/comments/severities.
-function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null }) {
+// Compact review navigation for a single-file diff toolbar: prev/next file
+// (horizontal), a "N of M files" popup trigger, and prev/next comment (vertical,
+// scrolls the diff body via the DOM).
+const REVIEW_SEVERITY_FILTERS = [
+  { id: 'critical', label: 'Critical' },
+  { id: 'warning', label: 'Warning' },
+  { id: 'info', label: 'Info' },
+];
+const REVIEW_SEVERITY_FILTER_IDS = REVIEW_SEVERITY_FILTERS.map((option) => option.id);
+const REVIEW_RESOLVED_FILTER_ID = 'resolved';
+
+function normalizeReviewSeverityFilter(value = REVIEW_SEVERITY_FILTER_IDS) {
+  const rawValues = Array.isArray(value)
+    ? value
+    : value === 'all'
+      ? REVIEW_SEVERITY_FILTER_IDS
+      : [value];
+  const allowed = new Set([...REVIEW_SEVERITY_FILTER_IDS, REVIEW_RESOLVED_FILTER_ID]);
+  const normalized = rawValues
+    .map((entry) => String(entry || '').toLowerCase())
+    .filter((entry, index, arr) => allowed.has(entry) && arr.indexOf(entry) === index);
+  return normalized.length > 0 ? normalized : [...REVIEW_SEVERITY_FILTER_IDS];
+}
+
+function getReviewSeverityFilterLabel(value, resolvedCount = 0) {
+  const selected = normalizeReviewSeverityFilter(value);
+  const selectedOpen = REVIEW_SEVERITY_FILTERS.filter((option) => selected.includes(option.id));
+  const includesResolved = selected.includes(REVIEW_RESOLVED_FILTER_ID);
+  if (selectedOpen.length === REVIEW_SEVERITY_FILTERS.length && !includesResolved) return 'All severities';
+  if (selectedOpen.length === 0 && includesResolved) return `Resolved${resolvedCount > 0 ? ` (${resolvedCount})` : ''}`;
+  const labels = selectedOpen.map((option) => option.label);
+  if (includesResolved) labels.push(`Resolved${resolvedCount > 0 ? ` (${resolvedCount})` : ''}`);
+  return labels.length > 0 ? labels.join(', ') : 'All severities';
+}
+
+function ReviewToolbarMenuButton({
+  icon,
+  label,
+  items = [],
+  className = '',
+  popupClassName = '',
+}) {
+  const triggerRef = useRef(null);
+  const [popupRect, setPopupRect] = useState(null);
+  const togglePopup = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    setPopupRect((prev) => (prev ? null : rect ?? null));
+  };
+  const closePopup = () => setPopupRect(null);
+
+  return (
+    <span className="aiux-review-filter">
+      <span
+        ref={triggerRef}
+        className="aiux-review-filter-trigger-wrap"
+      >
+        <ToolbarButton
+          icon={icon}
+          text={label}
+          showChevron
+          className={`aiux-review-filter-trigger${popupRect ? ' is-active' : ''}${className ? ` ${className}` : ''}`}
+          onClick={togglePopup}
+        />
+      </span>
+      {popupRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={popupRect} onDismiss={closePopup} gap={4}>
+            <Popup visible className={`aiux-review-menu-popup${popupClassName ? ` ${popupClassName}` : ''}`} onClose={closePopup}>
+              {items.map((item) => {
+                if (item.type === 'separator') {
+                  return <PopupCell key={item.id} type="separator" />;
+                }
+
+                const checkIcon = item.checkable
+                  ? (
+                      <span className="aiux-review-menu-check-slot" aria-hidden="true">
+                        {item.checked && <Icon name="general/checkmark" size={16} />}
+                      </span>
+                    )
+                  : item.icon;
+                return (
+                  <PopupCell
+                    key={item.id}
+                    icon={checkIcon}
+                    onClick={() => {
+                      item.onClick?.();
+                      if (item.closeOnClick !== false) closePopup();
+                    }}
+                    className={`aiux-review-menu-popup-cell${item.checked ? ' is-checked' : ''}`}
+                  >
+                    <span className="aiux-review-menu-popup-cell-content">
+                      {item.leading}
+                      <span>{item.label}</span>
+                    </span>
+                  </PopupCell>
+                );
+              })}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
+// Content-filter control. Shared across the overview and every single-file
+// diff (state lifted to App), so choices persist as you move between views.
+// Severity is a multi-select: open severities can be combined, and resolved
+// comments can be included explicitly.
+function ReviewSeverityFilter({
+  value = REVIEW_SEVERITY_FILTER_IDS,
+  onChange = null,
+  resolvedCount = 0,
+}) {
+  const selected = normalizeReviewSeverityFilter(value);
+  const isSelected = (id) => selected.includes(id);
+  const setSelected = (id, checked) => {
+    const next = checked
+      ? [...selected, id]
+      : selected.filter((entry) => entry !== id);
+    onChange?.(normalizeReviewSeverityFilter(next));
+  };
+  const items = [
+    ...REVIEW_SEVERITY_FILTERS.map((option) => ({
+      id: option.id,
+      label: option.label,
+      checkable: true,
+      checked: isSelected(option.id),
+      closeOnClick: false,
+      leading: <AiNotesSeverityIcon severity={option.id} />,
+      onClick: () => setSelected(option.id, !isSelected(option.id)),
+    })),
+    ...(resolvedCount > 0 || isSelected(REVIEW_RESOLVED_FILTER_ID)
+      ? [
+          {
+            id: REVIEW_RESOLVED_FILTER_ID,
+            label: `Resolved (${resolvedCount})`,
+            checkable: true,
+            checked: isSelected(REVIEW_RESOLVED_FILTER_ID),
+            closeOnClick: false,
+            leading: <span className="aiux-review-panel-cat-dot is-resolved" aria-hidden="true" />,
+            onClick: () => setSelected(REVIEW_RESOLVED_FILTER_ID, !isSelected(REVIEW_RESOLVED_FILTER_ID)),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <ReviewToolbarMenuButton
+      icon="general/filter"
+      label={getReviewSeverityFilterLabel(selected, resolvedCount)}
+      items={items}
+      className="aiux-review-filter-trigger-severity"
+      popupClassName="aiux-review-severity-popup"
+    />
+  );
+}
+
+// Group-by control. Shared across the overview and every single-file diff
+// (value/onChange lifted to App). In the overview it sections the stacked
+// diffs; everywhere it also drives the files popup's grouping. Purely
+// organizes files — does not hide any content (that's the severity filter).
+function ReviewGroupBy({ value = 'file', onChange = null }) {
+  const active = REVIEW_GROUP_MODES.find((option) => option.id === value) ?? REVIEW_GROUP_MODES[0];
+  return (
+    <ReviewToolbarMenuButton
+      icon="general/filter"
+      label={active.label}
+      items={REVIEW_GROUP_MODES.map((option) => ({
+        id: option.id,
+        label: option.label,
+        closeOnClick: true,
+        onClick: () => onChange?.(option.id),
+      }))}
+      className="aiux-review-filter-trigger-group"
+      popupClassName="aiux-review-group-popup"
+    />
+  );
+}
+
+function ReviewDiffToolbarNav({
+  files = [],
+  currentIndex = -1,
+  onOpenFileTab = null,
+  severityFilter = 'all',
+  onSeverityFilterChange = null,
+  groupMode = 'file',
+  onGroupModeChange = null,
+  view = 'inline',
+  onViewChange = null,
+  chatTitle = '',
+  onComplete = null,
+  onCancel = null,
+}) {
+  const rootRef = useRef(null);
+  const [popupRect, setPopupRect] = useState(null);
+  const commentIndexRef = useRef(-1);
+  const total = files.length;
+  const reviewSummary = formatReviewOverviewSummary(files, { compact: true });
+  const hasPrevFile = currentIndex > 0;
+  const hasNextFile = currentIndex >= 0 && currentIndex < total - 1;
+  const resolvedCount = files.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
+  const openCount = files.reduce((sum, file) => sum + (file.openCount ?? file.commentCount ?? 0), 0);
+  // Whole review is handled once there are comments and none are left open.
+  const reviewAllResolved = (openCount + resolvedCount) > 0 && openCount === 0;
+
+  const goFile = (delta) => {
+    const next = currentIndex + delta;
+    if (next < 0 || next >= total) return;
+    onOpenFileTab?.(files[next].tabId);
+  };
+
+  const scrollToComment = (delta) => {
+    const editorEl = rootRef.current?.closest('.editor');
+    const body = editorEl?.querySelector('.editor-body');
+    if (!body) return;
+    const badges = Array.from(body.querySelectorAll('.plan-diff-comment-badge'));
+    if (badges.length === 0) return;
+    let idx = commentIndexRef.current + delta;
+    if (idx < 0) idx = badges.length - 1;
+    if (idx >= badges.length) idx = 0;
+    commentIndexRef.current = idx;
+    (badges[idx].closest('.plan-diff-row') ?? badges[idx]).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  return (
+    <span className="aiux-review-diffnav" ref={rootRef}>
+      <span className="aiux-review-diffnav-context">
+        <AiChatClaudeIcon />
+        <span className="aiux-review-diffnav-chat-name">{chatTitle || 'AI Review'}</span>
+        <span className="aiux-review-diffnav-summary">{reviewSummary}</span>
+        <span className={`aiux550-review-done-badge aiux-review-overview-status${reviewAllResolved ? ' is-done' : ''}`}>
+          <span className="aiux550-review-done-dot" aria-hidden="true" />
+          {reviewAllResolved ? 'All resolved' : 'Open'}
+        </span>
+      </span>
+      <span className="aiux-review-diffnav-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="aiux-review-diffnav-btn"
+        aria-label="Previous file"
+        disabled={!hasPrevFile}
+        onClick={() => goFile(-1)}
+      >
+        <Icon name="general/chevronRight" size={16} className="aiux-review-diffnav-icon is-prev" />
+      </button>
+      <button
+        type="button"
+        className="aiux-review-diffnav-count"
+        aria-haspopup="dialog"
+        aria-expanded={Boolean(popupRect)}
+        onClick={(event) => {
+          if (popupRect) { setPopupRect(null); return; }
+          setPopupRect(event.currentTarget.getBoundingClientRect());
+        }}
+      >
+        {currentIndex >= 0 ? `${currentIndex + 1} of ${total} file${total === 1 ? '' : 's'}` : `${total} files`}
+      </button>
+      <button
+        type="button"
+        className="aiux-review-diffnav-btn"
+        aria-label="Next file"
+        disabled={!hasNextFile}
+        onClick={() => goFile(1)}
+      >
+        <Icon name="general/chevronRight" size={16} className="aiux-review-diffnav-icon" />
+      </button>
+      <span className="aiux-review-diffnav-sep" aria-hidden="true" />
+      <button type="button" className="aiux-review-diffnav-btn" aria-label="Previous comment" onClick={() => scrollToComment(-1)}>
+        <Icon name="general/chevronDown" size={16} className="aiux-review-diffnav-icon is-up" />
+      </button>
+      <button type="button" className="aiux-review-diffnav-btn" aria-label="Next comment" onClick={() => scrollToComment(1)}>
+        <Icon name="general/chevronDown" size={16} className="aiux-review-diffnav-icon" />
+      </button>
+      <span className="aiux-review-diffnav-sep" aria-hidden="true" />
+      {onViewChange && (
+        <SegmentedControl
+          className="aiux-review-overview-viewtoggle"
+          value={view}
+          onChange={onViewChange}
+          options={[
+            { value: 'inline', label: <Icon name="general/editorOnly" size={16} /> },
+            { value: 'panel', label: <Icon name="general/balloon" size={16} /> },
+          ]}
+        />
+      )}
+      <ReviewGroupBy value={groupMode} onChange={onGroupModeChange} />
+      <ReviewSeverityFilter
+        value={severityFilter}
+        onChange={onSeverityFilterChange}
+        resolvedCount={resolvedCount}
+      />
+      <ReviewFilesPopup
+        files={files}
+        triggerRect={popupRect}
+        onDismiss={() => setPopupRect(null)}
+        onOpenFileTab={(tabId) => { setPopupRect(null); onOpenFileTab?.(tabId); }}
+      />
+      {(onComplete || onCancel) && <span className="aiux-review-diffnav-sep" aria-hidden="true" />}
+      {onComplete && (
+        <button
+          type="button"
+          className="aiux-review-overview-btn is-primary aiux-review-diffnav-complete"
+          onClick={() => onComplete()}
+        >
+          Complete review
+        </button>
+      )}
+      {onCancel && (
+        <IconButton
+          icon="general/close"
+          tooltip="Cancel review"
+          className="aiux-review-overview-close"
+          onClick={() => onCancel()}
+        />
+      )}
+    </span>
+  );
+}
+
+// The aggregated overview. Rendered via editorTopBar and portaled into the
+// active editor's body (same host the single-file diff overlay uses).
+function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onResolveFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'file', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
+  const anchorRef = useRef(null);
+  const scrollRef = useRef(null);
+  const sectionRefs = useRef([]);
+  const [host, setHost] = useState(null);
+  // Two-state layout toggle (lifted to App so single-file view can share it):
+  // 'inline' (comments in the diff) | 'panel' (code left, comments right).
+  const setView = onViewChange || (() => {});
+  const isPanel = view === 'panel';
+  // Per-card Split/Unified override (keyed by file tab) for the inline diff.
+  const [cardViews, setCardViews] = useState({});
+  const [panelExpandedRowIdsByTabId, setPanelExpandedRowIdsByTabId] = useState({});
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [filesPopupRect, setFilesPopupRect] = useState(null);
+  // Both layouts use the same grouping model; panel mode only moves comment
+  // cards to the right, it does not change the list structure.
+  const groupedSections = groupReviewFilesForStack(files, groupMode, severityFilter);
+  const orderedFiles = groupedSections.flatMap((section) => section.files);
+  const total = orderedFiles.length;
+  const hasDiffFiles = orderedFiles.some((file) => !file.isPlain);
+  const overallSummary = formatReviewOverviewSummary(files, { compact: true });
+  const matchesReviewCommentFilter = (comment, filter) => {
+    if (!getStoredCommentText(comment).trim()) return false;
+    const resolved = Boolean(comment?.resolved);
+    const filterValues = normalizeReviewSeverityFilter(filter);
+    if (resolved) return filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
+    if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID) && filterValues.length === 1) return false;
+    const sev = String(comment?.severity || '').toLowerCase();
+    return filterValues.includes(sev);
+  };
+  const getReviewCommentStatus = (comment) => {
+    if (comment?.resolved) return 'resolved';
+    if (typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0) return 'replied';
+    return 'open';
+  };
+  const matchesReviewCommentStatusFilter = (comment, filter, status = 'all') => {
+    if (!matchesReviewCommentFilter(comment, filter)) return false;
+    return status === 'all' || getReviewCommentStatus(comment) === status;
+  };
+  const countReviewCommentsForFilter = (fileList, filter) => fileList.reduce((sum, file) => sum
+    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentFilter(comment, filter)).length, 0);
+  const countReviewCommentsForStatusFilter = (fileList, filter, status = 'all') => fileList.reduce((sum, file) => sum
+    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentStatusFilter(comment, filter, status)).length, 0);
+  // Groups for the shared comments column — every group gets a header, driven by
+  // the SAME Group control as the rest of the review.
+  const commentCategories = (() => {
+    const selectedFilters = normalizeReviewSeverityFilter(severityFilter);
+    const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => selectedFilters.includes(sev));
+    const includesResolved = selectedFilters.includes(REVIEW_RESOLVED_FILTER_ID);
+    const countFor = countReviewCommentsForFilter;
+    const countForStatus = countReviewCommentsForStatusFilter;
+    const filesForFilter = (filter) => files.filter((file) => countFor([file], filter) > 0);
+    const filesForStatusFilter = (filter, status) => files.filter((file) => countForStatus([file], filter, status) > 0);
+    const counts = { critical: 0, warning: 0, info: 0, resolved: 0 };
+    files.forEach((file) => Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().forEach((comment) => {
+      if (!getStoredCommentText(comment).trim()) return;
+      if (comment?.resolved) { counts.resolved += 1; return; }
+      const sev = String(comment?.severity || '').toLowerCase();
+      if (sev in counts) counts[sev] += 1;
+    }));
+    const selectedOpenTotal = countForStatus(files, selectedOpenSeverities, 'open');
+    const selectedRepliedTotal = countForStatus(files, selectedOpenSeverities, 'replied');
+    if (groupMode === 'file') {
+      // One heading per file; comments underneath show just the line.
+      return files
+        .map((file) => ({ file, count: countFor([file], severityFilter) }))
+        .filter((entry) => entry.count > 0)
+        .map(({ file, count }) => ({
+          key: `file-${file.tabId}`, label: file.name, tone: 'file',
+          icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
+          filter: severityFilter, files: [file], showFile: false, count,
+        }));
+    }
+    if (groupMode === 'status') {
+      const openFiles = filesForStatusFilter(selectedOpenSeverities, 'open');
+      const repliedFiles = filesForStatusFilter(selectedOpenSeverities, 'replied');
+      const resolvedFiles = filesForFilter('resolved');
+      return [
+        selectedOpenSeverities.length > 0 && selectedOpenTotal > 0 ? { key: 'open', label: 'Open', filter: selectedOpenSeverities, statusFilter: 'open', tone: 'open', files: openFiles, showFile: true, count: selectedOpenTotal } : null,
+        selectedOpenSeverities.length > 0 && selectedRepliedTotal > 0 ? { key: 'replied', label: 'Replied', filter: selectedOpenSeverities, statusFilter: 'replied', tone: 'replied', files: repliedFiles, showFile: true, count: selectedRepliedTotal } : null,
+        counts.resolved > 0 ? { key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], statusFilter: 'resolved', tone: 'resolved', files: resolvedFiles, showFile: true, count: counts.resolved } : null,
+      ].filter(Boolean);
+    }
+    // severity
+    if (selectedOpenSeverities.length === 0 && includesResolved) {
+      const resolvedFiles = filesForFilter('resolved');
+      return counts.resolved > 0 ? [{ key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], tone: 'resolved', files: resolvedFiles, showFile: true, count: counts.resolved }] : [];
+    }
+    const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
+    const severityCategories = order
+      .filter(([sev]) => selectedFilters.includes(sev) && counts[sev] > 0)
+      .map(([sev, label]) => ({
+        key: sev,
+        label,
+        filter: [sev],
+        tone: sev,
+        severityIcon: sev,
+        files: filesForFilter(sev),
+        showFile: true,
+        count: counts[sev],
+      }));
+    if (includesResolved && counts.resolved > 0) {
+      severityCategories.push({
+        key: 'resolved',
+        label: 'Resolved',
+        filter: [REVIEW_RESOLVED_FILTER_ID],
+        tone: 'resolved',
+        files: filesForFilter(REVIEW_RESOLVED_FILTER_ID),
+        showFile: true,
+        count: counts.resolved,
+      });
+    }
+    return severityCategories;
+  })();
+  // Scroll the left code column to a comment's row and open the inline thread.
+  // Scoped to the comment's own file so identical row ids across files don't collide.
+  const navigateToComment = (tabId, rowId) => {
+    setPanelExpandedRowIdsByTabId((prev) => ({
+      ...prev,
+      [tabId]: rowId,
+    }));
+    const fileIndex = orderedFiles.findIndex((file) => file.tabId === tabId);
+    if (fileIndex >= 0) setActiveIndex(fileIndex);
+
+    const left = scrollRef.current?.querySelector('.aiux-review-panel-left');
+    if (!left) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const fileEl = left.querySelector(`[data-review-file="${tabId}"]`);
+        const scope = fileEl || left;
+        const rowEl = rowId ? scope.querySelector(`[data-demo-id="diff-row-${rowId}"]`) : null;
+        const target = rowEl || fileEl;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    });
+  };
+  const resolvedCount = files.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
+  const openCount = files.reduce((sum, file) => sum + (file.openCount ?? file.commentCount ?? 0), 0);
+  // Whole review is handled once there are comments and none are left open.
+  const reviewAllResolved = (openCount + resolvedCount) > 0 && openCount === 0;
+
+  useEffect(() => {
+    if (!anchorRef.current) { setHost(null); return undefined; }
+    let frameId = requestAnimationFrame(() => {
+      const editorEl = anchorRef.current?.closest('.editor');
+      const bodyEl = editorEl?.querySelector('.editor-body');
+      setHost(bodyEl instanceof HTMLElement ? bodyEl : null);
+    });
+    return () => { if (frameId) cancelAnimationFrame(frameId); setHost(null); };
+  }, []);
+
+  const scrollToIndex = (index) => {
+    const clamped = Math.max(0, Math.min(total - 1, index));
+    setActiveIndex(clamped);
+    sectionRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const renderReviewGroupHeader = (group, { className = '', onResolve = null } = {}) => {
+    const filter = group.filter ?? group.severity ?? severityFilter;
+    const filterValues = normalizeReviewSeverityFilter(filter);
+    const isResolvedOnly = filterValues.length === 1 && filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
+
+    return (
+      <div className={`aiux-review-panel-cat-head${className ? ` ${className}` : ''} is-${group.tone}`}>
+        {group.severityIcon ? (
+          <AiNotesSeverityIcon severity={group.severityIcon} />
+        ) : group.icon ? (
+          <Icon name={group.icon} size={16} className="aiux-review-panel-cat-icon" />
+        ) : (
+          <span className="aiux-review-panel-cat-dot" aria-hidden="true" />
+        )}
+        <span className="aiux-review-panel-cat-label aiux-review-overview-group-title">{group.label}</span>
+        <span className="aiux-review-panel-cat-count aiux-review-overview-group-count">{group.count}</span>
+        {!isResolvedOnly && (group.files?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            className="aiux-review-panel-cat-resolve"
+            onClick={() => onResolve?.(filter)}
+          >
+            Resolve all
+          </button>
+        )}
+      </div>
+    );
+  };
+  const overview = (
+    <div className="aiux-review-overview">
+      <div className="aiux-review-overview-toolbar">
+        <div className="aiux-review-overview-left">
+        <div className="aiux-review-overview-target">
+          <button
+            type="button"
+            className="aiux-review-overview-chat"
+            onClick={() => onOpenChat?.()}
+            disabled={!onOpenChat}
+            title="Open chat"
+          >
+            <AiChatClaudeIcon />
+            <span className="aiux-review-overview-chat-name">{chatTitle || 'AI Review'}</span>
+          </button>
+          <span className="aiux-review-overview-sep" aria-hidden="true">·</span>
+          <span className="aiux-review-overview-summary-total">{overallSummary}</span>
+          <span className="aiux550-review-done-badge aiux-review-overview-status">
+            <span className="aiux550-review-done-dot" aria-hidden="true" />
+            {reviewAllResolved ? 'All resolved' : 'Open'}
+          </span>
+        </div>
+        <div className="aiux-review-overview-nav">
+          <button
+            type="button"
+            className="aiux-review-overview-navbtn"
+            aria-label="Previous file"
+            disabled={activeIndex <= 0}
+            onClick={() => scrollToIndex(activeIndex - 1)}
+          >
+            <Icon name="general/chevronRight" size={16} className="aiux-review-overview-navicon is-prev" />
+          </button>
+          <button
+            type="button"
+            className="aiux-review-overview-count-link"
+            aria-haspopup="dialog"
+            aria-expanded={Boolean(filesPopupRect)}
+            onClick={(event) => {
+              if (filesPopupRect) { setFilesPopupRect(null); return; }
+              setFilesPopupRect(event.currentTarget.getBoundingClientRect());
+            }}
+          >
+            {total > 0 ? `${activeIndex + 1} out of ${total} file${total === 1 ? '' : 's'}` : 'No files'}
+          </button>
+          <button
+            type="button"
+            className="aiux-review-overview-navbtn"
+            aria-label="Next file"
+            disabled={activeIndex >= total - 1}
+            onClick={() => scrollToIndex(activeIndex + 1)}
+          >
+            <Icon name="general/chevronRight" size={16} className="aiux-review-overview-navicon" />
+          </button>
+        </div>
+        </div>
+        <div className="aiux-review-overview-actions">
+          {hasDiffFiles && (
+            <SegmentedControl
+              className="aiux-review-overview-viewtoggle"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'inline', label: <Icon name="general/editorOnly" size={16} /> },
+                { value: 'panel', label: <Icon name="general/balloon" size={16} /> },
+              ]}
+            />
+          )}
+          <ReviewGroupBy value={groupMode} onChange={onGroupModeChange} />
+          <ReviewSeverityFilter
+            value={severityFilter}
+            onChange={onSeverityFilterChange}
+            resolvedCount={resolvedCount}
+          />
+          <button
+            type="button"
+            className="aiux-review-overview-btn is-primary"
+            onClick={() => onComplete?.()}
+          >
+            Complete review
+          </button>
+          <IconButton
+            icon="general/close"
+            tooltip="Cancel review"
+            className="aiux-review-overview-close"
+            onClick={() => onCancel?.()}
+          />
+        </div>
+      </div>
+      <div className={`aiux-review-overview-scroll${isPanel ? ' is-panel' : ''}`} ref={scrollRef}>
+        <div
+          className={isPanel ? 'aiux-review-panel-left' : 'aiux-review-overview-stack'}
+        >
+        {(() => {
+          let fileIndex = -1;
+          return groupedSections.map((section) => (
+            <div className="aiux-review-overview-group" key={section.id}>
+              {section.label && groupMode !== 'file' && !isPanel && (
+                renderReviewGroupHeader(section, {
+                  className: 'aiux-review-overview-group-head',
+                  onResolve: (filter) => section.files.forEach((file) => onResolveFile?.(file.tabId, filter)),
+                })
+              )}
+              {section.files.map((file) => {
+                fileIndex += 1;
+                const index = fileIndex;
+                const cardViewMode = file.isPlain ? 'unified' : (cardViews[file.tabId] ?? 'unified');
+                const cardFilter = section.severity ?? severityFilter;
+                const isFilteredSliceCard = groupMode !== 'file' && Boolean(section.label);
+                const sliceFindingCount = countReviewCommentsForFilter([file], cardFilter);
+                const sliceNoun = sliceFindingCount === 1 ? 'finding' : 'findings';
+                const sectionSeverity = Array.isArray(section.severity) && section.severity.length === 1
+                  ? section.severity[0]
+                  : null;
+                const sectionSummary = isFilteredSliceCard
+                  ? `${sliceFindingCount} ${sliceNoun}`
+                  : sectionSeverity === REVIEW_RESOLVED_FILTER_ID
+                  ? `${file.resolvedCount ?? 0} resolved`
+                  : sectionSeverity
+                    ? `${file.severityTotals?.[sectionSeverity] ?? 0} ${sectionSeverity}`
+                    : file.summary;
+                return (
+                  <section
+                    className="aiux-review-overview-file"
+                    key={`${section.id}-${file.tabId}`}
+                    data-review-file={file.tabId}
+                    ref={(el) => { sectionRefs.current[index] = el; }}
+                  >
+                    <div className="aiux-review-overview-file-head">
+                      <button
+                        type="button"
+                        className="aiux-review-overview-file-open"
+                        onClick={() => onOpenFileTab?.(file.tabId)}
+                        title="Open full diff"
+                      >
+                        <Icon
+                          name={file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name)}
+                          size={16}
+                          className="aiux-review-overview-file-icon"
+                        />
+                        <span className="aiux-review-overview-file-name">{file.name}</span>
+                        {sectionSummary ? <span className="aiux-review-overview-file-summary">{sectionSummary}</span> : null}
+                      </button>
+                      <div className="aiux-review-overview-file-actions">
+                        {!file.isPlain && (
+                          <SegmentedControl
+                            className="aiux-review-overview-viewtoggle aiux-review-overview-viewtoggle-text"
+                            value={cardViewMode}
+                            onChange={(next) => setCardViews((prev) => ({ ...prev, [file.tabId]: next }))}
+                            options={[
+                              { value: 'split', label: 'Split' },
+                              { value: 'unified', label: 'Unified' },
+                            ]}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          className="aiux-review-overview-file-resolve"
+                          onClick={() => onResolveFile?.(file.tabId, cardFilter)}
+                        >
+                          Resolve all
+                        </button>
+                      </div>
+                    </div>
+                    <div className="aiux-review-overview-file-body">
+                      <PlanDiffOverlay
+                        diffData={file.diffData}
+                        initialDiffComments={file.comments}
+                        singleLineNumbers={file.isPlain}
+                        showGutterComments
+                        commentContextLabel="AI Review"
+                        commentContextIcon="claude"
+                        severityFilter={cardFilter}
+                        resolveKeepsComment
+                        allowInlineCommentCompose={false}
+                        viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
+                        expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
+                        onInlineCommentExpand={(rowId) => {
+                          if (!isPanel) return;
+                          setPanelExpandedRowIdsByTabId((prev) => ({
+                            ...prev,
+                            [file.tabId]: rowId,
+                          }));
+                        }}
+                        onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
+                      />
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ));
+        })()}
+        </div>
+        {isPanel && (
+          <div className="aiux-review-panel-right">
+            {commentCategories.map((cat) => (
+              <div className={`aiux-review-panel-cat is-${cat.tone}`} key={cat.key}>
+                {renderReviewGroupHeader(cat, {
+                  onResolve: (filter) => cat.files.forEach((file) => onResolveFile?.(file.tabId, filter)),
+                })}
+                {cat.files.map((file) => (
+                  <PlanDiffOverlay
+                    key={`comments-${cat.key}-${file.tabId}`}
+                    diffData={file.diffData}
+                    initialDiffComments={file.comments}
+                    singleLineNumbers={file.isPlain}
+                    showGutterComments
+                    commentContextLabel="AI Review"
+                    commentContextIcon="claude"
+                    severityFilter={cat.filter}
+                    resolveKeepsComment
+                    viewMode="comments"
+                    commentIndexFileLabel={file.name}
+                    showCommentIndexFileLabel={cat.showFile}
+                    commentIndexStatusFilter={cat.statusFilter ?? 'all'}
+                    onCommentNavigate={(rowId) => navigateToComment(file.tabId, rowId)}
+                    onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <div className="aiux-review-overview-anchor" ref={anchorRef} aria-hidden="true" />
+      {host && createPortal(overview, host)}
+      {filesPopupRect && (
+        <ReviewFilesPopup
+          files={files}
+          triggerRect={filesPopupRect}
+          onDismiss={() => setFilesPopupRect(null)}
+          onOpenFileTab={onOpenFileTab}
+        />
+      )}
+    </>
+  );
+}
+
+// Card attached to the top of the composer. Review runs and AI Note processing
+// runs intentionally share the same structure: file header with icon, then the
+// comment body rows underneath. Status/severity live inside the body metadata
+// so review and agent-response rows stay structurally equivalent.
+function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null, onOpenDiff = null }) {
   const items = Array.isArray(notes) ? notes : [];
   const total = items.length;
   const doneCount = items.filter((note) => note.state === 'done').length;
   const isDone = status === 'done';
   const isReview = kind === 'review';
-  const [collapsed, setCollapsed] = useState(false);
-  // Auto-collapse once the run finishes; the user can re-expand via the chevron.
-  useEffect(() => {
-    if (isDone) setCollapsed(true);
-  }, [isDone]);
 
-  // In a review run the comments appear one by one: reveal only the notes the
-  // run has reached so far (state !== 'pending') until it finishes.
-  const revealedItems = isReview && !isDone
-    ? items.filter((note) => note.state !== 'pending')
-    : items;
-  const displayItems = revealedItems.length > 0
-    ? revealedItems
+  const displayItems = items.length > 0
+    ? items
     : [{ id: 'placeholder', text: isReview ? 'Reviewing…' : 'Reviewing AI Notes…', state: 'active' }];
 
-  // Review: group the surfaced comments by file and build a summary line
-  // ("N files, M comments: X critical, Y warning, Z info").
-  const reviewGroups = [];
+  const fileGroups = [];
   const severityTotals = { critical: 0, warning: 0, info: 0 };
-  if (isReview) {
-    const byFile = new Map();
-    displayItems.forEach((note) => {
-      // Keep the "Diff …" label distinct so diff comments are their own group.
-      const file = (note.sourceLabel || 'File').trim() || 'File';
-      if (!byFile.has(file)) {
-        byFile.set(file, { file, isDiff: /^diff\s+/i.test(file), notes: [] });
-        reviewGroups.push(byFile.get(file));
-      }
-      byFile.get(file).notes.push(note);
-      const sev = String(note.severity || '').toLowerCase();
-      if (sev in severityTotals) severityTotals[sev] += 1;
+  const byFile = new Map();
+  displayItems.forEach((note) => {
+    const file = String(note.sourceLabel || note.openTarget?.sourceLabel || 'File').trim() || 'File';
+    const isDiff = /^diff\s+/i.test(file);
+    if (!byFile.has(file)) {
+      byFile.set(file, { file, isDiff, notes: [] });
+      fileGroups.push(byFile.get(file));
+    }
+    const group = byFile.get(file);
+    const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
+    group.notes.push({
+      ...note,
+      text: typeof note.text === 'string' && note.text.trim().length > 0 ? note.text.trim() : 'Processing comment…',
+      lineLabel: normalizeAgentRunLineLabel(note.lineLabel),
+      state,
     });
-  }
+    const sev = String(note.severity || '').toLowerCase();
+    if (sev in severityTotals) severityTotals[sev] += 1;
+  });
   const severitySummary = ['critical', 'warning', 'info']
     .filter((sev) => severityTotals[sev] > 0)
     .map((sev) => `${severityTotals[sev]} ${sev}`)
     .join(', ');
-  const headerCount = isReview
-    ? (!isDone && displayItems.length < items.length
-        ? 'Reviewing…'
-        : `${reviewGroups.length} file${reviewGroups.length === 1 ? '' : 's'}, ${total} comment${total === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}`)
-    : `${doneCount}/${total} completed`;
+  const headerCount = total > 0
+    ? `${fileGroups.length} file${fileGroups.length === 1 ? '' : 's'}, ${total} comment${total === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}`
+    : 'Reviewing comments…';
 
+  // Single, non-expandable summary row above the composer. While processing we
+  // show a loader + "In progress"; once done we show a status icon, the gray
+  // review summary, and a right-aligned link to the diff (wired up later).
   return (
     <section className="aiux550-loading-plan" aria-label={isReview ? 'AI Review comments' : 'AI Review checklist'}>
-      <button
-        type="button"
-        className={`aiux550-loading-plan-header${collapsed ? ' is-collapsed' : ''}`}
-        aria-expanded={!collapsed}
-        onClick={() => setCollapsed((value) => !value)}
-      >
-        <Icon name="general/chevronDown" size={16} />
+      <div className="aiux550-loading-plan-header is-static">
+        {isDone ? (
+          <Icon name="general/balloon" size={16} className="aiux550-loading-plan-status-icon" />
+        ) : (
+          <Loader size={16} className="aiux550-loading-plan-status-loader" />
+        )}
         <span className="aiux550-loading-plan-title">AI Review</span>
-        <span className="aiux550-loading-plan-count">{headerCount}</span>
-      </button>
-      {!collapsed && (isReview ? (
-        <div className="aiux550-review-tree">
-          {reviewGroups.map((group) => (
-            <div className="aiux550-review-file-group" key={group.file}>
-              <div className="aiux550-review-file-head">
-                <Icon name={group.isDiff ? 'vcs/diff' : agentRunFileIconName(group.file)} size={16} className="aiux550-review-file-icon" />
-                <span className="aiux550-review-file-name">{group.file}</span>
-              </div>
-              {group.notes.map((note, index) => {
-                const canOpen = Boolean(note.openTarget) && typeof onOpenTarget === 'function';
-                return (
-                  <div
-                    className={`aiux550-review-comment-row${canOpen ? ' is-clickable' : ''}`}
-                    key={note.id ?? index}
-                    role={canOpen ? 'button' : undefined}
-                    tabIndex={canOpen ? 0 : undefined}
-                    onClick={canOpen ? () => onOpenTarget(note.openTarget) : undefined}
-                    onKeyDown={canOpen ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpenTarget(note.openTarget); } } : undefined}
-                  >
-                    <ReviewSeverityIcon severity={note.severity} />
-                    <span className="aiux550-review-comment-text">{note.text}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="aiux550-loading-plan-list">
-          {displayItems.map((note, index) => {
-            const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
-            const fileLabel = (note.sourceLabel || '').replace(/^Diff\s+/i, '').trim();
-            return (
-              <div className={`aiux550-loading-plan-row ${state}`} key={note.id ?? index}>
-                <CheckStatus status={state === 'done' ? 'passed' : 'pending'} isLoading={state === 'active'} />
-                <span className="aiux550-loading-plan-note">
-                  <span className="aiux550-loading-plan-text">{note.text}</span>
-                  {fileLabel.length > 0 && (
-                    <span className="aiux550-loading-plan-note-meta">{fileLabel}</span>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+        {isDone ? (
+          <>
+            <span className="aiux550-review-done-badge">
+              <span className="aiux550-review-done-dot" aria-hidden="true" />
+              Open
+            </span>
+            <span className="aiux550-loading-plan-count">{headerCount}</span>
+          </>
+        ) : (
+          <span className="aiux550-loading-plan-progress">In progress</span>
+        )}
+        {isDone && (
+          <button
+            type="button"
+            className="aiux550-loading-plan-diff-link"
+            onClick={onOpenDiff ?? undefined}
+          >
+            View diff
+          </button>
+        )}
+      </div>
     </section>
   );
 }
@@ -13644,9 +15134,18 @@ function AiChatTabView({
   agentRun = null,
   onStopMessage = null,
   onOpenReviewTarget = null,
+  onOpenReviewDiff = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
+  const hasAgentRunNotes = Array.isArray(agentRun?.notes) && agentRun.notes.length > 0;
+  // The "AI Review" checklist card above the composer is shown ONLY for an
+  // explicit /review run. A plain "send comment to agent" run is not a review:
+  // its comment stays as a composer attachment chip (worked with until resolved),
+  // so it must not raise the review card.
+  const isReviewRun = agentRun?.kind === 'review';
+  const shouldShowAgentRunPlan = isReviewRun
+    && (isAgentRunProcessing || (agentRun?.status === 'done' && hasAgentRunNotes));
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
     userPrompt: fallbackTitle,
@@ -13844,28 +15343,32 @@ function AiChatTabView({
             </button>
           </div>
         )}
-        {(isAgentRunProcessing || (agentRun?.status === 'done' && agentRun?.kind === 'review' && (agentRun?.notes?.length ?? 0) > 0)) && (
-          <AgentRunLoadingPlan notes={agentRun?.notes} status={agentRun?.status} kind={agentRun?.kind} onOpenTarget={onOpenReviewTarget} />
+        {shouldShowAgentRunPlan && (
+          <AgentRunLoadingPlan notes={agentRun?.notes} status={agentRun?.status} kind={agentRun?.kind} onOpenTarget={onOpenReviewTarget} onOpenDiff={() => onOpenReviewDiff?.(chatId)} />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           <div className="aiux543-chat-input-row">
-            <textarea
-              ref={composerRef}
-              className="aiux543-chat-input"
-              rows={1}
-              value={composerText}
-              placeholder="Type task, use @mentions or /commands"
-              aria-label="Task prompt"
-              onChange={(event) => setComposerText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
+            {isAgentRunProcessing ? (
+              <div className="aiux543-chat-input aiux543-chat-input-waiting" aria-live="polite">Waiting…</div>
+            ) : (
+              <textarea
+                ref={composerRef}
+                className="aiux543-chat-input"
+                rows={1}
+                value={composerText}
+                placeholder="Type task, use @mentions or /commands"
+                aria-label="Task prompt"
+                onChange={(event) => setComposerText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+            )}
           </div>
-          {Array.isArray(composerDiffAttachments) && composerDiffAttachments.length > 0 && (
+          {!isAgentRunProcessing && Array.isArray(composerDiffAttachments) && composerDiffAttachments.length > 0 && (
             <div className="aiux543-composer-attachments" onClick={(event) => event.stopPropagation()}>
               {composerDiffAttachments.map((attachment) => (
                 <span
@@ -13883,6 +15386,18 @@ function AiChatTabView({
                       {attachment.commentCount}
                     </span>
                   )}
+                  {attachment.updated && (
+                    <span className="ai-chat-attachment-updated-dot" aria-label="Updated — agent replied" />
+                  )}
+                  {(() => {
+                    const previewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+                    if (previewItems.length === 0) return null;
+                    return (
+                      <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
+                        <AttachmentCommentHoverCard items={previewItems} />
+                      </span>
+                    );
+                  })()}
                   {onRemoveComposerAttachment && (
                     <button
                       type="button"
@@ -13936,7 +15451,7 @@ function AiChatTabView({
                   aria-label="Stop"
                   onClick={() => onStopMessage?.(chatId)}
                 >
-                  <span className="aiux543-chat-stop-square" aria-hidden="true" />
+                  <Icon name="run/stop" size={16} />
                 </button>
               ) : (
                 <button type="button" className="aiux543-chat-icon-button" aria-label="Send" onClick={handleSend} disabled={!canSend}>
@@ -16032,6 +17547,14 @@ export default function App() {
         },
         diffTabId,
       );
+    } else if (commentsReadOnly) {
+      // Archived open into a reused diff tab: clear any stale compose state so
+      // the snapshotted (read-only) comment surfaces instead of a leftover
+      // "Write an AI Note" box from an earlier live session on this tab.
+      updatePlanDiffUiStateForTab(
+        { activeRowId: null, commentRowId: null, commentValue: '', commentEditingIndex: null },
+        diffTabId,
+      );
     }
     const resolvedTaskId = source?.taskId
       ?? getAgentTaskIdForEditorTab({ id: sourceTabId, label: sourceTabLabel }, agentTasks);
@@ -16060,6 +17583,199 @@ export default function App() {
     selectedAiChatId,
     updatePlanDiffUiStateForTab,
   ]);
+
+  // Open (or focus) the single shared aggregated review-diff overview tab. The
+  // tab is titled with the chat session the review was launched from.
+  const openReviewDiffTab = useCallback((chatId = null) => {
+    const scenario = chatId ? getAiChatScenarioById(chatId) : null;
+    const listItem = chatId ? getAiChatListItemById(chatId) : null;
+    const chatTitle = (scenario?.title || listItem?.title || '').trim();
+    // "AI Review" + the launching chat as context.
+    const label = chatTitle ? `AI Review · ${chatTitle}` : 'AI Review';
+    setScreen('ide');
+    setIdeTabContents((prev) => ({
+      ...prev,
+      [REVIEW_DIFF_TAB_ID]: {
+        reviewDiffOverview: true,
+        reviewChatId: chatId,
+        reviewChatTitle: chatTitle,
+        language: 'text',
+        code: '',
+      },
+    }));
+    setIdeTabs((prevTabs) => {
+      const existingIndex = prevTabs.findIndex((tab) => tab.id === REVIEW_DIFF_TAB_ID);
+      if (existingIndex >= 0) {
+        // Refresh the label so it reflects the chat the review was launched from.
+        const nextTabs = prevTabs.map((tab, index) => (
+          index === existingIndex ? { ...tab, label, icon: 'general/balloon' } : tab
+        ));
+        requestAnimationFrame(() => setActiveEditorTab(existingIndex));
+        return nextTabs;
+      }
+      // Insert right after the current tab so the new tab is visible in the strip
+      // (appending to the end can land it off-screen past the tab overflow).
+      const insertAt = Number.isInteger(activeEditorTab)
+        ? Math.min(activeEditorTab + 1, prevTabs.length)
+        : prevTabs.length;
+      const nextTabs = [
+        ...prevTabs.slice(0, insertAt),
+        { id: REVIEW_DIFF_TAB_ID, label, icon: 'general/balloon', closable: true },
+        ...prevTabs.slice(insertAt),
+      ];
+      requestAnimationFrame(() => setActiveEditorTab(insertAt));
+      return nextTabs;
+    });
+  }, [activeEditorTab, getAiChatScenarioById, getAiChatListItemById]);
+
+  // Activate an already-open editor tab by id (used from the review overview to
+  // jump into a file's full diff/file tab).
+  const activateEditorTabById = useCallback((tabId) => {
+    if (!tabId) return;
+    setScreen('ide');
+    setIdeTabs((prevTabs) => {
+      const idx = prevTabs.findIndex((tab) => tab.id === tabId);
+      if (idx >= 0) requestAnimationFrame(() => setActiveEditorTab(idx));
+      return prevTabs;
+    });
+  }, []);
+
+  // Persist a review-overview file's comment edits (reply / resolve / delete)
+  // back onto that file's tab, so drilling into the full diff reflects them.
+  const persistReviewFileComments = useCallback((tabId, comments) => {
+    if (!tabId) return;
+    const normalized = normalizeStoredDiffCommentsState(comments);
+    setIdeTabContents((prev) => {
+      const content = prev[tabId];
+      if (!content) return prev;
+      return { ...prev, [tabId]: { ...content, initialDiffComments: normalized, diffCommentsReadOnly: false } };
+    });
+  }, []);
+
+  // "Resolve all" on a review file/card block: mark matching open comments
+  // resolved (kept + dimmed) and mark the matching run notes resolved.
+  const resolveAllReviewFileComments = useCallback((tabId, filter = 'all') => {
+    if (!tabId) return;
+    const normalizedFilter = normalizeReviewSeverityFilter(filter);
+    const commentMatchesFilter = (comment) => {
+      if (!comment || comment?.resolved) return false;
+      const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => normalizedFilter.includes(sev));
+      if (selectedOpenSeverities.length === REVIEW_SEVERITY_FILTER_IDS.length) return true;
+      const sev = typeof comment?.severity === 'string' ? comment.severity.toLowerCase() : '';
+      return selectedOpenSeverities.includes(sev);
+    };
+    const content = ideTabContents[tabId];
+    const texts = new Set();
+    Object.values(normalizeStoredDiffCommentsState(content?.initialDiffComments)).flat().forEach((comment) => {
+      if (!commentMatchesFilter(comment)) return;
+      const text = getStoredCommentText(comment).trim();
+      if (text) texts.add(text);
+    });
+    const markAll = (state) => {
+      let changed = false;
+      const next = {};
+      Object.entries(normalizeStoredDiffCommentsState(state)).forEach(([rowId, list]) => {
+        next[rowId] = list.map((comment) => {
+          if (!commentMatchesFilter(comment)) return comment;
+          changed = true;
+          const base = (comment && typeof comment === 'object') ? comment : { text: comment };
+          // Auto-collapse like a single resolve, so "Resolve all" clears the
+          // findings out of view (revealable via the gutter / Resolved filter).
+          return { ...base, text: getStoredCommentText(comment), resolved: true, resolvedKind: 'manual', hidden: true };
+        });
+      });
+      return changed ? next : null;
+    };
+    setIdeTabContents((prev) => {
+      const tabContent = prev[tabId];
+      if (!tabContent) return prev;
+      let nextContent = tabContent;
+      const initial = markAll(tabContent.initialDiffComments);
+      if (initial) nextContent = { ...nextContent, initialDiffComments: initial };
+      const sessions = tabContent.diffSessionCommentsByChatId;
+      if (sessions && typeof sessions === 'object') {
+        let sessChanged = false;
+        const nextSessions = {};
+        Object.entries(sessions).forEach(([cid, session]) => {
+          const applied = session && markAll(session.comments);
+          if (applied) { sessChanged = true; nextSessions[cid] = { ...session, comments: applied }; }
+          else nextSessions[cid] = session;
+        });
+        if (sessChanged) nextContent = { ...nextContent, diffSessionCommentsByChatId: nextSessions };
+      }
+      return nextContent === tabContent ? prev : { ...prev, [tabId]: nextContent };
+    });
+    setAgentRunByChatId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([cid, run]) => {
+        if (!Array.isArray(run?.notes)) return;
+        let runChanged = false;
+        const notes = run.notes.map((note) => {
+          if (texts.has((note?.text || '').trim()) && !note?.resolved) {
+            runChanged = true;
+            return { ...note, resolved: true, resolvedKind: 'manual' };
+          }
+          return note;
+        });
+        if (runChanged) { changed = true; next[cid] = { ...run, notes }; }
+      });
+      return changed ? next : prev;
+    });
+  }, [ideTabContents]);
+
+  // Bulk collapse/expand every resolved review comment (set the same `hidden`
+  // flag the per-comment Hide uses, so the gutter badge stays and a single one
+  // can still be expanded by clicking its badge).
+  const setResolvedCommentsHidden = useCallback((hide) => {
+    const applyToState = (state) => {
+      let changed = false;
+      const next = {};
+      Object.entries(normalizeStoredDiffCommentsState(state)).forEach(([rowId, list]) => {
+        next[rowId] = list.map((comment) => {
+          if (!comment?.resolved || Boolean(comment?.hidden) === hide) return comment;
+          changed = true;
+          return { ...comment, hidden: hide };
+        });
+      });
+      return changed ? next : null;
+    };
+    setIdeTabContents((prev) => {
+      let anyChanged = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([tabId, content]) => {
+        if (!content) return;
+        let nextContent = content;
+        const initial = applyToState(content.initialDiffComments);
+        if (initial) nextContent = { ...nextContent, initialDiffComments: initial };
+        const sessions = content.diffSessionCommentsByChatId;
+        if (sessions && typeof sessions === 'object') {
+          let sessChanged = false;
+          const nextSessions = {};
+          Object.entries(sessions).forEach(([cid, session]) => {
+            const applied = session && applyToState(session.comments);
+            if (applied) { sessChanged = true; nextSessions[cid] = { ...session, comments: applied }; }
+            else nextSessions[cid] = session;
+          });
+          if (sessChanged) nextContent = { ...nextContent, diffSessionCommentsByChatId: nextSessions };
+        }
+        if (nextContent !== content) { anyChanged = true; next[tabId] = nextContent; }
+      });
+      return anyChanged ? next : prev;
+    });
+  }, []);
+
+  // Shared, view-only severity filter for the whole review (overview + each
+  // single-file diff). Stored as a checked set of severities so the overview
+  // and single-file diffs stay in sync as you move between them.
+  const [reviewSeverityFilter, setReviewSeverityFilter] = useState(REVIEW_SEVERITY_FILTER_IDS);
+  // Shared group mode for the review: 'file' | 'severity' | 'status'. Sections
+  // the overview stack and drives the files popup's grouping everywhere.
+  const [reviewGroupMode, setReviewGroupMode] = useState('file');
+  // Shared review layout: 'inline' (comments in the diff) | 'panel' (code left,
+  // comments in a column on the right). Lifted so opening a single file from the
+  // overview carries the same toolbar toggle and comment layout.
+  const [reviewView, setReviewView] = useState('panel');
 
   const openChatInEditorTab = useCallback((chatId, metaOverride = null) => {
     if (!chatId) return;
@@ -16556,6 +18272,98 @@ export default function App() {
     selectedTask,
     setRunStateForTab,
   ]);
+
+  // Close the aggregated review-diff overview tab (Cancel / Complete review).
+  const closeReviewDiffTab = useCallback(() => {
+    const idx = ideTabs.findIndex((tab) => tab.id === REVIEW_DIFF_TAB_ID);
+    if (idx >= 0) handleEditorTabClose(idx);
+  }, [ideTabs, handleEditorTabClose]);
+
+  // Apply a transform to every review comment (matching the run's note texts)
+  // across all tabs' in-code + session comments.
+  const transformReviewComments = useCallback((noteTexts, transformRowList) => {
+    if (!(noteTexts instanceof Set) || noteTexts.size === 0) return;
+    const applyToState = (state) => {
+      const normalized = normalizeStoredDiffCommentsState(state);
+      const result = transformRowList(normalized);
+      return result;
+    };
+    setIdeTabContents((prev) => {
+      let anyChanged = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([tabId, content]) => {
+        if (!content) return;
+        let nextContent = content;
+        const initial = applyToState(content.initialDiffComments);
+        if (initial) nextContent = { ...nextContent, initialDiffComments: initial };
+        const sessions = content.diffSessionCommentsByChatId;
+        if (sessions && typeof sessions === 'object') {
+          let sessChanged = false;
+          const nextSessions = {};
+          Object.entries(sessions).forEach(([cid, session]) => {
+            const applied = session && applyToState(session.comments);
+            if (applied) { sessChanged = true; nextSessions[cid] = { ...session, comments: applied }; }
+            else nextSessions[cid] = session;
+          });
+          if (sessChanged) nextContent = { ...nextContent, diffSessionCommentsByChatId: nextSessions };
+        }
+        if (nextContent !== content) { anyChanged = true; next[tabId] = nextContent; }
+      });
+      return anyChanged ? next : prev;
+    });
+  }, []);
+
+  const dropReviewRun = useCallback((chatId) => {
+    if (!chatId) return;
+    setAgentRunByChatId((prev) => {
+      if (!prev[chatId]) return prev;
+      const { [chatId]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  // Remove a review's comments from every diff — the comments are the review's
+  // annotations and don't outlive it. Shared by Complete and Cancel.
+  const clearReviewComments = useCallback((noteTexts) => {
+    transformReviewComments(noteTexts, (rowState) => {
+      let changed = false;
+      const next = {};
+      Object.entries(rowState).forEach(([rowId, list]) => {
+        const kept = list.filter((comment) => !noteTexts.has(getStoredCommentText(comment).trim()));
+        if (kept.length !== list.length) changed = true;
+        if (kept.length > 0) next[rowId] = kept;
+      });
+      return changed ? next : null;
+    });
+  }, [transformReviewComments]);
+
+  const reviewNoteTextsFor = (chatId) => new Set(
+    ((chatId ? agentRunByChatId[chatId] : null)?.notes || [])
+      .map((note) => (note?.text || '').trim())
+      .filter(Boolean),
+  );
+
+  // "Complete review": the review is done. Post a chat confirmation (the lasting
+  // record), then clear its comments out of the diffs, drop the run (removes the
+  // "AI Review" block from Chats-History + above the composer) and close the tab.
+  const completeReview = useCallback((chatId) => {
+    const noteTexts = reviewNoteTextsFor(chatId);
+    const count = noteTexts.size;
+    if (chatId && count > 0) {
+      streamAssistantMessageRef.current?.(chatId, `Review completed — resolved ${count} comment${count === 1 ? '' : 's'}.`);
+    }
+    clearReviewComments(noteTexts);
+    dropReviewRun(chatId);
+    closeReviewDiffTab();
+  }, [agentRunByChatId, clearReviewComments, dropReviewRun, closeReviewDiffTab]);
+
+  // "Cancel review": discard the review with no record — clear its comments, drop
+  // the run and close the tab.
+  const cancelReview = useCallback((chatId) => {
+    clearReviewComments(reviewNoteTextsFor(chatId));
+    dropReviewRun(chatId);
+    closeReviewDiffTab();
+  }, [agentRunByChatId, clearReviewComments, dropReviewRun, closeReviewDiffTab]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
     const { baseLines = [], onComplete } = options;
@@ -19018,6 +20826,24 @@ export default function App() {
   }, [activeAiChatTabChatId]);
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
+  const isReviewDiffTab = Boolean(activeTabContent?.reviewDiffOverview);
+  const reviewDiffFiles = useMemo(
+    () => (isReviewDiffTab ? buildReviewDiffFiles(AGENT_REVIEW_FINDINGS, ideTabContents) : []),
+    [isReviewDiffTab, ideTabContents],
+  );
+  // Single-file tabs still need to know when they belong to an explicit review
+  // run so review comments keep their review-specific resolve behavior.
+  const hasReviewRun = useMemo(
+    () => Object.values(agentRunByChatId).some(
+      (run) => run?.kind === 'review' && Array.isArray(run?.notes) && run.notes.length > 0,
+    ),
+    [agentRunByChatId],
+  );
+  const allReviewFiles = useMemo(
+    () => (hasReviewRun ? buildReviewDiffFiles(AGENT_REVIEW_FINDINGS, ideTabContents) : []),
+    [hasReviewRun, ideTabContents],
+  );
+  const activeReviewFileIndex = allReviewFiles.findIndex((file) => file.tabId === activeTabId);
   const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
   const activeAgentTaskCommentEntries = visibleEditorStateTabId
     ? getCommentEntriesForTaskTab(visibleEditorStateTabId)
@@ -19574,24 +21400,6 @@ export default function App() {
     activePendingDocumentDiffCommentSnapshot,
     activePlanDiffDocumentComments,
   );
-  const activePlainFileCommentIssues = useMemo(
-    () => {
-      if (!isPlainFileOverlayTab) return [];
-
-      const documentEntryIssues = buildDocumentEntryCommentIssuesForTab(
-        activeTabId,
-        ideTabs
-          .filter((tab) => tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
-          .map((tab) => getCommentEntriesForTaskTab(tab.id)),
-      );
-
-      return mergeCommentIssuesBySourceKey(
-        buildCommentIssuesForFileTab(activeTabId, activeTabContent, ideTabs),
-        documentEntryIssues,
-      );
-    },
-    [activeTabContent, activeTabId, getCommentEntriesForTaskTab, ideTabs, isPlainFileOverlayTab],
-  );
   const activePlainFileProblemSummary = useMemo(
     () => {
       if (!isPlainFileOverlayTab) return { warningCount: 0, errorCount: 0 };
@@ -19833,7 +21641,13 @@ export default function App() {
     for (const [diffTabId, tabContent] of orderedDiffEntries) {
       const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
       const selectedSessionComments = normalizeStoredDiffCommentsState(sessionCommentsByChatId[selectedAiChatId]?.comments);
-      const selectedSessionCommentCount = flattenStoredDiffCommentsState(selectedSessionComments).length;
+      // Count thread messages (each comment + the agent's reply), so the chip
+      // counter grows once the agent answers — i.e. it reflects that the
+      // attachment was updated. Uses the shared thread counter (no text-dedup),
+      // so several same/similar comments each count too.
+      const selectedSessionCommentCount = countCommentThreadMessages(
+        Object.values(selectedSessionComments).flat(),
+      );
 
       if (selectedSessionCommentCount === 0) {
         continue;
@@ -19862,12 +21676,19 @@ export default function App() {
         },
       };
       const tabMeta = isPlainFile ? ideTabs.find((t) => t.id === diffTabId) : null;
+      // The attachment was updated once the agent replied to any of its comments
+      // (the thread grew) — used to flag the chip so the count change is noticed.
+      const hasAgentReply = Object.values(selectedSessionComments).flat().some((comment) => (
+        (typeof comment?.agentReply === 'string' && comment.agentReply.trim().length > 0)
+        || comment?.author === 'agent'
+      ));
 
       attachments.push({
         id: `diff-${selectedAiChatId}-${diffTabId}`,
         label: isPlainFile ? sourceLabel : (fileData?.title || `Diff ${sourceLabel}`),
         icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : 'vcs/diff',
         commentCount: selectedSessionCommentCount,
+        updated: hasAgentReply,
         diffComments: selectedSessionComments,
         diffRequest,
         diffTabId,
@@ -19880,6 +21701,7 @@ export default function App() {
   const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
     attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
   )) ?? null;
+
   const aiChatComposerDiffSourceTabId =
     aiChatComposerDiffAttachment?.diffRequest?.source?.tabId
     ?? selectedAiChatScenario?.diffRequest?.source?.tabId
@@ -19924,6 +21746,7 @@ export default function App() {
   };
   // Assigned below once its dependencies (chat streaming, agent runs) exist.
   const resolveReviewCommentRef = useRef(null);
+  const streamAssistantMessageRef = useRef(null);
   const handleActivePlanDiffCommentsChange = useCallback((comments, metadata = {}) => {
     if (activePlanDiffCommentsReadOnly) {
       return;
@@ -19931,9 +21754,43 @@ export default function App() {
 
     // Quick fix / Resolve on an agent review comment: run the agent's action in
     // chat (streamed response) and drop the matching review finding from the
-    // "AI Review" folder — then persist the comment removal below.
+    // "AI Review" folder — then persist the comment removal below. For a user's
+    // own comment (not a review finding) the chat record is posted further down
+    // as a sent message-with-attachment plus the agent's reply.
     if (metadata?.resolveAction) {
-      resolveReviewCommentRef.current?.(metadata.resolveAction);
+      if (metadata.resolveAction.isReviewFinding) {
+        resolveReviewCommentRef.current?.(metadata.resolveAction);
+      }
+      // The resolved note also lives in the pending overlay (the diff renders
+      // overlay ∪ session/initial). The default persist below only updates
+      // session/initial, so without this the note re-surfaces from the overlay
+      // when the tab is reopened. Strip the resolved comment from the overlay too.
+      const resolvedRowId = typeof metadata?.rowId === 'string' ? metadata.rowId : null;
+      const resolvedText = (metadata?.resolveAction?.text || metadata?.comment || '').trim();
+      if (activeTabId && resolvedRowId) {
+        setPendingDiffCommentSnapshotsByTabId((prev) => {
+          const tab = prev[activeTabId];
+          const row = tab?.[resolvedRowId];
+          if (!Array.isArray(row)) return prev;
+          const nextRow = resolvedText
+            ? row.filter((c) => getStoredCommentText(c).trim() !== resolvedText)
+            : [];
+          if (nextRow.length === row.length) return prev;
+          const nextTab = { ...tab };
+          if (nextRow.length > 0) nextTab[resolvedRowId] = nextRow; else delete nextTab[resolvedRowId];
+          const next = { ...prev };
+          if (Object.keys(nextTab).length > 0) next[activeTabId] = nextTab; else delete next[activeTabId];
+          return next;
+        });
+        setPendingDiffCommentRowsByTabId((prev) => {
+          const rows = prev[activeTabId];
+          if (!Array.isArray(rows) || !rows.includes(resolvedRowId)) return prev;
+          const remaining = rows.filter((r) => r !== resolvedRowId);
+          const next = { ...prev };
+          if (remaining.length > 0) next[activeTabId] = remaining; else delete next[activeTabId];
+          return next;
+        });
+      }
     }
 
     const nextComments = normalizeStoredDiffCommentsState(comments);
@@ -19962,6 +21819,50 @@ export default function App() {
         label: activePlanDiffSourceLabel,
       },
     };
+
+	    // Resolving/applying a user's own comment is also written to chat history:
+	    // a sent message carrying the comment as an attachment (file/line context)
+	    // plus the agent's reply. Quick fixes stay visible in the gutter as Applied;
+	    // plain Resolve closes the live thread.
+    if (metadata?.resolveAction && !metadata.resolveAction.isReviewFinding) {
+      const action = metadata.resolveAction;
+      const recordChatId = (typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim())
+        ? metadata.targetChatId.trim()
+        : selectedAiChatId;
+      const recRowId = typeof metadata?.rowId === 'string' ? metadata.rowId : (action.rowId || null);
+      const recComment = (action.comment && typeof action.comment === 'object') ? action.comment : { text: action.text };
+      const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
+      const attachment = snapshotAiChatMessageAttachment({
+        id: `resolved-${activeTabId}-${Date.now()}`,
+        label: activePlanDiffData?.title || `Diff ${activePlanDiffSourceLabel}`,
+        icon: 'vcs/diff',
+        commentCount: 1,
+        updated: true,
+        diffComments: recRowId ? { [recRowId]: [recComment] } : {},
+        diffRequest: activePlanDiffRequest,
+        diffTabId: activeTabId,
+        isPlainFile: Boolean(activePlanDiffData && !activePlanDiffData.rows),
+      });
+      const stamp = Date.now();
+      handleSelectedAiChatSentMessagesChange(
+        (prev) => [...prev, { id: `${recordChatId}-user-resolved-${stamp}`, role: 'user', text: '', attachments: [attachment] }],
+        recordChatId,
+      );
+      const agentReplyText = action.kind === 'quickfix'
+        ? `Applied "${action.fixLabel || 'the fix'}"${where ? ` in ${where}` : ''} and updated the code.`
+        : (typeof recComment.agentReply === 'string' && recComment.agentReply.trim().length > 0
+            ? recComment.agentReply.trim()
+            : `Resolved${where ? ` in ${where}` : ''}: ${action.text}`);
+      streamAssistantMessageRef.current?.(recordChatId, agentReplyText);
+      // Drop the note from this chat's comment run so its counter reflects the close.
+      setAgentRunByChatId((prev) => {
+        const run = prev[recordChatId];
+        if (!run || !Array.isArray(run.notes)) return prev;
+        const notes = run.notes.filter((note) => (note?.text || '').trim() !== (action.text || '').trim());
+        if (notes.length === run.notes.length) return prev;
+        return { ...prev, [recordChatId]: { ...run, notes } };
+      });
+    }
 
     if (metadata?.attachMode === 'document') {
       const sourceDocumentTabId = typeof metadata?.targetDocumentTabId === 'string' && metadata.targetDocumentTabId.trim().length > 0
@@ -20300,6 +22201,7 @@ export default function App() {
 	    getAiChatListItemById,
 	    getAiChatScenarioById,
       getTaskRuntimeState,
+      handleSelectedAiChatSentMessagesChange,
       ideTabs,
       resolveAgentTaskPlanFileIcon,
 	    selectedAiChatId,
@@ -20929,7 +22831,7 @@ export default function App() {
             // Only open question threads get an agent reply; plain instructions,
             // "do it" follow-ups and quick-fixed notes are actioned silently.
             if (!comment?.quickFix && threadExpectsAgentReply(comment)) {
-              next.push({ text: AGENT_RUN_RESOLUTION_REPLY.reply, author: 'agent', resolution: 'reply' });
+              next.push({ text: AGENT_RUN_RESOLUTION_REPLY.reply, author: 'agent', resolution: 'reply', fixLabel: AGENT_RUN_RESOLUTION_FIX_LABEL });
             }
           });
           acc[rowId] = next;
@@ -20950,6 +22852,40 @@ export default function App() {
         });
         return changed ? { ...message, attachments } : message;
       }), replyChatId);
+    }
+
+    // Prune the composer's session comments for this chat so the attachment chip
+    // reflects the run's outcome: plain instructions were actioned in chat → drop
+    // them (chip clears); open questions keep their answered thread + a severity
+    // → the chip stays (now with a severity flag) until the user resolves it.
+    if (replyChatId && resolvedTabIds.size > 0) {
+      setIdeTabContents((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        resolvedTabIds.forEach((tabId) => {
+          const content = prev[tabId];
+          if (!content) return;
+          const sessions = normalizeDiffSessionCommentsByChatId(content.diffSessionCommentsByChatId);
+          const session = sessions[replyChatId];
+          if (!session) return;
+          const resolvedComments = applyAiNoteQuestionResolution(session.comments);
+          const nextSessions = { ...sessions };
+          if (Object.keys(resolvedComments).length > 0) {
+            nextSessions[replyChatId] = { ...session, comments: resolvedComments };
+          } else {
+            delete nextSessions[replyChatId];
+          }
+          next[tabId] = {
+            ...content,
+            diffSessionCommentsByChatId: nextSessions,
+            // Also prune the in-code notes so the editor gutter matches: plain
+            // instructions disappear, answered questions stay.
+            initialDiffComments: applyAiNoteQuestionResolution(content.initialDiffComments),
+          };
+          changed = true;
+        });
+        return changed ? next : prev;
+      });
     }
   }, [
     getPendingCommentRowsByTabIdFromAttachments,
@@ -21044,8 +22980,9 @@ export default function App() {
 
     if (shouldRunAgent) {
       if (shouldStreamCommentResponse) {
+        // Keep the comment as a composer attachment chip (it stays until the user
+        // resolves it) instead of clearing it — a comment run is not a review.
         handleCommentAttachmentResponseStart({ chatId: targetChatId, attachments: commentAttachments });
-        handleClearAllComposerDiffAttachments({ chatId: targetChatId, attachments: commentAttachments });
       }
       if (isReviewCommand) {
         // The agent leaves its comments directly in the files' gutters. File
@@ -21088,6 +23025,7 @@ export default function App() {
             id: `review-${i}`,
             text: finding.text,
             sourceLabel: finding.sourceLabel || '',
+            lineLabel: finding.lineLabel || '',
             severity: finding.severity || null,
             state: 'pending',
             openTarget: {
@@ -21099,6 +23037,9 @@ export default function App() {
         });
       } else {
         const seenNoteKeys = new Set();
+        // A question the agent answers gets a severity (same cycle the run's
+        // resolution uses), so the Chats-History folder shows it too.
+        let questionSeverityCounter = 0;
         commentAttachments.forEach((attachment) => {
           // Where clicking this file in the Chats-History tree should navigate —
           // into the file body (the tab that actually holds the note).
@@ -21111,13 +23052,17 @@ export default function App() {
             const key = (item.text ?? '').trim().toLowerCase();
             if (!key || seenNoteKeys.has(key)) return;
             seenNoteKeys.add(key);
+            const isQuestion = textLooksLikeQuestion(item.text);
             noteItems.push({
               id: `note-${noteItems.length}`,
               text: item.text,
               sourceLabel: item.sourceLabel || '',
+              lineLabel: item.lineLabel || '',
+              severity: isQuestion ? AGENT_RUN_NOTE_SEVERITIES[questionSeverityCounter % AGENT_RUN_NOTE_SEVERITIES.length] : null,
               state: 'pending',
               openTarget,
             });
+            if (isQuestion) questionSeverityCounter += 1;
           });
         });
       }
@@ -21134,20 +23079,22 @@ export default function App() {
         },
       }));
       const reviewFileCount = new Set(AGENT_REVIEW_FINDINGS.map((f) => f.sourceLabel)).size;
+      const commentRunFileCount = new Set(noteItems.map((note) => note.sourceLabel).filter(Boolean)).size || commentAttachments.length;
+      const commentRunCommentCount = noteItems.length || commentAttachments.length;
       const fullResponse = isReviewCommand
         ? `Reviewed ${reviewFileCount} file${reviewFileCount === 1 ? '' : 's'} and left ${AGENT_REVIEW_FINDINGS.length} comment${AGENT_REVIEW_FINDINGS.length === 1 ? '' : 's'} in the code — see them in the diff and in the AI Review folder.`
-        : commentAttachments.length === 1
-        ? 'I reviewed the attached AI Note and applied the changes — see the resolved notes in the diff.'
-        : `I reviewed ${commentAttachments.length} attached AI Notes and applied the changes — see the resolved notes in the diff.`;
+        : `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the AI Review folder.`;
       const timerKey = `${targetChatId}:${assistantMessageId}`;
-      // Keep the busy UI on screen long enough to read before resolving.
-      const runFloorMs = 2600;
+      // Keep the busy UI on screen long enough to read the appearing comments
+      // before the run resolves and the card collapses.
+      const runFloorMs = isReviewCommand ? 5600 : 4400;
+      const minNoteStepMs = isReviewCommand ? 1100 : 900;
       const runStartedAt = Date.now();
       // Progressively tick the checklist notes done across the run so the header
       // count animates (1/N → 2/N …). One deterministic timer per step, keyed
       // `${chatId}:notes:${step}` so handleAiChatTabStop cancels them all.
       if (noteItems.length > 1) {
-        const stepMs = Math.max(450, Math.floor(runFloorMs / noteItems.length));
+        const stepMs = Math.max(minNoteStepMs, Math.floor(runFloorMs / noteItems.length));
         for (let step = 1; step < noteItems.length; step += 1) {
           const stepKey = `${targetChatId}:notes:${step}`;
           aiChatTabCommentResponseTimersRef.current[stepKey] = window.setTimeout(() => {
@@ -21169,14 +23116,20 @@ export default function App() {
         resolveCommentAttachmentResponse({ chatId: targetChatId, attachments: commentAttachments });
         setAgentRunByChatId((prev) => {
           const run = prev[targetChatId];
-          // Flip any lingering active/pending notes to done so the persisted
-          // Chats-History "AI Notes" folder shows no stuck spinner.
-          const finalizedNotes = Array.isArray(run?.notes)
-            ? run.notes.map((note) => ({ ...note, state: 'done' }))
+          // An agent reply to a comment is NOT "processed" — it awaits an explicit
+          // user action (apply the change or resolve). So the run stays "in review"
+          // (Chats-History severity counter + composer block) until the user acts.
+          // For a comment run we keep only the notes that produced an awaiting-action
+          // agent reply (the questions — they carry a severity); plain instructions
+          // were actioned in chat and are dropped. A /review keeps all findings.
+          const keptNotes = Array.isArray(run?.notes)
+            ? run.notes
+                .filter((note) => run?.kind === 'review' || note?.severity)
+                .map((note) => ({ ...note, state: 'done' }))
             : run?.notes;
           return {
             ...prev,
-            [targetChatId]: { ...(run ?? {}), status: 'done', notes: finalizedNotes },
+            [targetChatId]: { ...(run ?? {}), status: 'done', notes: keptNotes },
           };
         });
       };
@@ -21262,6 +23215,17 @@ export default function App() {
     if (target.diffRequest) openPlanDiffTab(target.diffRequest);
   }, [ideTabs, openEditorTabByLabel, openPlanDiffTab]);
 
+  // Switch the left tool window to the Commit panel. MainWindow's active left
+  // window is uncontrolled (driven by stripe clicks), so we activate it the same
+  // way a user would — by clicking the "Commit" stripe item.
+  const openCommitToolWindow = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    setScreen('ide');
+    const stripe = Array.from(document.querySelectorAll('.main-window-stripe-left .stripe'))
+      .find((el) => (el.getAttribute('aria-label') || el.getAttribute('title')) === 'Commit');
+    if (stripe instanceof HTMLElement) stripe.click();
+  }, []);
+
   // Stream a short assistant message into a chat (used for agent actions like
   // applying a quick fix / resolving a review comment).
   const streamAssistantMessage = useCallback((chatId, fullText) => {
@@ -21293,16 +23257,27 @@ export default function App() {
     const text = typeof action.text === 'string' ? action.text.trim() : '';
     if (!text) return;
     let targetChatId = selectedAiChatId;
+    // Find whichever run (review OR comment) holds the note being resolved, so its
+    // "in review" note is pruned and the counter/composer clear once acted on.
     Object.entries(agentRunByChatId).forEach(([cid, run]) => {
-      if (run?.kind === 'review' && Array.isArray(run.notes) && run.notes.some((n) => (n?.text || '').trim() === text)) {
+      if (Array.isArray(run?.notes) && run.notes.some((n) => (n?.text || '').trim() === text)) {
         targetChatId = cid;
       }
     });
+    // Mark the note resolved (do NOT drop it) so the review keeps a record of
+    // what's been handled. The in-code note/session comment is marked+persisted by
+    // the overlay's own change handler.
+    const resolvedKind = action.kind === 'quickfix' ? 'applied' : 'manual';
     setAgentRunByChatId((prev) => {
       const run = prev[targetChatId];
       if (!run || !Array.isArray(run.notes)) return prev;
-      const notes = run.notes.filter((n) => (n?.text || '').trim() !== text);
-      return notes.length === run.notes.length ? prev : { ...prev, [targetChatId]: { ...run, notes } };
+      let changed = false;
+      const notes = run.notes.map((note) => {
+        if ((note?.text || '').trim() !== text || note?.resolved) return note;
+        changed = true;
+        return { ...note, resolved: true, resolvedKind };
+      });
+      return changed ? { ...prev, [targetChatId]: { ...run, notes } } : prev;
     });
     const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
     const response = action.kind === 'quickfix'
@@ -21311,6 +23286,7 @@ export default function App() {
     streamAssistantMessage(targetChatId, response);
   }, [agentRunByChatId, selectedAiChatId, streamAssistantMessage]);
   resolveReviewCommentRef.current = resolveReviewComment;
+  streamAssistantMessageRef.current = streamAssistantMessage;
 
   // Consume the "Send AI Note to Agent" request once the target chat tab is
   // active and its note attachment is ready in the composer, then auto-send it.
@@ -21334,7 +23310,10 @@ export default function App() {
         // Prefer the exact note that was submitted; if the text can't be matched
         // (e.g. a "do it" reply, whose text differs from the note), fall back to
         // just this row's note(s) — still only the single note, never the batch.
-        const match = rowComments.find((comment) => getStoredCommentText(comment).trim() === scope.text);
+        const match = rowComments.find((comment) => (
+          getStoredCommentText(comment).trim() === scope.text
+          || getLatestThreadUserText(comment).trim() === scope.text
+        ));
         const picked = match ? [match] : rowComments;
         noteAttachments = [{ ...attachment, diffComments: { [scope.rowId]: picked }, commentCount: picked.length }];
         break;
@@ -21828,7 +23807,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
@@ -22019,11 +23998,29 @@ export default function App() {
                   agentRun={agentRunByChatId[activeAiChatTabChatId] ?? null}
                   onStopMessage={handleAiChatTabStop}
                   onOpenReviewTarget={openCommentTarget}
+                  onOpenReviewDiff={openReviewDiffTab}
                 />
               </div>
             )
             : isAgentTaskTab
             ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+            : isReviewDiffTab
+            ? <ReviewDiffOverview
+                files={reviewDiffFiles}
+                chatTitle={activeTabContent?.reviewChatTitle || ''}
+                onOpenChat={activeTabContent?.reviewChatId ? () => openChatInEditorTab(activeTabContent.reviewChatId) : null}
+                onOpenFileTab={activateEditorTabById}
+                onFileCommentsChange={persistReviewFileComments}
+                onResolveFile={resolveAllReviewFileComments}
+                severityFilter={reviewSeverityFilter}
+                onSeverityFilterChange={setReviewSeverityFilter}
+                groupMode={reviewGroupMode}
+                onGroupModeChange={setReviewGroupMode}
+                view={reviewView}
+                onViewChange={setReviewView}
+                onCancel={() => cancelReview(activeTabContent?.reviewChatId)}
+                onComplete={() => completeReview(activeTabContent?.reviewChatId)}
+              />
             : ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
                 ? (
                   <PlanDiffEditorArea
@@ -22054,6 +24051,10 @@ export default function App() {
                     onReturnToChat={handlePlanDiffReturnToChat}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
+                    reviewNav={null}
+                    severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
+                    viewMode="unified"
+                    resolveKeepsComment={activeReviewFileIndex >= 0}
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
@@ -22069,7 +24070,6 @@ export default function App() {
                         onOpenProblems={() => toggleIdeBottomToolWindow('problems')}
                         warningCount={activePlainFileProblemSummary.warningCount}
                         errorCount={activePlainFileProblemSummary.errorCount}
-                        commentCount={activePlainFileCommentIssues.length}
                       />
                     ) : null}
                   />
@@ -22092,22 +24092,8 @@ export default function App() {
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return (
-            <CommitWindow
-              title="Commit"
-              width="100%"
-              height="100%"
-              files={MY_COMMIT_FILES}
-              toolbarButtons={DEFAULT_COMMIT_TOOLBAR_BUTTONS}
-              focused={ctx.focusedPanel === 'left'}
-              onFocus={() => ctx.setFocusedPanel('left')}
-              onActionClick={(action) => {
-                if (action === 'minimize') ctx.setShowLeftPanel(false);
-              }}
-              className="main-window-tool-window main-window-tool-window-left"
-            />
-          );
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
