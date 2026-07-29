@@ -236,6 +236,24 @@ const AIUX550_HISTORY_FALLBACK_ROWS = [
 // no Changes / Context / Sub-threads branch renders empty. File icons are derived
 // from each label's extension; sub-thread leaves render the sub-agent's icon.
 const AIUX550_HISTORY_ROW_CONTENT = {
+  'refactor-time-slots': {
+    changes: [
+      { label: 'VisitController.java', status: 'modified', diff: { added: 10, deleted: 7 } },
+      { label: 'createOrUpdateVisitForm.html', status: 'modified', diff: { added: 8, deleted: 3 } },
+      { label: 'schema.sql', status: 'modified', diff: { added: 4, deleted: 1 } },
+    ],
+    context: ['VisitController.java', 'Visit.java', 'VisitRepository.java'],
+    subThreads: [{ label: 'Slot lifecycle review', agent: 'claude' }],
+  },
+  'visit-model-attributes': {
+    changes: [
+      { label: 'Visit.java', status: 'modified', diff: { added: 6, deleted: 2 } },
+      { label: 'VisitRepository.java', status: 'modified', diff: { added: 5, deleted: 2 } },
+      { label: 'VisitControllerTests.java', status: 'added', diff: { added: 22, deleted: 0 } },
+    ],
+    context: ['Visit.java', 'VisitController.java', 'schema.sql'],
+    subThreads: [{ label: 'Model validation follow-up', agent: 'claude' }],
+  },
   'request-logging': {
     changes: [
       { label: 'index.html', status: 'modified' },
@@ -345,7 +363,10 @@ const AIUX550_HISTORY_ROW_CONTENT = {
 
 function buildAiux550HistoryChildren(rowId, diff) {
   const content = AIUX550_HISTORY_ROW_CONTENT[rowId] ?? {};
-  const changeItems = content.changes ?? [];
+  const fallbackChangeItems = diff
+    ? [{ label: `${rowId || 'changes'}.diff`, status: 'modified' }]
+    : [];
+  const changeItems = content.changes ?? fallbackChangeItems;
   const summary = diff ?? changeItems.reduce(
     (acc, item) => {
       if (item.status === 'deleted') acc.deleted += 1;
@@ -359,6 +380,28 @@ function buildAiux550HistoryChildren(rowId, diff) {
     { id: 'context', label: 'Context', items: content.context ?? [] },
     { id: 'sub-threads', label: 'Sub-threads', items: content.subThreads ?? [] },
   ];
+}
+
+function getHistoryChangeItemSummary(item, index = 0) {
+  if (!item || typeof item !== 'object') return { added: 1, deleted: 0 };
+  if (item.diff && Number.isFinite(item.diff.added) && Number.isFinite(item.diff.deleted)) {
+    return item.diff;
+  }
+  if (item.status === 'added') return { added: index + 1, deleted: 0 };
+  if (item.status === 'deleted') return { added: 0, deleted: index + 1 };
+  return { added: index + 2, deleted: index + 1 };
+}
+
+function HistoryChangeSummary({ summary }) {
+  if (!summary) return null;
+  const added = Number.isFinite(summary.added) ? summary.added : 0;
+  const deleted = Number.isFinite(summary.deleted) ? summary.deleted : 0;
+  return (
+    <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${added}, minus ${deleted}`}>
+      <span className="added">+{added}</span>
+      <span className="deleted">-{deleted}</span>
+    </span>
+  );
 }
 
 function withAiux550CollapsedChildren(row) {
@@ -1038,11 +1081,14 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
             </div>
             {isExpanded && !isAiNotes && section.items?.length ? (
               <div className="aiux543-chat-tree-children">
-                {section.items.map((item) => {
+                {section.items.map((item, index) => {
                   const isObject = typeof item === 'object' && item !== null;
                   const label = isObject ? item.label : item;
                   const status = isObject ? item.status : undefined;
                   const isSubThread = section.id === 'sub-threads';
+                  const changeSummary = section.id === 'changes'
+                    ? getHistoryChangeItemSummary(item, index)
+                    : null;
                   return (
                     <div className="aiux543-chat-tree-item" key={label}>
                       <button
@@ -1055,6 +1101,11 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                         ].filter(Boolean).join(' ')}
                         type="button"
                         style={{ '--tree-level': 1 }}
+                        onClick={() => {
+                          if (section.id === 'changes') {
+                            onOpenFile?.(item);
+                          }
+                        }}
                       >
                         <span className="aiux543-chat-tree-chevron-spacer" />
                         {isSubThread ? (
@@ -1062,7 +1113,8 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                         ) : (
                           <Aiux550TreeLeafIcon label={label} type={isObject ? item.type : undefined} />
                         )}
-                        <span>{label}</span>
+                        <span className="aiux543-chat-tree-leaf-label">{label}</span>
+                        {changeSummary ? <HistoryChangeSummary summary={changeSummary} /> : null}
                       </button>
                     </div>
                   );
@@ -1242,3 +1294,4 @@ function IconMdTask({ className = '' } = {}) {
 }
 
 export { ChatsHistoryToolWindow, AIUX_NEW_SESSION_TAB_ID, AiNotesSeverityIcon };
+export { AIUX550_HISTORY_ROW_CONTENT, getHistoryChangeItemSummary };

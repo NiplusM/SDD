@@ -9,6 +9,7 @@ import {
   normalizePlanDiffUiState,
   DiffInlineCommentPopup,
   PlanDiffCommentBadge,
+  PlanDiffNewReviewButton,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import { ChatsHistoryToolWindow, AiNotesSeverityIcon } from './ChatsHistory.jsx';
@@ -26,6 +27,7 @@ import {
   Popup,
   PopupCell,
   Tooltip,
+  TooltipHelp,
   Loader,
   Icon,
   IconButton,
@@ -523,8 +525,8 @@ class VisitControllerTests {
 // label for "by functionality") and `changeCount` (number of changes in the file).
 // Source of truth for the Commit tool window. Each file carries the render fields
 // ({id,label,path,icon,status}) plus: `category` (review-result bucket used by the
-// "by review result" grouping) and `severityCounts` (per-file finding counts that
-// drive the reused Chats-History severity counters).
+// "by review result" grouping) and `added`/`removed` (changed-line counters shown
+// on the row, like the VCS log's "+3 -26").
 // Labels match real editor tabs (MY_EDITOR_TABS) so clicking a row navigates to
 // the file.
 const COMMIT_CHANGE_FILES = [
@@ -535,7 +537,8 @@ const COMMIT_CHANGE_FILES = [
     icon: 'fileTypes/java',
     status: 'modified',
     category: 'Security',
-    severityCounts: { critical: 2, warning: 1, info: 0 },
+    added: 27,
+    removed: 9,
   },
   {
     id: 'diff-visit',
@@ -544,7 +547,8 @@ const COMMIT_CHANGE_FILES = [
     icon: 'fileTypes/java',
     status: 'modified',
     category: 'Correctness',
-    severityCounts: { critical: 0, warning: 0, info: 1 },
+    added: 6,
+    removed: 2,
   },
   {
     id: 'visit-form',
@@ -553,7 +557,8 @@ const COMMIT_CHANGE_FILES = [
     icon: 'fileTypes/html',
     status: 'modified',
     category: 'Performance',
-    severityCounts: { critical: 0, warning: 1, info: 1 },
+    added: 4,
+    removed: 1,
   },
   {
     id: 'schema-sql',
@@ -562,7 +567,8 @@ const COMMIT_CHANGE_FILES = [
     icon: 'fileTypes/text',
     status: 'modified',
     category: 'Reliability',
-    severityCounts: { critical: 0, warning: 2, info: 0 },
+    added: 12,
+    removed: 3,
   },
   {
     id: 'visit-controller-test',
@@ -571,7 +577,8 @@ const COMMIT_CHANGE_FILES = [
     icon: 'fileTypes/java',
     status: 'added',
     category: 'Testing',
-    severityCounts: { critical: 1, warning: 0, info: 3 },
+    added: 34,
+    removed: 0,
   },
 ];
 
@@ -583,57 +590,24 @@ function commitFilesPluralized(n, noun) {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
-function commitFileFindings(file) {
-  const c = file?.severityCounts ?? {};
-  return (c.critical ?? 0) + (c.warning ?? 0) + (c.info ?? 0);
-}
-
-// A file's primary severity = the most severe bucket that has findings.
-function commitFilePrimarySeverity(file) {
-  return COMMIT_SEVERITY_ORDER.find((sev) => (file?.severityCounts?.[sev] ?? 0) > 0) ?? null;
-}
-
-// Group summary shown next to the group label, e.g. "2 files · 4 findings".
-function commitGroupCount(files) {
-  const findings = files.reduce((sum, f) => sum + commitFileFindings(f), 0);
-  return `${commitFilesPluralized(files.length, 'file')} · ${commitFilesPluralized(findings, 'finding')}`;
+// Changed lines in a file — orders the rows inside a group.
+function commitFileChangedLines(file) {
+  return (file?.added ?? 0) + (file?.removed ?? 0);
 }
 
 // Build the grouped file tree for the active filter mode. Children are the full
-// file objects (so the custom rows can render the severity counters).
+// file objects (so the custom rows can render the changed-line counters).
 function buildCommitGroups(files = COMMIT_CHANGE_FILES, mode = 'directory') {
-  if (mode === 'severity') {
-    return COMMIT_SEVERITY_ORDER
-      .map((sev) => {
-        const bucket = files
-          .filter((f) => commitFilePrimarySeverity(f) === sev)
-          .sort((a, b) => commitFileFindings(b) - commitFileFindings(a));
-        if (bucket.length === 0) return null;
-        return {
-          id: `commit-sev-${sev}`,
-          label: COMMIT_SEVERITY_LABEL[sev],
-          count: commitGroupCount(bucket),
-          isExpanded: true,
-          children: bucket,
-        };
-      })
-      .filter(Boolean);
-  }
-
   if (mode === 'category') {
-    const severityRank = (file) => {
-      const idx = COMMIT_SEVERITY_ORDER.indexOf(commitFilePrimarySeverity(file));
-      return idx === -1 ? COMMIT_SEVERITY_ORDER.length : idx;
-    };
     const names = [...new Set(files.map((f) => f.category || 'Other'))].sort((a, b) => a.localeCompare(b));
     return names.map((name) => {
       const bucket = files
         .filter((f) => (f.category || 'Other') === name)
-        .sort((a, b) => severityRank(a) - severityRank(b) || commitFileFindings(b) - commitFileFindings(a));
+        .sort((a, b) => commitFileChangedLines(b) - commitFileChangedLines(a));
       return {
         id: `commit-cat-${name}`,
         label: name,
-        count: commitGroupCount(bucket),
+        count: commitFilesPluralized(bucket.length, 'file'),
         isExpanded: true,
         children: bucket,
       };
@@ -687,26 +661,35 @@ function CommitSeverityCounters({ counts }) {
   );
 }
 
-// The Commit tool window's group-by options (filter icon in the toolbar).
-const COMMIT_GROUP_MODES = [
-  { id: 'directory', label: 'By directory' },
-  { id: 'severity', label: 'By severity' },
-  { id: 'category', label: 'By review result' },
-];
+// Changed-line counters on a Commit row: "+27 -9", same add/remove colours the
+// chat change cards use.
+function CommitChangeCounters({ added = 0, removed = 0 }) {
+  if (!added && !removed) return null;
+  return (
+    <span className="commit-file-change-summary" aria-label={`${added} added, ${removed} removed`}>
+      <span className="ai-chat-diff-add">{`+${added}`}</span>
+      {' '}
+      <span className="ai-chat-diff-remove">{`-${removed}`}</span>
+    </span>
+  );
+}
 
 // Custom Commit tool window. Replaces the library CommitWindow so each file row can
-// show the reused Chats-History severity counters (the library rows have no badge
-// slot). Keeps the commit chrome: toolbar + group-by filter, a grouped/collapsible
-// file tree with checkboxes, and the bottom panel (amend + summary + Commit).
+// show the changed-line counters (the library rows have no badge slot). Keeps the
+// commit chrome: toolbar with the AI Review entry, a grouped/collapsible file tree
+// with checkboxes, and the bottom panel (amend + summary + Commit).
 function CommitToolWindow({ ctx, onOpenFile = null }) {
-  const [groupMode, setGroupMode] = useState('directory');
-  const [filterRect, setFilterRect] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
   const [amend, setAmend] = useState(false);
   const [message, setMessage] = useState('');
 
-  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, groupMode), [groupMode]);
+  // Grouping is fixed to the Changes / Unversioned split (the group-by filter is gone).
+  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, 'directory'), []);
+  // "Current file" scope in the AI Review popup follows the first checked file.
+  const reviewScopeFileLabel = useMemo(() => (
+    COMMIT_CHANGE_FILES.find((file) => checkedIds.has(file.id))?.label ?? COMMIT_CHANGE_FILES[0]?.label ?? ''
+  ), [checkedIds]);
 
   const toggleGroup = (id) => setCollapsedGroups((prev) => {
     const next = new Set(prev);
@@ -731,11 +714,6 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
       .join(', ');
   }, [checkedIds]);
 
-  const openFilter = (event) => {
-    const rect = event?.currentTarget?.getBoundingClientRect?.() ?? null;
-    setFilterRect((prev) => (prev ? null : rect));
-  };
-
   return (
     <ToolWindow
       title="Commit"
@@ -752,11 +730,20 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
           <IconButton icon="general/refresh" tooltip="Refresh" />
           <IconButton icon="vcs/revert" tooltip="Rollback" />
           <IconButton icon="vcs/patch" tooltip="Create Patch" />
-          <IconButton icon="aiAssistant/aiAssistantColored" tooltip="AI Self-Review" />
+          <span className="commit-toolbar-separator" aria-hidden="true" />
+          {/* Same AI Review entry point as the chat-generated diff's top bar. */}
+          <span className="commit-ai-review-entry">
+            <PlanDiffNewReviewButton
+              currentScopeLabel="Local changes"
+              currentFileLabel={reviewScopeFileLabel}
+              triggerClassName="commit-ai-review-trigger"
+              popupClassName="commit-ai-review-popup"
+            />
+          </span>
+          <span className="commit-toolbar-separator" aria-hidden="true" />
           <IconButton icon="general/show" tooltip="Show" />
           <IconButton icon="general/expandAll" tooltip="Expand All" onClick={() => setCollapsedGroups(new Set())} />
           <IconButton icon="general/collapseAll" tooltip="Collapse All" onClick={() => setCollapsedGroups(new Set(groups.map((g) => g.id)))} />
-          <IconButton icon="general/filter" tooltip="Group by…" onClick={openFilter} />
         </div>
 
         <div className="commit-tree">
@@ -805,7 +792,7 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
                       <Icon name={file.icon} size={16} className="commit-file-row-icon" />
                       <span className={`commit-file-name commit-status-${file.status}`}>{file.label}</span>
                     </button>
-                    <CommitSeverityCounters counts={file.severityCounts} />
+                    <CommitChangeCounters added={file.added} removed={file.removed} />
                   </div>
                 ))}
               </div>
@@ -842,22 +829,6 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
           </div>
         </div>
       </div>
-
-      {filterRect && (
-        <PositionedPopup triggerRect={filterRect} onDismiss={() => setFilterRect(null)} gap={4}>
-          <Popup visible className="commit-filter-popup" onClose={() => setFilterRect(null)}>
-            {COMMIT_GROUP_MODES.map((option) => (
-              <PopupCell
-                key={option.id}
-                selected={groupMode === option.id}
-                onClick={() => { setGroupMode(option.id); setFilterRect(null); }}
-              >
-                {option.label}
-              </PopupCell>
-            ))}
-          </Popup>
-        </PositionedPopup>
-      )}
     </ToolWindow>
   );
 }
@@ -6239,7 +6210,6 @@ function DoneCommentPopup({
       commentContextLabel={commentContextLabel}
       commentContextIcon={commentContextIcon}
       commentContextSessionLabel={commentContextSessionLabel}
-      footerMetaLabel=""
       value={value}
       editingIndex={editingIndex}
       showCompose={showCompose}
@@ -6247,6 +6217,7 @@ function DoneCommentPopup({
       submitAttachModes={['new']}
       submitButtonLabel="Attach AI Note"
       showSubmitTargetLabel={false}
+      footerMetaLabel={footerMetaLabel}
       onChange={onChange}
       onCancel={onCancel}
       onSubmit={onSubmit}
@@ -6856,7 +6827,8 @@ function findSectionCheckLineIndex(code, kind, index) {
   return -1;
 }
 
-function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel }) {
+function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
+  const normalizedFileCount = Number.isFinite(fileCount) ? fileCount : null;
   if (issueTarget?.kind === 'plan') {
     const codeDiffPreset = getPlanCodeDiffPreset(issueTarget);
     const codeDiff = buildCodeDiffRows(
@@ -6874,6 +6846,7 @@ function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTa
       status: statusItem.status,
       lineText: text,
       language: codeDiffPreset.language,
+      fileCount: normalizedFileCount,
     };
   }
 
@@ -6947,6 +6920,7 @@ function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTa
     status: statusItem.status,
     lineText: text,
     language: 'text',
+    fileCount: normalizedFileCount,
   };
 }
 
@@ -6982,8 +6956,8 @@ function orderDiffRowsForDisplay(rows = []) {
   return orderedRows;
 }
 
-function buildPlanDiffTabContent({ sourceCode, text, statusItem, issueTarget, sourceTabLabel }) {
-  const diffData = buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel });
+function buildPlanDiffTabContent({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
+  const diffData = buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount });
 
   if (diffData.rows.length > 0) {
     return orderDiffRowsForDisplay(diffData.rows).map((row) => {
@@ -8177,7 +8151,7 @@ function SpecSelectionToolbar({ position, onAction }) {
             aria-label={item.label}
             title={item.label}
             onMouseDown={preventSelectionReset}
-            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect())}
+            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), position)}
           >
             {item.iconName ? (
               <Icon name={item.iconName} size={16} />
@@ -8735,14 +8709,17 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return rowMetaByKey.get(rowKey) ?? null;
   }, [rowMetaByKey]);
 
-  const handleSelectionToolbarAction = useCallback((actionId, triggerRect) => {
+  const handleSelectionToolbarAction = useCallback((actionId, triggerRect, toolbarState = null) => {
     if (!triggerRect) return;
 
-    const rowMeta = getSelectionToolbarRowMeta();
+    const rowMeta = toolbarState?.rowKey
+      ? (rowMetaByKey.get(toolbarState.rowKey) ?? null)
+      : getSelectionToolbarRowMeta();
     if (!rowMeta) return;
 
     if (actionId === 'comment') {
       const selectionSnapshot = captureActiveEditorSelectionSnapshot();
+      const footerMetaLabel = getDoneCommentFooterMetaLabel(rowMeta, selectionSnapshot);
       setIntentionPopup(null);
       setSelectionToolbarPos(null);
       setCommentPopup((prev) => (
@@ -8755,7 +8732,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               rect: triggerRect,
               value: '',
               editingIndex: null,
-              footerMetaLabel: '',
+              preserveEditorSelection: Boolean(selectionSnapshot),
+              selectionSnapshot,
+              footerMetaLabel,
             }
       ));
       return;
@@ -8779,7 +8758,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
       ));
     }
-  }, [getSelectionToolbarRowMeta]);
+  }, [getDoneCommentFooterMetaLabel, getSelectionToolbarRowMeta, rowMetaByKey]);
 
   const getShortcutCommentRowMeta = useCallback(() => {
     const selectionRowMeta = getSelectionToolbarRowMeta();
@@ -8812,6 +8791,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       if (!rect) return;
 
       const selectionSnapshot = captureActiveEditorSelectionSnapshot();
+      const footerMetaLabel = getDoneCommentFooterMetaLabel(rowMeta, selectionSnapshot);
       event.preventDefault();
       event.stopPropagation();
       setIntentionPopup(null);
@@ -8828,14 +8808,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               editingIndex: null,
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
-              footerMetaLabel: '',
+              footerMetaLabel,
             }
       ));
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [getShortcutCommentRowMeta]);
+  }, [getDoneCommentFooterMetaLabel, getShortcutCommentRowMeta]);
 
   const closeCommentPopup = useCallback((rowIndex = null) => {
     setCommentPopup(null);
@@ -9319,7 +9299,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         return;
       }
 
-      setSelectionToolbarPos(getSelectionToolbarPosition(rect));
+      setSelectionToolbarPos({
+        ...getSelectionToolbarPosition(rect),
+        rowKey: activeRowKey,
+      });
     };
     const scheduleSelectionUiUpdate = () => {
       window.cancelAnimationFrame(frameId);
@@ -11374,6 +11357,7 @@ function buildInitialEditorTabContents() {
     statusItem: { status: 'passed' },
     issueTarget: diffTarget,
     sourceTabLabel,
+    fileCount: 3,
   });
   const diffCode = buildPlanDiffTabContent({
     sourceCode,
@@ -11381,6 +11365,7 @@ function buildInitialEditorTabContents() {
     statusItem: { status: 'passed' },
     issueTarget: diffTarget,
     sourceTabLabel,
+    fileCount: 3,
   });
   const baseContents = {
     ...MY_EDITOR_TAB_CONTENTS,
@@ -11897,9 +11882,38 @@ function snapshotAiChatMessageAttachment(attachment = null) {
   };
 }
 
+// Row the editor should scroll to when an attachment is opened: the topmost
+// commented row, so a file/diff with several notes lands on the first one.
+function getAttachmentScrollRowId(diffComments = null) {
+  const rowIds = Object.keys(normalizeStoredDiffCommentsState(diffComments));
+  if (rowIds.length === 0) return null;
+
+  const lineNumberOf = (rowId) => {
+    const match = /(\d+)\s*$/u.exec(rowId);
+    return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+  };
+
+  return rowIds.reduce((topmost, rowId) => (
+    lineNumberOf(rowId) < lineNumberOf(topmost) ? rowId : topmost
+  ), rowIds[0]);
+}
+
 function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   if (!attachment || typeof attachment !== 'object') {
     return [];
+  }
+
+  if (attachment.isChatAnnotation && Array.isArray(attachment.annotations)) {
+    return attachment.annotations
+      .filter((annotation) => typeof annotation?.comment === 'string' && annotation.comment.trim().length > 0)
+      .map((annotation, index) => ({
+        text: annotation.comment.trim(),
+        sourceLabel: 'Annotations',
+        lineLabel: typeof annotation.lineLabel === 'string' && annotation.lineLabel.trim().length > 0
+          ? annotation.lineLabel.trim()
+          : `Annotation ${index + 1}`,
+        selectedText: annotation.selectedText ?? '',
+      }));
   }
 
   const seenComments = new Set();
@@ -11973,41 +11987,90 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
 }
 
 // Hover-card content for an attachment's comments. Uses the design system's
-// Popup as the card surface (chrome/elevation) so the preview matches library
-// styling; the multi-line note + agent reply are laid out inside it (PopupCell
-// would truncate the text to a single menu row, so it isn't used here).
-function AttachmentCommentHoverCard({ items = [] }) {
+// TooltipHelp — the library's hover-card component (header + rich body, tooltip
+// chrome/elevation from library tokens). PopupCell isn't usable here: it renders
+// a single-line menu row and would truncate the note text.
+function AttachmentCommentHoverCard({
+  items = [],
+  contextLabel = '',
+  itemLabel = 'AI Note',
+  itemLabelPlural = 'AI Notes',
+}) {
   const visible = items.slice(0, 3);
   const hidden = Math.max(0, items.length - visible.length);
   if (visible.length === 0) return null;
+  const isAnnotationsContext = typeof contextLabel === 'string' && contextLabel.trim() === 'Annotations';
+  const resolvedItemLabel = isAnnotationsContext ? 'Annotation' : itemLabel;
+  const resolvedItemLabelPlural = isAnnotationsContext ? 'Annotations' : itemLabelPlural;
+  const normalize = (label) => (typeof label === 'string' ? label.trim().toLowerCase() : '');
+  // The chip already names the file, so its own label is dropped from the note's
+  // meta; a label is kept only when the note comes from some other source.
+  const foreignSourceLabel = (item) => (
+    item.sourceLabel && normalize(item.sourceLabel) !== normalize(contextLabel) ? item.sourceLabel : null
+  );
+  // Every message — the note and the agent's answer alike — is author line + text,
+  // in that order, so the card reads as one thread rather than two shapes.
+  const renderMessage = (author, text, key) => (
+    <div className="ai-chat-attachment-hover-message" key={key}>
+      <div className="ai-chat-attachment-hover-meta">{author}</div>
+      <div className="ai-chat-attachment-hover-text">{text}</div>
+    </div>
+  );
+
+  if (isAnnotationsContext) {
+    return (
+      <TooltipHelp
+        className="ai-chat-attachment-hover-tooltip ai-chat-annotations-hover-tooltip"
+        header={null}
+        body={(
+          <div className="ai-chat-annotations-hover-list">
+            {visible.map((item, index) => {
+              const annotationLabel = typeof item.lineLabel === 'string' && item.lineLabel.trim().length > 0
+                ? item.lineLabel.trim().replace('#', '')
+                : `Annotation ${index + 1}`;
+
+              return (
+                <div className="ai-chat-attachment-hover-note" key={`annotation-hover-${index}`}>
+                  <div className="ai-chat-attachment-hover-message">
+                    <div className="ai-chat-attachment-hover-meta">{annotationLabel}</div>
+                    <div className="ai-chat-attachment-hover-text">{item.text}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {hidden > 0 && (
+              <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
+            )}
+          </div>
+        )}
+      />
+    );
+  }
+
   return (
-    <Popup visible className="ai-chat-attachment-hover-popup">
-      <div className="ai-chat-attachment-hover-title">
-        {items.length === 1 ? 'AI Note' : `AI Notes · ${items.length}`}
-      </div>
-      {visible.map((item, index) => (
-        <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
-          {(item.sourceLabel || item.lineLabel) && (
-            <div className="ai-chat-attachment-hover-meta">
-              {[item.sourceLabel, item.lineLabel].filter(Boolean).join(' · ')}
+    <TooltipHelp
+      className="ai-chat-attachment-hover-tooltip"
+      header={items.length === 1 ? resolvedItemLabel : `${resolvedItemLabelPlural} · ${items.length}`}
+      body={(
+        <>
+          {visible.map((item, index) => (
+            <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
+              {renderMessage(
+                ['You', foreignSourceLabel(item), item.lineLabel].filter(Boolean).join(' · '),
+                item.text,
+                `hover-note-${index}-user`,
+              )}
+              {item.agentReply
+                ? renderMessage('Claude Agent', item.agentReply, `hover-note-${index}-agent`)
+                : null}
             </div>
+          ))}
+          {hidden > 0 && (
+            <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
           )}
-          <div className="ai-chat-attachment-hover-text">{item.text}</div>
-          {item.agentReply && (
-            <div className="ai-chat-attachment-hover-reply">
-              <span className="ai-chat-attachment-hover-reply-head">
-                <AiChatClaudeIcon />
-                <span>Claude Agent</span>
-              </span>
-              <div className="ai-chat-attachment-hover-reply-text">{item.agentReply}</div>
-            </div>
-          )}
-        </div>
-      ))}
-      {hidden > 0 && (
-        <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
+        </>
       )}
-    </Popup>
+    />
   );
 }
 
@@ -12278,7 +12341,7 @@ function ChatToolWindow({
       const scrollElement = chatScrollRef.current;
       const searchRoot = scrollElement?.closest('.ai-chat-surface') ?? scrollElement;
       const targetElement = searchRoot
-        ? Array.from(searchRoot.querySelectorAll('.ai-chat-user-card[data-ai-chat-message-id]')).find(
+        ? Array.from(searchRoot.querySelectorAll('.ai-chat-user-card[data-ai-chat-message-id], [data-ai-chat-annotatable="true"][data-ai-chat-message-id]')).find(
             (node) => node instanceof HTMLElement && node.dataset.aiChatMessageId === targetMessageId,
           )
         : null;
@@ -12647,11 +12710,18 @@ function ChatToolWindow({
 	            </div>
 	          )}
 
-	          {!isEmptyChatState && selectedChat.changeCard && (
-	            <ChatChangeCard icon="java" name={selectedChat.changeCard.name} added={selectedChat.changeCard.added} removed={selectedChat.changeCard.removed} onClick={onOpenDiffTab && selectedChat.diffRequest ? () => onOpenDiffTab(selectedChat.diffRequest) : null}>
-	              <SyntaxCode code={selectedChat.changeCard.code} />
+	          {!isEmptyChatState && getChatChangeCards(selectedChat).map((card) => (
+	            <ChatChangeCard
+	              key={card.id ?? card.name}
+	              icon={card.icon ?? 'java'}
+	              name={card.name}
+	              added={card.added}
+	              removed={card.removed}
+	              onClick={onOpenDiffTab && card.diffRequest ? () => onOpenDiffTab(card.diffRequest) : null}
+	            >
+	              <SyntaxCode code={card.code} />
 	            </ChatChangeCard>
-	          )}
+	          ))}
 
 	          {!isEmptyChatState && (
 	            <section className="ai-chat-result">
@@ -12822,7 +12892,7 @@ function ChatToolWindow({
                   )}
                   {commentPreviewItems.length > 0 && !isSourceListOpen && (
                     <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                      <AttachmentCommentHoverCard items={commentPreviewItems} />
+                      <AttachmentCommentHoverCard items={commentPreviewItems} contextLabel={attachment.label} />
                     </span>
                   )}
                   <button
@@ -13081,6 +13151,14 @@ function getAiChatContextToggleTooltipPosition(rect) {
 }
 
 function AiChatAttachmentIcon({ icon = 'vcs/diff' }) {
+  if (icon === 'claude' || icon === 'junie' || icon === 'codex') {
+    return (
+      <span className="ai-chat-attachment-icon">
+        <AiChatAgentIcon icon={icon} />
+      </span>
+    );
+  }
+
   return <Icon name={icon} size={16} className="icon ai-chat-attachment-icon" />;
 }
 
@@ -13103,7 +13181,94 @@ const AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST = {
   statusItem: { status: 'passed' },
   issueTarget: { kind: 'plan', index: 3 },
   source: { tabId: '1', label: 'VisitController.java' },
+  fileCount: 3,
 };
+
+// The generated change is shown as one card per touched file, each opening its own diff.
+const AI_CHAT_GENERATED_DIFF_CARDS = [
+  {
+    id: 'generated-diff-visit-controller',
+    name: 'VisitController.java',
+    icon: 'fileTypes/java',
+    added: '+12',
+    removed: '-7',
+    code: `private final List<LocalTime> timeSlots;
+
+public VisitController(...) {
+    this.timeSlots = IntStream.rangeClosed(9, 16)
+        .mapToObj(hour -> LocalTime.of(hour, 0))
+        .toList();
+}
+
+@ModelAttribute("timeSlots")
+public List<LocalTime> populateTimeSlots() {
+    return this.timeSlots;
+}`,
+    diffRequest: AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST,
+  },
+  {
+    id: 'generated-diff-visit-repository',
+    name: 'VisitRepository.java',
+    icon: 'fileTypes/java',
+    added: '+2',
+    removed: '-0',
+    code: `public interface VisitRepository extends CrudRepository<Visit, Integer> {
+
+    boolean existsByVetIdAndDateAndTime(Integer vetId, LocalDate date, LocalTime time);
+}`,
+    diffRequest: {
+      text: 'VisitRepository — add existsByVetIdAndDateAndTime for double-booking check',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 2 },
+      source: { tabId: 'visit-repository', label: 'VisitRepository.java' },
+    },
+  },
+  {
+    id: 'generated-diff-visit-controller-tests',
+    name: 'VisitControllerTests.java',
+    icon: 'fileTypes/java',
+    added: '+13',
+    removed: '-2',
+    code: `@Test
+void rejectsDoubleBookingForSameVetAndTime() throws Exception {
+    when(visitRepository.existsByVetIdAndDateAndTime(3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
+        .thenReturn(true);
+
+    mockMvc.perform(post("/owners/1/pets/1/visits/new")
+            .param("date", "2026-04-15")
+            .param("time", "10:00")
+            .param("vet", "3"))
+        .andExpect(model().attributeHasFieldErrors("visit", "time"));
+}`,
+    diffRequest: {
+      text: 'VisitControllerTests — cover double-booking rejection',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 6 },
+      source: { tabId: '5', label: 'VisitControllerTests.java' },
+    },
+  },
+];
+
+// A multi-file change is summarized as one "Changed Files" card (file + counters
+// per row); a single-file change keeps its code-preview card.
+function hasChatChangedFilesList(scenario) {
+  return Array.isArray(scenario?.changeCards) && scenario.changeCards.length > 0;
+}
+
+// Normalizes both shapes: a per-file card list and the legacy single changeCard.
+function getChatChangeCards(scenario) {
+  if (hasChatChangedFilesList(scenario)) {
+    return scenario.changeCards;
+  }
+
+  if (!scenario?.changeCard) return [];
+
+  return [{
+    id: 'change-card',
+    ...scenario.changeCard,
+    diffRequest: scenario.changeCard.diffRequest ?? scenario.diffRequest ?? null,
+  }];
+}
 
 const AI_CHAT_VISIT_DIFF_REQUEST = {
   text: 'Visit.java — add visit time and required vet relationship',
@@ -13220,23 +13385,8 @@ const AI_CHAT_SCENARIOS = {
       'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
       'This removes the repeated ArrayList construction from populateTimeSlots(), keeps the 9:00-16:00 range in one place, and preserves the existing @ModelAttribute("timeSlots") contract for the view.',
     ],
-    changeCard: {
-      name: 'VisitController.java',
-      added: '+10',
-      removed: '-7',
-      code: `private final List<LocalTime> timeSlots;
-
-public VisitController(...) {
-    this.timeSlots = IntStream.rangeClosed(9, 16)
-        .mapToObj(hour -> LocalTime.of(hour, 0))
-        .toList();
-}
-
-@ModelAttribute("timeSlots")
-public List<LocalTime> populateTimeSlots() {
-    return this.timeSlots;
-}`,
-    },
+    changeCard: null,
+    changeCards: AI_CHAT_GENERATED_DIFF_CARDS,
     result: [
       'VisitController.java now prepares the hourly visit slots once in the controller constructor and reuses that list when Spring populates the timeSlots model attribute.',
       'No template changes were required.',
@@ -13602,7 +13752,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                     )}
                     {commentPreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                        <AttachmentCommentHoverCard items={commentPreviewItems} />
+                        <AttachmentCommentHoverCard items={commentPreviewItems} contextLabel={attachment.label} />
                       </span>
                     ) : sourcePreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-preview" role="tooltip">
@@ -13655,6 +13805,44 @@ function ChatAssistantMessage({ children, streaming = false }) {
         {streaming && <span className="ai-chat-streaming-caret" aria-hidden="true" />}
       </p>
     </div>
+  );
+}
+
+function ChatSelectionCommentPopover({
+  request = null,
+  value = '',
+  commentNumber = 1,
+  onChange = null,
+  onCancel = null,
+  onSubmit = null,
+}) {
+  if (!request?.triggerRect || typeof document === 'undefined') return null;
+  const isEditing = Boolean(request.annotationId);
+
+  return createPortal(
+    <div className="theme-dark">
+      <PositionedPopup triggerRect={request.triggerRect} onDismiss={onCancel} gap={6}>
+        <div className="chat-selection-comment-popover">
+          <DiffInlineCommentPopup
+            comments={[]}
+            value={value}
+            editingIndex={null}
+            showCompose
+            defaultSubmitAttachMode="current"
+            submitAttachModes={['current']}
+            submitButtonLabel={isEditing ? 'Save Annotation' : 'Add Annotation'}
+            showSubmitTargetLabel={false}
+            showSubmitActionMenu={false}
+            inputPlaceholder="Write an annotation"
+            footerMetaLabel={isEditing && request.lineLabel ? request.lineLabel : `Annotation ${commentNumber}`}
+            onChange={onChange}
+            onCancel={onCancel}
+            onSubmit={onSubmit}
+          />
+        </div>
+      </PositionedPopup>
+    </div>,
+    document.body,
   );
 }
 
@@ -15118,6 +15306,7 @@ function AiChatTabView({
   sentMessages = [],
   onSendMessage = null,
   onOpenDiffTab = null,
+  onOpenAttachment = null,
   composerDiffAttachments = [],
   onRemoveComposerAttachment = null,
   fallbackTitle = 'AI Chat',
@@ -15135,6 +15324,9 @@ function AiChatTabView({
   onStopMessage = null,
   onOpenReviewTarget = null,
   onOpenReviewDiff = null,
+  chatAnnotations = [],
+  scrollTarget = null,
+  onEditAnnotation = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
@@ -15165,6 +15357,13 @@ function AiChatTabView({
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
+  const renderAnnotatedParagraph = useCallback((text, blockId, paragraphMessageId = messageId) => (
+    renderAiChatAnnotatedText(
+      text,
+      getAiChatBlockAnnotations(chatAnnotations, paragraphMessageId, blockId),
+      onEditAnnotation,
+    )
+  ), [chatAnnotations, messageId, onEditAnnotation]);
   const focusComposerAtEnd = useCallback(() => {
     const focus = () => {
       const textarea = composerRef.current;
@@ -15188,6 +15387,38 @@ function AiChatTabView({
     // only jump to the latest once the user has sent a message.
     scrollElement.scrollTop = sentMessages.length > 0 ? scrollElement.scrollHeight : 0;
   }, [chatId, sentMessages.length]);
+
+  useEffect(() => {
+    const targetMessageId = scrollTarget?.chatId === chatId ? scrollTarget.messageId : null;
+    if (!targetMessageId) return undefined;
+
+    let frameId = 0;
+    let timeoutId = 0;
+    const scrollToTarget = (attempt = 0) => {
+      const scrollElement = scrollRef.current;
+      if (!scrollElement) return;
+
+      const targetElement = Array.from(scrollElement.querySelectorAll('.aiux543-user-message[data-ai-chat-message-id], [data-ai-chat-annotatable="true"][data-ai-chat-message-id]')).find(
+        (node) => node instanceof HTMLElement && node.dataset.aiChatMessageId === targetMessageId,
+      );
+
+      if (targetElement instanceof HTMLElement) {
+        targetElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return;
+      }
+
+      if (attempt < 10) {
+        timeoutId = window.setTimeout(() => scrollToTarget(attempt + 1), 50);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(() => scrollToTarget());
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [chatId, scrollTarget?.chatId, scrollTarget?.messageId, scrollTarget?.nonce]);
 
   const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
@@ -15214,7 +15445,14 @@ function AiChatTabView({
               <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
                 <h3>Claude Agent</h3>
                 {(Array.isArray(turn?.paragraphs) ? turn.paragraphs : [turn?.text].filter(Boolean)).map((paragraph, paragraphIndex) => (
-                  <p key={`turn-${index}-paragraph-${paragraphIndex}`}>{paragraph}</p>
+                  <p
+                    key={`turn-${index}-paragraph-${paragraphIndex}`}
+                    data-ai-chat-annotatable="true"
+                    data-ai-chat-message-id={`${messageId}-turn-${index}`}
+                    data-ai-chat-block-id={`turn-${index}-paragraph-${paragraphIndex}`}
+                  >
+                    {renderAnnotatedParagraph(paragraph, `turn-${index}-paragraph-${paragraphIndex}`, `${messageId}-turn-${index}`)}
+                  </p>
                 ))}
               </article>
             )
@@ -15233,15 +15471,19 @@ function AiChatTabView({
             {Array.isArray(scenario?.attachments) && scenario.attachments.length > 0 && (
               <div className="aiux543-user-attachments">
                 {scenario.attachments.map((attachment) => {
-                  const openDiff = attachment.diffRequest && onOpenDiffTab
-                    ? () => onOpenDiffTab(attachment.diffRequest)
-                    : (scenario.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(scenario.diffRequest) : null);
+                  const openAttachment = onOpenAttachment && (attachment.diffRequest || attachment.isPlainFile || attachment.isSddDocument)
+                    ? () => onOpenAttachment(attachment, { messageId, chatId, archived: true })
+                    : (attachment.diffRequest && onOpenDiffTab
+                        ? () => onOpenDiffTab(attachment.diffRequest)
+                        : (scenario.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(scenario.diffRequest) : null));
+                  const previewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+
                   return (
                     <button
                       key={attachment.id ?? attachment.label}
                       type="button"
                       className="ai-chat-attachment-chip aiux543-user-attachment-chip"
-                      onClick={openDiff ?? undefined}
+                      onClick={openAttachment ?? undefined}
                     >
                       <AiChatAttachmentIcon icon={attachment.icon} />
                       <span className="ai-chat-attachment-name">{attachment.label}</span>
@@ -15249,6 +15491,11 @@ function AiChatTabView({
                         <span className="ai-chat-attachment-comment-count">
                           <Icon name="general/balloon" size={16} />
                           {attachment.commentCount}
+                        </span>
+                      )}
+                      {previewItems.length > 0 && (
+                        <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
+                          <AttachmentCommentHoverCard items={previewItems} contextLabel={attachment.label} />
                         </span>
                       )}
                     </button>
@@ -15261,41 +15508,65 @@ function AiChatTabView({
               <article className="aiux543-answer">
                 <h3>What changed</h3>
                 {scenario.assistantParagraphs.map((paragraph, idx) => (
-                  <p key={`assistant-${idx}`}>{paragraph}</p>
+                  <p
+                    key={`assistant-${idx}`}
+                    data-ai-chat-annotatable="true"
+                    data-ai-chat-message-id={messageId}
+                    data-ai-chat-block-id={`assistant-${idx}`}
+                  >
+                    {renderAnnotatedParagraph(paragraph, `assistant-${idx}`)}
+                  </p>
                 ))}
               </article>
             )}
           </>
         )}
 
-        {scenario?.changeCard && (
-          <section
-            className={`aiux543-code-card${scenario.diffRequest && onOpenDiffTab ? ' aiux543-code-card-clickable' : ''}`}
-            role={scenario.diffRequest && onOpenDiffTab ? 'button' : undefined}
-            tabIndex={scenario.diffRequest && onOpenDiffTab ? 0 : undefined}
-            onClick={scenario.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(scenario.diffRequest) : undefined}
-            onKeyDown={scenario.diffRequest && onOpenDiffTab ? (event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              onOpenDiffTab(scenario.diffRequest);
-            } : undefined}
-          >
-            <header>
-              <Icon className="aiux543-file-icon" name="fileTypes/java" size={16} />
-              <strong>{scenario.changeCard.name}</strong>
-              <span className="aiux543-diff-inline">{scenario.changeCard.added}</span>
-              <span className="aiux543-diff-inline aiux543-diff-inline-removed">{scenario.changeCard.removed}</span>
-              <em>Edited</em>
-            </header>
-            <SyntaxCode code={scenario.changeCard.code} />
-          </section>
-        )}
+        {hasChatChangedFilesList(scenario) ? (
+          <ChatChangedFilesCard
+            files={getChatChangeCards(scenario)}
+            onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+          />
+        ) : getChatChangeCards(scenario).map((card) => {
+          const openDiff = card.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(card.diffRequest) : null;
+
+          return (
+            <section
+              key={card.id ?? card.name}
+              className={`aiux543-code-card${openDiff ? ' aiux543-code-card-clickable' : ''}`}
+              role={openDiff ? 'button' : undefined}
+              tabIndex={openDiff ? 0 : undefined}
+              onClick={openDiff ?? undefined}
+              onKeyDown={openDiff ? (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                openDiff();
+              } : undefined}
+            >
+              <header>
+                <Icon className="aiux543-file-icon" name={card.icon ?? 'fileTypes/java'} size={16} />
+                <strong>{card.name}</strong>
+                <span className="aiux543-diff-inline">{card.added}</span>
+                <span className="aiux543-diff-inline aiux543-diff-inline-removed">{card.removed}</span>
+                <em>Edited</em>
+              </header>
+              <SyntaxCode code={card.code} />
+            </section>
+          );
+        })}
 
         {Array.isArray(scenario?.result) && scenario.result.length > 0 && (
           <article className="aiux543-answer">
             <h3>Result</h3>
             {scenario.result.map((paragraph, idx) => (
-              <p key={`result-${idx}`}>{paragraph}</p>
+              <p
+                key={`result-${idx}`}
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={messageId}
+                data-ai-chat-block-id={`result-${idx}`}
+              >
+                {renderAnnotatedParagraph(paragraph, `result-${idx}`)}
+              </p>
             ))}
           </article>
         )}
@@ -15313,8 +15584,12 @@ function AiChatTabView({
           message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>Claude Agent</h3>
-              <p>
-                {message.text}
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
                 {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
               </p>
             </article>
@@ -15323,9 +15598,13 @@ function AiChatTabView({
               key={message.id}
               messageId={message.id}
               attachments={message.attachments}
-              onAttachmentOpen={onOpenDiffTab ? (attachment) => {
-                if (attachment?.diffRequest) onOpenDiffTab(attachment.diffRequest);
-              } : null}
+              onAttachmentOpen={(attachment) => {
+                if (onOpenAttachment) {
+                  onOpenAttachment(attachment, { messageId: message.id, chatId, archived: true });
+                  return;
+                }
+                if (attachment?.diffRequest) onOpenDiffTab?.(attachment.diffRequest);
+              }}
             >
               {message.text}
             </ChatUserCard>
@@ -15374,9 +15653,13 @@ function AiChatTabView({
                 <span
                   key={attachment.id}
                   className="ai-chat-attachment-chip aiux543-composer-attachment-chip"
-                  role={onOpenDiffTab && attachment.diffRequest ? 'button' : undefined}
-                  tabIndex={onOpenDiffTab && attachment.diffRequest ? 0 : undefined}
-                  onClick={onOpenDiffTab && attachment.diffRequest ? () => onOpenDiffTab(attachment.diffRequest) : undefined}
+                  role={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 'button' : undefined}
+                  tabIndex={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 0 : undefined}
+                  onClick={onOpenAttachment
+                    // Live (not archived): the chip is still being worked with, so its
+                    // comments stay editable in the file/diff it opens.
+                    ? () => onOpenAttachment(attachment, { messageId, chatId, archived: false })
+                    : (onOpenDiffTab && attachment.diffRequest ? () => onOpenDiffTab(attachment.diffRequest) : undefined)}
                 >
                   <AiChatAttachmentIcon icon={attachment.icon} />
                   <span className="ai-chat-attachment-name">{attachment.label}</span>
@@ -15394,7 +15677,7 @@ function AiChatTabView({
                     if (previewItems.length === 0) return null;
                     return (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                        <AttachmentCommentHoverCard items={previewItems} />
+                        <AttachmentCommentHoverCard items={previewItems} contextLabel={attachment.label} />
                       </span>
                     );
                   })()}
@@ -15935,7 +16218,11 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
   return (
     <section className="ai-chat-change-card">
       <header className="ai-chat-change-header" role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onClick={onClick ?? undefined} onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}>
-        <Icon name={icon === 'yaml' ? 'fileTypes/yaml' : 'fileTypes/java'} size={16} className="ai-chat-file-icon" />
+        <Icon
+          name={typeof icon === 'string' && icon.includes('/') ? icon : (icon === 'yaml' ? 'fileTypes/yaml' : 'fileTypes/java')}
+          size={16}
+          className="ai-chat-file-icon"
+        />
         <span className="ai-chat-change-name">{name}</span>
         <span className="ai-chat-diff-add">{added}</span>
         <span className="ai-chat-diff-remove">{removed}</span>
@@ -15945,6 +16232,197 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
       <div className="ai-chat-code-preview">{children}</div>
     </section>
   );
+}
+
+// Summary card for a multi-file change: run status + rollback on top, then the
+// changed files with their line counters. Each row opens that file's diff.
+function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null }) {
+  if (files.length === 0) return null;
+
+  return (
+    <section className="ai-chat-changed-files-card">
+      <header className="ai-chat-changed-files-header">
+        <span className="ai-chat-changed-files-status">
+          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
+            <Icon name="general/checkmark" size={16} />
+          </span>
+          <span>Done</span>
+        </span>
+        <button
+          type="button"
+          className="ai-chat-changed-files-rollback"
+          onClick={onRollback ?? undefined}
+        >
+          Rollback
+        </button>
+      </header>
+      <div className="ai-chat-changed-files-title">Changed Files</div>
+      <div className="ai-chat-changed-files-list">
+        {files.map((file) => {
+          const openFile = onOpenFile && file.diffRequest ? () => onOpenFile(file) : null;
+
+          return (
+            <button
+              key={file.id ?? file.name}
+              type="button"
+              className="ai-chat-changed-files-row"
+              onClick={openFile ?? undefined}
+              disabled={!openFile}
+            >
+              <span className="ai-chat-changed-files-name">{file.name}</span>
+              <span className="ai-chat-changed-files-counters">
+                <span className="ai-chat-changed-files-add">{file.added}</span>
+                <span className="ai-chat-changed-files-remove">{file.removed}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function getAiChatBlockAnnotations(annotations = [], messageId = '', blockId = '') {
+  return (Array.isArray(annotations) ? annotations : []).filter((annotation) => (
+    annotation?.messageId === messageId
+    && annotation?.blockId === blockId
+    && typeof annotation?.selectedText === 'string'
+    && annotation.selectedText.trim().length > 0
+  ));
+}
+
+function ChatAnnotationInlineHint({ annotation }) {
+  const comment = typeof annotation?.comment === 'string' ? annotation.comment.trim() : '';
+  if (!comment) return null;
+
+  const label = typeof annotation?.lineLabel === 'string' && annotation.lineLabel.trim().length > 0
+    ? annotation.lineLabel.trim().replace('#', '')
+    : 'Annotation';
+
+  return (
+    <span className="ai-chat-annotation-inline-hint" role="tooltip">
+      <TooltipHelp
+        className="ai-chat-annotation-tooltip"
+        header={null}
+        body={(
+          <span className="ai-chat-annotation-tooltip-content">
+            <span className="ai-chat-annotation-tooltip-label">{label}</span>
+            <span className="ai-chat-annotation-tooltip-body">{comment}</span>
+          </span>
+        )}
+      />
+    </span>
+  );
+}
+
+function getAiChatAnnotatableTextOffset(root, boundaryNode, boundaryOffset) {
+  if (!(root instanceof HTMLElement) || !boundaryNode) return null;
+
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (parent?.closest('.ai-chat-annotation-inline-hint')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    },
+  );
+
+  let offset = 0;
+  let current = walker.nextNode();
+
+  while (current) {
+    if (current === boundaryNode) {
+      return offset + Math.max(0, Math.min(boundaryOffset, current.textContent?.length ?? 0));
+    }
+
+    offset += current.textContent?.length ?? 0;
+    current = walker.nextNode();
+  }
+
+  return null;
+}
+
+function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation = null) {
+  const sourceText = typeof text === 'string' ? text : '';
+  const normalizedAnnotations = (Array.isArray(annotations) ? annotations : [])
+    .map((annotation) => ({
+      ...annotation,
+      selectedText: typeof annotation?.selectedText === 'string' ? annotation.selectedText.trim() : '',
+    }))
+    .filter((annotation) => annotation.selectedText.length > 0);
+
+  if (sourceText.length === 0 || normalizedAnnotations.length === 0) {
+    return sourceText;
+  }
+
+  const ranges = [];
+  normalizedAnnotations.forEach((annotation) => {
+    const offsetStart = Number.isFinite(annotation.startOffset) ? annotation.startOffset : null;
+    const offsetEnd = Number.isFinite(annotation.endOffset) ? annotation.endOffset : null;
+    const hasValidOffsets =
+      Number.isInteger(offsetStart)
+      && Number.isInteger(offsetEnd)
+      && offsetStart >= 0
+      && offsetEnd > offsetStart
+      && offsetEnd <= sourceText.length;
+    const start = hasValidOffsets ? offsetStart : sourceText.indexOf(annotation.selectedText);
+    if (start < 0) return;
+    const end = hasValidOffsets ? offsetEnd : start + annotation.selectedText.length;
+    if (ranges.some((range) => start < range.end && end > range.start)) return;
+    ranges.push({ start, end, annotation });
+  });
+
+  if (ranges.length === 0) return sourceText;
+
+  ranges.sort((left, right) => left.start - right.start);
+  const parts = [];
+  let cursor = 0;
+
+  ranges.forEach((range) => {
+    if (range.start > cursor) {
+      parts.push(sourceText.slice(cursor, range.start));
+    }
+    parts.push(
+      <span
+        key={range.annotation.id}
+        className="ai-chat-annotation-mark"
+        role={onEditAnnotation ? 'button' : undefined}
+        tabIndex={onEditAnnotation ? 0 : undefined}
+        onClick={onEditAnnotation ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onEditAnnotation(range.annotation, event.currentTarget.getBoundingClientRect());
+        } : undefined}
+        onKeyDown={onEditAnnotation ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          onEditAnnotation(range.annotation, event.currentTarget.getBoundingClientRect());
+        } : undefined}
+      >
+        {sourceText.slice(range.start, range.end)}
+        <span className="ai-chat-annotation-inline-badge" aria-hidden="true">
+          <Icon name="general/balloon" size={14} />
+          <span className="ai-chat-annotation-inline-count">
+            {Number.isInteger(range.annotation?.order) ? range.annotation.order : 1}
+          </span>
+        </span>
+        <ChatAnnotationInlineHint annotation={range.annotation} />
+      </span>,
+    );
+    cursor = range.end;
+  });
+
+  if (cursor < sourceText.length) {
+    parts.push(sourceText.slice(cursor));
+  }
+
+  return parts;
 }
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -15979,6 +16457,9 @@ export default function App() {
   const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
+  const [chatSelectionCommentRequest, setChatSelectionCommentRequest] = useState(null);
+  const [chatSelectionCommentValue, setChatSelectionCommentValue] = useState('');
   // Per-chat agent-run cycle: { status: 'processing' | 'done', iteration }.
   const [agentRunByChatId, setAgentRunByChatId] = useState({});
   const [commentShortcutHintTarget, setCommentShortcutHintTarget] = useState(null);
@@ -15997,6 +16478,7 @@ export default function App() {
   const [pendingDiffCommentRowsByTabId, setPendingDiffCommentRowsByTabId] = useState({});
   const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
   const [pendingDocumentDiffCommentSnapshotsByTabId, setPendingDocumentDiffCommentSnapshotsByTabId] = useState({});
+  const [editorExternalCommentRequest, setEditorExternalCommentRequest] = useState(null);
   useEffect(() => {
     if (!commentShortcutHintTarget) return undefined;
     const timeoutId = window.setTimeout(() => {
@@ -17429,7 +17911,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -17456,6 +17938,7 @@ export default function App() {
       statusItem,
       issueTarget,
       sourceTabLabel,
+      fileCount,
     });
     const diffCode = buildPlanDiffTabContent({
       sourceCode,
@@ -17463,6 +17946,7 @@ export default function App() {
       statusItem,
       issueTarget,
       sourceTabLabel,
+      fileCount,
     });
     const diffTabLabel = diffData.title || `Diff ${diffData.sourceTabLabel || sourceTabLabel}`;
     const currentTaskCommentEntries = getCommentEntriesForTaskTab(sourceTabId);
@@ -19379,6 +19863,77 @@ export default function App() {
         return;
       }
 
+      if (String(tabId).startsWith('ai-chat-')) {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
+          setEditorSelectionToolbarPos(null);
+          return;
+        }
+
+        const range = selection.getRangeAt(0);
+        const commonAncestor = range.commonAncestorContainer;
+        const commonElement = commonAncestor.nodeType === Node.TEXT_NODE
+          ? commonAncestor.parentElement
+          : commonAncestor;
+        const annotatableBlock = commonElement instanceof Element
+          ? commonElement.closest('[data-ai-chat-annotatable="true"]')
+          : null;
+        const chatHost = annotatableBlock instanceof Element
+          ? annotatableBlock.closest('.aiux543-chat-editor-host')
+          : null;
+
+        if (!(annotatableBlock instanceof HTMLElement) || !(chatHost instanceof HTMLElement)) {
+          setEditorSelectionToolbarPos(null);
+          return;
+        }
+
+        try {
+          if (!range.intersectsNode(annotatableBlock)) {
+            setEditorSelectionToolbarPos(null);
+            return;
+          }
+        } catch {
+          setEditorSelectionToolbarPos(null);
+          return;
+        }
+
+        const rect = getRangeViewportRect(range);
+        if (!rect || rect.bottom <= 0 || rect.top >= window.innerHeight || rect.right <= 0 || rect.left >= window.innerWidth) {
+          setEditorSelectionToolbarPos(null);
+          return;
+        }
+
+        const basePos = getSelectionToolbarPosition(rect, { safeWidth: 176, safeHeight: 44 });
+        const rawSelectedText = selection.toString();
+        const selectedText = rawSelectedText.trim();
+        const leadingSelectionWhitespace = rawSelectedText.length - rawSelectedText.trimStart().length;
+        let startOffset = null;
+        let endOffset = null;
+
+        try {
+          const cleanStartOffset = getAiChatAnnotatableTextOffset(annotatableBlock, range.startContainer, range.startOffset);
+          startOffset = Number.isInteger(cleanStartOffset)
+            ? cleanStartOffset + leadingSelectionWhitespace
+            : null;
+          endOffset = Number.isInteger(startOffset) ? startOffset + selectedText.length : null;
+        } catch {
+          startOffset = null;
+          endOffset = null;
+        }
+
+        setEditorSelectionToolbarPos({
+          ...basePos,
+          surface: 'ai-chat',
+          chatId: String(tabId).slice('ai-chat-'.length),
+          messageId: annotatableBlock.dataset.aiChatMessageId ?? null,
+          blockId: annotatableBlock.dataset.aiChatBlockId ?? null,
+          selectedText,
+          startOffset,
+          endOffset,
+        });
+        return;
+      }
+
       const activeEditorEl = Array.from(document.querySelectorAll('.main-window-editor-content .editor')).find(
         (node) => node instanceof HTMLElement && node.getClientRects().length > 0
       );
@@ -19393,7 +19948,25 @@ export default function App() {
         textarea instanceof HTMLTextAreaElement
         && (textarea.selectionStart ?? 0) !== (textarea.selectionEnd ?? 0);
 
+      const selectedRowIds = [];
       let rect = textarea instanceof HTMLTextAreaElement ? getTextareaSelectionViewportRect(textarea) : null;
+
+      if (textareaSelectionExists && textarea instanceof HTMLTextAreaElement) {
+        const start = Math.min(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+        const end = Math.max(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+        const value = textarea.value ?? '';
+        const selectedText = value.slice(start, end);
+        const effectiveEnd = selectedText.includes('\n') && /^[ \t]*$/u.test(selectedText.slice(selectedText.lastIndexOf('\n') + 1))
+          ? start + selectedText.lastIndexOf('\n')
+          : end;
+        const lineNumberAtOffset = (offset) => value.slice(0, Math.max(0, offset)).split('\n').length;
+        const startLine = lineNumberAtOffset(start);
+        const endLine = lineNumberAtOffset(Math.max(start, effectiveEnd - 1));
+
+        for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+          selectedRowIds.push(`plain-line-${lineNumber}`);
+        }
+      }
 
       // If the editor is textarea-driven but the mirror failed (e.g. textarea has
       // zero layout width), fall back to a coarse position anchored to the editor.
@@ -19421,7 +19994,24 @@ export default function App() {
             ;
 
           if (anchorInEditor) {
-            rect = getRangeViewportRect(selection.getRangeAt(0));
+            const range = selection.getRangeAt(0);
+            rect = getRangeViewportRect(range);
+            const rowElements = Array.from(activeEditorEl.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
+
+            rowElements.forEach((rowElement) => {
+              if (!(rowElement instanceof HTMLElement)) return;
+              const rowId = rowElement.dataset.diffRowId;
+              if (!rowId || selectedRowIds.includes(rowId)) return;
+              const targetElement = rowElement.querySelector('.plan-diff-code-cell') ?? rowElement;
+
+              try {
+                if (range.intersectsNode(targetElement)) {
+                  selectedRowIds.push(rowId);
+                }
+              } catch {
+                // Ignore detached ranges while the editor overlay is rerendering.
+              }
+            });
           }
         }
       }
@@ -19432,7 +20022,11 @@ export default function App() {
       }
 
       const basePos = getSelectionToolbarPosition(rect, { safeWidth: 430, safeHeight: 44 });
-      setEditorSelectionToolbarPos(basePos);
+      setEditorSelectionToolbarPos({
+        ...basePos,
+        rowIds: selectedRowIds,
+        rowId: selectedRowIds[0] ?? null,
+      });
     };
 
     const scheduleSync = () => {
@@ -21363,6 +21957,125 @@ export default function App() {
   const activePlanDiffData = isDiffTab
     ? (activeTabContent?.diffData ?? null)
     : (isPlainFileOverlayTab ? (activeTabContent?.plainFileData ?? null) : null);
+  const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
+    if (actionId === 'chat-add-to-chat') {
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      const chatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
+        ? toolbarState.chatId
+        : activeAiChatTabChatId;
+      const messageId = typeof toolbarState?.messageId === 'string' && toolbarState.messageId.trim().length > 0
+        ? toolbarState.messageId
+        : null;
+      const blockId = typeof toolbarState?.blockId === 'string' && toolbarState.blockId.trim().length > 0
+        ? toolbarState.blockId
+        : null;
+
+      if (!selectedText || !chatId || !messageId || !blockId || !triggerRect) return;
+
+      setEditorSelectionToolbarPos(null);
+      setChatSelectionCommentValue('');
+      setChatSelectionCommentRequest({
+        nonce: `${chatId}:${messageId}:${blockId}:${Date.now()}`,
+        chatId,
+        messageId,
+        blockId,
+        selectedText,
+        startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
+        endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
+        triggerRect: {
+          top: triggerRect.top,
+          right: triggerRect.right,
+          bottom: triggerRect.bottom,
+          left: triggerRect.left,
+          width: triggerRect.width,
+          height: triggerRect.height,
+        },
+      });
+      return;
+    }
+
+    if (actionId !== 'comment' && actionId !== 'add-context-comment') return;
+    if (!isPlainFileOverlayTab || !activeTabId || !activePlanDiffData) return;
+
+    const availableRowIds = new Set((activePlanDiffData.rows ?? []).map((row) => row.id));
+    const storedToolbarRowIds = Array.isArray(toolbarState?.rowIds)
+      ? toolbarState.rowIds.filter((rowId, index, ids) => (
+          typeof rowId === 'string'
+          && availableRowIds.has(rowId)
+          && ids.indexOf(rowId) === index
+        ))
+      : [];
+    const rowIds = [...storedToolbarRowIds];
+    const activeEditorEl = Array.from(document.querySelectorAll('.main-window-editor-content .editor')).find(
+      (node) => node instanceof HTMLElement && node.getClientRects().length > 0,
+    );
+    const selection = typeof window !== 'undefined' ? window.getSelection() : null;
+    const domSelectionRowIds = [];
+
+    if (activeEditorEl instanceof HTMLElement && selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const rowElements = Array.from(activeEditorEl.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
+
+      rowElements.forEach((rowElement) => {
+        if (!(rowElement instanceof HTMLElement)) return;
+
+        const rowId = rowElement.dataset.diffRowId;
+        if (!rowId) return;
+
+        const targetElement = rowElement.querySelector('.plan-diff-code-cell') ?? rowElement;
+        try {
+          if (range.intersectsNode(targetElement)) {
+            domSelectionRowIds.push(rowId);
+          }
+        } catch {
+          // Ignore detached ranges while the editor overlay is rerendering.
+        }
+      });
+    }
+
+    const textarea = Array.from(document.querySelectorAll('.main-window-editor-content .editor .pce-textarea')).find(
+      (node) => node instanceof HTMLTextAreaElement && node.getClientRects().length > 0,
+    );
+    domSelectionRowIds.forEach((rowId) => {
+      if (availableRowIds.has(rowId) && !rowIds.includes(rowId)) {
+        rowIds.push(rowId);
+      }
+    });
+
+    if (rowIds.length === 0 && textarea instanceof HTMLTextAreaElement) {
+      const start = Math.min(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+      const end = Math.max(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
+      if (start !== end) {
+        const value = textarea.value ?? '';
+        const selectedText = value.slice(start, end);
+        const effectiveEnd = selectedText.includes('\n') && /^[ \t]*$/u.test(selectedText.slice(selectedText.lastIndexOf('\n') + 1))
+          ? start + selectedText.lastIndexOf('\n')
+          : end;
+        const lineNumberAtOffset = (offset) => value.slice(0, Math.max(0, offset)).split('\n').length;
+        const startLine = lineNumberAtOffset(start);
+        const endLine = lineNumberAtOffset(Math.max(start, effectiveEnd - 1));
+
+        for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+          const rowId = `plain-line-${lineNumber}`;
+          if (availableRowIds.has(rowId)) {
+            rowIds.push(rowId);
+          }
+        }
+      }
+    }
+
+    setPlainFileGutterCommentsEnabled(true);
+    setEditorSelectionToolbarPos(null);
+    setEditorExternalCommentRequest({
+      nonce: `${activeTabId}:${Date.now()}:${rowIds.join(',')}`,
+      tabId: activeTabId,
+      rowId: rowIds[0] ?? toolbarState?.rowId ?? null,
+      rowIds,
+      targetHasSelection: true,
+    });
+  }, [activeAiChatTabChatId, activePlanDiffData, activeTabId, isPlainFileOverlayTab]);
   const activePlanDiffTarget = isDiffTab
     ? normalizeCommentTarget(activeTabContent?.diffTarget)
     : null;
@@ -21624,6 +22337,9 @@ export default function App() {
     });
   }, [getAiChatScenarioById]);
   const aiChatComposerDiffAttachments = useMemo(() => {
+    const chatAnnotations = Array.isArray(aiChatAnnotationsByChatId[selectedAiChatId])
+      ? aiChatAnnotationsByChatId[selectedAiChatId]
+      : [];
     const diffEntries = Object.entries(ideTabContents)
       .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
     const pinnedDiffTabId = aiChatComposerDiffTabByChatId[selectedAiChatId] ?? null;
@@ -21638,6 +22354,32 @@ export default function App() {
     ];
 
     const attachments = [];
+
+    if (chatAnnotations.length > 0) {
+      attachments.push({
+        id: `chat-annotations-${selectedAiChatId}`,
+        label: 'Annotations',
+        icon: 'aiAssistant/toolWindowChat@20x20',
+        commentCount: chatAnnotations.length,
+        diffComments: chatAnnotations.reduce((commentsByRow, annotation) => ({
+          ...commentsByRow,
+          [annotation.id]: [{
+            text: annotation.comment,
+            lineLabel: annotation.lineLabel || 'Annotation',
+            sourceLabel: 'Annotations',
+            selectedText: annotation.selectedText,
+            chatId: selectedAiChatId,
+          }],
+        }), {}),
+        diffRequest: null,
+        diffTabId: null,
+        isPlainFile: false,
+        isChatAnnotation: true,
+        chatId: selectedAiChatId,
+        annotations: chatAnnotations,
+      });
+    }
+
     for (const [diffTabId, tabContent] of orderedDiffEntries) {
       const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
       const selectedSessionComments = normalizeStoredDiffCommentsState(sessionCommentsByChatId[selectedAiChatId]?.comments);
@@ -21697,7 +22439,7 @@ export default function App() {
     }
 
     return attachments;
-  }, [aiChatComposerDiffTabByChatId, ideTabContents, selectedAiChatId, selectedAiChatScenario?.diffRequest]);
+  }, [aiChatAnnotationsByChatId, aiChatComposerDiffTabByChatId, ideTabContents, selectedAiChatId, selectedAiChatScenario?.diffRequest]);
   const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
     attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
   )) ?? null;
@@ -21728,6 +22470,76 @@ export default function App() {
       };
     });
   }, [selectedAiChatId]);
+  const handleEditChatAnnotation = useCallback((annotation = null, triggerRect = null) => {
+    if (!annotation?.id || !annotation?.chatId || !triggerRect) return;
+
+    setEditorSelectionToolbarPos(null);
+    setChatSelectionCommentValue(typeof annotation.comment === 'string' ? annotation.comment : '');
+    setChatSelectionCommentRequest({
+      nonce: `${annotation.chatId}:${annotation.id}:edit:${Date.now()}`,
+      annotationId: annotation.id,
+      chatId: annotation.chatId,
+      messageId: annotation.messageId,
+      blockId: annotation.blockId,
+      selectedText: annotation.selectedText,
+      startOffset: annotation.startOffset,
+      endOffset: annotation.endOffset,
+      order: annotation.order,
+      lineLabel: annotation.lineLabel,
+      triggerRect: {
+        top: triggerRect.top,
+        right: triggerRect.right,
+        bottom: triggerRect.bottom,
+        left: triggerRect.left,
+        width: triggerRect.width,
+        height: triggerRect.height,
+      },
+    });
+  }, []);
+  const handleChatSelectionCommentSubmit = useCallback(() => {
+    const request = chatSelectionCommentRequest;
+    const comment = chatSelectionCommentValue.trim();
+    if (!request || comment.length === 0) return;
+
+    if (request.annotationId) {
+      setAiChatAnnotationsByChatId((prev) => ({
+        ...prev,
+        [request.chatId]: (prev[request.chatId] ?? []).map((annotation) => (
+          annotation.id === request.annotationId
+            ? { ...annotation, comment, updatedAt: Date.now() }
+            : annotation
+        )),
+      }));
+      setChatSelectionCommentRequest(null);
+      setChatSelectionCommentValue('');
+      return;
+    }
+
+    const commentNumber = (aiChatAnnotationsByChatId[request.chatId]?.length ?? 0) + 1;
+    const annotation = {
+      id: `chat-annotation-${request.chatId}-${Date.now()}`,
+      chatId: request.chatId,
+      messageId: request.messageId,
+      blockId: request.blockId,
+      selectedText: request.selectedText,
+      startOffset: request.startOffset,
+      endOffset: request.endOffset,
+      order: commentNumber,
+      comment,
+      lineLabel: `Annotation ${commentNumber}`,
+      createdAt: Date.now(),
+    };
+
+    setAiChatAnnotationsByChatId((prev) => ({
+      ...prev,
+      [request.chatId]: [
+        ...(prev[request.chatId] ?? []),
+        annotation,
+      ],
+    }));
+    setChatSelectionCommentRequest(null);
+    setChatSelectionCommentValue('');
+  }, [aiChatAnnotationsByChatId, chatSelectionCommentRequest, chatSelectionCommentValue]);
   const handleDoneVersionSelect = (version) => {
     if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
       return;
@@ -21794,8 +22606,15 @@ export default function App() {
     }
 
     const nextComments = normalizeStoredDiffCommentsState(comments);
+    // Shown once per session, and only for the first comment submitted in a diff:
+    // document and plain-file comments never trigger it.
     const maybeShowCommentShortcutHint = () => {
       if (hasShownCommentShortcutHint || metadata?.isEditing || typeof metadata?.rowId !== 'string' || metadata.rowId.length === 0) {
+        return;
+      }
+      // isPlainFileOverlayTab is mutually exclusive with isDiffTab, so this also
+      // rules out plain-file gutter comments.
+      if (!isDiffTab || metadata?.attachMode === 'document') {
         return;
       }
       setHasShownCommentShortcutHint(true);
@@ -21988,7 +22807,7 @@ export default function App() {
           sddCommentEntries: nextDocumentEntries,
         });
       }
-      maybeShowCommentShortcutHint();
+      // No shortcut hint here: document comments are not the diff flow it teaches.
       return;
     }
 
@@ -22192,6 +23011,7 @@ export default function App() {
       activeSourceEditorTabId,
 	    activeRelatedDiffCommentIssues,
       aiChatSentMessagesByChatId,
+      isDiffTab,
       isPlainFileOverlayTab,
       plainFileGutterCommentsEnabled,
 	    createEmptyAiChatSession,
@@ -22328,6 +23148,15 @@ export default function App() {
     const targetChatId = typeof context?.chatId === 'string' && context.chatId.trim().length > 0
       ? context.chatId
       : selectedAiChatId;
+
+    if (attachment.isChatAnnotation) {
+      setAiChatAnnotationsByChatId((prev) => {
+        if (!Array.isArray(prev[targetChatId]) || prev[targetChatId].length === 0) return prev;
+        const { [targetChatId]: _removed, ...rest } = prev;
+        return rest;
+      });
+      return;
+    }
 
     if (attachment.isSddDocument) {
       const sourceDocumentTabId = getSourceTabIdFromSddAttachment(attachment);
@@ -22555,7 +23384,20 @@ export default function App() {
       && Number.isFinite(attachment?.commentCount)
       && attachment.commentCount > 0
     ));
-    if (diffAttachmentsToClear.length === 0 && sddAttachmentsToClear.length === 0) return;
+    const chatAnnotationAttachmentsToClear = attachmentsToClear.filter((attachment) => (
+      attachment?.isChatAnnotation
+      && Number.isFinite(attachment?.commentCount)
+      && attachment.commentCount > 0
+    ));
+    if (diffAttachmentsToClear.length === 0 && sddAttachmentsToClear.length === 0 && chatAnnotationAttachmentsToClear.length === 0) return;
+
+    if (chatAnnotationAttachmentsToClear.length > 0) {
+      setAiChatAnnotationsByChatId((prev) => {
+        if (!Array.isArray(prev[targetChatId]) || prev[targetChatId].length === 0) return prev;
+        const { [targetChatId]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }
 
     setIdeTabContents((prev) => {
       const next = { ...prev };
@@ -23504,6 +24346,63 @@ export default function App() {
     }
   }, [getAiChatListItemById, getAiChatScenarioById, ideTabs, updatePlanDiffUiStateForTab]);
 
+  // Opening a comment attachment chip: a plain-file attachment must land on its
+  // own file tab (not on a generated diff tab) and scroll to the commented row;
+  // a diff attachment opens its diff tab and scrolls the same way.
+  const handleOpenChatAttachment = useCallback((attachment, { messageId = null, chatId = null, archived = true } = {}) => {
+    if (!attachment) return;
+
+    const contextChatId = chatId ?? selectedAiChatId;
+    if (attachment.isChatAnnotation) {
+      openChatInEditorTab(contextChatId);
+      const firstAnnotation = Array.isArray(attachment.annotations) ? attachment.annotations[0] : null;
+      setChatScrollTarget({
+        chatId: contextChatId,
+        messageId: firstAnnotation?.messageId ?? messageId ?? null,
+        nonce: Date.now(),
+      });
+      return;
+    }
+
+    const scrollRowId = getAttachmentScrollRowId(attachment.diffComments);
+
+    if (attachment.isSddDocument) {
+      handleOpenSddDocument({
+        attachment,
+        commentEntries: attachment.sddCommentEntries ?? [],
+        isCommentAttachment: Boolean(attachment.isSddCommentAttachment),
+        contextMessageId: messageId,
+        contextChatId,
+        sourceTabId: attachment.sourceTabId,
+      });
+      return;
+    }
+
+    if (attachment.isPlainFile && attachment.diffTabId) {
+      handleOpenPlainFileArchive(
+        attachment.diffTabId,
+        attachment.diffComments ?? {},
+        messageId,
+        contextChatId,
+        scrollRowId,
+        { archived },
+      );
+      return;
+    }
+
+    const diffRequest = attachment.diffRequest ?? null;
+    if (!diffRequest) return;
+
+    openPlanDiffTab({
+      ...diffRequest,
+      initialDiffCommentsOverride: attachment.diffComments ?? {},
+      commentsReadOnly: archived,
+      contextMessageId: messageId,
+      contextChatId,
+      navigation: scrollRowId ? { activeRowId: scrollRowId } : null,
+    });
+  }, [handleOpenPlainFileArchive, handleOpenSddDocument, openChatInEditorTab, openPlanDiffTab, selectedAiChatId]);
+
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
   }, [activeTabId, updatePlanDiffUiStateForTab]);
@@ -23983,6 +24882,7 @@ export default function App() {
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
                   onSendMessage={(targetChatId, text, attachments) => handleAiChatTabSend(targetChatId, text, attachments)}
                   onOpenDiffTab={openPlanDiffTab}
+                  onOpenAttachment={handleOpenChatAttachment}
                   composerDiffAttachments={aiChatComposerDiffAttachments}
                   onRemoveComposerAttachment={handleRemoveComposerAttachment}
                   onAddContextPopupOpen={handleAiChatAddContextPopupOpen}
@@ -23999,6 +24899,9 @@ export default function App() {
                   onStopMessage={handleAiChatTabStop}
                   onOpenReviewTarget={openCommentTarget}
                   onOpenReviewDiff={openReviewDiffTab}
+                  chatAnnotations={aiChatAnnotationsByChatId[activeAiChatTabChatId] ?? []}
+                  scrollTarget={chatScrollTarget}
+                  onEditAnnotation={handleEditChatAnnotation}
                 />
               </div>
             )
@@ -24043,6 +24946,11 @@ export default function App() {
 	                    commentSessions={activePlanDiffSessionComments}
 	                    commentSessionActiveChatId={selectedAiChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
+	                    externalCommentRequest={
+                      isPlainFileOverlayTab && editorExternalCommentRequest?.tabId === activeTabId
+                        ? editorExternalCommentRequest
+                        : null
+                    }
 	                    renderSubmitTargetPicker={renderCommentSubmitTargetPicker}
                     onDiffCommentsChange={handleActivePlanDiffCommentsChange}
                     onRowDelete={handlePlanDiffRowDelete}
@@ -24115,7 +25023,24 @@ export default function App() {
       {editorTabsMorePortal}
       {terminalPermissionPortal}
       <SpecSelectionToolbar position={idleSelectionToolbarPos} />
-      <EditorSelectionToolbar position={editorSelectionToolbarPos} />
+      <EditorSelectionToolbar position={editorSelectionToolbarPos} onAction={handleEditorSelectionToolbarAction} />
+      <ChatSelectionCommentPopover
+        request={chatSelectionCommentRequest}
+        value={chatSelectionCommentValue}
+        commentNumber={
+          Number.isInteger(chatSelectionCommentRequest?.order)
+            ? chatSelectionCommentRequest.order
+            : chatSelectionCommentRequest?.chatId
+            ? ((aiChatAnnotationsByChatId[chatSelectionCommentRequest.chatId]?.length ?? 0) + 1)
+            : 1
+        }
+        onChange={setChatSelectionCommentValue}
+        onCancel={() => {
+          setChatSelectionCommentRequest(null);
+          setChatSelectionCommentValue('');
+        }}
+        onSubmit={handleChatSelectionCommentSubmit}
+      />
       {editorCompletion && editorCompletion.pos && createPortal(
         <CompletionPopup
           trigger={editorCompletion.trigger}

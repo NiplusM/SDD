@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Button, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl } from '@jetbrains/int-ui-kit';
+import { Icon, Button, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCounts.js';
@@ -673,6 +673,10 @@ function PlanDiffToolbarIcon({ type }) {
     );
   }
 
+  if (type === 'more') {
+    return <Icon name="general/moreVertical" size={16} />;
+  }
+
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M8 2C6.34386 2 5 3.34386 5 5C5 5.27614 5.22386 5.5 5.5 5.5C5.77614 5.5 6 5.27614 6 5C6 3.89614 6.89614 3 8 3C9.10386 3 10 3.89614 10 5C10 5.67621 9.86049 6.07982 9.68538 6.36C9.5025 6.6526 9.25707 6.85403 8.93765 7.10957L8.91812 7.12519C8.61602 7.36676 8.24644 7.66229 7.96663 8.11C7.67299 8.57982 7.5 9.17621 7.5 10V10.5C7.5 10.7761 7.72386 11 8 11C8.27614 11 8.5 10.7761 8.5 10.5V10C8.5 9.32379 8.63951 8.92018 8.81462 8.64C8.9975 8.3474 9.24293 8.14597 9.56235 7.89043L9.58188 7.87481C9.88398 7.63324 10.2536 7.33771 10.5334 6.89C10.827 6.42018 11 5.82379 11 5C11 3.34386 9.65614 2 8 2ZM8 14C8.41421 14 8.75 13.6642 8.75 13.25C8.75 12.8358 8.41421 12.5 8 12.5C7.58579 12.5 7.25 12.8358 7.25 13.25C7.25 13.6642 7.58579 14 8 14Z" fill="currentColor" />
@@ -682,20 +686,421 @@ function PlanDiffToolbarIcon({ type }) {
 
 function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
   return (
-    <button type="button" className="plan-diff-toolbar-icon-btn" aria-label={label} title={label} onClick={onClick}>
-      <PlanDiffToolbarIcon type={icon} />
-    </button>
+    <ToolbarButton
+      icon={<PlanDiffToolbarIcon type={icon} />}
+      className="plan-diff-toolbar-icon-btn"
+      onClick={onClick}
+      title={label}
+    />
   );
 }
 
-function PlanDiffToolbarSelect({ label, width = null, onClick = null }) {
+function PlanDiffToolbarSelect({ label, text, icon = null, onClick = null, className = '', title = '' }) {
   return (
-    <button type="button" className="plan-diff-toolbar-select" style={width ? { width } : undefined} aria-label={label} onClick={onClick}>
-      <span className="plan-diff-toolbar-select-label">{label}</span>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="#B4B8BF" strokeLinecap="round" />
-      </svg>
-    </button>
+    <ToolbarDropdown
+      label={label}
+      text={text}
+      icon={icon}
+      title={title}
+      className={`plan-diff-toolbar-select${className ? ` ${className}` : ''}`}
+      onClick={onClick}
+    />
+  );
+}
+
+function PlanDiffViewingScopeControl({ fileCount = 3, currentFileLabel = 'VisitController.java' }) {
+  const scopeRef = useRef(null);
+  const filesRef = useRef(null);
+  const [scopeRect, setScopeRect] = useState(null);
+  const [filesRect, setFilesRect] = useState(null);
+  const [selectedScopeId, setSelectedScopeId] = useState('new');
+  const scopeOptions = [
+    {
+      id: 'new',
+      label: 'New changes',
+      triggerText: 'New changes · 1 new',
+      meta: '1 new',
+      fileCount: 1,
+    },
+    {
+      id: 'all',
+      label: 'All generated changes',
+      triggerText: `All generated · ${fileCount} files`,
+      meta: `${fileCount} files`,
+      fileCount,
+    },
+    {
+      id: 'current-file',
+      label: 'Current file',
+      triggerText: `Current file · ${currentFileLabel}`,
+      meta: currentFileLabel,
+      fileCount: 1,
+    },
+  ];
+  const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
+  const selectedFileCount = Math.max(1, selectedScope.fileCount);
+  const fileOptions = [
+    { id: 'current', label: currentFileLabel, meta: '1 of 3', selected: true, icon: 'fileTypes/java' },
+    { id: 'release', label: 'ReleaseController.java', meta: '2 of 3', selected: false, icon: 'fileTypes/java' },
+    { id: 'service', label: 'FeatureService.java', meta: '3 of 3', selected: false, icon: 'fileTypes/java' },
+  ].slice(0, selectedFileCount).map((item, index) => ({
+    ...item,
+    meta: `${index + 1} of ${selectedFileCount}`,
+  }));
+  const closeScope = () => setScopeRect(null);
+  const closeFiles = () => setFilesRect(null);
+
+  return (
+    <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
+      <span ref={scopeRef} className="plan-diff-viewing-scope-trigger">
+        <PlanDiffToolbarSelect
+          label="Review scope:"
+          text={selectedScope.triggerText}
+          className="plan-diff-toolbar-scope-select"
+          title="Review scope"
+          onClick={() => {
+            closeFiles();
+            setScopeRect((prev) => (prev ? null : scopeRef.current?.getBoundingClientRect() ?? null));
+          }}
+        />
+      </span>
+      <span className="plan-diff-viewing-scope-separator" aria-hidden="true" />
+      <ToolbarButton
+        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
+        className="plan-diff-viewing-file-arrow"
+        title="Previous file"
+      />
+      <span ref={filesRef} className="plan-diff-viewing-files-trigger">
+        <button
+          type="button"
+          className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
+          title="Files in viewed scope"
+          onClick={() => {
+            closeScope();
+            setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
+          }}
+        >
+          {`1 of ${selectedFileCount} files`}
+        </button>
+      </span>
+      <ToolbarButton
+        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
+        className="plan-diff-viewing-file-arrow"
+        title="Next file"
+      />
+      {scopeRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={scopeRect} onDismiss={closeScope} gap={4}>
+            <Popup visible className="plan-diff-popover plan-diff-scope-popup text-ui-default" onClose={closeScope}>
+              <PopupCell type="separator" text="Review scope" />
+              {scopeOptions.map((item) => (
+                <PopupCell
+                  key={item.id}
+                  selected={item.id === selectedScopeId}
+                  shortcut={item.meta}
+                  icon={(
+                    <span className="plan-diff-new-review-check" aria-hidden="true">
+                      {item.id === selectedScopeId && <Icon name="general/checkmark" size={16} />}
+                    </span>
+                  )}
+                  onClick={() => {
+                    setSelectedScopeId(item.id);
+                    closeScope();
+                  }}
+                >
+                  {item.label}
+                </PopupCell>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+      {filesRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
+            <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
+              <PopupCell type="separator" text={`Files in ${selectedScope.label}`} />
+              {fileOptions.map((item) => (
+                <PopupCell
+                  key={item.id}
+                  icon={item.icon}
+                  selected={item.selected}
+                  shortcut={item.meta}
+                  onClick={closeFiles}
+                >
+                  {item.label}
+                </PopupCell>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// The diff top bar's "AI Review" entry point. Also reused outside the diff (the
+// Commit tool window), hence the class hooks for host-specific sizing.
+const AI_REVIEW_AGENT_OPTIONS = [
+  {
+    id: 'codex',
+    label: 'Codex',
+    meta: 'Recommended',
+    icon: 'codex',
+  },
+  {
+    id: 'junie',
+    label: 'Junie by JetBrains',
+    meta: 'JetBrains agent',
+    icon: 'junie',
+  },
+  {
+    id: 'claude',
+    label: 'Claude Agent',
+    meta: 'External agent',
+    icon: 'claude',
+  },
+];
+
+export function PlanDiffNewReviewButton({
+  currentScopeLabel = 'New changes',
+  currentFileLabel = 'VisitController.java',
+  triggerClassName = '',
+  popupClassName = '',
+}) {
+  const triggerRef = useRef(null);
+  const [popupRect, setPopupRect] = useState(null);
+  const [selectedScopeId, setSelectedScopeId] = useState('current');
+  const [selectedAgentId, setSelectedAgentId] = useState('codex');
+  const [attachments, setAttachments] = useState([]);
+  const [instructions, setInstructions] = useState('');
+  // Sub-menus live inside the popup (same DOM subtree), so opening one never
+  // dismisses the popup itself. Only one is open at a time.
+  const [openMenu, setOpenMenu] = useState(null);
+  const isOpen = Boolean(popupRect);
+  const togglePopup = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    setOpenMenu(null);
+    setPopupRect((prev) => (prev ? null : rect ?? null));
+  };
+  const closePopup = () => {
+    setOpenMenu(null);
+    setPopupRect(null);
+  };
+  const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
+  const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
+    ?? AI_REVIEW_AGENT_OPTIONS[0];
+  const selectAgent = (agent) => {
+    setSelectedAgentId(agent.id);
+    setOpenMenu(null);
+  };
+  const scopeOptions = [
+    { id: 'current', label: currentScopeLabel, meta: 'current viewed scope' },
+    { id: 'all', label: 'All generated changes', meta: '3 files · 12 hunks' },
+    { id: 'file', label: 'Current file', meta: currentFileLabel },
+  ];
+  const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
+  const attachmentOptions = [
+    { id: 'diff', label: 'Current diff', meta: 'VisitController.java · 2 changes', icon: 'vcs/diff' },
+    { id: 'context', label: 'Project context', meta: 'Related files and project structure', icon: 'general/projectStructure' },
+  ];
+  const availableAttachmentOptions = attachmentOptions.filter((option) => !attachments.includes(option.id));
+  const addAttachment = (attachmentId) => {
+    setAttachments((prev) => prev.includes(attachmentId) ? prev : [...prev, attachmentId]);
+    setOpenMenu(null);
+  };
+  const removeAttachment = (attachmentId) => {
+    setAttachments((prev) => prev.filter((id) => id !== attachmentId));
+  };
+  // Dropdowns are composed from the library Popup/PopupCell primitives and kept
+  // inside this popup so they do not dismiss the parent review popup.
+  const renderMenu = (menu, children) => (
+    openMenu === menu
+      ? (
+        <div className={`plan-diff-ai-review-submenu plan-diff-ai-review-submenu-${menu}`}>
+          <Popup visible className="plan-diff-popover plan-diff-ai-review-submenu-popup text-ui-default" onClose={() => setOpenMenu(null)}>
+            {children}
+          </Popup>
+        </div>
+      )
+      : null
+  );
+  const renderAgentMenu = () => renderMenu('agent', (
+    <div className="plan-diff-ai-review-agent-menu">
+      <PopupCell type="separator" text="Select agent" />
+      <button
+        type="button"
+        className="plan-diff-ai-review-recommended"
+        onClick={() => selectAgent(AI_REVIEW_AGENT_OPTIONS[0])}
+      >
+        <AiChatAgentIcon icon="codex" />
+        <span className="plan-diff-ai-review-recommended-copy">
+          <span className="plan-diff-ai-review-recommended-title">Recommended Agent</span>
+          <span className="plan-diff-ai-review-recommended-model">Codex · Recommended for code review</span>
+          <span className="plan-diff-ai-review-recommended-description">Picks the best performance-to-cost agent and model.</span>
+          <span className="plan-diff-ai-review-recommended-link">How the agent is selected ↗</span>
+        </span>
+        {selectedAgent.id === 'codex' && <Icon name="general/checkmark" size={16} />}
+      </button>
+      <PopupCell type="separator" />
+      {AI_REVIEW_AGENT_OPTIONS.slice(1).map((item) => (
+        <PopupCell
+          key={item.id}
+          type="multiline"
+          icon="aiAssistant/toolWindowChat@20x20"
+          hint={item.meta}
+          selected={item.id === selectedAgent.id}
+          onClick={() => selectAgent(item)}
+        >
+          {item.label}
+        </PopupCell>
+      ))}
+      <PopupCell type="separator" />
+      <PopupCell icon="general/add" onClick={() => setOpenMenu(null)}>Add more agents…</PopupCell>
+    </div>
+  ));
+
+  return (
+    <div className="plan-diff-new-review">
+      <span ref={triggerRef} className="plan-diff-new-review-trigger">
+        <button
+          className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${isOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
+          type="button"
+          title="AI Review"
+          aria-label="AI Review"
+          aria-expanded={isOpen}
+          onClick={togglePopup}
+        >
+          <span className="plan-diff-ai-review-button-content">
+            <span className="plan-diff-ai-review-button-icon">
+              <Icon name="general/balloon" size={16} />
+            </span>
+            <span className="plan-diff-ai-review-button-label">AI Review</span>
+            <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-button-chevron" />
+          </span>
+        </button>
+      </span>
+      {popupRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={popupRect} onDismiss={closePopup} gap={4}>
+            <Popup visible className={`plan-diff-popover plan-diff-ai-review-popup text-ui-default${popupClassName ? ` ${popupClassName}` : ''}`} onClose={closePopup}>
+              <div className="plan-diff-ai-review-panel">
+                <div className="plan-diff-ai-review-panel-head">
+                  <span className="plan-diff-ai-review-panel-title text-ui-default-semibold">Start AI Review</span>
+                  <span className="plan-diff-ai-review-panel-summary text-ui-small">1 file · 2 changes</span>
+                </div>
+
+                <span className="plan-diff-ai-review-dropdown">
+                  <button type="button" className="plan-diff-ai-review-scope-summary" onClick={() => toggleMenu('scope')}>
+                    <span className="plan-diff-ai-review-scope-visual" aria-hidden="true">
+                      <span className="plan-diff-ai-review-scope-file">
+                        <span className="is-muted" />
+                        <span className="is-removed" />
+                        <span className="is-added" />
+                        <span className="is-added short" />
+                      </span>
+                    </span>
+                    <span className="plan-diff-ai-review-scope-main">
+                      <span className="plan-diff-ai-review-choice-label text-ui-small">Review scope</span>
+                      <span className="plan-diff-ai-review-scope-name text-ui-default-semibold">{selectedScope.label}</span>
+                      <span className="plan-diff-ai-review-scope-path text-ui-small">{selectedScope.meta}</span>
+                    </span>
+                    <span className="plan-diff-ai-review-scope-stats" aria-hidden="true">
+                      <span><b>1</b> file</span>
+                      <span><b>2</b> changes</span>
+                    </span>
+                    <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-choice-chevron" />
+                  </button>
+                  {renderMenu('scope', scopeOptions.map((item) => (
+                    <PopupCell
+                      key={item.id}
+                      type="multiline"
+                      hint={item.meta}
+                      selected={item.id === selectedScope.id}
+                      onClick={() => { setSelectedScopeId(item.id); setOpenMenu(null); }}
+                    >
+                      {item.label}
+                    </PopupCell>
+                  )))}
+                </span>
+
+                <span className="plan-diff-ai-review-dropdown">
+                  <button type="button" className="plan-diff-ai-review-agent-row" onClick={() => toggleMenu('agent')}>
+                    <span className="plan-diff-ai-review-choice-icon">
+                      <AiChatAgentIcon icon={selectedAgent.icon} />
+                    </span>
+                    <span className="plan-diff-ai-review-choice-copy">
+                      <span className="plan-diff-ai-review-choice-title text-ui-default-semibold">Recommended Agent</span>
+                      <span className="plan-diff-ai-review-choice-meta text-ui-small">{selectedAgent.label} · optimized for code review</span>
+                    </span>
+                    <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-choice-chevron" />
+                  </button>
+                  {renderAgentMenu()}
+                </span>
+
+                <div className="plan-diff-ai-review-instructions">
+                  <div className="plan-diff-ai-review-field-head">
+                    <span className="text-ui-small">Additional instructions</span>
+                    <span className="text-ui-small">Optional</span>
+                  </div>
+                  <Input
+                    size="small"
+                    value={instructions}
+                    placeholder="Focus on concurrency, API contract, tests…"
+                    onChange={(event) => setInstructions(event.target.value)}
+                  />
+                </div>
+
+                <div className="plan-diff-ai-review-attachments">
+                  {attachments.map((attachmentId) => {
+                    const attachment = attachmentOptions.find((item) => item.id === attachmentId);
+                    if (!attachment) return null;
+                    return (
+                      <span className="plan-diff-ai-review-attachment-chip" key={attachment.id}>
+                        <Icon name={attachment.icon} size={14} />
+                        <span>{attachment.label}</span>
+                        <button type="button" aria-label={`Remove ${attachment.label}`} onClick={() => removeAttachment(attachment.id)}>
+                          <Icon name="general/closeSmall" size={12} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                  <span className="plan-diff-ai-review-dropdown">
+                    <ToolbarButton
+                      icon="actions/attach"
+                      text="Add attachment"
+                      showChevron
+                      onClick={() => toggleMenu('attach')}
+                    />
+                    {renderMenu('attach', availableAttachmentOptions.length > 0
+                      ? availableAttachmentOptions.map((option) => (
+                        <PopupCell
+                          key={option.id}
+                          type="multiline"
+                          icon={option.icon}
+                          hint={option.meta}
+                          onClick={() => addAttachment(option.id)}
+                        >
+                          {option.label}
+                        </PopupCell>
+                      ))
+                      : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
+                  </span>
+                </div>
+
+                <div className="plan-diff-ai-review-library-actions">
+                  <Button type="secondary" onClick={closePopup}>Cancel</Button>
+                  <Button type="primary" onClick={closePopup}>Start AI Review</Button>
+                </div>
+              </div>
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
@@ -725,6 +1130,8 @@ export function DiffInlineCommentPopup({
   defaultSubmitTargetKey = '',
   activeChatTargetKey = '',
   showSubmitTargetLabel = true,
+  showSubmitActionMenu = true,
+  inputPlaceholder = 'Write an AI Note',
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
   commentContextIcon = 'claude',
@@ -741,6 +1148,7 @@ export function DiffInlineCommentPopup({
   onReturnToChat,
   onQuickFix = null,
   onResolveComment = null,
+  onDismissComment = null,
   preserveEditorSelection = false,
   preservedEditorSelectionSnapshot = null,
   severityFilter = 'all',
@@ -765,7 +1173,7 @@ export function DiffInlineCommentPopup({
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
       : '';
-    return filterValues.includes(sev);
+    return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   };
   const textareaRef = useRef(null);
   const submitTargetRef = useRef(null);
@@ -1127,15 +1535,24 @@ export function DiffInlineCommentPopup({
     onResolveComment?.(localIndex, solved, source, context);
   };
 
-  // Quick fix / Resolve on an agent comment: show a loader while it's being
-  // actioned, then run the real handler (which removes it + posts the agent's
-  // response in chat and updates the collected-comments views).
+  const handleAgentDismiss = (comment, fallbackIndex = 0, context = null) => {
+    if (commentsReadOnly) return;
+    const source = typeof comment?.source === 'string' ? comment.source : 'diff';
+    const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : fallbackIndex;
+    onDismissComment?.(localIndex, source, context);
+  };
+
+  // Apply fix / Mark resolved on an agent comment: show a loader while it's
+  // being actioned, then run the real handler and update collected-comment
+  // views. Applying a fix is the primary path; marking resolved is a manual
+  // close when the user handled it elsewhere.
   const startAgentCommentProcessing = (comment, kind, draftKey, fallbackIndex = 0, context = null) => {
     if (commentsReadOnly || processingAgentReplies[draftKey]) return;
     closeAgentReplyComposer(draftKey);
     setProcessingAgentReplies((prev) => ({ ...prev, [draftKey]: true }));
     window.setTimeout(() => {
       if (kind === 'quickfix') handleAgentQuickFix(comment, fallbackIndex, context);
+      else if (kind === 'dismiss') handleAgentDismiss(comment, fallbackIndex, context);
       else handleAgentResolve(comment, true, fallbackIndex, context);
       setProcessingAgentReplies((prev) => {
         const { [draftKey]: _done, ...rest } = prev;
@@ -1247,9 +1664,13 @@ export function DiffInlineCommentPopup({
     const isComposerOpen = Boolean(openAgentReplyComposers[draftKey]);
     const isProcessing = Boolean(processingAgentReplies[draftKey] || comment?.pending);
     const isResolved = Boolean(comment?.resolved);
-    // One unified status for handled comments — whether it was quick-fixed or
-    // resolved manually, it reads as "Resolved".
-    const resolvedLabel = 'Resolved';
+    const resolvedKind = typeof comment?.resolvedKind === 'string' ? comment.resolvedKind : '';
+    const resolvedLabel = resolvedKind === 'applied'
+      ? 'Fix applied'
+      : resolvedKind === 'dismissed'
+        ? 'Dismissed'
+        : 'Resolved manually';
+    const resolvedBadgeTone = resolvedKind === 'dismissed' ? ' is-dismissed' : '';
     const changeLabel = typeof comment.fixLabel === 'string' ? comment.fixLabel.trim() : '';
     return (
       <div className={`spec-done-comment-agent-reply${isResolved ? ' is-resolved' : ''}`}>
@@ -1263,7 +1684,7 @@ export function DiffInlineCommentPopup({
               <span className={`spec-done-status-severity ${severityTone}`}>{severity}</span>
             )}
             {isResolved && (
-              <span className="spec-done-comment-resolved-badge">{resolvedLabel}</span>
+              <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
             )}
           </div>
           {comment.agentReply && (
@@ -1528,7 +1949,7 @@ export function DiffInlineCommentPopup({
               ref={textareaRef}
               className="spec-done-comment-popup-textarea text-ui-default"
               value={value}
-              placeholder="Write an AI Note"
+              placeholder={inputPlaceholder}
               data-demo-id="diff-comment-input"
               onChange={(e) => onChange?.(e.target.value)}
               rows={1}
@@ -1553,42 +1974,53 @@ export function DiffInlineCommentPopup({
               >
                 Cancel
               </Button>
-              <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canSubmitComment ? ' is-disabled' : ''}`}>
-                <button
-                  type="button"
-                  className="diff-comment-primary-split-main"
+              {showSubmitActionMenu ? (
+                <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canSubmitComment ? ' is-disabled' : ''}`}>
+                  <button
+                    type="button"
+                    className="diff-comment-primary-split-main"
+                    data-demo-id="diff-comment-submit"
+                    aria-label={selectedPrimarySubmitButtonLabel}
+                    disabled={!canSubmitComment}
+                    onClick={() => handleSubmit()}
+                  >
+                    {selectedPrimarySubmitButtonLabel}
+                  </button>
+                  <span className="diff-comment-primary-split-separator" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="diff-comment-primary-split-menu"
+                    aria-label={`${selectedPrimarySubmitButtonLabel} options`}
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(submitActionMenuRect)}
+                    disabled={!canSubmitComment}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setSubmitOptionsRect(null);
+                      setSubmitOptionsWidth(null);
+                      setSubmitActionMenuRect((currentRect) => (
+                        currentRect ? null : rect
+                      ));
+                    }}
+                  >
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                </span>
+              ) : (
+                <Button
+                  type="primary"
                   data-demo-id="diff-comment-submit"
-                  aria-label={selectedPrimarySubmitButtonLabel}
                   disabled={!canSubmitComment}
                   onClick={() => handleSubmit()}
                 >
                   {selectedPrimarySubmitButtonLabel}
-                </button>
-                <span className="diff-comment-primary-split-separator" aria-hidden="true" />
-                <button
-                  type="button"
-                  className="diff-comment-primary-split-menu"
-                  aria-label={`${selectedPrimarySubmitButtonLabel} options`}
-                  aria-haspopup="menu"
-                  aria-expanded={Boolean(submitActionMenuRect)}
-                  disabled={!canSubmitComment}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setSubmitOptionsRect(null);
-                    setSubmitOptionsWidth(null);
-                    setSubmitActionMenuRect((currentRect) => (
-                      currentRect ? null : rect
-                    ));
-                  }}
-                >
-                  <Icon name="general/chevronDown" size={16} />
-                </button>
-              </span>
+                </Button>
+              )}
             </div>
           </div>
-          {submitActionMenuRect && createPortal(
+          {showSubmitActionMenu && submitActionMenuRect && createPortal(
             <div className="theme-dark">
               <PositionedPopup triggerRect={submitActionMenuRect} onDismiss={() => setSubmitActionMenuRect(null)} gap={4}>
                 <Popup visible className="diff-comment-submit-action-popup" onClose={() => setSubmitActionMenuRect(null)}>
@@ -1870,18 +2302,19 @@ function shouldFixRow(comment) {
 }
 
 const PLAN_DIFF_OPEN_SEVERITY_FILTERS = ['critical', 'warning', 'info'];
+const PLAN_DIFF_UNCLASSIFIED_FILTER = 'unclassified';
 
 function normalizePlanDiffSeverityFilter(value = 'all') {
   const rawValues = Array.isArray(value)
     ? value
     : value === 'all'
-      ? PLAN_DIFF_OPEN_SEVERITY_FILTERS
+      ? [...PLAN_DIFF_OPEN_SEVERITY_FILTERS, PLAN_DIFF_UNCLASSIFIED_FILTER]
       : [value];
-  const allowed = new Set([...PLAN_DIFF_OPEN_SEVERITY_FILTERS, 'resolved']);
+  const allowed = new Set([...PLAN_DIFF_OPEN_SEVERITY_FILTERS, PLAN_DIFF_UNCLASSIFIED_FILTER, 'resolved']);
   const normalized = rawValues
     .map((entry) => String(entry || '').toLowerCase())
     .filter((entry, index, arr) => allowed.has(entry) && arr.indexOf(entry) === index);
-  return normalized.length > 0 ? normalized : [...PLAN_DIFF_OPEN_SEVERITY_FILTERS];
+  return normalized.length > 0 ? normalized : [...PLAN_DIFF_OPEN_SEVERITY_FILTERS, PLAN_DIFF_UNCLASSIFIED_FILTER];
 }
 
 export function PlanDiffOverlay({
@@ -1935,6 +2368,7 @@ export function PlanDiffOverlay({
   inlineCommentRowIdOnly = false,
   expandedInlineCommentRowId = null,
   onInlineCommentExpand = null,
+  highlightCommentRowId = null,
 }) {
   const scrollRef = useRef(null);
   const canCreateInlineComments = !commentsReadOnly && allowInlineCommentCompose;
@@ -1956,7 +2390,7 @@ export function PlanDiffOverlay({
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
       : '';
-    return filterValues.includes(sev);
+    return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   }, [severityFilter]);
   const isCommentMatchingIndexFilter = useCallback((comment) => {
     const filterValues = normalizePlanDiffSeverityFilter(severityFilter);
@@ -1970,7 +2404,7 @@ export function PlanDiffOverlay({
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
       : '';
-    return filterValues.includes(sev);
+    return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   }, [commentIndexStatusFilter, severityFilter]);
   const isCommentHiddenForRender = useCallback(
     (comment) => !isCommentVisibleForRender(comment),
@@ -2163,13 +2597,17 @@ export function PlanDiffOverlay({
   };
 
   const revealHiddenCommentsForRow = (rowId) => {
-    if (!rowId || commentsReadOnly) return false;
+    if (!rowId) return false;
     let didReveal = false;
 
     const hasHiddenLocalComments = (diffComments[rowId] ?? []).some(isCommentEntryHidden);
     if (hasHiddenLocalComments) {
       didReveal = true;
-      commitDiffComments(setRowCommentsHidden(diffComments, rowId, false));
+      commitDiffComments(setRowCommentsHidden(diffComments, rowId, false), {
+        rowId,
+        isEditing: true,
+        revealHidden: true,
+      });
     }
 
     const hasHiddenDocumentComments = (normalizedDocumentDiffComments[rowId] ?? []).some(isCommentEntryHidden);
@@ -2179,6 +2617,7 @@ export function PlanDiffOverlay({
         attachMode: 'document',
         rowId,
         isEditing: true,
+        revealHidden: true,
       });
     }
 
@@ -2190,6 +2629,7 @@ export function PlanDiffOverlay({
         targetChatId: session.chatId,
         rowId,
         isEditing: true,
+        revealHidden: true,
       });
     });
 
@@ -2734,7 +3174,7 @@ export function PlanDiffOverlay({
     };
   }, [getDiffRowIdAtViewportPoint, trackPointerSelectionRow]);
 
-  const toggleCommentForRow = (rowId, { selectionSnapshot = null, targetRowIds = null, targetHasSelection = null } = {}) => {
+  const toggleCommentForRow = (rowId, { selectionSnapshot = null, targetRowIds = null, targetHasSelection = null, forceOpen = false } = {}) => {
     const resolvedSelectionSnapshot = selectionSnapshot ?? null;
     const nextTargetRowIds = Array.isArray(targetRowIds) && targetRowIds.length > 0
       ? targetRowIds
@@ -2756,10 +3196,10 @@ export function PlanDiffOverlay({
       }
       return;
     }
-    if (didRevealHiddenComments) {
+    if (didRevealHiddenComments && !forceOpen) {
       return;
     }
-    if (commentRowId === anchorRowId) {
+    if (commentRowId === anchorRowId && !forceOpen) {
       clearCommentComposeState(anchorRowId);
       return;
     }
@@ -2848,6 +3288,7 @@ export function PlanDiffOverlay({
       selectionSnapshot,
       targetRowIds,
       targetHasSelection,
+      forceOpen: true,
     });
   }, [externalCommentRequest?.nonce]);
 
@@ -3430,9 +3871,9 @@ export function PlanDiffOverlay({
                 submitAction,
               });
             };
-            // Quick fix / Resolve: the note is actioned (agent runs it in chat)
-            // and MARKED resolved (kept in place, dimmed) so the review keeps a
-            // record of what's been handled instead of the note just vanishing.
+            // Apply fix / Mark resolved: the note is actioned (agent runs it in
+            // chat) and MARKED resolved (kept in place, dimmed) so the review
+            // keeps a record of how it was handled instead of the note vanishing.
             const removeRowComment = (commentIndex, source = 'diff', context = null, kind = 'resolve') => {
               if (commentsReadOnly || !Number.isInteger(commentIndex)) return;
               const contextChatId = typeof context?.chatId === 'string' ? context.chatId.trim() : '';
@@ -3470,7 +3911,7 @@ export function PlanDiffOverlay({
                     ...base,
                     text: getCommentEntryText(comment),
                     resolved: true,
-                    resolvedKind: kind === 'quickfix' ? 'applied' : 'manual',
+                    resolvedKind: kind === 'quickfix' ? 'applied' : (kind === 'dismiss' ? 'dismissed' : 'manual'),
                     // Auto-collapse into the gutter. Reopen a single one from its
                     // gutter badge (clears this flag) or reveal them all via the
                     // "Resolved" filter.
@@ -3508,6 +3949,7 @@ export function PlanDiffOverlay({
             };
             const handleAgentQuickFixRowComment = (commentIndex, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'quickfix');
             const handleAgentResolveRowComment = (commentIndex, _solved, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'resolve');
+            const handleAgentDismissRowComment = (commentIndex, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'dismiss');
 
 	            const renderCodeRow = (splitSide = null) => {
 	              const isSplitSide = splitSide === 'left' || splitSide === 'right';
@@ -3663,8 +4105,12 @@ export function PlanDiffOverlay({
 	              ))
 	              || commentRowId === row.id
 	            );
-	            const renderCommentRow = (splitSide = null) => (shouldRenderInlineCommentRow && (
-	                <div className={`plan-diff-row plan-diff-row-comment${splitSide ? ` plan-diff-row--split-${splitSide}` : ''}`}>
+            const renderCommentRow = (splitSide = null) => (shouldRenderInlineCommentRow && (
+	                <div
+                    className={`plan-diff-row plan-diff-row-comment${splitSide ? ` plan-diff-row--split-${splitSide}` : ''}${highlightCommentRowId === row.id ? ' is-comment-navigation-target' : ''}`}
+                    data-demo-id={`diff-comment-row-${row.id}`}
+                    data-review-comment-row={row.id}
+                  >
 	                  <div className="plan-diff-row-gutter" onContextMenu={(event) => openGutterContextMenu(event, row.id)}>
 	                    <span className="plan-diff-line-number" />
 	                    {!singleLineNumbers && !splitSide && <span className="plan-diff-line-number" />}
@@ -3785,10 +4231,11 @@ export function PlanDiffOverlay({
                           }}
                           onCancel={() => clearCommentComposeState()}
                           onSubmit={handleRowCommentSubmit}
-                          onReplyToAgent={handleAgentReplyToRowComment}
-                          onQuickFix={handleAgentQuickFixRowComment}
-                          onResolveComment={handleAgentResolveRowComment}
-                          onHideAll={hideAllCommentsForDocument}
+	                          onReplyToAgent={handleAgentReplyToRowComment}
+	                          onQuickFix={handleAgentQuickFixRowComment}
+	                          onResolveComment={handleAgentResolveRowComment}
+	                          onDismissComment={handleAgentDismissRowComment}
+	                          onHideAll={hideAllCommentsForDocument}
                           onReturnToChat={onReturnToChat}
                         />
                       );
@@ -3879,9 +4326,16 @@ export function PlanDiffOverlay({
 	                <Fragment key={`aside-comment-${row.id}`}>
 	                  {indexComments.map(({ comment, group }, commentIndex) => {
 	                    const text = getCommentEntryText(comment).trim();
-	                    const severity = typeof comment?.severity === 'string' ? comment.severity.toLowerCase() : '';
-	                    const severityTone = { critical: 'is-critical', warning: 'is-warning', info: 'is-info' }[severity] || '';
-	                    const resolved = Boolean(comment && typeof comment === 'object' && comment.resolved);
+	                    const severity = typeof comment?.severity === 'string' ? comment.severity.trim() : '';
+	                    const severityTone = { critical: 'is-critical', warning: 'is-warning', info: 'is-info' }[severity.toLowerCase()] || '';
+                    const resolved = Boolean(comment && typeof comment === 'object' && comment.resolved);
+                    const resolvedKind = typeof comment?.resolvedKind === 'string' ? comment.resolvedKind : '';
+                    const resolvedLabel = resolvedKind === 'applied'
+                      ? 'Fix applied'
+                      : resolvedKind === 'dismissed'
+                        ? 'Dismissed'
+                        : 'Resolved manually';
+                    const resolvedBadgeTone = resolvedKind === 'dismissed' ? ' is-dismissed' : '';
 	                    const pending = Boolean(comment && typeof comment === 'object' && comment.pending);
 	                    const displayText = text || group?.label || 'AI Note';
 	                    const lineLabel = getCommentEntryLineLabel(comment) || rowLineLabel;
@@ -3911,9 +4365,9 @@ export function PlanDiffOverlay({
 	                                        {severityTone && !resolved && (
 	                                          <span className={`spec-done-status-severity ${severityTone}`}>{severity}</span>
 	                                        )}
-	                                        {resolved && (
-	                                          <span className="spec-done-comment-resolved-badge">Resolved</span>
-	                                        )}
+                                        {resolved && (
+                                          <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
+                                        )}
 	                                      </span>
 	                                      <span className="spec-done-comment-agent-reply-text plan-diff-aside-comment-text">{displayText}</span>
 	                                      {metaLabel && (
@@ -4107,6 +4561,8 @@ export function PlanDiffEditorArea({
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
+  const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
+  const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
 
   useEffect(() => {
     if (!toolbarRef.current) {
@@ -4136,6 +4592,9 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-left">
                 {reviewNav}
               </div>
+              <div className="plan-diff-toolbar-right">
+                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+              </div>
             </div>
           </div>
         )}
@@ -4144,31 +4603,37 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-left">
                 {reviewNav}
-                {reviewNav && <span className="plan-diff-toolbar-separator" aria-hidden="true" />}
+                {reviewNav && <ToolbarSeparator className="plan-diff-toolbar-separator" />}
+              <PlanDiffViewingScopeControl fileCount={toolbarFileCount} currentFileLabel={toolbarFileLabel} />
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
-                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
                 </div>
-                {viewMode !== 'aside' && (
-                  <>
-                    <span className="plan-diff-toolbar-separator" aria-hidden="true" />
-                    <SegmentedControl
-                      className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
-                      value={diffLayout}
-                      onChange={setDiffLayout}
-                      options={[
-                        { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
-                        { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
-                      ]}
-                    />
-                  </>
-                )}
-                <span className="plan-diff-toolbar-separator" aria-hidden="true" />
-                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                <div className="plan-diff-toolbar-group">
+                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
+                  <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
+                </div>
               </div>
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                <div className="plan-diff-review-action-group" aria-label="Review controls">
+                  <PlanDiffNewReviewButton currentScopeLabel="New changes" currentFileLabel={toolbarFileLabel} />
+                </div>
+                {viewMode !== 'aside' && (
+                  <SegmentedControl
+                    className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
+                    value={diffLayout}
+                    onChange={setDiffLayout}
+                    options={[
+                      { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
+                      { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
+                    ]}
+                  />
+                )}
+                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
               </div>
             </div>
             <div className="plan-diff-content-labels">

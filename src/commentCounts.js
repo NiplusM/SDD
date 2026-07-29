@@ -7,12 +7,14 @@
 // All comment counters (gutter balloon, chat-history folder, composer chip)
 // must agree on this, otherwise a 3-message thread reads as "1".
 export function getCommentThreadMessageCount(comment) {
-  if (comment && typeof comment === 'object' && comment.author === 'agent') return 1;
-  let count = 1; // the note itself
-  if (comment && typeof comment === 'object') {
-    if (typeof comment.agentReply === 'string' && comment.agentReply.trim().length > 0) count += 1;
-    if (typeof comment.userReply === 'string' && comment.userReply.trim().length > 0) count += 1;
-  }
+  if (!comment || typeof comment !== 'object') return 1;
+  const isAgentAuthored = comment.author === 'agent';
+  let count = 1; // the note itself, or the agent's own message
+  // A non-agent note can carry an agent reply; either kind can carry a user reply.
+  // (Previously an agent-authored entry short-circuited to 1, so a reply added
+  // under it — agent or user — never grew the counter.)
+  if (!isAgentAuthored && typeof comment.agentReply === 'string' && comment.agentReply.trim().length > 0) count += 1;
+  if (typeof comment.userReply === 'string' && comment.userReply.trim().length > 0) count += 1;
   return count;
 }
 
