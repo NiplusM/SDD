@@ -6416,9 +6416,6 @@ function DoneCommentPopup({
       inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
       showSubmitActionMenu={false}
-      submitActionOptions={[
-        { id: 'default', label: submitButtonLabel, iconName: 'general/balloon' },
-      ]}
       secondarySubmitAction={!isEditing
         ? {
           id: 'selection',
