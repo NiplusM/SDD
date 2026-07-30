@@ -1003,8 +1003,8 @@ body {
   color: #F2C55C;
 }
 
-.spec-done-selection-toolbar-btn.is-assistant,
-.editor-selection-toolbar-btn.is-assistant,
+.spec-done-selection-toolbar-btn.is-assistant .icon,
+.editor-selection-toolbar-btn.is-assistant .icon,
 .editor-selection-toolbar-menu-item.is-assistant .icon,
 .diff-comment-primary-split-main .icon.is-assistant,
 .diff-comment-submit-action-popup .cmp-cell.is-assistant .icon {
