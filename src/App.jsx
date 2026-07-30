@@ -26483,7 +26483,7 @@ export default function App() {
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
-                    showGutterComments={isDiffTab && diffGutterCommentsEnabled}
+                    showGutterComments={(isDiffTab && diffGutterCommentsEnabled) || isPlainFileOverlayTab}
                     plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}

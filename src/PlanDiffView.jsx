@@ -3841,6 +3841,13 @@ export function PlanDiffOverlay({
             const hiddenRowCommentCount = hiddenRowCommentTexts.length;
             const aiNoteHint = singleLineNumbers ? AI_NOTE_FILE_HINT : AI_NOTE_DIFF_HINT;
             const isCommentComposeOpen = commentRowId === row.id;
+            const shouldRenderGutterCommentControl = showGutterComments
+              && showRowCommentControls
+              && (
+                singleLineNumbers
+                  ? (isCommentComposeOpen || hasVisibleRowComments || hiddenRowCommentCount > 0)
+                  : (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0)
+              );
             const isCommentSelectionHighlighted =
               commentTargetHasSelection
               &&
@@ -4197,7 +4204,7 @@ export function PlanDiffOverlay({
 	                <div className="plan-diff-row-gutter" onContextMenu={(event) => openGutterContextMenu(event, row.id)}>
 	                  <span className="plan-diff-line-number">{lineNumber ?? ''}</span>
 	                  {!singleLineNumbers && !isSplitSide && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
-	                  {showGutterComments && showRowCommentControls && (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0) ? (
+	                  {shouldRenderGutterCommentControl ? (
                     <PlanDiffGutterAiNoteTooltip text={aiNoteHint} disabled={hiddenRowCommentTexts.length > 0}>
 	                      <span
 	                        className={`plan-diff-gutter-icon-slot${isCommentComposeOpen ? ' is-open' : ''}${hasVisibleRowComments ? ' has-comments' : ''}${hasRenderableRowComments ? ' has-renderable-comments' : ''}${hiddenRowCommentTexts.length > 0 ? ' has-hidden-comments' : ''}`}
