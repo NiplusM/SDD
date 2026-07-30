@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Button, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCounts.js';
@@ -870,24 +870,23 @@ export function PlanDiffNewReviewButton({
   triggerClassName = '',
   popupClassName = '',
 }) {
-  const triggerRef = useRef(null);
-  const [popupRect, setPopupRect] = useState(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedScopeId, setSelectedScopeId] = useState('current');
   const [selectedAgentId, setSelectedAgentId] = useState('codex');
   const [attachments, setAttachments] = useState([]);
   const [instructions, setInstructions] = useState('');
+  const [runInContainer, setRunInContainer] = useState(false);
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
   const [openMenu, setOpenMenu] = useState(null);
-  const isOpen = Boolean(popupRect);
+  const isOpen = dialogOpen;
   const togglePopup = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
     setOpenMenu(null);
-    setPopupRect((prev) => (prev ? null : rect ?? null));
+    setDialogOpen((prev) => !prev);
   };
   const closePopup = () => {
     setOpenMenu(null);
-    setPopupRect(null);
+    setDialogOpen(false);
   };
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
   const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
@@ -914,6 +913,16 @@ export function PlanDiffNewReviewButton({
   const removeAttachment = (attachmentId) => {
     setAttachments((prev) => prev.filter((id) => id !== attachmentId));
   };
+  useEffect(() => {
+    if (!dialogOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closePopup();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [dialogOpen]);
   // Dropdowns are composed from the library Popup/PopupCell primitives and kept
   // inside this popup so they do not dismiss the parent review popup.
   const renderMenu = (menu, children) => (
@@ -964,12 +973,13 @@ export function PlanDiffNewReviewButton({
 
   return (
     <div className="plan-diff-new-review">
-      <span ref={triggerRef} className="plan-diff-new-review-trigger">
+      <span className="plan-diff-new-review-trigger">
         <button
           className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${isOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
           type="button"
           title="AI Review"
           aria-label="AI Review"
+          aria-haspopup="dialog"
           aria-expanded={isOpen}
           onClick={togglePopup}
         >
@@ -978,40 +988,58 @@ export function PlanDiffNewReviewButton({
               <Icon name="general/balloon" size={16} />
             </span>
             <span className="plan-diff-ai-review-button-label">AI Review</span>
-            <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-button-chevron" />
           </span>
         </button>
       </span>
-      {popupRect && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={popupRect} onDismiss={closePopup} gap={4}>
-            <Popup visible className={`plan-diff-popover plan-diff-ai-review-popup text-ui-default${popupClassName ? ` ${popupClassName}` : ''}`} onClose={closePopup}>
-              <div className="plan-diff-ai-review-panel">
-                <div className="plan-diff-ai-review-panel-head">
-                  <span className="plan-diff-ai-review-panel-title text-ui-default-semibold">Start AI Review</span>
-                  <span className="plan-diff-ai-review-panel-summary text-ui-small">1 file · 2 changes</span>
-                </div>
+      {dialogOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="theme-dark plan-diff-ai-review-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closePopup();
+          }}
+        >
+          <Dialog
+            title="Start AI Review"
+            width="min(800px, calc(100vw - 48px))"
+            height="min(560px, calc(100vh - 48px))"
+            showMacOSButtons={false}
+            showHelp={false}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Start AI Review"
+            className={`plan-diff-ai-review-dialog text-ui-default${popupClassName ? ` ${popupClassName}` : ''}`}
+            buttons={[
+              { children: 'Cancel', type: 'secondary', onClick: closePopup },
+              { children: 'Start review', type: 'primary', onClick: closePopup },
+            ]}
+          >
+            <IconButton
+              icon="general/close"
+              tooltip="Close"
+              className="plan-diff-ai-review-dialog-close"
+              onClick={closePopup}
+            />
+            <div className="plan-diff-ai-review-dialog-content">
+              <div className="plan-diff-ai-review-dialog-mode-row">
+                <span className="plan-diff-ai-review-dialog-mode is-active">
+                  <Icon name="general/balloon" size={16} />
+                  Review code
+                </span>
+                <span className="plan-diff-ai-review-dialog-summary text-ui-small">1 file · 2 changes</span>
+                <Checkbox checked={runInContainer} onChange={() => setRunInContainer((value) => !value)} />
+                <span className="plan-diff-ai-review-dialog-container-label">Run in container</span>
+              </div>
 
+              <div className="plan-diff-ai-review-dialog-context">
                 <span className="plan-diff-ai-review-dropdown">
-                  <button type="button" className="plan-diff-ai-review-scope-summary" onClick={() => toggleMenu('scope')}>
-                    <span className="plan-diff-ai-review-scope-visual" aria-hidden="true">
-                      <span className="plan-diff-ai-review-scope-file">
-                        <span className="is-muted" />
-                        <span className="is-removed" />
-                        <span className="is-added" />
-                        <span className="is-added short" />
-                      </span>
-                    </span>
-                    <span className="plan-diff-ai-review-scope-main">
-                      <span className="plan-diff-ai-review-choice-label text-ui-small">Review scope</span>
-                      <span className="plan-diff-ai-review-scope-name text-ui-default-semibold">{selectedScope.label}</span>
-                      <span className="plan-diff-ai-review-scope-path text-ui-small">{selectedScope.meta}</span>
-                    </span>
-                    <span className="plan-diff-ai-review-scope-stats" aria-hidden="true">
-                      <span><b>1</b> file</span>
-                      <span><b>2</b> changes</span>
-                    </span>
-                    <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-choice-chevron" />
+                  <button
+                    type="button"
+                    className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip"
+                    onClick={() => toggleMenu('scope')}
+                  >
+                    <Icon name="vcs/diff" size={16} className="ai-chat-attachment-icon" />
+                    <span className="ai-chat-attachment-name">{selectedScope.label}</span>
+                    <Icon name="general/chevronDown" size={16} />
                   </button>
                   {renderMenu('scope', scopeOptions.map((item) => (
                     <PopupCell
@@ -1025,78 +1053,93 @@ export function PlanDiffNewReviewButton({
                     </PopupCell>
                   )))}
                 </span>
-
-                <span className="plan-diff-ai-review-dropdown">
-                  <button type="button" className="plan-diff-ai-review-agent-row" onClick={() => toggleMenu('agent')}>
-                    <span className="plan-diff-ai-review-choice-icon">
-                      <AiChatAgentIcon icon={selectedAgent.icon} />
-                    </span>
-                    <span className="plan-diff-ai-review-choice-copy">
-                      <span className="plan-diff-ai-review-choice-title text-ui-default-semibold">Recommended Agent</span>
-                      <span className="plan-diff-ai-review-choice-meta text-ui-small">{selectedAgent.label} · optimized for code review</span>
-                    </span>
-                    <Icon name="general/chevronDown" size={16} className="plan-diff-ai-review-choice-chevron" />
-                  </button>
-                  {renderAgentMenu()}
+                <span className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip">
+                  <Icon name="fileTypes/java" size={16} className="ai-chat-attachment-icon" />
+                  <span className="ai-chat-attachment-name">{currentFileLabel}</span>
                 </span>
+                <span className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip">
+                  <Icon name="vcs/diff" size={16} className="ai-chat-attachment-icon" />
+                  <span className="ai-chat-attachment-name">2 changes</span>
+                </span>
+              </div>
 
-                <div className="plan-diff-ai-review-instructions">
-                  <div className="plan-diff-ai-review-field-head">
-                    <span className="text-ui-small">Additional instructions</span>
-                    <span className="text-ui-small">Optional</span>
+              <div className="ai-chat-composer plan-diff-ai-review-dialog-composer">
+                {attachments.length > 0 && (
+                  <div className="ai-chat-attachments">
+                    {attachments.map((attachmentId) => {
+                      const attachment = attachmentOptions.find((item) => item.id === attachmentId);
+                      if (!attachment) return null;
+                      return (
+                        <span className="ai-chat-attachment-chip has-remove-action" key={attachment.id}>
+                          <Icon name={attachment.icon} size={16} className="ai-chat-attachment-icon" />
+                          <span className="ai-chat-attachment-name">{attachment.label}</span>
+                          <button
+                            type="button"
+                            className="ai-chat-attachment-close-button"
+                            aria-label={`Remove ${attachment.label}`}
+                            onClick={() => removeAttachment(attachment.id)}
+                          >
+                            <Icon name="windows/closeSmall" size={16} />
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
-                  <Input
-                    size="small"
-                    value={instructions}
-                    placeholder="Focus on concurrency, API contract, tests…"
-                    onChange={(event) => setInstructions(event.target.value)}
-                  />
-                </div>
-
-                <div className="plan-diff-ai-review-attachments">
-                  {attachments.map((attachmentId) => {
-                    const attachment = attachmentOptions.find((item) => item.id === attachmentId);
-                    if (!attachment) return null;
-                    return (
-                      <span className="plan-diff-ai-review-attachment-chip" key={attachment.id}>
-                        <Icon name={attachment.icon} size={14} />
-                        <span>{attachment.label}</span>
-                        <button type="button" aria-label={`Remove ${attachment.label}`} onClick={() => removeAttachment(attachment.id)}>
-                          <Icon name="general/closeSmall" size={12} />
-                        </button>
-                      </span>
-                    );
-                  })}
-                  <span className="plan-diff-ai-review-dropdown">
-                    <ToolbarButton
-                      icon="actions/attach"
-                      text="Add attachment"
-                      showChevron
-                      onClick={() => toggleMenu('attach')}
-                    />
-                    {renderMenu('attach', availableAttachmentOptions.length > 0
-                      ? availableAttachmentOptions.map((option) => (
-                        <PopupCell
-                          key={option.id}
-                          type="multiline"
-                          icon={option.icon}
-                          hint={option.meta}
-                          onClick={() => addAttachment(option.id)}
-                        >
-                          {option.label}
-                        </PopupCell>
-                      ))
-                      : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
-                  </span>
-                </div>
-
-                <div className="plan-diff-ai-review-library-actions">
-                  <Button type="secondary" onClick={closePopup}>Cancel</Button>
-                  <Button type="primary" onClick={closePopup}>Start AI Review</Button>
+                )}
+                <textarea
+                  autoFocus
+                  rows={1}
+                  value={instructions}
+                  placeholder="What should the reviewer agent focus on?"
+                  aria-label="Review instructions"
+                  onChange={(event) => setInstructions(event.target.value)}
+                />
+                <div className="ai-chat-composer-toolbar">
+                  <div className="ai-chat-composer-left">
+                    <span className="plan-diff-ai-review-dropdown">
+                      <button
+                        className="ai-chat-plus-button"
+                        type="button"
+                        aria-label="Add context"
+                        onClick={() => toggleMenu('attach')}
+                      >
+                        <Icon name="general/add" size={16} />
+                      </button>
+                      {renderMenu('attach', availableAttachmentOptions.length > 0
+                        ? availableAttachmentOptions.map((option) => (
+                          <PopupCell
+                            key={option.id}
+                            type="multiline"
+                            icon={option.icon}
+                            hint={option.meta}
+                            onClick={() => addAttachment(option.id)}
+                          >
+                            {option.label}
+                          </PopupCell>
+                        ))
+                        : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
+                    </span>
+                    <span className="plan-diff-ai-review-dropdown">
+                      <button
+                        type="button"
+                        className="ai-chat-mode-button plan-diff-ai-review-dialog-agent"
+                        onClick={() => toggleMenu('agent')}
+                      >
+                        <AiChatAgentIcon icon={selectedAgent.icon} />
+                        <span>{selectedAgent.id === 'codex' ? 'Recommended Agent' : selectedAgent.label}</span>
+                        <Icon name="general/chevronDown" size={16} />
+                      </button>
+                      {renderAgentMenu()}
+                    </span>
+                    <button type="button" className="ai-chat-mode-button">
+                      Full Access
+                      <Icon name="general/chevronDown" size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </Popup>
-          </PositionedPopup>
+            </div>
+          </Dialog>
         </div>,
         document.body,
       )}
@@ -1227,7 +1270,7 @@ export function DiffInlineCommentPopup({
     : '';
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
-  const primarySubmitButtonLabel = isEditing ? 'Save AI Note' : (normalizedSubmitButtonLabel || 'Attach AI Note');
+  const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
   const sendToAgentSubmitButtonLabel = 'Send AI Note to Agent';
   const sendAllToAgentSubmitButtonLabel = 'Send All AI Notes to Agent';
   const selectedPrimarySubmitButtonLabel = selectedSubmitAction === 'send-to-agent'
@@ -1717,10 +1760,10 @@ export function DiffInlineCommentPopup({
               </button>
               <button
                 type="button"
-                className="spec-done-comment-agent-reply-link"
-                onClick={(event) => { event.stopPropagation(); startAgentCommentProcessing(comment, 'resolve', draftKey, fallbackIndex, context); }}
+                className="spec-done-comment-agent-reply-link is-dismiss-cta"
+                onClick={(event) => { event.stopPropagation(); startAgentCommentProcessing(comment, 'dismiss', draftKey, fallbackIndex, context); }}
               >
-                Resolve
+                Dismiss
               </button>
             </div>
           )}
@@ -2360,7 +2403,7 @@ export function PlanDiffOverlay({
   allowInlineCommentCompose = true,
   viewMode = 'unified',
   // In 'comments' mode, clicking a card calls this with the row id so a host
-  // can scroll the corresponding code overlay and open the inline thread.
+  // can scroll the corresponding code overlay and highlight the target row(s).
   onCommentNavigate = null,
   commentIndexFileLabel = '',
   showCommentIndexFileLabel = false,
@@ -2369,9 +2412,17 @@ export function PlanDiffOverlay({
   expandedInlineCommentRowId = null,
   onInlineCommentExpand = null,
   highlightCommentRowId = null,
+  highlightedCommentRowIds = [],
 }) {
   const scrollRef = useRef(null);
   const canCreateInlineComments = !commentsReadOnly && allowInlineCommentCompose;
+  const highlightedCommentRowIdSet = useMemo(() => {
+    const ids = Array.isArray(highlightedCommentRowIds) ? highlightedCommentRowIds : [];
+    return new Set([
+      ...ids.filter((rowId) => typeof rowId === 'string' && rowId.length > 0),
+      ...(typeof highlightCommentRowId === 'string' && highlightCommentRowId.length > 0 ? [highlightCommentRowId] : []),
+    ]);
+  }, [highlightCommentRowId, highlightedCommentRowIds]);
   // Visibility model (computed at render, never mutates data):
   //  - Resolved / quick-fixed comments carry hidden:true so they auto-collapse to
   //    the gutter. They stay collapsed under the default view; reopening one from
@@ -2459,6 +2510,9 @@ export function PlanDiffOverlay({
   const [commentTargetHasSelection, setCommentTargetHasSelection] = useState(
     Boolean(normalizedUiState.commentTargetHasSelection) || normalizedUiState.commentTargetRowIds.length > 1,
   );
+  const [asideReplyComposerKey, setAsideReplyComposerKey] = useState(null);
+  const [asideReplyDrafts, setAsideReplyDrafts] = useState({});
+  const [asideProcessingCommentKey, setAsideProcessingCommentKey] = useState(null);
   const [shortcutHintPosition, setShortcutHintPosition] = useState(null);
   const preservedSelectionSnapshotRef = useRef(null);
   const preservedSelectionTargetRowIdsRef = useRef([]);
@@ -3960,9 +4014,10 @@ export function PlanDiffOverlay({
 	              const rowCommentSide = row.kind === 'removed' ? 'left' : 'right';
 	              const showRowCommentControls = !isSplitSide || splitSide === rowCommentSide;
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
+	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id);
 	              return (
 	              <div
-	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}`}
+	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
                 role="button"
@@ -4315,7 +4370,6 @@ export function PlanDiffOverlay({
 	              );
 	            }
 	            if (renderMode === 'aside-comments') {
-	              const navigateToRow = () => (onCommentNavigate ? onCommentNavigate(row.id) : activateRow(row.id));
 	              const indexComments = rowCommentGroups.flatMap((group) => (
 	                (group?.comments ?? [])
 	                  .filter(isCommentMatchingIndexFilter)
@@ -4341,25 +4395,81 @@ export function PlanDiffOverlay({
 	                    const lineLabel = getCommentEntryLineLabel(comment) || rowLineLabel;
 	                    const fileLabel = showCommentIndexFileLabel && commentIndexFileLabel ? commentIndexFileLabel : '';
 	                    const metaLabel = [lineLabel, fileLabel].filter(Boolean).join(' · ');
+	                    const targetRowIds = getDiffCommentTargetRowIdsForComment(comment, row.id);
+	                    const source = typeof comment?.source === 'string' ? comment.source : 'diff';
+	                    const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : commentIndex;
+	                    const context = { chatId: comment?.chatId || group?.chatId || null };
+	                    const actionKey = `${row.id}:${source}:${context.chatId || 'local'}:${localIndex}`;
+	                    const changeLabel = typeof comment?.fixLabel === 'string' ? comment.fixLabel.trim() : '';
+	                    const isAgentAuthored = comment?.author === 'agent';
+	                    const isReplyComposerOpen = asideReplyComposerKey === actionKey;
+	                    const replyDraft = asideReplyDrafts[actionKey] ?? '';
+	                    const isProcessing = pending || asideProcessingCommentKey === actionKey;
+	                    const navigateToRow = () => (
+	                      onCommentNavigate
+	                        ? onCommentNavigate(row.id, { rowIds: targetRowIds, comment })
+	                        : activateRow(row.id)
+	                    );
+	                    const runAsideAction = (kind) => {
+	                      if (commentsReadOnly || isProcessing) return;
+	                      setAsideReplyComposerKey(null);
+	                      setAsideProcessingCommentKey(actionKey);
+	                      window.setTimeout(() => {
+	                        if (kind === 'quickfix') {
+	                          handleAgentQuickFixRowComment(localIndex, source, context);
+	                        } else if (kind === 'dismiss') {
+	                          handleAgentDismissRowComment(localIndex, source, context);
+	                        } else {
+	                          handleAgentResolveRowComment(localIndex, true, source, context);
+	                        }
+	                        setAsideProcessingCommentKey((currentKey) => (
+	                          currentKey === actionKey ? null : currentKey
+	                        ));
+	                      }, 1400);
+	                    };
+	                    const submitAsideReply = () => {
+	                      const trimmedReply = replyDraft.trim();
+	                      if (commentsReadOnly || !trimmedReply || isProcessing) return;
+	                      setAsideReplyComposerKey(null);
+	                      handleAgentReplyToRowComment(localIndex, trimmedReply, source, context, {
+	                        includeAgentFollowUp: false,
+	                      });
+	                      setAsideProcessingCommentKey(actionKey);
+	                      window.setTimeout(() => {
+	                        handleAgentReplyToRowComment(localIndex, trimmedReply, source, context, {
+	                          includeAgentFollowUp: true,
+	                        });
+	                        setAsideProcessingCommentKey((currentKey) => (
+	                          currentKey === actionKey ? null : currentKey
+	                        ));
+	                      }, 1400);
+	                    };
 
 	                    return (
-	                      <button
-	                        type="button"
+	                      <div
 	                        className={`cmp-popup spec-done-comment-popup has-comments plan-diff-aside-comment${resolved ? ' is-resolved' : ''}`}
 	                        key={`aside-comment-${row.id}-${group?.chatId || group?.label || 'local'}-${commentIndex}`}
 	                        onClick={navigateToRow}
+	                        onKeyDown={(event) => {
+	                          if (event.target instanceof Element && event.target.closest('button, textarea')) return;
+	                          if (event.key !== 'Enter' && event.key !== ' ') return;
+	                          event.preventDefault();
+	                          navigateToRow();
+	                        }}
+	                        role="button"
+	                        tabIndex={0}
 	                        title={displayText}
 	                      >
-	                        <span className="spec-done-comment-popup-groups">
-	                          <span className="spec-done-comment-popup-group">
-	                            <span className="spec-done-comment-popup-list">
-	                              <span className="spec-done-comment-popup-item is-agent-authored">
-	                                <span className="spec-done-comment-popup-item-body">
-	                                  <span className={`spec-done-comment-agent-reply${resolved ? ' is-resolved' : ''}`}>
-	                                    <span className="spec-done-comment-agent-reply-thread">
-	                                      <span className="spec-done-comment-agent-reply-head">
-	                                        <span className={`spec-done-comment-agent-reply-avatar${pending ? ' is-processing' : ''}`} aria-hidden="true">
-	                                          {pending ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
+	                        <div className="spec-done-comment-popup-groups">
+	                          <div className="spec-done-comment-popup-group">
+	                            <div className="spec-done-comment-popup-list">
+	                              <div className="spec-done-comment-popup-item is-agent-authored">
+	                                <div className="spec-done-comment-popup-item-body">
+	                                  <div className={`spec-done-comment-agent-reply${resolved ? ' is-resolved' : ''}`}>
+	                                    <div className="spec-done-comment-agent-reply-thread">
+	                                      <div className="spec-done-comment-agent-reply-head">
+	                                        <span className={`spec-done-comment-agent-reply-avatar${isProcessing ? ' is-processing' : ''}`} aria-hidden="true">
+	                                          {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
 	                                        </span>
 	                                        <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
 	                                        {severityTone && !resolved && (
@@ -4368,19 +4478,101 @@ export function PlanDiffOverlay({
                                         {resolved && (
                                           <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
                                         )}
-	                                      </span>
+	                                      </div>
 	                                      <span className="spec-done-comment-agent-reply-text plan-diff-aside-comment-text">{displayText}</span>
 	                                      {metaLabel && (
 	                                        <span className="plan-diff-aside-comment-meta text-ui-small">{metaLabel}</span>
 	                                      )}
-	                                    </span>
-	                                  </span>
-	                                </span>
-	                              </span>
-	                            </span>
-	                          </span>
-	                        </span>
-	                      </button>
+	                                      {!resolved && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
+	                                        <div className="spec-done-comment-agent-reply-actions plan-diff-aside-comment-actions">
+	                                          <button
+	                                            type="button"
+	                                            className="spec-done-comment-agent-reply-link is-change-cta"
+	                                            onClick={(event) => {
+	                                              event.stopPropagation();
+	                                              runAsideAction('quickfix');
+	                                            }}
+	                                          >
+	                                            {changeLabel || 'Apply fix'}
+	                                          </button>
+	                                          <button
+	                                            type="button"
+	                                            className="spec-done-comment-agent-reply-link"
+	                                            onClick={(event) => {
+	                                              event.stopPropagation();
+	                                              setAsideReplyComposerKey(actionKey);
+	                                            }}
+	                                          >
+	                                            Reply
+	                                          </button>
+	                                          <button
+	                                            type="button"
+	                                            className="spec-done-comment-agent-reply-link is-dismiss-cta"
+	                                            onClick={(event) => {
+	                                              event.stopPropagation();
+	                                              runAsideAction('dismiss');
+	                                            }}
+	                                          >
+	                                            Dismiss
+	                                          </button>
+	                                        </div>
+	                                      )}
+	                                      {!resolved && isAgentAuthored && isReplyComposerOpen && (
+	                                        <div
+	                                          className="spec-done-comment-agent-reply-compose plan-diff-aside-comment-reply"
+	                                          onClick={(event) => event.stopPropagation()}
+	                                          onKeyDown={(event) => {
+	                                            event.stopPropagation();
+	                                            if (event.key === 'Enter' && !event.shiftKey) {
+	                                              event.preventDefault();
+	                                              submitAsideReply();
+	                                            }
+	                                            if (event.key === 'Escape') {
+	                                              event.preventDefault();
+	                                              setAsideReplyComposerKey(null);
+	                                            }
+	                                          }}
+	                                        >
+	                                          <div className="spec-done-comment-popup-input-wrap">
+	                                            <textarea
+	                                              className="spec-done-comment-popup-textarea text-ui-default"
+	                                              value={replyDraft}
+	                                              placeholder="Reply to Claude Agent"
+	                                              autoFocus
+	                                              rows={1}
+	                                              onChange={(event) => setAsideReplyDrafts((drafts) => ({
+	                                                ...drafts,
+	                                                [actionKey]: event.target.value,
+	                                              }))}
+	                                            />
+	                                          </div>
+	                                          <div className="spec-done-comment-popup-footer">
+	                                            <div className="spec-done-comment-popup-actions">
+	                                              <Button
+	                                                type="secondary"
+	                                                onClick={() => setAsideReplyComposerKey(null)}
+	                                              >
+	                                                Cancel
+	                                              </Button>
+	                                              <Button
+	                                                type="primary"
+	                                                disabled={!replyDraft.trim()}
+	                                                onClick={submitAsideReply}
+	                                              >
+	                                                Send
+	                                              </Button>
+	                                            </div>
+	                                          </div>
+	                                        </div>
+	                                      )}
+	                                    </div>
+	                                  </div>
+	                                </div>
+	                              </div>
+	                            </div>
+	                          </div>
+	                        </div>
+	                      </div>
 	                    );
 	                  })}
 	                </Fragment>

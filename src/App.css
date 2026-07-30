@@ -1164,12 +1164,14 @@ body {
 .editor-selection-toolbar-menu {
   position: absolute;
   top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  transform: none;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  min-width: 232px;
+  width: max-content;
+  min-width: 184px;
+  max-width: 220px;
   padding: 4px;
   background: #1D1E21;
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -1181,6 +1183,7 @@ body {
   all: unset;
   box-sizing: border-box;
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 8px;
   height: 26px;
@@ -1206,13 +1209,17 @@ body {
   align-items: center;
   justify-content: center;
   width: 16px;
+  margin-left: auto;
   flex-shrink: 0;
   color: var(--text-default, #CED0D6);
+  font-family: Inter, -apple-system, sans-serif;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .editor-selection-toolbar-menu-item-label {
   font-family: Inter, -apple-system, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1;
 }
@@ -1251,6 +1258,11 @@ body {
 .ai-chat-annotation-mark:hover {
   background: rgba(180, 184, 191, 0.23);
   box-shadow: none;
+}
+
+.ai-chat-selection-context-mark,
+.ai-chat-selection-context-mark:hover {
+  background: rgba(180, 184, 191, 0.18);
 }
 
 .aiux543-answer ::selection,
@@ -1338,6 +1350,111 @@ body {
 }
 
 .ai-chat-annotation-tooltip-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow-wrap: anywhere;
+  color: #F0F1F3;
+}
+
+.spec-text-annotation-mark {
+  position: relative;
+  display: inline;
+  padding: 1px 3px 2px 6px;
+  border-radius: 4px;
+  background: rgba(180, 184, 191, 0.18);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: inherit;
+  cursor: pointer;
+}
+
+.spec-text-annotation-mark:hover,
+.spec-text-annotation-mark:focus-visible {
+  background: rgba(180, 184, 191, 0.24);
+  outline: none;
+}
+
+.spec-text-annotation-inline-badge {
+  display: inline-flex;
+  height: 18px;
+  min-width: 24px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  margin-left: 5px;
+  padding: 0 2px 0 1px;
+  border-radius: 0;
+  background: transparent;
+  color: #CED0D6;
+  vertical-align: -3px;
+}
+
+.spec-text-annotation-inline-badge .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.spec-text-annotation-inline-count {
+  color: #CED0D6;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.spec-text-annotation-inline-hint {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 80;
+  display: block;
+  width: max-content;
+  min-width: 220px;
+  max-width: 320px;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: none;
+}
+
+.spec-text-annotation-mark:hover .spec-text-annotation-inline-hint,
+.spec-text-annotation-mark:focus-within .spec-text-annotation-inline-hint {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.spec-text-annotation-tooltip {
+  width: 100%;
+  padding: 8px 10px;
+  gap: 0;
+  white-space: normal;
+}
+
+.spec-text-annotation-tooltip .tooltip-help-header:empty {
+  display: none;
+}
+
+.spec-text-annotation-tooltip .tooltip-help-body {
+  color: #DFE1E5;
+  font: 400 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.spec-text-annotation-tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spec-text-annotation-tooltip-label {
+  color: #8B8E96;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.spec-text-annotation-tooltip-body {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -4247,6 +4364,157 @@ body {
   line-height: 16px;
 }
 
+.plan-diff-ai-review-dialog-backdrop {
+  position: fixed;
+  z-index: 12000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.64);
+}
+
+.plan-diff-ai-review-dialog.dialog {
+  position: relative;
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+}
+
+.plan-diff-ai-review-dialog .dialog-header {
+  min-height: 38px;
+  box-sizing: border-box;
+  padding-right: 42px;
+}
+
+.plan-diff-ai-review-dialog .dialog-header-title {
+  color: var(--text-default, #d1d3d9);
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog .dialog-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plan-diff-ai-review-dialog-close {
+  position: absolute;
+  z-index: 5;
+  top: 6px;
+  right: 8px;
+}
+
+.plan-diff-ai-review-dialog-content {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px 16px;
+}
+
+.plan-diff-ai-review-dialog-mode-row {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary, #8b8e94);
+}
+
+.plan-diff-ai-review-dialog-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-mode.is-active {
+  color: #dfe1e5;
+}
+
+.plan-diff-ai-review-dialog-mode.is-active > .icon {
+  color: #71a1fe;
+}
+
+.plan-diff-ai-review-dialog-summary {
+  color: var(--text-secondary, #8b8e94);
+}
+
+.plan-diff-ai-review-dialog-mode-row .checkbox-container {
+  margin-left: auto;
+  padding: 0;
+}
+
+.plan-diff-ai-review-dialog-container-label {
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.plan-diff-ai-review-dialog-context-chip.ai-chat-attachment-chip {
+  position: relative;
+  width: auto;
+  max-width: 260px;
+  cursor: pointer;
+}
+
+.plan-diff-ai-review-dialog-context-chip > .icon:last-child {
+  flex: 0 0 16px;
+  color: var(--icon-secondary-stroke, #9fa2a8);
+}
+
+.plan-diff-ai-review-dialog .plan-diff-ai-review-dialog-composer.ai-chat-composer {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  border-radius: 8px;
+}
+
+.plan-diff-ai-review-dialog-composer > textarea {
+  min-height: 180px;
+  flex: 1 1 auto;
+  padding-top: 14px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.plan-diff-ai-review-dialog-composer .ai-chat-attachments {
+  z-index: 3;
+}
+
+.plan-diff-ai-review-dialog-composer .ai-chat-composer-toolbar {
+  overflow: visible;
+}
+
+.plan-diff-ai-review-dialog-composer .ai-chat-composer-left {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.plan-diff-ai-review-dialog-agent > svg,
+.plan-diff-ai-review-dialog-agent > .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-agent,
+.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-attach {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
 .plan-diff-new-review-check {
   display: inline-flex;
   align-items: center;
@@ -4501,6 +4769,7 @@ body {
   --plan-diff-line-number-color: #727780;
   --plan-diff-line-number-color-active: #d7dae0;
   --plan-diff-gutter-divider: #303238;
+  transition: background-color 180ms ease-out;
 }
 
 .plan-diff-row-gutter {
@@ -4516,6 +4785,7 @@ body {
   position: relative;
   overflow: hidden;
   user-select: none;
+  transition: background-color 180ms ease-out;
 }
 
 .plan-diff-overlay--single .plan-diff-row {
@@ -4797,9 +5067,15 @@ body {
   font-weight: 500;
 }
 
+.aiux-review-panel-cat-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
 .aiux-review-panel-cat-resolve {
   flex: 0 0 auto;
-  margin-left: 4px;
   height: 20px;
   padding: 0 6px;
   border: 0;
@@ -4812,6 +5088,15 @@ body {
 
 .aiux-review-panel-cat-resolve:hover {
   background: rgba(84, 138, 247, 0.12);
+}
+
+.aiux-review-panel-cat-resolve.is-dismiss {
+  color: #8a8f98;
+}
+
+.aiux-review-panel-cat-resolve.is-dismiss:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #b4b8bf;
 }
 
 /* Each file's comments-only overlay just flows its cards into the shared column;
@@ -4942,6 +5227,14 @@ body {
 .plan-diff-row.has-inline-highlight > .plan-diff-row-gutter::before,
 .plan-diff-row.has-inline-highlight > .plan-diff-row-code::before {
   opacity: 1;
+}
+
+.plan-diff-row.is-comment-target-highlight {
+  background: var(--selection-bg-active);
+}
+
+.plan-diff-row.is-comment-target-highlight > .plan-diff-row-gutter {
+  background: inherit;
 }
 
 .plan-diff-row-removed.has-inline-highlight > .plan-diff-row-gutter::before,
@@ -7834,7 +8127,7 @@ body {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
-  z-index: 30;
+  z-index: 100;
   display: flex;
   width: max-content;
   min-width: 180px;
@@ -7947,8 +8240,11 @@ body {
 .ai-chat-attachment-hover-tooltip .tooltip-help-body {
   display: flex;
   width: 100%;
+  max-height: 190px;
   flex-direction: column;
   gap: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   color: #DFE1E5;
 }
 
@@ -13519,6 +13815,404 @@ button.aiux543-answer-change-card:focus-visible {
   color: #ced0d6;
 }
 
+/* Figma IJ Air composer treatment: one focused input surface with attachments
+   inside it. Applied to both the right tool-window chat and the editor-tab chat
+   so attachment/input behavior stays visually identical. */
+.ai-chat-composer,
+.aiux543-chat-composer {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  min-height: 116px;
+  padding: 2px;
+  border: 2px solid #3871E1;
+  border-radius: 8px;
+  background: #191A1C;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.ai-chat-composer:focus-within,
+.aiux543-chat-composer:focus-within {
+  border-color: #3871E1;
+}
+
+.ai-chat-attachments,
+.aiux543-composer-attachments {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 3px;
+  padding: 12px 12px 3px;
+  max-height: 67px;
+  overflow: visible;
+}
+
+.ai-chat-attachments.is-expanded,
+.aiux543-composer-attachments.is-expanded {
+  max-height: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #5A5D66 transparent;
+  scrollbar-width: thin;
+}
+
+.ai-chat-composer textarea,
+.aiux543-chat-input-row {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+}
+
+.ai-chat-composer textarea {
+  min-height: 36px;
+  padding: 6px 14px 4px;
+  color: #FFFFFF;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-chat-input-row {
+  min-height: 36px;
+  padding: 6px 14px 4px;
+}
+
+.aiux543-chat-input {
+  min-height: 36px;
+  color: #DFE1E5;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-composer textarea::placeholder,
+.aiux543-chat-input::placeholder {
+  color: #73767C;
+}
+
+.ai-chat-attachment-chip,
+.aiux543-composer-attachment-chip,
+.aiux543-user-attachment-chip,
+.ai-chat-sent-attachment-chip {
+  z-index: 1;
+  min-width: 0;
+  height: 20px;
+  max-width: 200px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 0 6px 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: #26282C;
+  color: #D1D3D9;
+  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-attachment-chip:hover,
+.ai-chat-attachment-chip:focus-visible,
+.aiux543-user-attachment-chip:hover {
+  background: #3B3E45;
+  outline: none;
+}
+
+.ai-chat-attachment-chip:active {
+  background: #45484F;
+}
+
+.ai-chat-attachment-icon,
+.ai-chat-attachment-chip > .icon.ai-chat-attachment-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.ai-chat-attachment-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #D1D3D9;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-attachment-comment-count {
+  gap: 2px;
+  margin-left: 1px;
+  color: #8B8E96;
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-chat-attachment-close-button,
+.aiux543-composer-attachment-remove {
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  border-radius: 3px;
+  background: transparent;
+  overflow: hidden;
+  color: #B4B8BF;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 120ms ease, opacity 120ms ease, color 120ms ease;
+}
+
+.ai-chat-attachment-chip:hover .ai-chat-attachment-close-button,
+.ai-chat-attachment-chip:focus-within .ai-chat-attachment-close-button,
+.aiux543-composer-attachment-chip:hover .aiux543-composer-attachment-remove,
+.aiux543-composer-attachment-chip:focus-within .aiux543-composer-attachment-remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ai-chat-attachment-close-button .icon,
+.aiux543-composer-attachment-remove .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.ai-chat-attachment-chip.has-remove-action:hover > .ai-chat-attachment-icon,
+.ai-chat-attachment-chip.has-remove-action:focus-within > .ai-chat-attachment-icon {
+  opacity: 0;
+}
+
+.ai-chat-attachments-show-all {
+  all: unset;
+  display: inline-flex;
+  height: 20px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: #F2C55C;
+  color: #1E1F22;
+  cursor: pointer;
+  font: 600 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-attachments-show-all:hover,
+.ai-chat-attachments-show-all:focus-visible {
+  background: #FFD463;
+  outline: none;
+}
+
+.ai-chat-attachment-path-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 100;
+  display: block;
+  width: max-content;
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 150px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 7px 9px;
+  border: 1px solid #3D4047;
+  border-radius: 6px;
+  background: #3B3E45;
+  color: #D1D3D9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  opacity: 0;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  text-align: left;
+  transform: translate(-50%, 2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: normal;
+}
+
+.ai-chat-image-attachment-preview {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 100;
+  display: block;
+  width: 360px;
+  box-sizing: border-box;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 2px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.ai-chat-attachment-chip:hover .ai-chat-image-attachment-preview,
+.ai-chat-attachment-chip:focus-visible .ai-chat-image-attachment-preview,
+.ai-chat-attachment-chip:focus-within .ai-chat-image-attachment-preview {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.ai-chat-image-attachment-preview-frame {
+  display: flex;
+  min-height: 94px;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 4px solid #B8BCC6;
+  border-radius: 8px;
+  background: #FFFFFF;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+  color: #30333A;
+}
+
+.ai-chat-image-attachment-preview-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ai-chat-image-preview-thumb {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #F0F1F3;
+  color: #548AF7;
+}
+
+.ai-chat-image-preview-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-chat-image-preview-title {
+  overflow: hidden;
+  color: #30333A;
+  font: 600 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-image-preview-meta,
+.ai-chat-image-preview-body {
+  color: #73767C;
+  font: 500 11px/14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-image-preview-close {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: #30333A;
+}
+
+.ai-chat-attachment-chip:hover .ai-chat-attachment-path-tooltip,
+.ai-chat-attachment-chip:focus-visible .ai-chat-attachment-path-tooltip,
+.ai-chat-attachment-chip:focus-within .ai-chat-attachment-path-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.ai-chat-attachment-context-menu {
+  position: fixed;
+  z-index: 10020;
+  display: flex;
+  width: 194px;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid #3D4047;
+  border-radius: 8px;
+  background: #2B2D30;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+}
+
+.ai-chat-attachment-context-menu button {
+  all: unset;
+  display: flex;
+  height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: #D1D3D9;
+  cursor: pointer;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-attachment-context-menu button:hover,
+.ai-chat-attachment-context-menu button:focus-visible {
+  background: #2E436E;
+  outline: none;
+}
+
+.ai-chat-attachment-context-menu .icon {
+  flex: 0 0 auto;
+  color: #A8ABB3;
+}
+
+.ai-chat-composer-toolbar,
+.aiux543-chat-toolbar {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 4px 4px 8px;
+}
+
+.ai-chat-plus-button,
+.ai-chat-mode-button,
+.ai-chat-agent-select,
+.ai-chat-feedback,
+.aiux543-chat-icon-button,
+.aiux543-chat-dropdown {
+  border-radius: 6px;
+}
+
+.ai-chat-plus-button,
+.aiux543-chat-icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.ai-chat-mode-button,
+.ai-chat-agent-select,
+.aiux543-chat-dropdown {
+  min-height: 28px;
+  padding: 0 7px;
+  color: #A8ABB3;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-footer,
+.aiux543-editor-footer {
+  height: 32px;
+  color: #8B8E96;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-footer {
+  padding: 4px 6px 2px;
+}
+
+.aiux543-editor-footer > span,
+.ai-chat-footer > button,
+.ai-chat-footer .ai-chat-agent-select {
+  min-height: 28px;
+}
+
 /* === AI Note comment affordances (ported from tmp/SDD-Code-review): badge hover-preview + tooltips === */
 
 .plan-diff-row-gutter:has(.plan-diff-hidden-comment-preview) {
@@ -15903,12 +16597,18 @@ button.aiux543-answer-change-card:focus-visible {
   border-bottom: 1px solid #393b40;
 }
 
-/* Right-aligned per-card controls: Split/Unified toggle + Resolve all. */
+/* Right-aligned per-card controls: Split/Unified toggle + bulk actions. */
 .aiux-review-overview-file-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-left: auto;
+}
+
+.aiux-review-overview-file-bulk-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Clickable filename+summary → opens the file's full diff tab. */
@@ -15951,7 +16651,7 @@ button.aiux543-answer-change-card:focus-visible {
   font: 400 13px/18px Inter, system-ui, sans-serif;
 }
 
-/* "Resolve all" CTA on each file card header, grouped right after the summary. */
+/* Bulk actions on each file card header, grouped right after the summary. */
 .aiux-review-overview-file-resolve {
   flex: 0 0 auto;
   padding: 2px 8px;
@@ -15966,6 +16666,14 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux-review-overview-file-resolve:hover {
   background: #2b2d31;
   color: #6b9bf7;
+}
+
+.aiux-review-overview-file-resolve.is-dismiss {
+  color: #8a8f98;
+}
+
+.aiux-review-overview-file-resolve.is-dismiss:hover {
+  color: #b4b8bf;
 }
 
 .aiux-review-overview-file-body {

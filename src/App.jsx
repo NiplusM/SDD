@@ -62,6 +62,7 @@ const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.jav
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
+const COMPOSER_ATTACHMENT_COLLAPSED_LIMIT = 18;
 const INITIAL_PLAN_DIFF_SOURCE_TAB_ID = '1';
 const INITIAL_PLAN_DIFF_TAB_ID = buildPlanDiffTabId(INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
 const AGENT_TASK_LOADING_STATE_ENABLED = true;
@@ -106,6 +107,23 @@ function scheduleSpecDoneScrollRestore(snapshot) {
   }
 
   setTimeout(restore, 0);
+}
+
+function clearDocumentTextSelection() {
+  if (typeof window === 'undefined') return;
+  const selection = window.getSelection?.();
+  if (selection && typeof selection.removeAllRanges === 'function') {
+    selection.removeAllRanges();
+  }
+
+  const activeElement = document.activeElement;
+  if (
+    activeElement instanceof HTMLTextAreaElement
+    || activeElement instanceof HTMLInputElement
+  ) {
+    const caretPosition = activeElement.selectionEnd ?? activeElement.selectionStart ?? 0;
+    activeElement.setSelectionRange(caretPosition, caretPosition);
+  }
 }
 
 function MainToolbarNewChatPicker({ onNewChat = null }) {
@@ -3847,6 +3865,49 @@ function getStoredCommentLineLabel(comment) {
   return typeof comment?.lineLabel === 'string' ? comment.lineLabel.trim() : '';
 }
 
+function isSpecTextAnnotationComment(comment) {
+  return Boolean(
+    comment
+    && typeof comment === 'object'
+    && comment.annotation === true
+    && typeof comment.selectedText === 'string'
+    && comment.selectedText.trim().length > 0
+  );
+}
+
+function getSpecTextAnnotationOrder(comment, fallbackOrder = 1) {
+  if (Number.isInteger(comment?.order) && comment.order > 0) {
+    return comment.order;
+  }
+
+  const lineLabel = getStoredCommentLineLabel(comment);
+  const labelMatch = lineLabel.match(/annotation\s+(\d+)/i);
+  if (labelMatch) {
+    const parsedOrder = Number.parseInt(labelMatch[1], 10);
+    if (Number.isInteger(parsedOrder) && parsedOrder > 0) return parsedOrder;
+  }
+
+  return fallbackOrder;
+}
+
+function getSpecCommentPopupComments(comments = [], isAnnotationPopup = false) {
+  const normalizedComments = Array.isArray(comments) ? comments : [];
+  const hasTextAnnotation = normalizedComments.some((comment) => isSpecTextAnnotationComment(comment));
+
+  return normalizedComments
+    .map((comment, commentIndex) => ({ comment, commentIndex }))
+    .filter(({ comment }) => {
+      const isAnnotation = isSpecTextAnnotationComment(comment);
+      if (isAnnotationPopup) return isAnnotation;
+      return !hasTextAnnotation && !isAnnotation;
+    })
+    .map(({ comment, commentIndex }) => (
+      comment && typeof comment === 'object'
+        ? { ...comment, localIndex: commentIndex }
+        : { text: getStoredCommentText(comment), localIndex: commentIndex }
+    ));
+}
+
 function flattenStoredDiffCommentsState(diffComments = {}) {
   const seenComments = new Set();
 
@@ -5985,6 +6046,139 @@ function renderDoneMarkdownInline(text, highlight = null, issue = null, onAccept
   });
 }
 
+function SpecTextAnnotationInlineHint({ annotation }) {
+  const comment = getStoredCommentText(annotation).trim();
+  if (!comment) return null;
+
+  const label = getStoredCommentLineLabel(annotation) || `Annotation ${getSpecTextAnnotationOrder(annotation)}`;
+
+  return (
+    <span className="spec-text-annotation-inline-hint" role="tooltip">
+      <TooltipHelp
+        className="spec-text-annotation-tooltip"
+        header={null}
+        body={(
+          <span className="spec-text-annotation-tooltip-content">
+            <span className="spec-text-annotation-tooltip-label">{label}</span>
+            <span className="spec-text-annotation-tooltip-body">{comment}</span>
+          </span>
+        )}
+      />
+    </span>
+  );
+}
+
+function renderDoneMarkdownInlineWithAnnotations(
+  text,
+  highlight = null,
+  issue = null,
+  onAccept = null,
+  onReject = null,
+  annotations = [],
+  onEditAnnotation = null,
+) {
+  const sourceText = typeof text === 'string' ? text : '';
+  const normalizedAnnotations = (Array.isArray(annotations) ? annotations : [])
+    .map((annotation, index) => ({
+      ...annotation,
+      selectedText: typeof annotation?.selectedText === 'string' ? annotation.selectedText.trim() : '',
+      order: getSpecTextAnnotationOrder(annotation, index + 1),
+    }))
+    .filter((annotation) => annotation.selectedText.length > 0);
+
+  if (sourceText.length === 0 || normalizedAnnotations.length === 0) {
+    return renderDoneMarkdownInline(sourceText, highlight, issue, onAccept, onReject);
+  }
+
+  const ranges = [];
+  let searchFrom = 0;
+
+  normalizedAnnotations.forEach((annotation) => {
+    const offsetStart = Number.isInteger(annotation.startOffset) ? annotation.startOffset : null;
+    const offsetEnd = Number.isInteger(annotation.endOffset) ? annotation.endOffset : null;
+    const hasValidOffsets =
+      Number.isInteger(offsetStart)
+      && Number.isInteger(offsetEnd)
+      && offsetStart >= 0
+      && offsetEnd > offsetStart
+      && offsetEnd <= sourceText.length;
+    const start = hasValidOffsets
+      ? offsetStart
+      : sourceText.indexOf(annotation.selectedText, searchFrom);
+    if (start < 0) return;
+
+    const end = hasValidOffsets ? offsetEnd : start + annotation.selectedText.length;
+    if (ranges.some((range) => start < range.end && end > range.start)) return;
+
+    ranges.push({ start, end, annotation });
+    searchFrom = end;
+  });
+
+  if (ranges.length === 0) {
+    return renderDoneMarkdownInline(sourceText, highlight, issue, onAccept, onReject);
+  }
+
+  ranges.sort((left, right) => left.start - right.start);
+
+  const parts = [];
+  let cursor = 0;
+
+  ranges.forEach((range, rangeIndex) => {
+    if (range.start > cursor) {
+      parts.push(
+        <Fragment key={`plain-${rangeIndex}-${cursor}`}>
+          {renderDoneMarkdownInline(sourceText.slice(cursor, range.start))}
+        </Fragment>,
+      );
+    }
+
+    const annotationKey = range.annotation.id
+      ?? `spec-annotation-${range.start}-${range.end}-${range.annotation.order}`;
+
+    parts.push(
+      <span
+        key={annotationKey}
+        className="spec-text-annotation-mark"
+        role={onEditAnnotation ? 'button' : undefined}
+        tabIndex={onEditAnnotation ? 0 : undefined}
+        onMouseDown={onEditAnnotation ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        } : undefined}
+        onClick={onEditAnnotation ? (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onEditAnnotation(range.annotation, event.currentTarget.getBoundingClientRect());
+        } : undefined}
+        onKeyDown={onEditAnnotation ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          onEditAnnotation(range.annotation, event.currentTarget.getBoundingClientRect());
+        } : undefined}
+      >
+        {renderDoneInlineText(sourceText.slice(range.start, range.end), `${annotationKey}-text`)}
+        <span className="spec-text-annotation-inline-badge" aria-hidden="true">
+          <Icon name="general/balloon" size={13} />
+          <span className="spec-text-annotation-inline-count">{range.annotation.order}</span>
+        </span>
+        <SpecTextAnnotationInlineHint annotation={range.annotation} />
+      </span>,
+    );
+    cursor = range.end;
+  });
+
+  if (cursor < sourceText.length) {
+    parts.push(
+      <Fragment key={`plain-tail-${cursor}`}>
+        {renderDoneMarkdownInline(sourceText.slice(cursor))}
+      </Fragment>,
+    );
+  }
+
+  return parts;
+}
+
 function DoneFileChipGroup({ initialFiles = [], addPopupFiles, addButtonLabel = 'Add file', className = '' }) {
   const normalizedInitialFiles = useMemo(
     () => normalizeDoneFileEntries(initialFiles),
@@ -6167,6 +6361,8 @@ function DoneCommentPopup({
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = 'Active',
+  submitButtonLabel = 'Attach AI Note',
+  inputPlaceholder = 'Write an AI Note',
   value,
   editingIndex = null,
   onChange,
@@ -6193,7 +6389,7 @@ function DoneCommentPopup({
           text: getStoredCommentText(text),
           lineLabel: '',
           editable: true,
-          localIndex: index,
+          localIndex: Number.isInteger(text?.localIndex) ? text.localIndex : index,
         })),
       }]
     : null;
@@ -6215,7 +6411,8 @@ function DoneCommentPopup({
       showCompose={showCompose}
       defaultSubmitAttachMode="new"
       submitAttachModes={['new']}
-      submitButtonLabel="Attach AI Note"
+      submitButtonLabel={submitButtonLabel}
+      inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
       footerMetaLabel={footerMetaLabel}
       onChange={onChange}
@@ -6343,6 +6540,7 @@ function AcCheckRow({
   onProposalDecision = null,
   onOpenCheckChip = null,
   isRunning = false,
+  renderInline = renderDoneMarkdownInline,
 }) {
   const [expanded, setExpanded] = useState(false);
   const [proposalAccepted, setProposalAccepted] = useState(false);
@@ -6384,7 +6582,7 @@ function AcCheckRow({
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
         <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
+        <span contentEditable suppressContentEditableWarning>{renderInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasChecks && (
           <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
             {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
@@ -7354,7 +7552,7 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, renderInline = renderDoneMarkdownInline }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
@@ -7376,7 +7574,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
             ? <CheckStatus status="pending" isLoading />
             : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />)
       }
-      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(text, statusItem?.highlight, statusItem?.issue)}</span>
+      <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
       {canShowDiff && !isNested && (
         <button
@@ -7394,7 +7592,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null, renderInline = renderDoneMarkdownInline) {
   const headingTitle = getDoneHeadingTitle(line);
   if (headingTitle) {
     if (headingTitle.toLowerCase() === 'plan') {
@@ -7424,7 +7622,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     return (
       <div key={key} className="spec-done-heading-row">
         <h1 className="spec-done-heading text-ui-h1" contentEditable suppressContentEditableWarning>
-          {renderDoneMarkdownInline(headingTitle)}
+          {renderInline(headingTitle)}
         </h1>
         {commentAdornment}
       </div>
@@ -7452,10 +7650,10 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           || (normalizedSectionTitle === 'plan' && checkTarget?.kind === 'plan')))
     );
     if (checkStatus != null) {
-      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning={isRunning} />;
+      return <AcCheckRow key={key} checkItem={checkStatus} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning={isRunning} renderInline={renderInline} />;
     }
     if (checkTarget?.kind === 'ac' && isRunning) {
-      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning />;
+      return <AcCheckRow key={key} checkItem={{ status: 'pending', checks: [] }} text={checkMatch[3]} isIssueActive={isIssueActive} commentAdornment={commentAdornment} onProposalAccept={onProposalAccept} onProposalDecision={onProposalDecision} onOpenCheckChip={onOpenCheckChip} isRunning renderInline={renderInline} />;
     }
     if (checkTarget?.kind === 'plan') {
       return (
@@ -7471,13 +7669,14 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           nestingLevel={nestingLevel}
           hasPlanComment={hasPlanComment}
           isRunning={isRunning}
+          renderInline={renderInline}
         />
       );
     }
     return (
       <div key={key} className="spec-done-line spec-done-line-check">
         <Checkbox className="spec-done-checkbox" checked={checked} onChange={() => {}} />
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(checkMatch[3])}</span>
+        <span contentEditable suppressContentEditableWarning>{renderInline(checkMatch[3])}</span>
         {commentAdornment}
       </div>
     );
@@ -7487,7 +7686,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     return (
       <div key={key} className="spec-done-line spec-done-line-bullet">
         <span className="spec-done-bullet">•</span>
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(bulletMatch[1])}</span>
+        <span contentEditable suppressContentEditableWarning>{renderInline(bulletMatch[1])}</span>
         {commentAdornment}
       </div>
     );
@@ -7497,7 +7696,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
     return (
       <div key={key} className="spec-done-line spec-done-line-comment">
         <span className="spec-comment-prefix">//</span>
-        <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(commentMatch[1])}</span>
+        <span contentEditable suppressContentEditableWarning>{renderInline(commentMatch[1])}</span>
         {commentAdornment}
       </div>
     );
@@ -7514,7 +7713,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
   }
   return (
     <div key={key} className="spec-done-line spec-done-line-text">
-      <span contentEditable suppressContentEditableWarning>{renderDoneMarkdownInline(line)}</span>
+      <span contentEditable suppressContentEditableWarning>{renderInline(line)}</span>
       {commentAdornment}
     </div>
   );
@@ -7988,7 +8187,7 @@ function getTextareaEditorCommentLineLabel(snapshot = null) {
 
 const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'suggest', label: 'Suggest action', accent: 'warning', iconName: 'codeInsight/intentionBulb' },
-  { id: 'comment', label: 'AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
+  { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
   { id: 'separator-ai', type: 'separator' },
   { id: 'bold', label: 'Bold', text: 'B', textClassName: 'spec-done-selection-toolbar-text-bold' },
   { id: 'italic', label: 'Italic', text: 'I', textClassName: 'spec-done-selection-toolbar-text-italic' },
@@ -8709,6 +8908,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return rowMetaByKey.get(rowKey) ?? null;
   }, [rowMetaByKey]);
 
+  const getNextSpecAnnotationOrder = useCallback(() => (
+    Object.values(rowComments).reduce((count, comments) => (
+      count + (Array.isArray(comments)
+        ? comments.filter((comment) => isSpecTextAnnotationComment(comment)).length
+        : 0)
+    ), 0) + 1
+  ), [rowComments]);
+
   const handleSelectionToolbarAction = useCallback((actionId, triggerRect, toolbarState = null) => {
     if (!triggerRect) return;
 
@@ -8732,6 +8939,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               rect: triggerRect,
               value: '',
               editingIndex: null,
+              isAnnotation: false,
+              annotationOrder: null,
+              selectedText: '',
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -8806,6 +9016,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               rect,
               value: '',
               editingIndex: null,
+              isAnnotation: false,
+              annotationOrder: null,
+              selectedText: '',
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -8858,11 +9071,29 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
-    const buildCommentEntry = (text, previousComment = null) => (
-      previousComment && typeof previousComment === 'object'
-        ? { ...previousComment, text, hidden: false }
-        : text
-    );
+    const buildCommentEntry = (text, previousComment = null) => {
+      if (previousComment && typeof previousComment === 'object') {
+        return { ...previousComment, text, hidden: false };
+      }
+
+      if (commentPopup.isAnnotation && typeof commentPopup.selectedText === 'string' && commentPopup.selectedText.trim().length > 0) {
+        const order = Number.isInteger(commentPopup.annotationOrder)
+          ? commentPopup.annotationOrder
+          : getNextSpecAnnotationOrder();
+
+        return {
+          id: `spec-annotation-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text,
+          hidden: false,
+          annotation: true,
+          selectedText: commentPopup.selectedText.trim(),
+          lineLabel: `Annotation ${order}`,
+          order,
+        };
+      }
+
+      return text;
+    };
     if (Number.isInteger(editingIndex)) {
       updateRowComments(rowCommentKey, (comments) => comments.map((comment, index) => (
         index === editingIndex ? buildCommentEntry(nextValue, comment) : comment
@@ -8872,7 +9103,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     }
 
     closeCommentPopup(rowIndex);
-  }, [closeCommentPopup, commentPopup, rowComments, updateRowComments]);
+  }, [closeCommentPopup, commentPopup, getNextSpecAnnotationOrder, rowComments, updateRowComments]);
 
   const handleCommentDelete = useCallback((rowKey, rowCommentKey, commentIndex) => {
     updateRowComments(rowCommentKey, (comments) => comments.filter((_, index) => index !== commentIndex));
@@ -8914,11 +9145,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const handleCommentEditStart = useCallback((rowKey, rowCommentKey, commentIndex) => {
     setCommentPopup((prev) => {
       if (!prev || prev.rowKey !== rowKey) return prev;
+      const comment = rowComments[rowCommentKey]?.[commentIndex] ?? '';
+      const isAnnotation = isSpecTextAnnotationComment(comment);
       return {
         ...prev,
-        value: getStoredCommentText(rowComments[rowCommentKey]?.[commentIndex] ?? ''),
+        value: getStoredCommentText(comment),
         editingIndex: commentIndex,
-        footerMetaLabel: '',
+        isAnnotation,
+        selectedText: isAnnotation ? comment.selectedText : '',
+        annotationOrder: isAnnotation ? getSpecTextAnnotationOrder(comment, commentIndex + 1) : null,
+        footerMetaLabel: isAnnotation ? (getStoredCommentLineLabel(comment) || `Annotation ${getSpecTextAnnotationOrder(comment, commentIndex + 1)}`) : '',
       };
     });
   }, [rowComments]);
@@ -8930,14 +9166,47 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       .find((node) => node instanceof HTMLElement && node.dataset.rowKey === rowMeta.stableKey);
     const rect = rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect() : null;
 
+    const comment = rowComments[rowCommentKey]?.[commentIndex] ?? '';
+    const isAnnotation = isSpecTextAnnotationComment(comment);
+
     setCommentPopup({
       rowKey: rowMeta.stableKey,
       rowCommentKey,
       rowIndex: rowMeta.rowIndex,
       rect,
-      value: getStoredCommentText(rowComments[rowCommentKey]?.[commentIndex] ?? ''),
+      value: getStoredCommentText(comment),
       editingIndex: commentIndex,
-      footerMetaLabel: '',
+      isAnnotation,
+      selectedText: isAnnotation ? comment.selectedText : '',
+      annotationOrder: isAnnotation ? getSpecTextAnnotationOrder(comment, commentIndex + 1) : null,
+      footerMetaLabel: isAnnotation ? (getStoredCommentLineLabel(comment) || `Annotation ${getSpecTextAnnotationOrder(comment, commentIndex + 1)}`) : '',
+    });
+  }, [rowComments]);
+
+  const handleTextAnnotationEditStart = useCallback((rowMeta, rowCommentKey, commentIndex, triggerRect = null) => {
+    if (!rowMeta?.stableKey) return;
+
+    const rowEl = Array.from(scrollRef.current?.querySelectorAll('.spec-done-row') ?? [])
+      .find((node) => node instanceof HTMLElement && node.dataset.rowKey === rowMeta.stableKey);
+    const fallbackRect = rowEl instanceof HTMLElement ? rowEl.getBoundingClientRect() : null;
+    const comment = rowComments[rowCommentKey]?.[commentIndex] ?? '';
+    const order = getSpecTextAnnotationOrder(comment, commentIndex + 1);
+
+    setSelectionToolbarPos(null);
+    setIntentionPopup(null);
+    setCommentPopup({
+      rowKey: rowMeta.stableKey,
+      rowCommentKey,
+      rowIndex: rowMeta.rowIndex,
+      rect: triggerRect ?? fallbackRect,
+      value: getStoredCommentText(comment),
+      editingIndex: commentIndex,
+      isAnnotation: true,
+      selectedText: typeof comment?.selectedText === 'string' ? comment.selectedText : '',
+      annotationOrder: order,
+      preserveEditorSelection: false,
+      selectionSnapshot: null,
+      footerMetaLabel: getStoredCommentLineLabel(comment) || `Annotation ${order}`,
     });
   }, [rowComments]);
 
@@ -9604,21 +9873,32 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const visibleCommentsForRow = commentsForRow
               .map((comment, commentIndex) => ({ comment, commentIndex }))
               .filter(({ comment }) => !isStoredCommentHidden(comment));
-            const commentCount = visibleCommentsForRow.length;
+            const textAnnotationsForRow = visibleCommentsForRow
+              .filter(({ comment }) => isSpecTextAnnotationComment(comment))
+              .map(({ comment, commentIndex }, annotationIndex) => ({
+                ...comment,
+                localIndex: commentIndex,
+                order: getSpecTextAnnotationOrder(comment, annotationIndex + 1),
+              }));
+            const hasTextAnnotationsForRow = textAnnotationsForRow.length > 0;
+            const threadedCommentsForRow = visibleCommentsForRow
+              .filter(({ comment }) => !isSpecTextAnnotationComment(comment));
+            const displayedThreadedCommentsForRow = hasTextAnnotationsForRow ? [] : threadedCommentsForRow;
+            const commentCount = hasTextAnnotationsForRow ? 0 : displayedThreadedCommentsForRow.length;
             const rowLineLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
             const hasPlanComment = effectiveCheckTarget?.kind === 'plan'
               && Number.isInteger(effectiveCheckTarget.index)
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
-            const showCommentAdornment = commentCount > 0 || isCommentPopupOpen
+            const showCommentAdornment = !hasTextAnnotationsForRow && (commentCount > 0 || isCommentPopupOpen
               || hoveredRowKey === stableKey
               || activeIssueRowKey === stableKey
-              || isNavigatedIssueRow;
+              || isNavigatedIssueRow);
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
-                comments={visibleCommentsForRow.map(({ comment }) => comment)}
+                comments={displayedThreadedCommentsForRow.map(({ comment }) => comment)}
                 isOpen={isCommentPopupOpen}
                 demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
                 onOpen={(rect, options = {}) => {
@@ -9640,14 +9920,14 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 }}
               />
             ) : null;
-            const commentThreadGroups = commentCount > 0
+            const commentThreadGroups = displayedThreadedCommentsForRow.length > 0
               ? [{
                   label: commentContextLabel,
                   icon: 'fileTypes/markdown',
                   sessionLabel: 'Document',
                   messageId: null,
                   chatId: null,
-                  comments: visibleCommentsForRow.map(({ comment, commentIndex }) => ({
+                  comments: displayedThreadedCommentsForRow.map(({ comment, commentIndex }) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
                     text: getStoredCommentText(comment),
                     lineLabel: '',
@@ -9831,6 +10111,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   },
                   hasPlanComment,
                   onOpenCheckChip,
+                  (inlineText, inlineHighlight = null, inlineIssue = null, onAccept = null, onReject = null) => (
+                    renderDoneMarkdownInlineWithAnnotations(
+                      inlineText,
+                      inlineHighlight,
+                      inlineIssue,
+                      onAccept,
+                      onReject,
+                      textAnnotationsForRow,
+                      (annotation, rect) => {
+                        if (!Number.isInteger(annotation?.localIndex)) return;
+                        handleTextAnnotationEditStart(rowMeta, rowCommentKey, annotation.localIndex, rect);
+                      },
+                    )
+                  ),
                 )}
               </div>
             </div>
@@ -9954,10 +10248,17 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     {commentPopup && (
       <PositionedPopup triggerRect={commentPopup.rect} onDismiss={() => closeCommentPopup()} gap={8}>
         <DoneCommentPopup
-          comments={rowComments[commentPopup.rowCommentKey] ?? []}
-          commentContextLabel={commentContextLabel}
-          commentContextIcon="fileTypes/markdown"
+          comments={getSpecCommentPopupComments(
+            rowComments[commentPopup.rowCommentKey] ?? [],
+            Boolean(commentPopup.isAnnotation),
+          )}
+          commentContextLabel={commentPopup.isAnnotation ? 'Annotations' : commentContextLabel}
+          commentContextIcon={commentPopup.isAnnotation ? 'general/balloon' : 'fileTypes/markdown'}
           commentContextSessionLabel={commentContextSessionLabel}
+          submitButtonLabel={commentPopup.isAnnotation
+            ? (Number.isInteger(commentPopup.editingIndex) ? 'Save Annotation' : 'Add Annotation')
+            : (Number.isInteger(commentPopup.editingIndex) ? 'Save AI Note' : 'Attach AI Note')}
+          inputPlaceholder={commentPopup.isAnnotation ? 'Write an Annotation' : 'Write an AI Note'}
           value={commentPopup.value}
           editingIndex={commentPopup.editingIndex ?? null}
           preserveEditorSelection={Boolean(commentPopup.preserveEditorSelection)}
@@ -11898,9 +12199,112 @@ function getAttachmentScrollRowId(diffComments = null) {
   ), rowIds[0]);
 }
 
+function getAiChatAttachmentInlineCount(attachment = null) {
+  if (!attachment || typeof attachment !== 'object') return 0;
+  const selectionCount = Array.isArray(attachment.selections) && attachment.selections.length > 0
+    ? attachment.selections.length
+    : Number.isFinite(attachment.selectionCount) && attachment.selectionCount > 0
+      ? attachment.selectionCount
+      : (attachment.isSelectionContext ? 1 : 0);
+  const commentCount = Number.isFinite(attachment.commentCount) && attachment.commentCount > 0
+    ? attachment.commentCount
+    : 0;
+  return commentCount + selectionCount;
+}
+
+function getTransientComposerContextAttachments(attachments = []) {
+  return (Array.isArray(attachments) ? attachments : [])
+    .filter((attachment) => (
+      attachment?.isChatAnnotation
+      || attachment?.isSelectionContext
+      || (Array.isArray(attachment?.selections) && attachment.selections.length > 0)
+    ))
+    .map((attachment) => ({
+      ...attachment,
+      // This helper is for transient context only, so persistent comment
+      // payloads must never participate in the cleanup pass.
+      commentCount: 0,
+      diffComments: null,
+      sddCommentEntries: [],
+      sddRelatedCommentIssues: [],
+      isSddCommentAttachment: false,
+    }));
+}
+
+function getSelectionContextItems(attachment = null) {
+  if (!attachment?.isSelectionContext && !Array.isArray(attachment?.selections)) return [];
+
+  const selections = Array.isArray(attachment.selections) && attachment.selections.length > 0
+    ? attachment.selections
+    : [attachment];
+
+  return selections
+    .map((selection, index) => ({
+      ...selection,
+      id: selection.id ?? `${attachment.id}:selection-${index + 1}`,
+      sourceLabel: selection.sourceLabel ?? attachment.sourceLabel ?? '',
+      sourceTabId: selection.sourceTabId ?? attachment.sourceTabId ?? null,
+      isChatSelectionContext: Boolean(selection.isChatSelectionContext ?? attachment.isChatSelectionContext),
+      selectedText: typeof selection.selectedText === 'string' ? selection.selectedText.trim() : '',
+      lineLabel: typeof selection.lineLabel === 'string' ? selection.lineLabel : (attachment.lineLabel ?? ''),
+      messageId: selection.messageId ?? attachment.messageId ?? null,
+      blockId: selection.blockId ?? attachment.blockId ?? null,
+      startOffset: Number.isFinite(selection.startOffset) ? selection.startOffset : attachment.startOffset,
+      endOffset: Number.isFinite(selection.endOffset) ? selection.endOffset : attachment.endOffset,
+      order: index + 1,
+      isSelectionContext: true,
+    }))
+    .filter((selection) => selection.selectedText.length > 0);
+}
+
+function getSelectionContextPreviewItems(attachment = null) {
+  return getSelectionContextItems(attachment).map((selection, index) => {
+    const normalizedLineLabel = selection.isChatSelectionContext
+      ? `Annotation ${index + 1}`
+      : (typeof selection.lineLabel === 'string'
+        ? selection.lineLabel
+          .replace(/^Comment to line\s+/i, 'Selection for line ')
+          .replace(/^Comment to lines from\s+/i, 'Selection for lines ')
+          .replace(/^Line\s+/i, 'Selection for line ')
+          .replace(/^Lines\s+/i, 'Selection for lines ')
+          .replace(/\s+to\s+/i, '–')
+          .trim()
+        : '');
+    return {
+      text: selection.selectedText,
+      sourceLabel: '',
+      lineLabel: normalizedLineLabel || 'Selection',
+      selectedText: selection.selectedText,
+      isSelectionContextPreview: true,
+    };
+  });
+}
+
+function getChatSelectionContextHighlights(attachments = []) {
+  return (Array.isArray(attachments) ? attachments : [])
+    .filter((attachment) => attachment?.isSelectionContext && attachment?.isChatSelectionContext)
+    .flatMap((attachment) => getSelectionContextItems(attachment).map((selection) => ({
+      ...selection,
+      chatId: attachment.chatId ?? selection.chatId,
+      lineLabel: 'Selection',
+    })));
+}
+
 function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   if (!attachment || typeof attachment !== 'object') {
     return [];
+  }
+
+  const selectionPreviewItems = getSelectionContextPreviewItems(attachment);
+  const hasCommentPayload = Boolean(
+    attachment.diffComments
+    || attachment.isChatAnnotation
+    || attachment.sddCommentEntries
+    || attachment.sddRelatedCommentIssues,
+  );
+
+  if (attachment.isSelectionContext && !hasCommentPayload) {
+    return selectionPreviewItems;
   }
 
   if (attachment.isChatAnnotation && Array.isArray(attachment.annotations)) {
@@ -11983,7 +12387,7 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
     addComment(items, issue?.label, getCommentIssueSourceLabelWithoutLine(issue));
   });
 
-  return items;
+  return [...items, ...selectionPreviewItems];
 }
 
 // Hover-card content for an attachment's comments. Uses the design system's
@@ -12050,13 +12454,19 @@ function AttachmentCommentHoverCard({
   return (
     <TooltipHelp
       className="ai-chat-attachment-hover-tooltip"
-      header={items.length === 1 ? resolvedItemLabel : `${resolvedItemLabelPlural} · ${items.length}`}
+      header={null}
       body={(
         <>
           {visible.map((item, index) => (
             <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
               {renderMessage(
-                ['You', foreignSourceLabel(item), item.lineLabel].filter(Boolean).join(' · '),
+                [
+                  item.isSelectionContextPreview ? null : 'You',
+                  foreignSourceLabel(item),
+                  item.lineLabel,
+                  (!item.lineLabel && item.isSelectionContextPreview) ? `Selection ${index + 1}` : null,
+                  (!item.lineLabel && !item.isSelectionContextPreview) ? (items.length === 1 ? resolvedItemLabel : `${resolvedItemLabelPlural} ${index + 1}`) : null,
+                ].filter(Boolean).join(' · '),
                 item.text,
                 `hover-note-${index}-user`,
               )}
@@ -12156,6 +12566,8 @@ function ChatToolWindow({
     : localSentChatMessages;
   const [dismissedComposerAttachmentIdsByChatId, setDismissedComposerAttachmentIdsByChatId] = useState({});
   const [expandedAttachmentSourceId, setExpandedAttachmentSourceId] = useState(null);
+  const [composerAttachmentsExpanded, setComposerAttachmentsExpanded] = useState(false);
+  const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
   const [isChatListOpen, setIsChatListOpen] = useState(false);
   const [chatListPopupStyle, setChatListPopupStyle] = useState(null);
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
@@ -12250,17 +12662,28 @@ function ChatToolWindow({
       attachment && !attachments.slice(index + 1).some((candidate) => candidate?.id === attachment.id)
     ))
     .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
+  const hasComposerAttachmentOverflow = visibleComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
+  const renderedComposerAttachments = composerAttachmentsExpanded || !hasComposerAttachmentOverflow
+    ? visibleComposerAttachments
+    : visibleComposerAttachments.slice(0, COMPOSER_ATTACHMENT_COLLAPSED_LIMIT);
+  const hiddenComposerAttachmentCount = Math.max(0, visibleComposerAttachments.length - renderedComposerAttachments.length);
   const hasComposerAttachment = visibleComposerAttachments.length > 0;
   const hasComposerCommentAttachment = visibleComposerAttachments.some((attachment) => (
     Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
   ));
-  const canSendMessage = composerText.trim().length > 0 || hasComposerCommentAttachment;
+  const hasSelectionContextAttachment = visibleComposerAttachments.some((attachment) => attachment?.isSelectionContext);
+  const canSendMessage = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
 
   useEffect(() => {
     if (!expandedAttachmentSourceId) return;
     if (visibleComposerAttachments.some((attachment) => attachment?.id === expandedAttachmentSourceId)) return;
     setExpandedAttachmentSourceId(null);
   }, [expandedAttachmentSourceId, visibleComposerAttachments]);
+
+  useEffect(() => {
+    if (hasComposerAttachmentOverflow) return;
+    setComposerAttachmentsExpanded(false);
+  }, [hasComposerAttachmentOverflow]);
 
   useEffect(() => {
     const activeAttachmentIds = new Set(composerAttachmentIdSignature.split('\n').filter(Boolean));
@@ -12329,6 +12752,36 @@ function ChatToolWindow({
     if (!scrollElement || sentChatMessages.length === 0) return;
     scrollElement.scrollTop = scrollElement.scrollHeight;
   }, [sentChatMessages.length]);
+
+  const handleComposerAttachmentContextMenu = useCallback((event, attachment) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setComposerAttachmentContextMenu({
+      attachment,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+
+  const handleClearAllComposerAttachmentsFromMenu = useCallback(() => {
+    if (visibleComposerAttachments.length === 0) return;
+    const dismissedIds = visibleComposerAttachments.reduce((ids, attachment) => {
+      if (attachment?.id) ids[attachment.id] = true;
+      return ids;
+    }, {});
+    setDismissedComposerAttachmentIdsByChatId((prev) => ({
+      ...prev,
+      [currentChatId]: {
+        ...(prev[currentChatId] ?? {}),
+        ...dismissedIds,
+      },
+    }));
+    visibleComposerAttachments.forEach((attachment) => {
+      onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
+    });
+    onClearAllDiffAttachments?.({ chatId: currentChatId, attachments: visibleComposerAttachments });
+    setComposerAttachmentsExpanded(false);
+  }, [currentChatId, onClearAllDiffAttachments, onRemoveComposerAttachment, visibleComposerAttachments]);
 
   useEffect(() => {
     const targetMessageId = scrollTarget?.messageId;
@@ -12429,7 +12882,8 @@ function ChatToolWindow({
     const commentAttachments = messageAttachments.filter((attachment) => (
       Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
     ));
-    if (!messageText && commentAttachments.length === 0) return;
+    const transientContextAttachments = getTransientComposerContextAttachments(messageAttachments);
+    if (!messageText && messageAttachments.length === 0) return;
     const targetChatId = currentChatId;
 
     const shouldStreamCommentResponse = commentAttachments.length > 0;
@@ -12484,6 +12938,8 @@ function ChatToolWindow({
       }));
       if (!shouldStreamCommentResponse) {
         onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: messageAttachments });
+      } else if (transientContextAttachments.length > 0) {
+        onClearAllDiffAttachments?.({ chatId: targetChatId, attachments: transientContextAttachments });
       }
     }
 
@@ -12788,22 +13244,9 @@ function ChatToolWindow({
         )}
 
         <div className="ai-chat-composer">
-	          <textarea
-              ref={composerTextareaRef}
-	            rows={1}
-	            placeholder={composerPlaceholder}
-            aria-label="Task prompt"
-            value={composerText}
-            onChange={(event) => setComposerText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey) return;
-              event.preventDefault();
-              handleSendMessage();
-            }}
-          />
           {hasComposerAttachment && (
-            <div className="ai-chat-attachments">
-              {visibleComposerAttachments.map((attachment) => {
+            <div className={`ai-chat-attachments${composerAttachmentsExpanded ? ' is-expanded' : ''}`}>
+              {renderedComposerAttachments.map((attachment) => {
                 const commentSources = Array.isArray(attachment.commentSources) ? attachment.commentSources : [];
                 const hasNestedCommentSources = attachment.isSddDocument && commentSources.some((source) => (
                   source?.key !== attachment.sourceTabId
@@ -12815,13 +13258,21 @@ function ChatToolWindow({
                 const hiddenCommentPreviewCount = Math.max(0, commentPreviewItems.length - visibleCommentPreviewItems.length);
 
                 return (
-	                <span key={attachment.id} className={`ai-chat-attachment-chip${isSourceListOpen ? ' is-source-list-open' : ''}`} role="button" tabIndex={0} onClick={() => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
+	                <span
+                    key={attachment.id}
+                    className={`ai-chat-attachment-chip has-remove-action${isSourceListOpen ? ' is-source-list-open' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
+                    onContextMenu={(event) => handleComposerAttachmentContextMenu(event, attachment)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}
+                  >
                   <AiChatAttachmentIcon icon={attachment.icon} />
-                  <span className="ai-chat-attachment-name">{attachment.label}</span>
-                  {attachment.commentCount > 0 && (
+                  <span className="ai-chat-attachment-name">{getAiChatAttachmentDisplayLabel(attachment)}</span>
+                  {getAiChatAttachmentInlineCount(attachment) > 0 && (
                     <span className="ai-chat-attachment-comment-count">
                       <Icon name="general/balloon" size={16} />
-                      {attachment.commentCount}
+                      {getAiChatAttachmentInlineCount(attachment)}
                       {canShowCommentSources && (
                         <button
                           type="button"
@@ -12895,6 +13346,12 @@ function ChatToolWindow({
                       <AttachmentCommentHoverCard items={commentPreviewItems} contextLabel={attachment.label} />
                     </span>
                   )}
+                  {commentPreviewItems.length === 0 && isAiChatImageAttachment(attachment) && (
+                    <AiChatImageAttachmentPreview attachment={attachment} />
+                  )}
+                  {commentPreviewItems.length === 0 && !isAiChatImageAttachment(attachment) && (
+                    <AiChatAttachmentPathTooltip attachment={attachment} />
+                  )}
                   <button
                     className="ai-chat-attachment-close-button"
                     type="button"
@@ -12916,8 +13373,34 @@ function ChatToolWindow({
                 </span>
                 );
               })}
+              {hasComposerAttachmentOverflow && (
+                <button
+                  type="button"
+                  className="ai-chat-attachments-show-all"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setComposerAttachmentsExpanded((isExpanded) => !isExpanded);
+                  }}
+                >
+                  {composerAttachmentsExpanded ? 'Show less' : `Show all${hiddenComposerAttachmentCount > 0 ? ` +${hiddenComposerAttachmentCount}` : ''}`}
+                </button>
+              )}
             </div>
           )}
+	          <textarea
+              ref={composerTextareaRef}
+	            rows={1}
+	            placeholder={composerPlaceholder}
+            aria-label="Task prompt"
+            value={composerText}
+            onChange={(event) => setComposerText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.shiftKey) return;
+              event.preventDefault();
+              handleSendMessage();
+            }}
+          />
 	          <div className="ai-chat-composer-toolbar">
 	            <div className="ai-chat-composer-left">
 	              <button
@@ -12954,11 +13437,18 @@ function ChatToolWindow({
         </div>
 
 	        <footer className="ai-chat-footer">
-	          <AiChatFooterSelector icon={<AiChatClaudeIcon />} label="Claude Agent" />
-	          <AiChatFooterSelector label="Opus 4.5" />
+	          <AiChatFooterSelector label="Accepts Edits" />
+	          <AiChatFooterSelector label="Sonnet 1M · high" />
           <button type="button" className="ai-chat-feedback">Feedback <Icon name="ide/externalLink" size={16} /></button>
         </footer>
 	      </div>
+
+        <AiChatAttachmentContextMenu
+          menu={composerAttachmentContextMenu}
+          onClose={() => setComposerAttachmentContextMenu(null)}
+          onOpenInFiles={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
+          onClearAll={handleClearAllComposerAttachmentsFromMenu}
+        />
 
         {addContextPopupRect && (
           <AiChatAddContextPopup
@@ -13162,6 +13652,157 @@ function AiChatAttachmentIcon({ icon = 'vcs/diff' }) {
   return <Icon name={icon} size={16} className="icon ai-chat-attachment-icon" />;
 }
 
+function truncateMiddleText(text = '', maxLength = 34) {
+  const normalized = typeof text === 'string' ? text.trim() : '';
+  if (normalized.length <= maxLength) return normalized;
+  const sideLength = Math.max(6, Math.floor((maxLength - 1) / 2));
+  const endLength = Math.max(6, maxLength - sideLength - 1);
+  return `${normalized.slice(0, sideLength)}…${normalized.slice(-endLength)}`;
+}
+
+function getAiChatAttachmentFullLabel(attachment = null) {
+  const candidates = [
+    attachment?.fullPath,
+    attachment?.path,
+    attachment?.sourcePath,
+    attachment?.sourceLabel,
+    attachment?.diffRequest?.source?.path,
+    attachment?.diffRequest?.source?.label,
+    attachment?.label,
+  ];
+
+  return candidates.find((candidate) => (
+    typeof candidate === 'string' && candidate.trim().length > 0
+  ))?.trim() ?? '';
+}
+
+function getAiChatAttachmentDisplayLabel(attachment = null) {
+  const label = typeof attachment?.label === 'string' && attachment.label.trim().length > 0
+    ? attachment.label.trim()
+    : getAiChatAttachmentFullLabel(attachment);
+  return truncateMiddleText(label, label.includes('/') ? 30 : 34);
+}
+
+function isAiChatImageAttachment(attachment = null) {
+  const label = `${attachment?.label ?? ''} ${getAiChatAttachmentFullLabel(attachment)}`.toLowerCase();
+  const icon = typeof attachment?.icon === 'string' ? attachment.icon.toLowerCase() : '';
+  return icon.includes('image') || /\.(png|jpe?g|gif|webp|svg)$/iu.test(label);
+}
+
+function shouldShowAiChatAttachmentPathTooltip(attachment = null) {
+  const label = typeof attachment?.label === 'string' ? attachment.label.trim() : '';
+  const fullLabel = getAiChatAttachmentFullLabel(attachment);
+  if (!fullLabel) return false;
+  return fullLabel.includes('/') || fullLabel.length > Math.max(34, label.length + 4);
+}
+
+function AiChatAttachmentPathTooltip({ attachment = null }) {
+  if (!shouldShowAiChatAttachmentPathTooltip(attachment)) return null;
+  return (
+    <span className="ai-chat-attachment-path-tooltip" role="tooltip">
+      {getAiChatAttachmentFullLabel(attachment)}
+    </span>
+  );
+}
+
+function AiChatImageAttachmentPreview({ attachment = null }) {
+  if (!isAiChatImageAttachment(attachment)) return null;
+
+  return (
+    <span className="ai-chat-image-attachment-preview" role="tooltip">
+      <span className="ai-chat-image-attachment-preview-frame">
+        <span className="ai-chat-image-attachment-preview-card">
+          <span className="ai-chat-image-preview-thumb">
+            <Icon name="fileTypes/image" size={16} />
+          </span>
+          <span className="ai-chat-image-preview-copy">
+            <span className="ai-chat-image-preview-title">{getAiChatAttachmentDisplayLabel(attachment)}</span>
+            <span className="ai-chat-image-preview-meta">Image preview</span>
+          </span>
+          <span className="ai-chat-image-preview-close" aria-hidden="true">
+            <Icon name="windows/closeSmall" size={16} />
+          </span>
+        </span>
+        <span className="ai-chat-image-preview-body">Preview unavailable in prototype</span>
+      </span>
+    </span>
+  );
+}
+
+function AiChatAttachmentContextMenu({
+  menu = null,
+  onClose = null,
+  onOpenInFiles = null,
+  onClearAll = null,
+}) {
+  useEffect(() => {
+    if (!menu) return undefined;
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('.ai-chat-attachment-context-menu')) return;
+      onClose?.();
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('contextmenu', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('contextmenu', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menu, onClose]);
+
+  if (!menu || typeof document === 'undefined') return null;
+
+  const viewportPadding = 8;
+  const menuWidth = 194;
+  const left = Math.min(
+    Math.max(viewportPadding, menu.x ?? viewportPadding),
+    window.innerWidth - menuWidth - viewportPadding,
+  );
+  const top = Math.min(
+    Math.max(viewportPadding, menu.y ?? viewportPadding),
+    window.innerHeight - 88,
+  );
+
+  return createPortal(
+    <div
+      className="ai-chat-attachment-context-menu"
+      style={{ left, top }}
+      role="menu"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onOpenInFiles?.(menu.attachment);
+          onClose?.();
+        }}
+      >
+        <Icon name="nodes/folder" size={16} />
+        <span>Open in Files</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onClearAll?.();
+          onClose?.();
+        }}
+      >
+        <Icon name="actions/gc" size={16} />
+        <span>Clear All Attachments</span>
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function AiChatFooterSelector({ icon = null, label }) {
   return (
     <button type="button" className="ai-chat-agent-select">
@@ -13342,37 +13983,45 @@ function buildSpecStatusScenarioEntries(specId, label) {
   return {
     [`${specId}-build`]: {
       title: `Build: ${label}`,
+      isSpecChat: true,
+      assistantHeading: 'Claude Agent',
       userPrompt: `Build ${label} and run the checks defined by this specification.`,
       assistantParagraphs: [
-        `I loaded ${label} as the source specification for this Build chat.`,
-        'The build context is scoped to the attached MD document, including any unresolved document AI Notes that are currently attached to it.',
-        'I will use the specification plan and acceptance criteria as the execution target before reporting the result back here.',
+        `I attached ${label} as the source specification for this chat.`,
+        'I’ll use its plan, acceptance criteria, and unresolved notes as the build context, then report the implementation result here.',
       ],
       changeCard: null,
-      result: [
-        `${label} is attached as the active SDD document for this chat.`,
-        'Build actions from this chat will use that document context.',
-      ],
-      command: `agent run "${label}" --section "Plan"`,
+      result: [],
+      command: '',
+      showAttachmentsInComposer: true,
       attachmentLabel: label,
-      attachments: [{ id: `sdd-${specId}-build`, label, icon: 'fileTypes/markdown' }],
+      attachments: [{
+        id: `sdd-${specId}-build`,
+        label,
+        icon: 'fileTypes/markdown',
+        isSddDocument: true,
+      }],
     },
     [`${specId}-specify`]: {
       title: `Specified: ${label}`,
+      isSpecChat: true,
+      assistantHeading: 'Claude Agent',
       userPrompt: `Specify ${label} using the current MD document as context.`,
       assistantParagraphs: [
-        `I loaded ${label} as the source specification for this Specified chat.`,
-        'The chat is tied to the attached MD document, so specification updates and related AI Notes are evaluated against that document context.',
-        'I will use the current document structure to refine the plan, acceptance criteria, and implementation notes.',
+        `I attached ${label} as the source specification for this chat.`,
+        'I’ll use the current document structure and unresolved notes to refine the plan, acceptance criteria, and implementation details.',
       ],
       changeCard: null,
-      result: [
-        `${label} is attached as the active SDD document for this chat.`,
-        'Specify actions from this chat will keep using that document context.',
-      ],
-      command: `agent run "${label}" --specify`,
+      result: [],
+      command: '',
+      showAttachmentsInComposer: true,
       attachmentLabel: label,
-      attachments: [{ id: `sdd-${specId}-specify`, label, icon: 'fileTypes/markdown' }],
+      attachments: [{
+        id: `sdd-${specId}-specify`,
+        label,
+        icon: 'fileTypes/markdown',
+        isSddDocument: true,
+      }],
     },
   };
 }
@@ -13744,10 +14393,10 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                   >
                     <AiChatAttachmentIcon icon={attachment.icon} />
                     <span className="ai-chat-attachment-name">{attachment.label}</span>
-                    {attachment.commentCount > 0 && (
+                    {getAiChatAttachmentInlineCount(attachment) > 0 && (
                       <span className="ai-chat-attachment-comment-count">
                         <Icon name="general/balloon" size={16} />
-                        {attachment.commentCount}
+                        {getAiChatAttachmentInlineCount(attachment)}
                       </span>
                     )}
                     {commentPreviewItems.length > 0 ? (
@@ -14054,6 +14703,37 @@ function applyAiNoteQuestionResolution(current) {
     if (resolved.length > 0) acc[rowId] = resolved;
     return acc;
   }, {});
+}
+
+function applyAiNoteResolutionToSpecCommentEntries(commentEntries = []) {
+  return normalizeSpecVersionCommentEntries(commentEntries).reduce((nextEntries, entry) => {
+    const currentDiffComments = normalizeStoredDiffCommentsState(entry.diffComments);
+    const hasDiffComments = Object.keys(currentDiffComments).length > 0;
+    const resolvedDiffComments = hasDiffComments
+      ? applyAiNoteQuestionResolution(currentDiffComments)
+      : {};
+    const directComments = Array.isArray(entry.comments) ? entry.comments : [];
+    const resolvedDirectComments = hasDiffComments
+      ? Object.values(resolvedDiffComments).flat()
+      : Object.values(applyAiNoteQuestionResolution({ direct: directComments })).flat();
+    const resolvedComments = resolvedDirectComments.filter((comment) => (
+      getStoredCommentText(comment).trim().length > 0
+    ));
+
+    if (resolvedComments.length === 0 && Object.keys(resolvedDiffComments).length === 0) {
+      return nextEntries;
+    }
+
+    const { diffComments: _previousDiffComments, ...entryWithoutDiffComments } = entry;
+    nextEntries.push({
+      ...entryWithoutDiffComments,
+      comments: resolvedComments,
+      ...(Object.keys(resolvedDiffComments).length > 0
+        ? { diffComments: resolvedDiffComments }
+        : {}),
+    });
+    return nextEntries;
+  }, []);
 }
 
 function agentRunFileIconName(fileName = '') {
@@ -14781,7 +15461,7 @@ function ReviewDiffToolbarNav({
       {onCancel && (
         <IconButton
           icon="general/close"
-          tooltip="Cancel review"
+          tooltip="Dismiss all and close review"
           className="aiux-review-overview-close"
           onClick={() => onCancel()}
         />
@@ -14792,7 +15472,7 @@ function ReviewDiffToolbarNav({
 
 // The aggregated overview. Rendered via editorTopBar and portaled into the
 // active editor's body (same host the single-file diff overlay uses).
-function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onResolveFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'file', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
+function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'file', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
   const anchorRef = useRef(null);
   const scrollRef = useRef(null);
   const sectionRefs = useRef([]);
@@ -14804,6 +15484,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   // Per-card Split/Unified override (keyed by file tab) for the inline diff.
   const [cardViews, setCardViews] = useState({});
   const [panelExpandedRowIdsByTabId, setPanelExpandedRowIdsByTabId] = useState({});
+  const [panelHighlightedRowIdsByTabId, setPanelHighlightedRowIdsByTabId] = useState({});
   const [activeIndex, setActiveIndex] = useState(0);
   const [filesPopupRect, setFilesPopupRect] = useState(null);
   // Both layouts use the same grouping model; panel mode only moves comment
@@ -14906,12 +15587,21 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     }
     return severityCategories;
   })();
-  // Scroll the left code column to a comment's row and open the inline thread.
+  // Scroll the left code column to a comment's target row(s) without opening the inline thread.
   // Scoped to the comment's own file so identical row ids across files don't collide.
-  const navigateToComment = (tabId, rowId) => {
+  const navigateToComment = (tabId, rowId, details = null) => {
+    const targetRowIds = Array.isArray(details?.rowIds)
+      ? details.rowIds.filter((targetRowId) => typeof targetRowId === 'string' && targetRowId.length > 0)
+      : [];
+    const highlightedRowIds = targetRowIds.length > 0 ? targetRowIds : (rowId ? [rowId] : []);
+
     setPanelExpandedRowIdsByTabId((prev) => ({
       ...prev,
-      [tabId]: rowId,
+      [tabId]: null,
+    }));
+    setPanelHighlightedRowIdsByTabId((prev) => ({
+      ...prev,
+      [tabId]: highlightedRowIds,
     }));
     const fileIndex = orderedFiles.findIndex((file) => file.tabId === tabId);
     if (fileIndex >= 0) setActiveIndex(fileIndex);
@@ -14922,12 +15612,28 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
       requestAnimationFrame(() => {
         const fileEl = left.querySelector(`[data-review-file="${tabId}"]`);
         const scope = fileEl || left;
-        const rowEl = rowId ? scope.querySelector(`[data-demo-id="diff-row-${rowId}"]`) : null;
+        const scrollTargetRowId = highlightedRowIds[0] ?? rowId;
+        const rowEl = scrollTargetRowId ? scope.querySelector(`[data-demo-id="diff-row-${scrollTargetRowId}"]`) : null;
         const target = rowEl || fileEl;
         target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     });
   };
+  const hasPanelCommentHighlight = Object.values(panelHighlightedRowIdsByTabId)
+    .some((rowIds) => Array.isArray(rowIds) && rowIds.length > 0);
+
+  useEffect(() => {
+    if (!isPanel || !hasPanelCommentHighlight) return undefined;
+
+    const clearHighlightTimer = window.setTimeout(() => {
+      setPanelHighlightedRowIdsByTabId({});
+    }, 1800);
+
+    return () => {
+      window.clearTimeout(clearHighlightTimer);
+    };
+  }, [isPanel, panelHighlightedRowIdsByTabId]);
+
   const resolvedCount = files.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
   const openCount = files.reduce((sum, file) => sum + (file.openCount ?? file.commentCount ?? 0), 0);
   // Whole review is handled once there are comments and none are left open.
@@ -14948,7 +15654,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     setActiveIndex(clamped);
     sectionRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  const renderReviewGroupHeader = (group, { className = '', onResolve = null } = {}) => {
+  const renderReviewGroupHeader = (group, { className = '', onApply = null, onDismiss = null } = {}) => {
     const filter = group.filter ?? group.severity ?? severityFilter;
     const filterValues = normalizeReviewSeverityFilter(filter);
     const isResolvedOnly = filterValues.length === 1 && filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
@@ -14965,13 +15671,22 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
         <span className="aiux-review-panel-cat-label aiux-review-overview-group-title">{group.label}</span>
         <span className="aiux-review-panel-cat-count aiux-review-overview-group-count">{group.count}</span>
         {!isResolvedOnly && (group.files?.length ?? 0) > 0 && (
-          <button
-            type="button"
-            className="aiux-review-panel-cat-resolve"
-            onClick={() => onResolve?.(filter)}
-          >
-            Resolve all
-          </button>
+          <span className="aiux-review-panel-cat-actions">
+            <button
+              type="button"
+              className="aiux-review-panel-cat-resolve"
+              onClick={() => onApply?.(filter)}
+            >
+              Apply all
+            </button>
+            <button
+              type="button"
+              className="aiux-review-panel-cat-resolve is-dismiss"
+              onClick={() => onDismiss?.(filter)}
+            >
+              Dismiss all
+            </button>
+          </span>
         )}
       </div>
     );
@@ -15058,7 +15773,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
           </button>
           <IconButton
             icon="general/close"
-            tooltip="Cancel review"
+            tooltip="Dismiss all and close review"
             className="aiux-review-overview-close"
             onClick={() => onCancel?.()}
           />
@@ -15075,7 +15790,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
               {section.label && groupMode !== 'file' && !isPanel && (
                 renderReviewGroupHeader(section, {
                   className: 'aiux-review-overview-group-head',
-                  onResolve: (filter) => section.files.forEach((file) => onResolveFile?.(file.tabId, filter)),
+                  onApply: (filter) => section.files.forEach((file) => onApplyFile?.(file.tabId, filter)),
+                  onDismiss: (filter) => section.files.forEach((file) => onDismissFile?.(file.tabId, filter)),
                 })
               )}
               {section.files.map((file) => {
@@ -15130,13 +15846,22 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                             ]}
                           />
                         )}
-                        <button
-                          type="button"
-                          className="aiux-review-overview-file-resolve"
-                          onClick={() => onResolveFile?.(file.tabId, cardFilter)}
-                        >
-                          Resolve all
-                        </button>
+                        <span className="aiux-review-overview-file-bulk-actions">
+                          <button
+                            type="button"
+                            className="aiux-review-overview-file-resolve"
+                            onClick={() => onApplyFile?.(file.tabId, cardFilter)}
+                          >
+                            Apply all
+                          </button>
+                          <button
+                            type="button"
+                            className="aiux-review-overview-file-resolve is-dismiss"
+                            onClick={() => onDismissFile?.(file.tabId, cardFilter)}
+                          >
+                            Dismiss all
+                          </button>
+                        </span>
                       </div>
                     </div>
                     <div className="aiux-review-overview-file-body">
@@ -15151,7 +15876,9 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                         resolveKeepsComment
                         allowInlineCommentCompose={false}
                         viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
+                        inlineCommentRowIdOnly={isPanel}
                         expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
+                        highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
                         onInlineCommentExpand={(rowId) => {
                           if (!isPanel) return;
                           setPanelExpandedRowIdsByTabId((prev) => ({
@@ -15174,7 +15901,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             {commentCategories.map((cat) => (
               <div className={`aiux-review-panel-cat is-${cat.tone}`} key={cat.key}>
                 {renderReviewGroupHeader(cat, {
-                  onResolve: (filter) => cat.files.forEach((file) => onResolveFile?.(file.tabId, filter)),
+                  onApply: (filter) => cat.files.forEach((file) => onApplyFile?.(file.tabId, filter)),
+                  onDismiss: (filter) => cat.files.forEach((file) => onDismissFile?.(file.tabId, filter)),
                 })}
                 {cat.files.map((file) => (
                   <PlanDiffOverlay
@@ -15191,7 +15919,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                     commentIndexFileLabel={file.name}
                     showCommentIndexFileLabel={cat.showFile}
                     commentIndexStatusFilter={cat.statusFilter ?? 'all'}
-                    onCommentNavigate={(rowId) => navigateToComment(file.tabId, rowId)}
+                    onCommentNavigate={(rowId, details) => navigateToComment(file.tabId, rowId, details)}
                     onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
                   />
                 ))}
@@ -15354,9 +16082,13 @@ function AiChatTabView({
   const [composerText, setComposerText] = useState(initialComposerText);
   const composerRef = useRef(null);
   const scrollRef = useRef(null);
+  const [composerAttachmentsExpanded, setComposerAttachmentsExpanded] = useState(false);
+  const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
+  const isSpecChat = Boolean(scenario?.isSpecChat || String(chatId).startsWith('spec-chat-'));
+  const scenarioAttachments = Array.isArray(scenario?.attachments) ? scenario.attachments : [];
   const renderAnnotatedParagraph = useCallback((text, blockId, paragraphMessageId = messageId) => (
     renderAiChatAnnotatedText(
       text,
@@ -15422,12 +16154,50 @@ function AiChatTabView({
 
   const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
-  const canSend = composerText.trim().length > 0 || hasComposerCommentAttachment;
+  const hasSelectionContextAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+    .some((attachment) => attachment?.isSelectionContext);
+  const canSend = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
+  const editorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
+  const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
+  const renderedComposerAttachments = composerAttachmentsExpanded || !hasComposerAttachmentOverflow
+    ? editorComposerAttachments
+    : editorComposerAttachments.slice(0, COMPOSER_ATTACHMENT_COLLAPSED_LIMIT);
+  const hiddenComposerAttachmentCount = Math.max(0, editorComposerAttachments.length - renderedComposerAttachments.length);
   const handleSend = () => {
     if (!canSend) return;
     onSendMessage?.(chatId, composerText.trim(), composerDiffAttachments);
     setComposerText('');
   };
+
+  useEffect(() => {
+    if (hasComposerAttachmentOverflow) return;
+    setComposerAttachmentsExpanded(false);
+  }, [hasComposerAttachmentOverflow]);
+
+  const handleComposerAttachmentContextMenu = useCallback((event, attachment) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setComposerAttachmentContextMenu({
+      attachment,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }, []);
+
+  const handleComposerAttachmentOpen = useCallback((attachment) => {
+    if (onOpenAttachment) {
+      onOpenAttachment(attachment, { messageId, chatId, archived: false });
+      return;
+    }
+    if (onOpenDiffTab && attachment?.diffRequest) onOpenDiffTab(attachment.diffRequest);
+  }, [chatId, messageId, onOpenAttachment, onOpenDiffTab]);
+
+  const handleClearAllComposerAttachmentsFromMenu = useCallback(() => {
+    editorComposerAttachments.forEach((attachment) => {
+      onRemoveComposerAttachment?.(attachment, { chatId });
+    });
+    setComposerAttachmentsExpanded(false);
+  }, [chatId, editorComposerAttachments, onRemoveComposerAttachment]);
 
   return (
     <div className="aiux543-conversation">
@@ -15459,18 +16229,32 @@ function AiChatTabView({
           ))
         ) : (
           <>
-            {scenario?.userPrompt && (
+            {isSpecChat && scenario?.userPrompt ? (
+              <ChatUserCard
+                messageId={messageId}
+                attachments={scenarioAttachments}
+                onAttachmentOpen={(attachment) => {
+                  if (onOpenAttachment) {
+                    onOpenAttachment(attachment, { messageId, chatId, archived: true });
+                    return;
+                  }
+                  if (attachment?.diffRequest) onOpenDiffTab?.(attachment.diffRequest);
+                }}
+              >
+                {scenario.userPrompt}
+              </ChatUserCard>
+            ) : scenario?.userPrompt ? (
               <div className="aiux543-user-message" data-ai-chat-message-id={messageId}>
                 <p>{scenario.userPrompt}</p>
                 <span className="aiux543-kebab" aria-hidden="true">
                   <Icon name="general/moreVertical" size={16} />
                 </span>
               </div>
-            )}
+            ) : null}
 
-            {Array.isArray(scenario?.attachments) && scenario.attachments.length > 0 && (
+            {!isSpecChat && scenarioAttachments.length > 0 && (
               <div className="aiux543-user-attachments">
-                {scenario.attachments.map((attachment) => {
+                {scenarioAttachments.map((attachment) => {
                   const openAttachment = onOpenAttachment && (attachment.diffRequest || attachment.isPlainFile || attachment.isSddDocument)
                     ? () => onOpenAttachment(attachment, { messageId, chatId, archived: true })
                     : (attachment.diffRequest && onOpenDiffTab
@@ -15487,10 +16271,10 @@ function AiChatTabView({
                     >
                       <AiChatAttachmentIcon icon={attachment.icon} />
                       <span className="ai-chat-attachment-name">{attachment.label}</span>
-                      {attachment.commentCount > 0 && (
+                      {getAiChatAttachmentInlineCount(attachment) > 0 && (
                         <span className="ai-chat-attachment-comment-count">
                           <Icon name="general/balloon" size={16} />
-                          {attachment.commentCount}
+                          {getAiChatAttachmentInlineCount(attachment)}
                         </span>
                       )}
                       {previewItems.length > 0 && (
@@ -15506,7 +16290,7 @@ function AiChatTabView({
 
             {scenario?.assistantParagraphs?.length > 0 && (
               <article className="aiux543-answer">
-                <h3>What changed</h3>
+                <h3>{scenario.assistantHeading || 'What changed'}</h3>
                 {scenario.assistantParagraphs.map((paragraph, idx) => (
                   <p
                     key={`assistant-${idx}`}
@@ -15626,6 +16410,74 @@ function AiChatTabView({
           <AgentRunLoadingPlan notes={agentRun?.notes} status={agentRun?.status} kind={agentRun?.kind} onOpenTarget={onOpenReviewTarget} onOpenDiff={() => onOpenReviewDiff?.(chatId)} />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
+          {!isAgentRunProcessing && editorComposerAttachments.length > 0 && (
+            <div className={`aiux543-composer-attachments${composerAttachmentsExpanded ? ' is-expanded' : ''}`} onClick={(event) => event.stopPropagation()}>
+              {renderedComposerAttachments.map((attachment) => (
+                <span
+                  key={attachment.id}
+                  className={`ai-chat-attachment-chip aiux543-composer-attachment-chip${onRemoveComposerAttachment ? ' has-remove-action' : ''}`}
+                  role={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 'button' : undefined}
+                  tabIndex={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 0 : undefined}
+                  onClick={() => handleComposerAttachmentOpen(attachment)}
+                  onContextMenu={(event) => handleComposerAttachmentContextMenu(event, attachment)}
+                >
+                  <AiChatAttachmentIcon icon={attachment.icon} />
+                  <span className="ai-chat-attachment-name">{getAiChatAttachmentDisplayLabel(attachment)}</span>
+                  {getAiChatAttachmentInlineCount(attachment) > 0 && (
+                    <span className="ai-chat-attachment-comment-count">
+                      <Icon name="general/balloon" size={16} />
+                      {getAiChatAttachmentInlineCount(attachment)}
+                    </span>
+                  )}
+                  {attachment.updated && (
+                    <span className="ai-chat-attachment-updated-dot" aria-label="Updated — agent replied" />
+                  )}
+                  {(() => {
+                    const previewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+                    if (previewItems.length === 0) return null;
+                    return (
+                      <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
+                        <AttachmentCommentHoverCard items={previewItems} contextLabel={attachment.label} />
+                      </span>
+                    );
+                  })()}
+                  {getAiChatAttachmentCommentPreviewItems(attachment).length === 0 && isAiChatImageAttachment(attachment) && (
+                    <AiChatImageAttachmentPreview attachment={attachment} />
+                  )}
+                  {getAiChatAttachmentCommentPreviewItems(attachment).length === 0 && !isAiChatImageAttachment(attachment) && (
+                    <AiChatAttachmentPathTooltip attachment={attachment} />
+                  )}
+                  {onRemoveComposerAttachment && (
+                    <button
+                      type="button"
+                      className="aiux543-composer-attachment-remove"
+                      aria-label={`Remove ${attachment.label ?? 'attachment'}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onRemoveComposerAttachment(attachment, { chatId });
+                      }}
+                    >
+                      <Icon name="windows/closeSmall" size={16} />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {hasComposerAttachmentOverflow && (
+                <button
+                  type="button"
+                  className="ai-chat-attachments-show-all"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setComposerAttachmentsExpanded((isExpanded) => !isExpanded);
+                  }}
+                >
+                  {composerAttachmentsExpanded ? 'Show less' : `Show all${hiddenComposerAttachmentCount > 0 ? ` +${hiddenComposerAttachmentCount}` : ''}`}
+                </button>
+              )}
+            </div>
+          )}
           <div className="aiux543-chat-input-row">
             {isAgentRunProcessing ? (
               <div className="aiux543-chat-input aiux543-chat-input-waiting" aria-live="polite">Waiting…</div>
@@ -15647,58 +16499,6 @@ function AiChatTabView({
               />
             )}
           </div>
-          {!isAgentRunProcessing && Array.isArray(composerDiffAttachments) && composerDiffAttachments.length > 0 && (
-            <div className="aiux543-composer-attachments" onClick={(event) => event.stopPropagation()}>
-              {composerDiffAttachments.map((attachment) => (
-                <span
-                  key={attachment.id}
-                  className="ai-chat-attachment-chip aiux543-composer-attachment-chip"
-                  role={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 'button' : undefined}
-                  tabIndex={onOpenAttachment || (onOpenDiffTab && attachment.diffRequest) ? 0 : undefined}
-                  onClick={onOpenAttachment
-                    // Live (not archived): the chip is still being worked with, so its
-                    // comments stay editable in the file/diff it opens.
-                    ? () => onOpenAttachment(attachment, { messageId, chatId, archived: false })
-                    : (onOpenDiffTab && attachment.diffRequest ? () => onOpenDiffTab(attachment.diffRequest) : undefined)}
-                >
-                  <AiChatAttachmentIcon icon={attachment.icon} />
-                  <span className="ai-chat-attachment-name">{attachment.label}</span>
-                  {attachment.commentCount > 0 && (
-                    <span className="ai-chat-attachment-comment-count">
-                      <Icon name="general/balloon" size={16} />
-                      {attachment.commentCount}
-                    </span>
-                  )}
-                  {attachment.updated && (
-                    <span className="ai-chat-attachment-updated-dot" aria-label="Updated — agent replied" />
-                  )}
-                  {(() => {
-                    const previewItems = getAiChatAttachmentCommentPreviewItems(attachment);
-                    if (previewItems.length === 0) return null;
-                    return (
-                      <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                        <AttachmentCommentHoverCard items={previewItems} contextLabel={attachment.label} />
-                      </span>
-                    );
-                  })()}
-                  {onRemoveComposerAttachment && (
-                    <button
-                      type="button"
-                      className="aiux543-composer-attachment-remove"
-                      aria-label={`Remove ${attachment.label ?? 'attachment'}`}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onRemoveComposerAttachment(attachment, { chatId });
-                      }}
-                    >
-                      <Icon name="windows/closeSmall" size={16} />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-          )}
           <div className="aiux543-chat-toolbar">
             <div className="aiux543-chat-toolbar-left">
               <button
@@ -15746,11 +16546,17 @@ function AiChatTabView({
         </div>
         <footer className="aiux543-editor-footer">
           <span className="aiux543-editor-footer-left">
-            <span>Claude Agent</span>
-            <span>Opus 4.5</span>
+            <span>Accepts Edits <Icon name="general/chevronDown" size={16} /></span>
+            <span>Sonnet 1M · high <Icon name="general/chevronDown" size={16} /></span>
           </span>
           <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
         </footer>
+        <AiChatAttachmentContextMenu
+          menu={composerAttachmentContextMenu}
+          onClose={() => setComposerAttachmentContextMenu(null)}
+          onOpenInFiles={handleComposerAttachmentOpen}
+          onClearAll={handleClearAllComposerAttachmentsFromMenu}
+        />
       </div>
       {addContextPopupRect && (
         <AiChatAddContextPopup
@@ -16387,18 +17193,19 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
     if (range.start > cursor) {
       parts.push(sourceText.slice(cursor, range.start));
     }
+    const isSelectionContext = Boolean(range.annotation?.isSelectionContext);
     parts.push(
       <span
         key={range.annotation.id}
-        className="ai-chat-annotation-mark"
-        role={onEditAnnotation ? 'button' : undefined}
-        tabIndex={onEditAnnotation ? 0 : undefined}
-        onClick={onEditAnnotation ? (event) => {
+        className={`ai-chat-annotation-mark${isSelectionContext ? ' ai-chat-selection-context-mark' : ''}`}
+        role={!isSelectionContext && onEditAnnotation ? 'button' : undefined}
+        tabIndex={!isSelectionContext && onEditAnnotation ? 0 : undefined}
+        onClick={!isSelectionContext && onEditAnnotation ? (event) => {
           event.preventDefault();
           event.stopPropagation();
           onEditAnnotation(range.annotation, event.currentTarget.getBoundingClientRect());
         } : undefined}
-        onKeyDown={onEditAnnotation ? (event) => {
+        onKeyDown={!isSelectionContext && onEditAnnotation ? (event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return;
           event.preventDefault();
           event.stopPropagation();
@@ -16412,7 +17219,9 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
             {Number.isInteger(range.annotation?.order) ? range.annotation.order : 1}
           </span>
         </span>
-        <ChatAnnotationInlineHint annotation={range.annotation} />
+        {!isSelectionContext && (
+          <ChatAnnotationInlineHint annotation={range.annotation} />
+        )}
       </span>,
     );
     cursor = range.end;
@@ -16458,6 +17267,7 @@ export default function App() {
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
+  const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
   const [chatSelectionCommentRequest, setChatSelectionCommentRequest] = useState(null);
   const [chatSelectionCommentValue, setChatSelectionCommentValue] = useState('');
   // Per-chat agent-run cycle: { status: 'processing' | 'done', iteration }.
@@ -16583,6 +17393,8 @@ export default function App() {
     result = [],
     command = '',
     showAttachmentsInComposer = false,
+    isSpecChat = false,
+    assistantHeading = null,
     select = true,
   } = {}) => {
     const createdAt = Number.isFinite(providedCreatedAt) ? providedCreatedAt : Date.now();
@@ -16604,6 +17416,8 @@ export default function App() {
       result: Array.isArray(result) ? result : [],
       command,
       showAttachmentsInComposer,
+      isSpecChat,
+      assistantHeading,
       attachmentLabel,
       attachments: Array.isArray(attachments) ? attachments : [],
       diffRequest,
@@ -18136,10 +18950,11 @@ export default function App() {
     });
   }, []);
 
-  // "Resolve all" on a review file/card block: mark matching open comments
-  // resolved (kept + dimmed) and mark the matching run notes resolved.
-  const resolveAllReviewFileComments = useCallback((tabId, filter = 'all') => {
+  // Bulk review actions keep handled findings as dimmed records. Apply and
+  // Dismiss share the same filtering but persist distinct resolution kinds.
+  const handleAllReviewFileComments = useCallback((tabId, filter = 'all', action = 'applied') => {
     if (!tabId) return;
+    const resolvedKind = action === 'dismissed' ? 'dismissed' : 'applied';
     const normalizedFilter = normalizeReviewSeverityFilter(filter);
     const commentMatchesFilter = (comment) => {
       if (!comment || comment?.resolved) return false;
@@ -18163,9 +18978,9 @@ export default function App() {
           if (!commentMatchesFilter(comment)) return comment;
           changed = true;
           const base = (comment && typeof comment === 'object') ? comment : { text: comment };
-          // Auto-collapse like a single resolve, so "Resolve all" clears the
-          // findings out of view (revealable via the gutter / Resolved filter).
-          return { ...base, text: getStoredCommentText(comment), resolved: true, resolvedKind: 'manual', hidden: true };
+          // Auto-collapse handled findings out of the active review. They remain
+          // available through the gutter and the Resolved filter.
+          return { ...base, text: getStoredCommentText(comment), resolved: true, resolvedKind, hidden: true };
         });
       });
       return changed ? next : null;
@@ -18198,7 +19013,7 @@ export default function App() {
         const notes = run.notes.map((note) => {
           if (texts.has((note?.text || '').trim()) && !note?.resolved) {
             runChanged = true;
-            return { ...note, resolved: true, resolvedKind: 'manual' };
+            return { ...note, resolved: true, resolvedKind };
           }
           return note;
         });
@@ -18806,16 +19621,26 @@ export default function App() {
     });
   }, []);
 
-  // Remove a review's comments from every diff — the comments are the review's
-  // annotations and don't outlive it. Shared by Complete and Cancel.
-  const clearReviewComments = useCallback((noteTexts) => {
+  // The close control is a bulk dismiss: preserve every handled finding and
+  // mark only the review's remaining open comments as dismissed.
+  const dismissReviewComments = useCallback((noteTexts) => {
     transformReviewComments(noteTexts, (rowState) => {
       let changed = false;
       const next = {};
       Object.entries(rowState).forEach(([rowId, list]) => {
-        const kept = list.filter((comment) => !noteTexts.has(getStoredCommentText(comment).trim()));
-        if (kept.length !== list.length) changed = true;
-        if (kept.length > 0) next[rowId] = kept;
+        next[rowId] = list.map((comment) => {
+          const commentText = getStoredCommentText(comment).trim();
+          if (!noteTexts.has(commentText) || comment?.resolved) return comment;
+          changed = true;
+          const base = (comment && typeof comment === 'object') ? comment : { text: commentText };
+          return {
+            ...base,
+            text: commentText,
+            resolved: true,
+            resolvedKind: 'dismissed',
+            hidden: true,
+          };
+        });
       });
       return changed ? next : null;
     });
@@ -18827,27 +19652,25 @@ export default function App() {
       .filter(Boolean),
   );
 
-  // "Complete review": the review is done. Post a chat confirmation (the lasting
-  // record), then clear its comments out of the diffs, drop the run (removes the
-  // "AI Review" block from Chats-History + above the composer) and close the tab.
+  // Complete preserves the current applied / dismissed / open state in every
+  // file, ends the active review run and closes only the review surface.
   const completeReview = useCallback((chatId) => {
     const noteTexts = reviewNoteTextsFor(chatId);
     const count = noteTexts.size;
     if (chatId && count > 0) {
-      streamAssistantMessageRef.current?.(chatId, `Review completed — resolved ${count} comment${count === 1 ? '' : 's'}.`);
+      streamAssistantMessageRef.current?.(chatId, `Review completed — saved the current state of ${count} comment${count === 1 ? '' : 's'}.`);
     }
-    clearReviewComments(noteTexts);
     dropReviewRun(chatId);
     closeReviewDiffTab();
-  }, [agentRunByChatId, clearReviewComments, dropReviewRun, closeReviewDiffTab]);
+  }, [agentRunByChatId, dropReviewRun, closeReviewDiffTab]);
 
-  // "Cancel review": discard the review with no record — clear its comments, drop
-  // the run and close the tab.
+  // The close icon dismisses every remaining open finding, preserves that state
+  // in the files, ends the active run and closes the review surface.
   const cancelReview = useCallback((chatId) => {
-    clearReviewComments(reviewNoteTextsFor(chatId));
+    dismissReviewComments(reviewNoteTextsFor(chatId));
     dropReviewRun(chatId);
     closeReviewDiffTab();
-  }, [agentRunByChatId, clearReviewComments, dropReviewRun, closeReviewDiffTab]);
+  }, [agentRunByChatId, dismissReviewComments, dropReviewRun, closeReviewDiffTab]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
     const { baseLines = [], onComplete } = options;
@@ -19949,6 +20772,7 @@ export default function App() {
         && (textarea.selectionStart ?? 0) !== (textarea.selectionEnd ?? 0);
 
       const selectedRowIds = [];
+      let selectedTextForToolbar = '';
       let rect = textarea instanceof HTMLTextAreaElement ? getTextareaSelectionViewportRect(textarea) : null;
 
       if (textareaSelectionExists && textarea instanceof HTMLTextAreaElement) {
@@ -19956,6 +20780,7 @@ export default function App() {
         const end = Math.max(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0);
         const value = textarea.value ?? '';
         const selectedText = value.slice(start, end);
+        selectedTextForToolbar = selectedText.trim();
         const effectiveEnd = selectedText.includes('\n') && /^[ \t]*$/u.test(selectedText.slice(selectedText.lastIndexOf('\n') + 1))
           ? start + selectedText.lastIndexOf('\n')
           : end;
@@ -19995,6 +20820,7 @@ export default function App() {
 
           if (anchorInEditor) {
             const range = selection.getRangeAt(0);
+            selectedTextForToolbar = selection.toString().trim();
             rect = getRangeViewportRect(range);
             const rowElements = Array.from(activeEditorEl.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
 
@@ -20026,6 +20852,10 @@ export default function App() {
         ...basePos,
         rowIds: selectedRowIds,
         rowId: selectedRowIds[0] ?? null,
+        selectedText: selectedTextForToolbar,
+        sourceTabId: tabId,
+        sourceLabel: activeTab?.label ?? '',
+        sourceIcon: activeTab?.icon ?? 'fileTypes/text',
       });
     };
 
@@ -21503,43 +22333,41 @@ export default function App() {
     if (status === 'Build') {
       return {
         emptyState: false,
+        isSpecChat: true,
+        assistantHeading: 'Claude Agent',
         userPrompt: `Build ${label} and run the checks defined by this specification.`,
         assistantParagraphs: [
-          `I loaded ${label} as the source specification for this Build chat.`,
-          'The build context is scoped to the attached MD document, including any unresolved document AI Notes that are currently attached to it.',
-          'I will use the specification plan and acceptance criteria as the execution target before reporting the result back here.',
+          `I attached ${label} as the source specification for this chat.`,
+          'I’ll use its plan, acceptance criteria, and unresolved notes as the build context, then report the implementation result here.',
         ],
-        result: [
-          `${label} is attached as the active SDD document for this chat.`,
-          'Build actions from this chat will use that document context.',
-        ],
-        command: `agent run "${label}" --section "Plan"`,
+        result: [],
+        command: '',
       };
     }
 
     if (status === 'Specified') {
       return {
         emptyState: false,
+        isSpecChat: true,
+        assistantHeading: 'Claude Agent',
         userPrompt: `Specify ${label} using the current MD document as context.`,
         assistantParagraphs: [
-          `I loaded ${label} as the source specification for this Specified chat.`,
-          'The chat is tied to the attached MD document, so specification updates and related AI Notes are evaluated against that document context.',
-          'I will use the current document structure to refine the plan, acceptance criteria, and implementation notes.',
+          `I attached ${label} as the source specification for this chat.`,
+          'I’ll use the current document structure and unresolved notes to refine the plan, acceptance criteria, and implementation details.',
         ],
-        result: [
-          `${label} is attached as the active SDD document for this chat.`,
-          'Specify actions from this chat will keep using that document context.',
-        ],
-        command: `agent run "${label}" --specify`,
+        result: [],
+        command: '',
       };
     }
 
     return {
       emptyState: false,
+      isSpecChat: true,
+      assistantHeading: 'Claude Agent',
       userPrompt: `Open ${label}`,
       assistantParagraphs: [`I loaded ${label} as the source document for this chat.`],
-      result: [`${label} is attached as context.`],
-      command: `agent open "${label}" --context`,
+      result: [],
+      command: '',
     };
   }, [currentAgentTaskLabel]);
   const ensureSpecStatusChat = useCallback((status, { select = false, sourceTabId = null } = {}) => {
@@ -21957,6 +22785,107 @@ export default function App() {
   const activePlanDiffData = isDiffTab
     ? (activeTabContent?.diffData ?? null)
     : (isPlainFileOverlayTab ? (activeTabContent?.plainFileData ?? null) : null);
+  const addSelectionContextToChat = useCallback(({
+    chatId = null,
+    selectedText = '',
+    sourceLabel = 'Selected context',
+    sourceTabId = null,
+    sourceIcon = 'fileTypes/text',
+    chipLabel = 'Selection',
+    chipIcon = 'general/balloon',
+    isChatSelectionContext = false,
+    messageId = null,
+    blockId = null,
+    startOffset = null,
+    endOffset = null,
+    rowIds = [],
+    lineLabel = '',
+  } = {}) => {
+    const targetChatId = typeof chatId === 'string' && chatId.trim().length > 0
+      ? chatId
+      : selectedAiChatId;
+    const normalizedSelectedText = typeof selectedText === 'string' ? selectedText.trim() : '';
+    if (!targetChatId || !normalizedSelectedText) return false;
+
+    const normalizedSourceLabel = typeof sourceLabel === 'string' && sourceLabel.trim().length > 0
+      ? sourceLabel.trim()
+      : 'Selected context';
+    const normalizedSourceTabId = typeof sourceTabId === 'string' && sourceTabId.trim().length > 0
+      ? sourceTabId
+      : targetChatId;
+    const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
+    const stamp = Date.now();
+    const attachmentId = `selection-context-${targetChatId}-${normalizedSourceTabId}`;
+    const selection = {
+      id: `${attachmentId}:selection-${stamp}`,
+      selectedText: normalizedSelectedText,
+      sourceTabId: normalizedSourceTabId,
+      sourceLabel: normalizedSourceLabel,
+      isChatSelectionContext,
+      messageId,
+      blockId,
+      startOffset,
+      endOffset,
+      rowIds: Array.isArray(rowIds) ? rowIds : [],
+      lineLabel: normalizedLineLabel,
+      createdAt: stamp,
+    };
+    const attachment = {
+      id: attachmentId,
+      label: chipLabel,
+      icon: chipIcon,
+      isSelectionContext: true,
+      isChatSelectionContext,
+      selectionCount: 1,
+      chatId: targetChatId,
+      sourceTabId: normalizedSourceTabId,
+      sourceLabel: normalizedSourceLabel,
+      selectedText: normalizedSelectedText,
+      messageId,
+      blockId,
+      startOffset,
+      endOffset,
+      rowIds: Array.isArray(rowIds) ? rowIds : [],
+      lineLabel: normalizedLineLabel,
+      selections: [selection],
+    };
+
+    setEditorSelectionToolbarPos(null);
+    setAiChatSelectionContextByChatId((prev) => ({
+      ...prev,
+      [targetChatId]: (() => {
+        const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+        const existingIndex = currentAttachments.findIndex((item) => item?.id === attachmentId);
+        if (existingIndex < 0) {
+          return [...currentAttachments, attachment];
+        }
+
+        return currentAttachments.map((item, index) => {
+          if (index !== existingIndex) return item;
+          const nextSelections = [
+            ...getSelectionContextItems(item),
+            selection,
+          ];
+          return {
+            ...item,
+            label: attachment.label ?? item.label,
+            icon: attachment.icon ?? item.icon,
+            isSelectionContext: true,
+            isChatSelectionContext: Boolean(item.isChatSelectionContext || isChatSelectionContext),
+            selectionCount: nextSelections.length,
+            selectedText: selection.selectedText,
+            lineLabel: selection.lineLabel,
+            selections: nextSelections,
+          };
+        });
+      })(),
+    }));
+    openAiToolWindow(targetChatId);
+    return true;
+  }, [
+    openAiToolWindow,
+    selectedAiChatId,
+  ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
     if (actionId === 'chat-add-to-chat') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
@@ -21965,34 +22894,70 @@ export default function App() {
       const chatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
         ? toolbarState.chatId
         : activeAiChatTabChatId;
-      const messageId = typeof toolbarState?.messageId === 'string' && toolbarState.messageId.trim().length > 0
-        ? toolbarState.messageId
-        : null;
-      const blockId = typeof toolbarState?.blockId === 'string' && toolbarState.blockId.trim().length > 0
-        ? toolbarState.blockId
-        : null;
+      if (!selectedText || !chatId) return;
+      const chatTitle =
+        getAiChatListItemById(chatId)?.title
+        ?? getAiChatScenarioById(chatId)?.title
+        ?? activeEditorTabMeta?.label
+        ?? 'Chat';
+      const chatAgentIcon =
+        getAiChatListItemById(chatId)?.icon
+        ?? getAiChatScenarioById(chatId)?.icon
+        ?? 'claude';
 
-      if (!selectedText || !chatId || !messageId || !blockId || !triggerRect) return;
-
-      setEditorSelectionToolbarPos(null);
-      setChatSelectionCommentValue('');
-      setChatSelectionCommentRequest({
-        nonce: `${chatId}:${messageId}:${blockId}:${Date.now()}`,
+      const didAddSelectionContext = addSelectionContextToChat({
         chatId,
-        messageId,
-        blockId,
         selectedText,
+        sourceLabel: 'Chat response',
+        sourceTabId: `ai-chat-${chatId}`,
+        chipLabel: chatTitle,
+        chipIcon: chatAgentIcon,
+        isChatSelectionContext: true,
+        messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
+        blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
         startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
         endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
-        triggerRect: {
-          top: triggerRect.top,
-          right: triggerRect.right,
-          bottom: triggerRect.bottom,
-          left: triggerRect.left,
-          width: triggerRect.width,
-          height: triggerRect.height,
-        },
       });
+      if (didAddSelectionContext) clearDocumentTextSelection();
+      return;
+    }
+
+    if (actionId === 'add-context') {
+      if (!activeTabId) return;
+
+      const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      if (!selectedText) return;
+
+      const targetChatId = selectedAiChatId;
+      const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
+        ? toolbarState.sourceLabel.trim()
+        : (activeTab?.label ?? 'Selected context');
+      const sourceTabId = (typeof toolbarState?.sourceTabId === 'string' && toolbarState.sourceTabId.trim().length > 0)
+        ? toolbarState.sourceTabId
+        : activeTabId;
+      const rowIds = Array.isArray(toolbarState?.rowIds)
+        ? toolbarState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+        : [];
+      const lineLabel = rowIds.length > 0
+        ? formatEditorCommentLineLabel(rowIds.map((rowId) => {
+            const match = rowId.match(/(\d+)\s*$/u);
+            return match ? Number.parseInt(match[1], 10) : null;
+          }))
+        : '';
+      const didAddSelectionContext = addSelectionContextToChat({
+        chatId: targetChatId,
+        selectedText,
+        sourceLabel,
+        sourceTabId,
+        chipLabel: sourceLabel,
+        chipIcon: activeTab?.icon ?? 'fileTypes/text',
+        rowIds,
+        lineLabel,
+      });
+      if (didAddSelectionContext) clearDocumentTextSelection();
       return;
     }
 
@@ -22075,7 +23040,19 @@ export default function App() {
       rowIds,
       targetHasSelection: true,
     });
-  }, [activeAiChatTabChatId, activePlanDiffData, activeTabId, isPlainFileOverlayTab]);
+  }, [
+    activeAiChatTabChatId,
+    activeEditorTabMeta?.label,
+    activeEditorTab,
+    activePlanDiffData,
+    activeTabId,
+    getAiChatListItemById,
+    getAiChatScenarioById,
+    ideTabs,
+    isPlainFileOverlayTab,
+    addSelectionContextToChat,
+    selectedAiChatId,
+  ]);
   const activePlanDiffTarget = isDiffTab
     ? normalizeCommentTarget(activeTabContent?.diffTarget)
     : null;
@@ -22337,8 +23314,8 @@ export default function App() {
     });
   }, [getAiChatScenarioById]);
   const aiChatComposerDiffAttachments = useMemo(() => {
-    const chatAnnotations = Array.isArray(aiChatAnnotationsByChatId[selectedAiChatId])
-      ? aiChatAnnotationsByChatId[selectedAiChatId]
+    const selectionContextAttachments = Array.isArray(aiChatSelectionContextByChatId[selectedAiChatId])
+      ? aiChatSelectionContextByChatId[selectedAiChatId]
       : [];
     const diffEntries = Object.entries(ideTabContents)
       .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
@@ -22353,32 +23330,19 @@ export default function App() {
       ...diffEntries.filter(([tabId]) => tabId !== pinnedDiffTabId && tabId !== scenarioDiffTabId).reverse(),
     ];
 
-    const attachments = [];
-
-    if (chatAnnotations.length > 0) {
-      attachments.push({
-        id: `chat-annotations-${selectedAiChatId}`,
-        label: 'Annotations',
-        icon: 'aiAssistant/toolWindowChat@20x20',
-        commentCount: chatAnnotations.length,
-        diffComments: chatAnnotations.reduce((commentsByRow, annotation) => ({
-          ...commentsByRow,
-          [annotation.id]: [{
-            text: annotation.comment,
-            lineLabel: annotation.lineLabel || 'Annotation',
-            sourceLabel: 'Annotations',
-            selectedText: annotation.selectedText,
-            chatId: selectedAiChatId,
-          }],
-        }), {}),
-        diffRequest: null,
-        diffTabId: null,
-        isPlainFile: false,
-        isChatAnnotation: true,
-        chatId: selectedAiChatId,
-        annotations: chatAnnotations,
-      });
-    }
+    const persistentScenarioAttachments =
+      selectedAiChatScenario?.showAttachmentsInComposer
+      && Array.isArray(selectedAiChatScenario.attachments)
+        ? selectedAiChatScenario.attachments
+        : [];
+    const attachments = persistentScenarioAttachments.map((attachment) => (
+      attachment?.isSddDocument
+        ? {
+            ...attachment,
+            sddCommentEntries: normalizeSpecVersionCommentEntries(attachment.sddCommentEntries),
+          }
+        : attachment
+    ));
 
     for (const [diffTabId, tabContent] of orderedDiffEntries) {
       const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
@@ -22438,8 +23402,20 @@ export default function App() {
       });
     }
 
+    selectionContextAttachments.forEach((attachment) => {
+      attachments.push(attachment);
+    });
+
     return attachments;
-  }, [aiChatAnnotationsByChatId, aiChatComposerDiffTabByChatId, ideTabContents, selectedAiChatId, selectedAiChatScenario?.diffRequest]);
+  }, [
+    aiChatComposerDiffTabByChatId,
+    aiChatSelectionContextByChatId,
+    ideTabContents,
+    selectedAiChatId,
+    selectedAiChatScenario?.attachments,
+    selectedAiChatScenario?.diffRequest,
+    selectedAiChatScenario?.showAttachmentsInComposer,
+  ]);
   const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
     attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
   )) ?? null;
@@ -23149,6 +24125,37 @@ export default function App() {
       ? context.chatId
       : selectedAiChatId;
 
+    if (attachment.isSelectionContext) {
+      const removedSelectionIds = new Set(getSelectionContextItems(attachment).map((selection) => selection.id).filter(Boolean));
+      const attachmentSourceTabId = typeof attachment.sourceTabId === 'string' ? attachment.sourceTabId : '';
+      const attachmentSourceLabel = typeof attachment.sourceLabel === 'string' ? attachment.sourceLabel : '';
+      setAiChatSelectionContextByChatId((prev) => {
+        const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+        const nextAttachments = currentAttachments.filter((item) => {
+          if (item?.id === attachment.id) return false;
+          const itemSelections = getSelectionContextItems(item);
+          if (itemSelections.some((selection) => removedSelectionIds.has(selection.id))) return false;
+          const itemSourceTabId = typeof item?.sourceTabId === 'string' ? item.sourceTabId : '';
+          const itemSourceLabel = typeof item?.sourceLabel === 'string' ? item.sourceLabel : '';
+          if (attachment.diffTabId && itemSourceTabId === attachment.diffTabId) return false;
+          if (attachmentSourceTabId && itemSourceTabId === attachmentSourceTabId) return false;
+          if (attachmentSourceLabel && itemSourceLabel && itemSourceLabel === attachmentSourceLabel) return false;
+          return true;
+        });
+        if (nextAttachments.length === currentAttachments.length) return prev;
+        if (nextAttachments.length === 0) {
+          const { [targetChatId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return {
+          ...prev,
+          [targetChatId]: nextAttachments,
+        };
+      });
+      const hasCombinedCommentPayload = Boolean(attachment.diffTabId || attachment.isSddDocument || attachment.isChatAnnotation);
+      if (!hasCombinedCommentPayload) return;
+    }
+
     if (attachment.isChatAnnotation) {
       setAiChatAnnotationsByChatId((prev) => {
         if (!Array.isArray(prev[targetChatId]) || prev[targetChatId].length === 0) return prev;
@@ -23386,10 +24393,47 @@ export default function App() {
     ));
     const chatAnnotationAttachmentsToClear = attachmentsToClear.filter((attachment) => (
       attachment?.isChatAnnotation
-      && Number.isFinite(attachment?.commentCount)
-      && attachment.commentCount > 0
     ));
-    if (diffAttachmentsToClear.length === 0 && sddAttachmentsToClear.length === 0 && chatAnnotationAttachmentsToClear.length === 0) return;
+    const selectionContextAttachmentsToClear = attachmentsToClear.filter((attachment) => attachment?.isSelectionContext);
+    if (
+      diffAttachmentsToClear.length === 0
+      && sddAttachmentsToClear.length === 0
+      && chatAnnotationAttachmentsToClear.length === 0
+      && selectionContextAttachmentsToClear.length === 0
+    ) return;
+
+    if (selectionContextAttachmentsToClear.length > 0) {
+      const removedIds = new Set(selectionContextAttachmentsToClear.map((attachment) => attachment.id).filter(Boolean));
+      const removedSelectionIds = new Set(selectionContextAttachmentsToClear.flatMap((attachment) => (
+        getSelectionContextItems(attachment).map((selection) => selection.id).filter(Boolean)
+      )));
+      const removedSourceTabIds = new Set(selectionContextAttachmentsToClear.flatMap((attachment) => (
+        [attachment.sourceTabId, attachment.diffTabId].filter((id) => typeof id === 'string' && id.length > 0)
+      )));
+      const removedSourceLabels = new Set(selectionContextAttachmentsToClear.flatMap((attachment) => (
+        [attachment.sourceLabel, attachment.label]
+          .filter((label) => typeof label === 'string' && label.length > 0)
+      )));
+      setAiChatSelectionContextByChatId((prev) => {
+        const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+        const nextAttachments = currentAttachments.filter((attachment) => {
+          if (removedIds.has(attachment?.id)) return false;
+          if (getSelectionContextItems(attachment).some((selection) => removedSelectionIds.has(selection.id))) return false;
+          if (removedSourceTabIds.has(attachment?.sourceTabId)) return false;
+          if (removedSourceLabels.has(attachment?.sourceLabel) || removedSourceLabels.has(attachment?.label)) return false;
+          return true;
+        });
+        if (nextAttachments.length === currentAttachments.length) return prev;
+        if (nextAttachments.length === 0) {
+          const { [targetChatId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return {
+          ...prev,
+          [targetChatId]: nextAttachments,
+        };
+      });
+    }
 
     if (chatAnnotationAttachmentsToClear.length > 0) {
       setAiChatAnnotationsByChatId((prev) => {
@@ -23605,11 +24649,16 @@ export default function App() {
     const completedRowsByTabId = getPendingCommentRowsByTabIdFromAttachments(attachments);
     const completedSnapshotsByTabId = getPendingCommentSnapshotsByTabIdFromAttachments(attachments);
     const completedDocumentSnapshotsByTabId = getPendingDocumentCommentSnapshotsByTabIdFromAttachments(attachments);
+    const sddCommentAttachments = (Array.isArray(attachments) ? attachments : []).filter((attachment) => (
+      attachment?.isSddDocument
+      && normalizeSpecVersionCommentEntries(attachment.sddCommentEntries).length > 0
+    ));
 
     if (
       Object.keys(completedRowsByTabId).length === 0
       && Object.keys(completedSnapshotsByTabId).length === 0
       && Object.keys(completedDocumentSnapshotsByTabId).length === 0
+      && sddCommentAttachments.length === 0
     ) return;
 
     // Turn off the gutter spinners.
@@ -23650,6 +24699,83 @@ export default function App() {
       });
     }
 
+    const resolvedSpecEntriesBySourceTabId = new Map();
+    sddCommentAttachments.forEach((attachment) => {
+      const sourceTabId = getSourceTabIdFromSddAttachment(attachment);
+      if (!sourceTabId) return;
+      const processedEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
+      resolvedSpecEntriesBySourceTabId.set(sourceTabId, {
+        processedEntries,
+        resolvedEntries: applyAiNoteResolutionToSpecCommentEntries(processedEntries),
+      });
+    });
+
+    const replaceProcessedSpecEntries = (currentEntries, processedEntries, resolvedEntries) => {
+      const normalizedCurrentEntries = normalizeSpecVersionCommentEntries(currentEntries);
+      const processedEntryIds = new Set(processedEntries.map((entry) => entry.id));
+      const resolvedEntriesById = new Map(resolvedEntries.map((entry) => [entry.id, entry]));
+      const nextEntries = normalizedCurrentEntries.flatMap((entry) => {
+        if (!processedEntryIds.has(entry.id)) return [entry];
+        const resolvedEntry = resolvedEntriesById.get(entry.id);
+        return resolvedEntry ? [resolvedEntry] : [];
+      });
+      const currentEntryIds = new Set(normalizedCurrentEntries.map((entry) => entry.id));
+      resolvedEntries.forEach((entry) => {
+        if (!currentEntryIds.has(entry.id)) nextEntries.push(entry);
+      });
+      return nextEntries;
+    };
+
+    if (resolvedSpecEntriesBySourceTabId.size > 0) {
+      setInteractiveTaskStates((prev) => {
+        let didChange = false;
+        const next = { ...prev };
+        resolvedSpecEntriesBySourceTabId.forEach(({ processedEntries, resolvedEntries }, sourceTabId) => {
+          const runtimeState = getTaskRuntimeState(sourceTabId);
+          const currentTaskState =
+            prev[sourceTabId]
+            ?? runtimeState?.taskState
+            ?? runtimeState?.scenario?.initialTaskState
+            ?? {};
+          const nextCommentEntries = replaceProcessedSpecEntries(
+            currentTaskState.commentEntries,
+            processedEntries,
+            resolvedEntries,
+          );
+          if (
+            buildSpecVersionCommentEntriesSignature(currentTaskState.commentEntries)
+            === buildSpecVersionCommentEntriesSignature(nextCommentEntries)
+          ) return;
+          next[sourceTabId] = {
+            ...currentTaskState,
+            commentEntries: nextCommentEntries,
+          };
+          didChange = true;
+        });
+        return didChange ? next : prev;
+      });
+
+      setAgentTaskCommentEntries((prev) => {
+        let nextEntries = prev;
+        let didChange = false;
+        resolvedSpecEntriesBySourceTabId.forEach(({ processedEntries, resolvedEntries }, sourceTabId) => {
+          if (
+            sourceTabId !== activeSourceEditorTabId
+            && sourceTabId !== generationTabId
+            && sourceTabId !== 'agent-task-t1'
+          ) return;
+          const updatedEntries = replaceProcessedSpecEntries(nextEntries, processedEntries, resolvedEntries);
+          if (
+            buildSpecVersionCommentEntriesSignature(nextEntries)
+            === buildSpecVersionCommentEntriesSignature(updatedEntries)
+          ) return;
+          nextEntries = updatedEntries;
+          didChange = true;
+        });
+        return didChange ? nextEntries : prev;
+      });
+    }
+
     // NOTE: "the agent left a new comment" is represented purely by the
     // `agent-comment` resolution variant rendered under a note (see
     // AGENT_RUN_RESOLUTIONS). We intentionally do NOT inject a separate seeded
@@ -23664,6 +24790,7 @@ export default function App() {
       ? contextChatId
       : selectedAiChatId;
     const resolvedTabIds = new Set(Object.keys(completedSnapshotsByTabId));
+    const resolvedDocumentTabIds = new Set(Object.keys(completedDocumentSnapshotsByTabId));
     if (replyChatId && resolvedTabIds.size > 0) {
       const withAgentReplies = (diffComments) => (
         Object.entries(normalizeStoredDiffCommentsState(diffComments)).reduce((acc, [rowId, rowComments]) => {
@@ -23700,7 +24827,7 @@ export default function App() {
     // reflects the run's outcome: plain instructions were actioned in chat → drop
     // them (chip clears); open questions keep their answered thread + a severity
     // → the chip stays (now with a severity flag) until the user resolves it.
-    if (replyChatId && resolvedTabIds.size > 0) {
+    if (replyChatId && (resolvedTabIds.size > 0 || resolvedDocumentTabIds.size > 0)) {
       setIdeTabContents((prev) => {
         let changed = false;
         const next = { ...prev };
@@ -23726,13 +24853,69 @@ export default function App() {
           };
           changed = true;
         });
+        resolvedDocumentTabIds.forEach((tabId) => {
+          const content = next[tabId] ?? prev[tabId];
+          if (!content) return;
+          const resolvedDocumentComments = applyAiNoteQuestionResolution(content.documentDiffComments);
+          if (
+            JSON.stringify(normalizeStoredDiffCommentsState(content.documentDiffComments))
+            === JSON.stringify(resolvedDocumentComments)
+          ) return;
+          next[tabId] = {
+            ...content,
+            documentDiffComments: resolvedDocumentComments,
+            documentCommentSourceTabId: Object.keys(resolvedDocumentComments).length > 0
+              ? content.documentCommentSourceTabId
+              : null,
+          };
+          changed = true;
+        });
         return changed ? next : prev;
       });
     }
+
+    if (replyChatId && resolvedSpecEntriesBySourceTabId.size > 0) {
+      setAiChatDraftSessionsById((prev) => {
+        const existingSession = prev[replyChatId];
+        if (!existingSession || !Array.isArray(existingSession.attachments)) return prev;
+        let didChange = false;
+        const nextAttachments = existingSession.attachments.map((attachment) => {
+          if (!attachment?.isSddDocument) return attachment;
+          const sourceTabId = getSourceTabIdFromSddAttachment(attachment);
+          const resolution = sourceTabId ? resolvedSpecEntriesBySourceTabId.get(sourceTabId) : null;
+          if (!resolution) return attachment;
+          const nextEntries = replaceProcessedSpecEntries(
+            attachment.sddCommentEntries,
+            resolution.processedEntries,
+            resolution.resolvedEntries,
+          );
+          const nextCommentCount = getAggregatedCommentIssueCount(nextEntries);
+          didChange = true;
+          return {
+            ...attachment,
+            commentCount: nextCommentCount,
+            isSddCommentAttachment: nextCommentCount > 0,
+            sddCommentEntries: nextEntries,
+          };
+        });
+        if (!didChange) return prev;
+        return {
+          ...prev,
+          [replyChatId]: {
+            ...existingSession,
+            attachments: nextAttachments,
+          },
+        };
+      });
+    }
   }, [
+    activeSourceEditorTabId,
+    generationTabId,
     getPendingCommentRowsByTabIdFromAttachments,
     getPendingCommentSnapshotsByTabIdFromAttachments,
     getPendingDocumentCommentSnapshotsByTabIdFromAttachments,
+    getSourceTabIdFromSddAttachment,
+    getTaskRuntimeState,
     handleSelectedAiChatSentMessagesChange,
     selectedAiChatId,
   ]);
@@ -23791,7 +24974,8 @@ export default function App() {
     const commentAttachments = messageAttachments.filter((attachment) => (
       Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
     ));
-    if (!messageText && commentAttachments.length === 0) return;
+    const transientContextAttachments = getTransientComposerContextAttachments(messageAttachments);
+    if (!messageText && messageAttachments.length === 0) return;
 
     // Any agent request sweeps previously-Solved notes.
     sweepSolvedComments();
@@ -23819,6 +25003,10 @@ export default function App() {
       (prev) => (assistantMessage ? [...prev, newMessage, assistantMessage] : [...prev, newMessage]),
       targetChatId,
     );
+
+    if (transientContextAttachments.length > 0) {
+      handleClearAllComposerDiffAttachments({ chatId: targetChatId, attachments: transientContextAttachments });
+    }
 
     if (shouldRunAgent) {
       if (shouldStreamCommentResponse) {
@@ -24364,6 +25552,18 @@ export default function App() {
       return;
     }
 
+    if (attachment.isSelectionContext) {
+      const sourceTabId = typeof attachment.sourceTabId === 'string' ? attachment.sourceTabId : null;
+      const sourceTabIndex = sourceTabId ? ideTabs.findIndex((tab) => tab?.id === sourceTabId) : -1;
+      if (sourceTabIndex >= 0) {
+        setScreen('ide');
+        setActiveEditorTab(sourceTabIndex);
+      } else if (typeof attachment.sourceLabel === 'string' && attachment.sourceLabel.trim().length > 0) {
+        openEditorTabByLabel(attachment.sourceLabel);
+      }
+      return;
+    }
+
     const scrollRowId = getAttachmentScrollRowId(attachment.diffComments);
 
     if (attachment.isSddDocument) {
@@ -24401,7 +25601,7 @@ export default function App() {
       contextChatId,
       navigation: scrollRowId ? { activeRowId: scrollRowId } : null,
     });
-  }, [handleOpenPlainFileArchive, handleOpenSddDocument, openChatInEditorTab, openPlanDiffTab, selectedAiChatId]);
+  }, [handleOpenPlainFileArchive, handleOpenSddDocument, ideTabs, openChatInEditorTab, openEditorTabByLabel, openPlanDiffTab, selectedAiChatId]);
 
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
@@ -24899,9 +26099,9 @@ export default function App() {
                   onStopMessage={handleAiChatTabStop}
                   onOpenReviewTarget={openCommentTarget}
                   onOpenReviewDiff={openReviewDiffTab}
-                  chatAnnotations={aiChatAnnotationsByChatId[activeAiChatTabChatId] ?? []}
+                  chatAnnotations={[]}
                   scrollTarget={chatScrollTarget}
-                  onEditAnnotation={handleEditChatAnnotation}
+                  onEditAnnotation={null}
                 />
               </div>
             )
@@ -24914,7 +26114,8 @@ export default function App() {
                 onOpenChat={activeTabContent?.reviewChatId ? () => openChatInEditorTab(activeTabContent.reviewChatId) : null}
                 onOpenFileTab={activateEditorTabById}
                 onFileCommentsChange={persistReviewFileComments}
-                onResolveFile={resolveAllReviewFileComments}
+                onApplyFile={(tabId, filter) => handleAllReviewFileComments(tabId, filter, 'applied')}
+                onDismissFile={(tabId, filter) => handleAllReviewFileComments(tabId, filter, 'dismissed')}
                 severityFilter={reviewSeverityFilter}
                 onSeverityFilterChange={setReviewSeverityFilter}
                 groupMode={reviewGroupMode}
@@ -25022,25 +26223,7 @@ export default function App() {
       {settingsDialogPortal}
       {editorTabsMorePortal}
       {terminalPermissionPortal}
-      <SpecSelectionToolbar position={idleSelectionToolbarPos} />
       <EditorSelectionToolbar position={editorSelectionToolbarPos} onAction={handleEditorSelectionToolbarAction} />
-      <ChatSelectionCommentPopover
-        request={chatSelectionCommentRequest}
-        value={chatSelectionCommentValue}
-        commentNumber={
-          Number.isInteger(chatSelectionCommentRequest?.order)
-            ? chatSelectionCommentRequest.order
-            : chatSelectionCommentRequest?.chatId
-            ? ((aiChatAnnotationsByChatId[chatSelectionCommentRequest.chatId]?.length ?? 0) + 1)
-            : 1
-        }
-        onChange={setChatSelectionCommentValue}
-        onCancel={() => {
-          setChatSelectionCommentRequest(null);
-          setChatSelectionCommentValue('');
-        }}
-        onSubmit={handleChatSelectionCommentSubmit}
-      />
       {editorCompletion && editorCompletion.pos && createPortal(
         <CompletionPopup
           trigger={editorCompletion.trigger}
