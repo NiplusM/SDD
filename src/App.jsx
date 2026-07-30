@@ -8508,7 +8508,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -9064,22 +9064,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         : selectionSnapshot?.range?.toString().trim() ?? '';
       if (!selectedText) return;
 
-      const annotationOrder = getNextSpecAnnotationOrder();
       setIntentionPopup(null);
       setSelectionToolbarPos(null);
-      setCommentPopup({
-        rowKey: rowMeta.stableKey,
-        rowCommentKey: getRowMetaCommentStorageKey(rowMeta),
-        rowIndex: rowMeta.rowIndex,
-        rect: triggerRect,
-        value: '',
-        editingIndex: null,
-        isAnnotation: true,
-        annotationOrder,
+      onAddSelectionToChat?.({
         selectedText,
-        preserveEditorSelection: Boolean(selectionSnapshot),
-        selectionSnapshot,
-        footerMetaLabel: `Annotation ${annotationOrder}`,
+        rowKey: rowMeta.stableKey,
+        rowIndex: rowMeta.rowIndex,
+        lineLabel: formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]),
       });
       return;
     }
@@ -9102,7 +9093,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
       ));
     }
-  }, [getDoneCommentFooterMetaLabel, getNextSpecAnnotationOrder, getSelectionToolbarRowMeta, rowMetaByKey]);
+  }, [getDoneCommentFooterMetaLabel, getSelectionToolbarRowMeta, onAddSelectionToChat, rowMetaByKey]);
 
   const getShortcutCommentRowMeta = useCallback(() => {
     const selectionRowMeta = getSelectionToolbarRowMeta();
@@ -10583,7 +10574,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -11323,7 +11314,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -11338,7 +11329,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -11465,7 +11456,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -22986,6 +22977,36 @@ export default function App() {
     openAiToolWindow,
     selectedAiChatId,
   ]);
+  const handleAddSpecSelectionToChat = useCallback(({
+    selectedText = '',
+    lineLabel = '',
+  } = {}) => {
+    const sourceTabId = visibleEditorStateTabId ?? activeSourceEditorTabId ?? activeTabId;
+    const sourceLabel =
+      activeEditorTabMeta?.label
+      ?? currentAgentTaskLabel
+      ?? 'Spec';
+
+    return addSelectionContextToChat({
+      chatId: selectedAiChatId,
+      selectedText,
+      sourceLabel,
+      sourceTabId,
+      sourceIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
+      chipLabel: sourceLabel,
+      chipIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
+      lineLabel,
+    });
+  }, [
+    activeEditorTabMeta?.icon,
+    activeEditorTabMeta?.label,
+    activeSourceEditorTabId,
+    activeTabId,
+    addSelectionContextToChat,
+    currentAgentTaskLabel,
+    selectedAiChatId,
+    visibleEditorStateTabId,
+  ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
     if (actionId === 'chat-annotate') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
@@ -23649,7 +23670,31 @@ export default function App() {
     }
 
     nonChatSelectionAttachments.forEach((attachment) => {
-      attachments.push(attachment);
+      const matchingAttachmentIndex = attachments.findIndex((candidate) => (
+        attachment?.sourceTabId
+        && (
+          candidate?.sourceTabId === attachment.sourceTabId
+          || candidate?.id?.includes(attachment.sourceTabId)
+        )
+      ));
+      if (matchingAttachmentIndex < 0) {
+        attachments.push(attachment);
+        return;
+      }
+
+      const matchingAttachment = attachments[matchingAttachmentIndex];
+      const mergedSelections = [
+        ...getSelectionContextItems(matchingAttachment),
+        ...getSelectionContextItems(attachment),
+      ].filter((selection, index, selections) => (
+        selections.findIndex((candidate) => candidate.id === selection.id) === index
+      ));
+      attachments[matchingAttachmentIndex] = {
+        ...matchingAttachment,
+        isSelectionContext: mergedSelections.length > 0,
+        selectionCount: mergedSelections.length,
+        selections: mergedSelections,
+      };
     });
 
     return attachments;
@@ -26336,7 +26381,7 @@ export default function App() {
               </div>
             )
             : isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}
