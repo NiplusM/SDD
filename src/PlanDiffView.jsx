@@ -1708,7 +1708,9 @@ export function DiffInlineCommentPopup({
   // Agent reply to a left note. Its own card structure stays as-is; it is
   // embedded under the user's comment as a clearly-separated nested reply
   // (divider + "replied" connector + indent).
-  const renderAgentResolution = (comment, fallbackIndex = 0, context = null) => {
+  const hasAgentResolutionThread = (comment) => Boolean(comment && typeof comment === 'object' && comment.resolution);
+
+  const renderAgentResolution = (comment, fallbackIndex = 0, context = null, options = {}) => {
     const resolution = comment && typeof comment === 'object' ? comment.resolution : null;
     if (!resolution) return null;
     const severity = typeof comment.severity === 'string' ? comment.severity : null;
@@ -1721,7 +1723,8 @@ export function DiffInlineCommentPopup({
     const agentFollowUpReply = typeof comment.agentFollowUpReply === 'string' ? comment.agentFollowUpReply.trim() : '';
     const canReplyToAgent = !commentsReadOnly && typeof onReplyToAgent === 'function';
     const isComposerOpen = Boolean(openAgentReplyComposers[draftKey]);
-    const isProcessing = Boolean(processingAgentReplies[draftKey] || comment?.pending);
+    const canShowPendingLoader = options?.showPendingLoader !== false;
+    const isProcessing = Boolean(processingAgentReplies[draftKey] || (canShowPendingLoader && comment?.pending));
     const isResolved = Boolean(comment?.resolved);
     const resolvedKind = typeof comment?.resolvedKind === 'string' ? comment.resolvedKind : '';
     const resolvedLabel = resolvedKind === 'applied'
@@ -1859,6 +1862,8 @@ export function DiffInlineCommentPopup({
     );
   };
 
+  let hasRenderedThreadLoaderSlot = false;
+
   return (
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
       {!hasGroupedComments && (!showCompose || hasComments) && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent')) && renderCommentContextHeader({ pending: hasUngroupedPendingComments })}
@@ -1912,6 +1917,8 @@ export function DiffInlineCommentPopup({
                         ? []
                         : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId });
                     const entryLineLabel = getCommentEntryLineLabel(commentEntry) || normalizedFooterMetaLabel;
+                    const shouldUseThreadLoaderSlot = !hasRenderedThreadLoaderSlot && hasAgentResolutionThread(commentEntry);
+                    if (shouldUseThreadLoaderSlot) hasRenderedThreadLoaderSlot = true;
 
                     return (
                       <div key={`${group.chatId || 'comment'}-${i}`} className={`spec-done-comment-popup-item${commentEntry.pending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`}>
@@ -1932,7 +1939,9 @@ export function DiffInlineCommentPopup({
                               )}
                             </>
                           )}
-                          {renderAgentResolution(commentEntry, commentEntry.localIndex ?? i, commentActionContext)}
+                          {renderAgentResolution(commentEntry, commentEntry.localIndex ?? i, commentActionContext, {
+                            showPendingLoader: shouldUseThreadLoaderSlot,
+                          })}
                         </div>
                         {renderMoreButton(actions)}
                       </div>
@@ -1960,6 +1969,8 @@ export function DiffInlineCommentPopup({
               : commentsReadOnly
                 ? getReturnToContextActions()
                 : getEditableCommentActions(index);
+            const shouldUseThreadLoaderSlot = !hasRenderedThreadLoaderSlot && hasAgentResolutionThread(comment);
+            if (shouldUseThreadLoaderSlot) hasRenderedThreadLoaderSlot = true;
 
             return (
               <div key={index} className={`spec-done-comment-popup-item${isPending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`}>
@@ -1982,7 +1993,9 @@ export function DiffInlineCommentPopup({
                       */}
                     </>
                   )}
-                  {renderAgentResolution(comment, index)}
+                  {renderAgentResolution(comment, index, null, {
+                    showPendingLoader: shouldUseThreadLoaderSlot,
+                  })}
                 </div>
                 {renderMoreButton(actions)}
               </div>
