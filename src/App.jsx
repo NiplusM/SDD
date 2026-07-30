@@ -6424,6 +6424,7 @@ function DoneCommentPopup({
           accent: 'assistant',
         },
       ]}
+      submitActionsWithoutValue={['selection']}
       footerMetaLabel={footerMetaLabel}
       onChange={onChange}
       onCancel={onCancel}
@@ -9192,11 +9193,30 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const handleCommentSubmit = useCallback(({ submitAction = 'default' } = {}) => {
     if (!commentPopup) return;
 
+    if (submitAction === 'selection') {
+      const selectedText = typeof commentPopup.selectedText === 'string'
+        ? commentPopup.selectedText.trim()
+        : '';
+      if (!selectedText) return;
+
+      const rowMeta = rowMetaByKey.get(commentPopup.rowKey) ?? null;
+      onAddSelectionToChat?.({
+        selectedText,
+        rowKey: commentPopup.rowKey,
+        rowIndex: commentPopup.rowIndex,
+        lineLabel: rowMeta
+          ? formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)])
+          : '',
+      });
+      closeCommentPopup(commentPopup.rowIndex);
+      return;
+    }
+
     const nextValue = commentPopup.value.trim();
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
-    const shouldCreateAnnotation = Boolean(commentPopup.isAnnotation) || submitAction === 'selection';
+    const shouldCreateAnnotation = Boolean(commentPopup.isAnnotation);
     const buildCommentEntry = (text, previousComment = null) => {
       if (previousComment && typeof previousComment === 'object') {
         return { ...previousComment, text, hidden: false };
@@ -9229,7 +9249,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     }
 
     closeCommentPopup(rowIndex);
-  }, [closeCommentPopup, commentPopup, getNextSpecAnnotationOrder, rowComments, updateRowComments]);
+  }, [closeCommentPopup, commentPopup, getNextSpecAnnotationOrder, onAddSelectionToChat, rowMetaByKey, updateRowComments]);
 
   const handleCommentDelete = useCallback((rowKey, rowCommentKey, commentIndex) => {
     updateRowComments(rowCommentKey, (comments) => comments.filter((_, index) => index !== commentIndex));
@@ -22982,13 +23002,17 @@ export default function App() {
     lineLabel = '',
   } = {}) => {
     const sourceTabId = visibleEditorStateTabId ?? activeSourceEditorTabId ?? activeTabId;
+    const boundChatId = ensureSpecStatusChat(activeSpecTopBarStatus, {
+      select: false,
+      sourceTabId,
+    });
     const sourceLabel =
       activeEditorTabMeta?.label
       ?? currentAgentTaskLabel
       ?? 'Spec';
 
     return addSelectionContextToChat({
-      chatId: selectedAiChatId,
+      chatId: boundChatId,
       selectedText,
       sourceLabel,
       sourceTabId,
@@ -23000,11 +23024,12 @@ export default function App() {
   }, [
     activeEditorTabMeta?.icon,
     activeEditorTabMeta?.label,
+    activeSpecTopBarStatus,
     activeSourceEditorTabId,
     activeTabId,
     addSelectionContextToChat,
     currentAgentTaskLabel,
-    selectedAiChatId,
+    ensureSpecStatusChat,
     visibleEditorStateTabId,
   ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {

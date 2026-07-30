@@ -1173,6 +1173,7 @@ export function DiffInlineCommentPopup({
   showSubmitTargetLabel = true,
   showSubmitActionMenu = true,
   submitActionOptions = null,
+  submitActionsWithoutValue = [],
   inputPlaceholder = 'Write an AI Note',
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
@@ -1280,7 +1281,13 @@ export function DiffInlineCommentPopup({
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
-  const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
+  const normalizedSubmitActionsWithoutValue = Array.isArray(submitActionsWithoutValue)
+    ? submitActionsWithoutValue.filter((actionId) => typeof actionId === 'string' && actionId.length > 0)
+    : [];
+  const hasSubmitValue = typeof value === 'string' && value.trim().length > 0;
+  const canSubmitComment = hasSubmitValue || normalizedSubmitActionsWithoutValue.includes(selectedSubmitAction);
+  const canOpenSubmitActionMenu = hasSubmitValue
+    || normalizedSubmitActionOptions.some((option) => normalizedSubmitActionsWithoutValue.includes(option.id));
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -2020,7 +2027,7 @@ export function DiffInlineCommentPopup({
                 Cancel
               </Button>
               {showSubmitActionMenu ? (
-                <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canSubmitComment ? ' is-disabled' : ''}`}>
+                <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canOpenSubmitActionMenu ? ' is-disabled' : ''}`}>
                   <button
                     type="button"
                     className="diff-comment-primary-split-main"
@@ -2045,7 +2052,7 @@ export function DiffInlineCommentPopup({
                     aria-label={`${selectedPrimarySubmitButtonLabel} options`}
                     aria-haspopup="menu"
                     aria-expanded={Boolean(submitActionMenuRect)}
-                    disabled={!canSubmitComment}
+                    disabled={!canOpenSubmitActionMenu}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
