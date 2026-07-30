@@ -3157,29 +3157,57 @@ export function PlanDiffOverlay({
     const finishPointerSelection = (event) => {
       const pointerSelection = pointerSelectionRef.current;
       pointerSelectionRef.current = null;
-      if (!pointerSelection?.rowIds || pointerSelection.rowIds.length === 0) return;
-      latestSelectionTargetRowIdsRef.current = pointerSelection.rowIds;
-      const pointerDistance = pointerSelection.startPoint
+      const nativeSelection = window.getSelection();
+      const nativeSelectionText =
+        nativeSelection && !nativeSelection.isCollapsed && nativeSelection.rangeCount > 0
+          ? nativeSelection.toString().trim()
+          : '';
+      const nativeRange = nativeSelectionText ? nativeSelection.getRangeAt(0) : null;
+      const nativeRowIds = nativeRange
+        ? Array.from(scrollRef.current?.querySelectorAll('.plan-diff-row[data-diff-row-id]') ?? [])
+          .filter((rowElement) => {
+            const codeElement = rowElement.querySelector('.plan-diff-row-code-text');
+            if (!(codeElement instanceof HTMLElement)) return false;
+            try {
+              return nativeRange.intersectsNode(codeElement);
+            } catch {
+              return false;
+            }
+          })
+          .map((rowElement) => rowElement.dataset.diffRowId)
+          .filter(Boolean)
+        : [];
+      const selectedRowIds = nativeRowIds.length > 0
+        ? nativeRowIds
+        : (pointerSelection?.rowIds ?? []);
+      if (selectedRowIds.length === 0) return;
+      latestSelectionTargetRowIdsRef.current = selectedRowIds;
+      const pointerDistance = pointerSelection?.startPoint
         ? Math.hypot(
             event.clientX - pointerSelection.startPoint.x,
             event.clientY - pointerSelection.startPoint.y,
           )
         : 0;
-      if (pointerDistance < 4) {
+      if (pointerDistance < 4 && !nativeSelectionText) {
         onTextSelectionChange?.(null);
         return;
       }
 
-      const selectedRows = pointerSelection.rowIds
+      const selectedRows = selectedRowIds
         .map((rowId) => diffData.rows.find((row) => row.id === rowId))
         .filter(Boolean);
-      const selectedElements = pointerSelection.rowIds
+      const selectedElements = selectedRowIds
         .map((rowId) => scrollRef.current?.querySelector(`[data-diff-row-id="${CSS.escape(rowId)}"] .plan-diff-row-code-text`))
         .filter((element) => element instanceof HTMLElement);
       if (selectedRows.length === 0 || selectedElements.length === 0) return;
 
-      const bounds = selectedElements.reduce((acc, element) => {
-        const rect = element.getBoundingClientRect();
+      const nativeRects = nativeRange
+        ? Array.from(nativeRange.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0)
+        : [];
+      const bounds = (nativeRects.length > 0 ? nativeRects : selectedElements).reduce((acc, elementOrRect) => {
+        const rect = elementOrRect instanceof Element
+          ? elementOrRect.getBoundingClientRect()
+          : elementOrRect;
         return {
           top: Math.min(acc.top, rect.top),
           right: Math.max(acc.right, rect.right),
@@ -3198,9 +3226,9 @@ export function PlanDiffOverlay({
           width: bounds.right - bounds.left,
           height: bounds.bottom - bounds.top,
         },
-        rowId: pointerSelection.rowIds[0],
-        rowIds: pointerSelection.rowIds,
-        selectedText: selectedRows.map((row) => row.text || '').join('\n').trim(),
+        rowId: selectedRowIds[0],
+        rowIds: selectedRowIds,
+        selectedText: nativeSelectionText || selectedRows.map((row) => row.text || '').join('\n').trim(),
       });
     };
 
