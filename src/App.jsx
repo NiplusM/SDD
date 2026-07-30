@@ -8394,18 +8394,19 @@ function SpecSelectionToolbar({ position, onAction }) {
             <span key={item.id} className="editor-selection-toolbar-menu-anchor">
               <button
                 type="button"
-                className={`spec-done-selection-toolbar-btn spec-done-selection-toolbar-selection-main${selectedAction.accent ? ` is-${selectedAction.accent}` : ''}`}
+                className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${selectedAction.accent ? ` is-${selectedAction.accent}` : ''}`}
                 aria-label={selectedAction.label}
                 title={selectedAction.title ?? selectedAction.label}
                 onMouseDown={preventSelectionReset}
                 onClick={(event) => onAction?.(selectedAction.id, event.currentTarget.getBoundingClientRect(), position)}
               >
                 <Icon name={selectedAction.iconName} size={16} />
+                <span className="editor-selection-toolbar-text">{selectedAction.label}</span>
               </button>
-              <span className="spec-done-selection-toolbar-separator is-split" aria-hidden="true" />
+              <span className="editor-selection-toolbar-separator is-split" aria-hidden="true" />
               <button
                 type="button"
-                className={`spec-done-selection-toolbar-btn is-chevron${actionMenuOpen ? ' is-active' : ''}`}
+                className={`editor-selection-toolbar-btn is-chevron${actionMenuOpen ? ' is-active' : ''}`}
                 aria-label="Choose selected text action"
                 aria-haspopup="menu"
                 aria-expanded={actionMenuOpen}
