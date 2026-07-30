@@ -10025,7 +10025,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
-            const showCommentAdornment = true;
+            const showCommentAdornment =
+              commentCount > 0
+              || isCommentPopupOpen
+              || hoveredRowKey === stableKey
+              || activeIssueRowKey === stableKey
+              || isNavigatedIssueRow;
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
