@@ -63,7 +63,7 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
 
   if (!position) return null;
 
-  const items = position.surface === 'ai-chat'
+  const items = position.surface === 'ai-chat' || position.surface === 'diff'
     ? CHAT_SELECTION_TOOLBAR_ITEMS
     : EDITOR_SELECTION_TOOLBAR_ITEMS;
 
