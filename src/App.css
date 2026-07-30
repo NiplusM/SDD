@@ -1003,6 +1003,14 @@ body {
   color: #F2C55C;
 }
 
+.spec-done-selection-toolbar-btn.is-assistant,
+.editor-selection-toolbar-btn.is-assistant,
+.editor-selection-toolbar-menu-item.is-assistant .icon,
+.diff-comment-primary-split-main .icon.is-assistant,
+.diff-comment-submit-action-popup .cmp-cell.is-assistant .icon {
+  color: #A894F6;
+}
+
 .spec-done-selection-toolbar-btn.is-active {
   color: var(--text-default);
 }
@@ -1017,6 +1025,25 @@ body {
   margin: 0 4px;
   background: #303237;
   flex-shrink: 0;
+}
+
+.spec-done-selection-toolbar-separator.is-split {
+  height: 16px;
+  margin: 0 2px;
+}
+
+.spec-done-selection-toolbar-btn.is-chevron {
+  width: 20px;
+  color: #9DA0A8;
+}
+
+.spec-done-selection-toolbar-selection-main,
+.editor-selection-toolbar-selection-main {
+  border-radius: 6px 2px 2px 6px;
+}
+
+.spec-done-selection-toolbar-menu {
+  --editor-selection-toolbar-hover-bg: var(--spec-done-selection-toolbar-hover-bg);
 }
 
 .spec-done-selection-toolbar-text {
@@ -1241,6 +1268,11 @@ body {
 
 .chat-selection-comment-popover {
   display: block;
+}
+
+.chat-selection-comment-popover .cmp-popup.spec-done-comment-popup {
+  background: #26282C;
+  border-color: #33353B;
 }
 
 .ai-chat-annotation-mark {
@@ -8584,11 +8616,6 @@ body {
   padding: 3px;
 }
 
-.ai-chat-file-comments-banner {
-  flex: 0 0 auto;
-  margin: 0 6px 8px;
-}
-
 .ai-chat-composer {
   flex: 0 0 auto;
   margin: 0 6px;
@@ -14350,6 +14377,7 @@ button.aiux543-answer-change-card:focus-visible {
 .diff-comment-primary-split-main {
 
   min-width: 0;
+  gap: 6px;
   padding: 0 9px;
   white-space: nowrap;
 }

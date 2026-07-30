@@ -6409,11 +6409,21 @@ function DoneCommentPopup({
       value={value}
       editingIndex={editingIndex}
       showCompose={showCompose}
-      defaultSubmitAttachMode="new"
-      submitAttachModes={['new']}
+      defaultSubmitAttachMode="document"
+      submitAttachModes={['document']}
       submitButtonLabel={submitButtonLabel}
       inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
+      showSubmitActionMenu={!isEditing}
+      submitActionOptions={[
+        { id: 'default', label: 'Attach AI Note', iconName: 'general/balloon' },
+        {
+          id: 'selection',
+          label: 'Add Selection',
+          iconName: 'aiAssistant/toolWindowChat@20x20',
+          accent: 'assistant',
+        },
+      ]}
       footerMetaLabel={footerMetaLabel}
       onChange={onChange}
       onCancel={onCancel}
@@ -8121,6 +8131,16 @@ function captureActiveEditorSelectionSnapshot() {
   };
 }
 
+function getEditorSelectionSnapshotText(snapshot = null) {
+  if (snapshot?.type === 'textarea' && snapshot.element instanceof HTMLTextAreaElement) {
+    return snapshot.element.value.slice(snapshot.start, snapshot.end).trim();
+  }
+  if (snapshot?.type === 'range' && snapshot.range) {
+    return snapshot.range.toString().trim();
+  }
+  return '';
+}
+
 function restoreEditorSelectionSnapshot(snapshot) {
   if (!snapshot || typeof window === 'undefined' || typeof document === 'undefined') return;
 
@@ -8187,7 +8207,7 @@ function getTextareaEditorCommentLineLabel(snapshot = null) {
 
 const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'suggest', label: 'Suggest action', accent: 'warning', iconName: 'codeInsight/intentionBulb' },
-  { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
+  { id: 'selection-action', type: 'selectionAction' },
   { id: 'separator-ai', type: 'separator' },
   { id: 'bold', label: 'Bold', text: 'B', textClassName: 'spec-done-selection-toolbar-text-bold' },
   { id: 'italic', label: 'Italic', text: 'I', textClassName: 'spec-done-selection-toolbar-text-italic' },
@@ -8198,6 +8218,11 @@ const SPEC_SELECTION_TOOLBAR_ITEMS = [
   { id: 'list', label: 'List', iconName: 'general/menu' },
   { id: 'separator-more', type: 'separator' },
   { id: 'more', label: 'More actions', iconName: 'general/moreVertical' },
+];
+
+const SPEC_SELECTION_ACTIONS = [
+  { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
+  { id: 'annotation', label: 'Add Selection', iconName: 'aiAssistant/toolWindowChat@20x20', accent: 'assistant' },
 ];
 
 function getDoneIssueFixActionLabel(issueTarget) {
@@ -8323,6 +8348,27 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
 }
 
 function SpecSelectionToolbar({ position, onAction }) {
+  const rootRef = useRef(null);
+  const [selectedActionId, setSelectedActionId] = useState('comment');
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const selectedAction = SPEC_SELECTION_ACTIONS.find((action) => action.id === selectedActionId)
+    ?? SPEC_SELECTION_ACTIONS[0];
+
+  useEffect(() => {
+    setActionMenuOpen(false);
+  }, [position?.top, position?.left]);
+
+  useEffect(() => {
+    if (!actionMenuOpen) return undefined;
+
+    const closeOnOutsidePointer = (event) => {
+      if (rootRef.current?.contains(event.target)) return;
+      setActionMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsidePointer, true);
+    return () => document.removeEventListener('mousedown', closeOnOutsidePointer, true);
+  }, [actionMenuOpen]);
+
   if (!position) return null;
 
   const preventSelectionReset = (event) => {
@@ -8331,6 +8377,7 @@ function SpecSelectionToolbar({ position, onAction }) {
 
   return createPortal(
     <div
+      ref={rootRef}
       className={`spec-done-selection-toolbar spec-done-selection-toolbar-${position.placement}`}
       style={{ top: position.top, left: position.left }}
       role="toolbar"
@@ -8340,6 +8387,60 @@ function SpecSelectionToolbar({ position, onAction }) {
       {SPEC_SELECTION_TOOLBAR_ITEMS.map((item) => {
         if (item.type === 'separator') {
           return <span key={item.id} className="spec-done-selection-toolbar-separator" aria-hidden="true" />;
+        }
+
+        if (item.type === 'selectionAction') {
+          return (
+            <span key={item.id} className="editor-selection-toolbar-menu-anchor">
+              <button
+                type="button"
+                className={`spec-done-selection-toolbar-btn spec-done-selection-toolbar-selection-main${selectedAction.accent ? ` is-${selectedAction.accent}` : ''}`}
+                aria-label={selectedAction.label}
+                title={selectedAction.title ?? selectedAction.label}
+                onMouseDown={preventSelectionReset}
+                onClick={(event) => onAction?.(selectedAction.id, event.currentTarget.getBoundingClientRect(), position)}
+              >
+                <Icon name={selectedAction.iconName} size={16} />
+              </button>
+              <span className="spec-done-selection-toolbar-separator is-split" aria-hidden="true" />
+              <button
+                type="button"
+                className={`spec-done-selection-toolbar-btn is-chevron${actionMenuOpen ? ' is-active' : ''}`}
+                aria-label="Choose selected text action"
+                aria-haspopup="menu"
+                aria-expanded={actionMenuOpen}
+                onMouseDown={preventSelectionReset}
+                onClick={() => setActionMenuOpen((open) => !open)}
+              >
+                <Icon name="general/chevronDown" size={16} />
+              </button>
+              {actionMenuOpen && (
+                <div className="editor-selection-toolbar-menu spec-done-selection-toolbar-menu" role="menu">
+                  {SPEC_SELECTION_ACTIONS.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
+                      role="menuitemradio"
+                      aria-checked={action.id === selectedAction.id}
+                      onMouseDown={preventSelectionReset}
+                      onClick={(event) => {
+                        setSelectedActionId(action.id);
+                        setActionMenuOpen(false);
+                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
+                      }}
+                    >
+                      <Icon name={action.iconName} size={16} />
+                      <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
+                      <span className="editor-selection-toolbar-menu-item-check" aria-hidden="true">
+                        {action.id === selectedAction.id ? '✓' : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+          );
         }
 
         return (
@@ -8941,12 +9042,45 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               editingIndex: null,
               isAnnotation: false,
               annotationOrder: null,
-              selectedText: '',
+              selectedText: getEditorSelectionSnapshotText(selectionSnapshot),
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
             }
       ));
+      return;
+    }
+
+    if (actionId === 'annotation') {
+      const capturedSnapshot = captureActiveEditorSelectionSnapshot();
+      const liveSelection = typeof window !== 'undefined' ? window.getSelection() : null;
+      const selectionSnapshot = capturedSnapshot ?? (
+        liveSelection && !liveSelection.isCollapsed && liveSelection.rangeCount > 0
+          ? { type: 'range', range: liveSelection.getRangeAt(0).cloneRange() }
+          : null
+      );
+      const selectedText = selectionSnapshot?.type === 'textarea'
+        ? selectionSnapshot.element.value.slice(selectionSnapshot.start, selectionSnapshot.end).trim()
+        : selectionSnapshot?.range?.toString().trim() ?? '';
+      if (!selectedText) return;
+
+      const annotationOrder = getNextSpecAnnotationOrder();
+      setIntentionPopup(null);
+      setSelectionToolbarPos(null);
+      setCommentPopup({
+        rowKey: rowMeta.stableKey,
+        rowCommentKey: getRowMetaCommentStorageKey(rowMeta),
+        rowIndex: rowMeta.rowIndex,
+        rect: triggerRect,
+        value: '',
+        editingIndex: null,
+        isAnnotation: true,
+        annotationOrder,
+        selectedText,
+        preserveEditorSelection: Boolean(selectionSnapshot),
+        selectionSnapshot,
+        footerMetaLabel: `Annotation ${annotationOrder}`,
+      });
       return;
     }
 
@@ -8968,7 +9102,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
       ));
     }
-  }, [getDoneCommentFooterMetaLabel, getSelectionToolbarRowMeta, rowMetaByKey]);
+  }, [getDoneCommentFooterMetaLabel, getNextSpecAnnotationOrder, getSelectionToolbarRowMeta, rowMetaByKey]);
 
   const getShortcutCommentRowMeta = useCallback(() => {
     const selectionRowMeta = getSelectionToolbarRowMeta();
@@ -9018,7 +9152,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               editingIndex: null,
               isAnnotation: false,
               annotationOrder: null,
-              selectedText: '',
+              selectedText: getEditorSelectionSnapshotText(selectionSnapshot),
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -9064,19 +9198,20 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return hasPendingLineEdits;
   }, [normalizedCode]);
 
-  const handleCommentSubmit = useCallback(() => {
+  const handleCommentSubmit = useCallback(({ submitAction = 'default' } = {}) => {
     if (!commentPopup) return;
 
     const nextValue = commentPopup.value.trim();
     if (!nextValue) return;
 
     const { rowCommentKey, editingIndex, rowIndex } = commentPopup;
+    const shouldCreateAnnotation = Boolean(commentPopup.isAnnotation) || submitAction === 'selection';
     const buildCommentEntry = (text, previousComment = null) => {
       if (previousComment && typeof previousComment === 'object') {
         return { ...previousComment, text, hidden: false };
       }
 
-      if (commentPopup.isAnnotation && typeof commentPopup.selectedText === 'string' && commentPopup.selectedText.trim().length > 0) {
+      if (shouldCreateAnnotation && typeof commentPopup.selectedText === 'string' && commentPopup.selectedText.trim().length > 0) {
         const order = Number.isInteger(commentPopup.annotationOrder)
           ? commentPopup.annotationOrder
           : getNextSpecAnnotationOrder();
@@ -9891,10 +10026,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               && commentedPlanOriginalIndices.has(effectiveCheckTarget.index);
             const isEmptyLine = !effectiveLine.trim();
             const demoTargetId = formatDemoTargetId(effectiveIssueTarget ?? effectiveCheckTarget);
-            const showCommentAdornment = !hasTextAnnotationsForRow && (commentCount > 0 || isCommentPopupOpen
-              || hoveredRowKey === stableKey
-              || activeIssueRowKey === stableKey
-              || isNavigatedIssueRow);
+            const showCommentAdornment = true;
             const isProblemHighlightedRow = highlightedProblemRowIndex === rowIndex;
             const commentAdornment = showCommentAdornment ? (
               <DoneCommentAdornment
@@ -9912,6 +10044,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           rect,
                           value: '',
                           editingIndex: null,
+                          isAnnotation: false,
+                          annotationOrder: null,
+                          selectedText: getEditorSelectionSnapshotText(options.selectionSnapshot) || effectiveLine.trim(),
                           preserveEditorSelection: Boolean(options.preserveEditorSelection),
                           selectionSnapshot: options.selectionSnapshot ?? null,
                           footerMetaLabel: '',
@@ -12260,7 +12395,7 @@ function getSelectionContextItems(attachment = null) {
 function getSelectionContextPreviewItems(attachment = null) {
   return getSelectionContextItems(attachment).map((selection, index) => {
     const normalizedLineLabel = selection.isChatSelectionContext
-      ? `Annotation ${index + 1}`
+      ? `Selection ${index + 1}`
       : (typeof selection.lineLabel === 'string'
         ? selection.lineLabel
           .replace(/^Comment to line\s+/i, 'Selection for line ')
@@ -12308,7 +12443,7 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   }
 
   if (attachment.isChatAnnotation && Array.isArray(attachment.annotations)) {
-    return attachment.annotations
+    const annotationPreviewItems = attachment.annotations
       .filter((annotation) => typeof annotation?.comment === 'string' && annotation.comment.trim().length > 0)
       .map((annotation, index) => ({
         text: annotation.comment.trim(),
@@ -12318,6 +12453,7 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
           : `Annotation ${index + 1}`,
         selectedText: annotation.selectedText ?? '',
       }));
+    return [...annotationPreviewItems, ...selectionPreviewItems];
   }
 
   const seenComments = new Set();
@@ -12541,9 +12677,6 @@ function ChatToolWindow({
   onAddContextPopupOpen = null,
   onFileCommentsOptionSeen = null,
   onDiffCommentsOptionSeen = null,
-  showFileCommentsSuggestionBanner = false,
-  onEnableFileCommentsFromBanner = null,
-  onDismissFileCommentsSuggestionBanner = null,
   onCommentAttachmentResponseStart = null,
   onCommentAttachmentResponseComplete = null,
 }) {
@@ -13226,23 +13359,6 @@ function ChatToolWindow({
           ))}
         </div>
 
-        {showFileCommentsSuggestionBanner && !plainFileGutterCommentsEnabled && (
-          <Banner
-            className="ai-chat-file-comments-banner"
-            type="info"
-            showIcon
-            showCloseButton
-            onClose={onDismissFileCommentsSuggestionBanner}
-            actions={[{
-              label: 'Enable File AI Notes',
-              type: 'primary',
-              onClick: onEnableFileCommentsFromBanner,
-            }]}
-          >
-            You can now leave AI Notes directly on editor files.
-          </Banner>
-        )}
-
         <div className="ai-chat-composer">
           {hasComposerAttachment && (
             <div className={`ai-chat-attachments${composerAttachmentsExpanded ? ' is-expanded' : ''}`}>
@@ -13515,17 +13631,6 @@ function AiChatAddContextPopup({
             tooltip="Shares your active file, selection, and open tabs."
           >
             Include IDE Context
-          </AiChatContextToggleCell>
-          <AiChatContextToggleCell
-            checked={plainFileGutterCommentsEnabled}
-            onToggle={() => {
-              onFileCommentsOptionSeen?.();
-              onPlainFileGutterCommentsEnabledChange?.((prev) => !prev);
-            }}
-            tooltip={AI_NOTE_FILE_HINT}
-            badge={fileCommentsOptionIsNew ? 'New' : ''}
-          >
-            Enable File AI Notes
           </AiChatContextToggleCell>
           <AiChatContextToggleCell
             checked={diffGutterCommentsEnabled}
@@ -13812,6 +13917,7 @@ function AiChatFooterSelector({ icon = null, label }) {
     </button>
   );
 }
+
 
 const AI_CHAT_VISIT_MODEL_ATTRIBUTES_DIFF_COMMENTS = {
   'plan-code-1-added-10': ['Keep vet as a required relationship on Visit so controller validation and persistence use the same model shape.'],
@@ -16916,8 +17022,6 @@ function AppSettingsCodeReviewContent({ path }) {
 
 function AppSettingsCommentsContent({
   path,
-  plainFileGutterCommentsEnabled,
-  onPlainFileGutterCommentsEnabledChange,
   diffGutterCommentsEnabled,
   onDiffGutterCommentsEnabledChange,
 }) {
@@ -16931,12 +17035,6 @@ function AppSettingsCommentsContent({
         </div>
       </div>
       <div className="settings-group app-settings-dialog-options-group">
-        <Checkbox
-          label="Enable AI Notes in Files"
-          hint={AI_NOTE_FILE_HINT}
-          checked={plainFileGutterCommentsEnabled}
-          onChange={onPlainFileGutterCommentsEnabledChange}
-        />
         <Checkbox
           label="Enable AI Notes in Diffs"
           hint={AI_NOTE_DIFF_HINT}
@@ -16988,8 +17086,6 @@ function AppSettingsDialogContent({
       return (
         <AppSettingsCommentsContent
           path={selectedPath}
-          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
-          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
           diffGutterCommentsEnabled={diffGutterCommentsEnabled}
           onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
         />
@@ -17256,10 +17352,8 @@ export default function App() {
   const [ideOpenWindows, setIdeOpenWindows] = useState(['chat-history', 'commit']);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
-  const [fileCommentsOptionIsNew, setFileCommentsOptionIsNew] = useState(true);
   const [diffCommentsOptionIsNew, setDiffCommentsOptionIsNew] = useState(true);
   const [aiChatContextPopupOpenCount, setAiChatContextPopupOpenCount] = useState(0);
-  const [showFileCommentsSuggestionBanner, setShowFileCommentsSuggestionBanner] = useState(false);
   const [chatScrollTarget, setChatScrollTarget] = useState(null);
   const [selectedAiChatId, setSelectedAiChatId] = useState('refactor-time-slots');
   const [aiChatAutoSendRequest, setAiChatAutoSendRequest] = useState(null);
@@ -17280,7 +17374,7 @@ export default function App() {
   const suppressDoneCommentsChangeTimerRef = useRef(null);
   const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
   const showNewContextOptionsIndicator =
-    (fileCommentsOptionIsNew || diffCommentsOptionIsNew) && aiChatContextPopupOpenCount < 6;
+    diffCommentsOptionIsNew && aiChatContextPopupOpenCount < 6;
   const handleAiChatAddContextPopupOpen = useCallback(() => {
     setAiChatContextPopupOpenCount((count) => Math.min(6, count + 1));
   }, []);
@@ -20681,7 +20775,7 @@ export default function App() {
       const activeTab = ideTabs[activeEditorTab ?? 0];
       const tabId = activeTab?.id ?? '';
 
-      if (!tabId || String(tabId).startsWith('agent-task-') || String(tabId).startsWith('plan-diff-')) {
+      if (!tabId || String(tabId).startsWith('agent-task-')) {
         setEditorSelectionToolbarPos(null);
         return;
       }
@@ -20754,6 +20848,10 @@ export default function App() {
           startOffset,
           endOffset,
         });
+        return;
+      }
+
+      if (isDiffTab) {
         return;
       }
 
@@ -20850,6 +20948,7 @@ export default function App() {
       const basePos = getSelectionToolbarPosition(rect, { safeWidth: 430, safeHeight: 44 });
       setEditorSelectionToolbarPos({
         ...basePos,
+        surface: isDiffTab ? 'diff' : 'file',
         rowIds: selectedRowIds,
         rowId: selectedRowIds[0] ?? null,
         selectedText: selectedTextForToolbar,
@@ -22887,6 +22986,111 @@ export default function App() {
     selectedAiChatId,
   ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
+    if (actionId === 'chat-annotate') {
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      const chatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
+        ? toolbarState.chatId
+        : activeAiChatTabChatId;
+      if (!selectedText || !chatId || !triggerRect) return;
+
+      setEditorSelectionToolbarPos(null);
+      setChatSelectionCommentValue('');
+      setChatSelectionCommentRequest({
+        nonce: `${chatId}:annotation:${Date.now()}`,
+        chatId,
+        messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
+        blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
+        selectedText,
+        startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
+        endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
+        triggerRect: {
+          top: triggerRect.top,
+          right: triggerRect.right,
+          bottom: triggerRect.bottom,
+          left: triggerRect.left,
+          width: triggerRect.width,
+          height: triggerRect.height,
+        },
+      });
+      return;
+    }
+
+    if (actionId === 'chat-add-to-chat') {
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      const chatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
+        ? toolbarState.chatId
+        : activeAiChatTabChatId;
+      if (!selectedText || !chatId) return;
+      const chatTitle =
+        getAiChatListItemById(chatId)?.title
+        ?? getAiChatScenarioById(chatId)?.title
+        ?? activeEditorTabMeta?.label
+        ?? 'Chat';
+      const chatAgentIcon =
+        getAiChatListItemById(chatId)?.icon
+        ?? getAiChatScenarioById(chatId)?.icon
+        ?? 'claude';
+
+      const didAddSelectionContext = addSelectionContextToChat({
+        chatId,
+        selectedText,
+        sourceLabel: 'Chat response',
+        sourceTabId: `ai-chat-${chatId}`,
+        chipLabel: chatTitle,
+        chipIcon: chatAgentIcon,
+        isChatSelectionContext: true,
+        messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
+        blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
+        startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
+        endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
+      });
+      if (didAddSelectionContext) clearDocumentTextSelection();
+      return;
+    }
+
+    if (actionId === 'add-context') {
+      if (!activeTabId) return;
+
+      const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      if (!selectedText) return;
+
+      const targetChatId = selectedAiChatId;
+      const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
+        ? toolbarState.sourceLabel.trim()
+        : (activeTab?.label ?? 'Selected context');
+      const sourceTabId = (typeof toolbarState?.sourceTabId === 'string' && toolbarState.sourceTabId.trim().length > 0)
+        ? toolbarState.sourceTabId
+        : activeTabId;
+      const rowIds = Array.isArray(toolbarState?.rowIds)
+        ? toolbarState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+        : [];
+      const lineLabel = rowIds.length > 0
+        ? formatEditorCommentLineLabel(rowIds.map((rowId) => {
+            const match = rowId.match(/(\d+)\s*$/u);
+            return match ? Number.parseInt(match[1], 10) : null;
+          }))
+        : '';
+      const didAddSelectionContext = addSelectionContextToChat({
+        chatId: targetChatId,
+        selectedText,
+        sourceLabel,
+        sourceTabId,
+        chipLabel: sourceLabel,
+        chipIcon: activeTab?.icon ?? 'fileTypes/text',
+        rowIds,
+        lineLabel,
+      });
+      if (didAddSelectionContext) clearDocumentTextSelection();
+      return;
+    }
+
     if (actionId === 'chat-add-to-chat') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
         ? toolbarState.selectedText.trim()
@@ -22962,7 +23166,7 @@ export default function App() {
     }
 
     if (actionId !== 'comment' && actionId !== 'add-context-comment') return;
-    if (!isPlainFileOverlayTab || !activeTabId || !activePlanDiffData) return;
+    if ((!isPlainFileOverlayTab && !isDiffTab) || !activeTabId || !activePlanDiffData) return;
 
     const availableRowIds = new Set((activePlanDiffData.rows ?? []).map((row) => row.id));
     const storedToolbarRowIds = Array.isArray(toolbarState?.rowIds)
@@ -23031,7 +23235,9 @@ export default function App() {
       }
     }
 
-    setPlainFileGutterCommentsEnabled(true);
+    if (isDiffTab) {
+      setDiffGutterCommentsEnabled(true);
+    }
     setEditorSelectionToolbarPos(null);
     setEditorExternalCommentRequest({
       nonce: `${activeTabId}:${Date.now()}:${rowIds.join(',')}`,
@@ -23049,6 +23255,7 @@ export default function App() {
     getAiChatListItemById,
     getAiChatScenarioById,
     ideTabs,
+    isDiffTab,
     isPlainFileOverlayTab,
     addSelectionContextToChat,
     selectedAiChatId,
@@ -23317,6 +23524,17 @@ export default function App() {
     const selectionContextAttachments = Array.isArray(aiChatSelectionContextByChatId[selectedAiChatId])
       ? aiChatSelectionContextByChatId[selectedAiChatId]
       : [];
+    const chatAnnotations = Array.isArray(aiChatAnnotationsByChatId[selectedAiChatId])
+      ? aiChatAnnotationsByChatId[selectedAiChatId]
+      : [];
+    const chatSourceTabId = `ai-chat-${selectedAiChatId}`;
+    const chatSelectionAttachments = selectionContextAttachments.filter((attachment) => (
+      attachment?.isChatSelectionContext
+      || attachment?.sourceTabId === chatSourceTabId
+    ));
+    const nonChatSelectionAttachments = selectionContextAttachments.filter((attachment) => (
+      !chatSelectionAttachments.includes(attachment)
+    ));
     const diffEntries = Object.entries(ideTabContents)
       .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
     const pinnedDiffTabId = aiChatComposerDiffTabByChatId[selectedAiChatId] ?? null;
@@ -23402,19 +23620,50 @@ export default function App() {
       });
     }
 
-    selectionContextAttachments.forEach((attachment) => {
+    if (chatAnnotations.length > 0 || chatSelectionAttachments.length > 0) {
+      const chatListItem = getAiChatListItemById(selectedAiChatId);
+      const chatTitle =
+        chatListItem?.title
+        ?? selectedAiChatScenario?.title
+        ?? 'Chat';
+      const chatSelections = chatSelectionAttachments.flatMap((attachment) => getSelectionContextItems(attachment));
+      const firstChatSelectionAttachment = chatSelectionAttachments[0] ?? null;
+
+      attachments.push({
+        ...(firstChatSelectionAttachment ?? {}),
+        id: `chat-context-${selectedAiChatId}`,
+        label: chatTitle,
+        icon: chatListItem?.icon ?? selectedAiChatScenario?.icon ?? firstChatSelectionAttachment?.icon ?? 'claude',
+        chatId: selectedAiChatId,
+        sourceTabId: chatSourceTabId,
+        sourceLabel: 'Chat response',
+        isChatAnnotation: chatAnnotations.length > 0,
+        annotations: chatAnnotations,
+        commentCount: chatAnnotations.length,
+        isSelectionContext: chatSelections.length > 0,
+        isChatSelectionContext: chatSelections.length > 0,
+        selections: chatSelections,
+        selectionCount: chatSelections.length,
+      });
+    }
+
+    nonChatSelectionAttachments.forEach((attachment) => {
       attachments.push(attachment);
     });
 
     return attachments;
   }, [
     aiChatComposerDiffTabByChatId,
+    aiChatAnnotationsByChatId,
     aiChatSelectionContextByChatId,
+    getAiChatListItemById,
     ideTabContents,
     selectedAiChatId,
     selectedAiChatScenario?.attachments,
     selectedAiChatScenario?.diffRequest,
+    selectedAiChatScenario?.icon,
     selectedAiChatScenario?.showAttachmentsInComposer,
+    selectedAiChatScenario?.title,
   ]);
   const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
     attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
@@ -23847,19 +24096,6 @@ export default function App() {
 
       return nextComments;
     })();
-    const targetChatHasSentMessages = (aiChatSentMessagesByChatId[targetChatId] ?? []).some((message) => (
-      message && message.role !== 'assistant'
-    ));
-    const nextTargetCommentCount = flattenStoredDiffCommentsState(targetSessionComments).length;
-    if (
-      !plainFileGutterCommentsEnabled
-      && !isPlainFileOverlayTab
-      && !metadata?.isEditing
-      && targetChatHasSentMessages
-      && nextTargetCommentCount > 0
-    ) {
-      setShowFileCommentsSuggestionBanner(true);
-    }
     maybeShowCommentShortcutHint();
     const hasNextComments = Object.keys(targetSessionComments).length > 0;
     if (activeTabId) {
@@ -25015,9 +25251,6 @@ export default function App() {
         handleCommentAttachmentResponseStart({ chatId: targetChatId, attachments: commentAttachments });
       }
       if (isReviewCommand) {
-        // The agent leaves its comments directly in the files' gutters. File
-        // gutter comments must be on for them to show.
-        setPlainFileGutterCommentsEnabled(true);
         setIdeTabContents((prev) => {
           const next = { ...prev };
           AGENT_REVIEW_FINDINGS.forEach((finding) => {
@@ -26087,13 +26320,9 @@ export default function App() {
                   onRemoveComposerAttachment={handleRemoveComposerAttachment}
                   onAddContextPopupOpen={handleAiChatAddContextPopupOpen}
                   showNewContextOptionsIndicator={showNewContextOptionsIndicator}
-                  plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
-                  onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                   diffGutterCommentsEnabled={diffGutterCommentsEnabled}
                   onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
-                  fileCommentsOptionIsNew={fileCommentsOptionIsNew}
                   diffCommentsOptionIsNew={diffCommentsOptionIsNew}
-                  onFileCommentsOptionSeen={() => setFileCommentsOptionIsNew(false)}
                   onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
                   agentRun={agentRunByChatId[activeAiChatTabChatId] ?? null}
                   onStopMessage={handleAiChatTabStop}
@@ -26147,8 +26376,24 @@ export default function App() {
 	                    commentSessions={activePlanDiffSessionComments}
 	                    commentSessionActiveChatId={selectedAiChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
+                      onTextSelectionChange={(selectionState) => {
+                        if (!selectionState?.rect) {
+                          setEditorSelectionToolbarPos(null);
+                          return;
+                        }
+                        setEditorSelectionToolbarPos({
+                          ...getSelectionToolbarPosition(selectionState.rect, { safeWidth: 430, safeHeight: 44 }),
+                          surface: 'diff',
+                          rowId: selectionState.rowId,
+                          rowIds: selectionState.rowIds,
+                          selectedText: selectionState.selectedText,
+                          sourceTabId: activeTabId,
+                          sourceLabel: activeEditorTabMeta?.label ?? activePlanDiffData?.sourceTabLabel ?? 'Diff',
+                          sourceIcon: activeEditorTabMeta?.icon ?? 'vcs/diff',
+                        });
+                      }}
 	                    externalCommentRequest={
-                      isPlainFileOverlayTab && editorExternalCommentRequest?.tabId === activeTabId
+                      (isDiffTab || isPlainFileOverlayTab) && editorExternalCommentRequest?.tabId === activeTabId
                         ? editorExternalCommentRequest
                         : null
                     }
@@ -26167,7 +26412,7 @@ export default function App() {
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
-                    showGutterComments={isPlainFileOverlayTab ? plainFileGutterCommentsEnabled : diffGutterCommentsEnabled}
+                    showGutterComments={isDiffTab && diffGutterCommentsEnabled}
                     plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}
@@ -26224,6 +26469,17 @@ export default function App() {
       {editorTabsMorePortal}
       {terminalPermissionPortal}
       <EditorSelectionToolbar position={editorSelectionToolbarPos} onAction={handleEditorSelectionToolbarAction} />
+      <ChatSelectionCommentPopover
+        request={chatSelectionCommentRequest}
+        value={chatSelectionCommentValue}
+        commentNumber={(aiChatAnnotationsByChatId[chatSelectionCommentRequest?.chatId]?.length ?? 0) + 1}
+        onChange={setChatSelectionCommentValue}
+        onCancel={() => {
+          setChatSelectionCommentRequest(null);
+          setChatSelectionCommentValue('');
+        }}
+        onSubmit={handleChatSelectionCommentSubmit}
+      />
       {editorCompletion && editorCompletion.pos && createPortal(
         <CompletionPopup
           trigger={editorCompletion.trigger}

@@ -73,7 +73,6 @@ const OVERLAY_SELECTOR = [
   '[class*="menu-popup"]',
   '.ai-chat-attachment-comment-preview',
   '.ai-chat-attachment-source-list',
-  '.ai-chat-file-comments-banner',
   '.diff-comment-submit-options-popup',
   '.diff-comment-actions-popup',
   '.plan-diff-gutter-context-menu',

@@ -501,12 +501,6 @@ function PlanDiffGutterContextMenu({
   const menuRef = useRef(null);
   const commentToggleItems = [
     {
-      kind: 'file',
-      label: 'Enable File AI Notes',
-      checked: plainFileGutterCommentsEnabled,
-      onToggle: onPlainFileGutterCommentsEnabledChange,
-    },
-    {
       kind: 'diff',
       label: 'Enable Diff AI Notes',
       checked: diffGutterCommentsEnabled,
@@ -576,26 +570,30 @@ function PlanDiffGutterContextMenu({
               </button>
             )
         ))}
-        <div className="plan-diff-gutter-context-menu-separator" role="separator" />
-        {commentToggleItems.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            className="plan-diff-gutter-context-menu-item plan-diff-gutter-context-menu-item-toggle"
-            role="menuitemcheckbox"
-            aria-checked={item.checked}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              item.onToggle?.((prev) => !prev);
-            }}
-          >
-            <span className="plan-diff-gutter-context-menu-check" aria-hidden="true">
-              {item.checked && <Icon name="general/checkmark" size={16} />}
-            </span>
-            <span className="plan-diff-gutter-context-menu-label">{item.label}</span>
-          </button>
-        ))}
+        {commentToggleItems.length > 0 && (
+          <>
+            <div className="plan-diff-gutter-context-menu-separator" role="separator" />
+            {commentToggleItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="plan-diff-gutter-context-menu-item plan-diff-gutter-context-menu-item-toggle"
+                role="menuitemcheckbox"
+                aria-checked={item.checked}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  item.onToggle?.((prev) => !prev);
+                }}
+              >
+                <span className="plan-diff-gutter-context-menu-check" aria-hidden="true">
+                  {item.checked && <Icon name="general/checkmark" size={16} />}
+                </span>
+                <span className="plan-diff-gutter-context-menu-label">{item.label}</span>
+              </button>
+            ))}
+          </>
+        )}
       </div>
     </div>,
     document.body,
@@ -1174,6 +1172,7 @@ export function DiffInlineCommentPopup({
   activeChatTargetKey = '',
   showSubmitTargetLabel = true,
   showSubmitActionMenu = true,
+  submitActionOptions = null,
   inputPlaceholder = 'Write an AI Note',
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
@@ -1271,13 +1270,16 @@ export function DiffInlineCommentPopup({
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
-  const sendToAgentSubmitButtonLabel = 'Send AI Note to Agent';
-  const sendAllToAgentSubmitButtonLabel = 'Send All AI Notes to Agent';
-  const selectedPrimarySubmitButtonLabel = selectedSubmitAction === 'send-to-agent'
-    ? sendToAgentSubmitButtonLabel
-    : selectedSubmitAction === 'send-all-to-agent'
-      ? sendAllToAgentSubmitButtonLabel
-      : primarySubmitButtonLabel;
+  const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
+    ? submitActionOptions
+    : [
+        { id: 'default', label: primarySubmitButtonLabel },
+        { id: 'send-to-agent', label: 'Send AI Note to Agent' },
+        { id: 'send-all-to-agent', label: 'Send All AI Notes to Agent' },
+      ];
+  const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
+    ?? normalizedSubmitActionOptions[0];
+  const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
   const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
@@ -2027,6 +2029,13 @@ export function DiffInlineCommentPopup({
                     disabled={!canSubmitComment}
                     onClick={() => handleSubmit()}
                   >
+                    {selectedSubmitActionOption.iconName && (
+                      <Icon
+                        name={selectedSubmitActionOption.iconName}
+                        size={16}
+                        className={selectedSubmitActionOption.accent ? `is-${selectedSubmitActionOption.accent}` : ''}
+                      />
+                    )}
                     {selectedPrimarySubmitButtonLabel}
                   </button>
                   <span className="diff-comment-primary-split-separator" aria-hidden="true" />
@@ -2067,15 +2076,17 @@ export function DiffInlineCommentPopup({
             <div className="theme-dark">
               <PositionedPopup triggerRect={submitActionMenuRect} onDismiss={() => setSubmitActionMenuRect(null)} gap={4}>
                 <Popup visible className="diff-comment-submit-action-popup" onClose={() => setSubmitActionMenuRect(null)}>
-                  <PopupCell selected={selectedSubmitAction === 'default'} onClick={() => handleSubmitActionSelect('default')}>
-                    {primarySubmitButtonLabel}
-                  </PopupCell>
-                  <PopupCell selected={selectedSubmitAction === 'send-to-agent'} onClick={() => handleSubmitActionSelect('send-to-agent')}>
-                    {sendToAgentSubmitButtonLabel}
-                  </PopupCell>
-                  <PopupCell selected={selectedSubmitAction === 'send-all-to-agent'} onClick={() => handleSubmitActionSelect('send-all-to-agent')}>
-                    {sendAllToAgentSubmitButtonLabel}
-                  </PopupCell>
+                  {normalizedSubmitActionOptions.map((option) => (
+                    <PopupCell
+                      key={option.id}
+                      icon={option.iconName}
+                      className={option.accent ? `is-${option.accent}` : ''}
+                      selected={selectedSubmitAction === option.id}
+                      onClick={() => handleSubmitActionSelect(option.id)}
+                    >
+                      {option.label}
+                    </PopupCell>
+                  ))}
                 </Popup>
               </PositionedPopup>
             </div>,
@@ -2380,6 +2391,7 @@ export function PlanDiffOverlay({
   commentContextSessionLabel = '',
   pendingCommentRowIds = [],
   commentShortcutHintRowId = null,
+  onTextSelectionChange = null,
   externalCommentRequest = null,
   onDiffCommentsChange = null,
   onDiffCommentSubmit = null,
@@ -3142,11 +3154,54 @@ export function PlanDiffOverlay({
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
-    const finishPointerSelection = () => {
+    const finishPointerSelection = (event) => {
       const pointerSelection = pointerSelectionRef.current;
       pointerSelectionRef.current = null;
       if (!pointerSelection?.rowIds || pointerSelection.rowIds.length === 0) return;
       latestSelectionTargetRowIdsRef.current = pointerSelection.rowIds;
+      const pointerDistance = pointerSelection.startPoint
+        ? Math.hypot(
+            event.clientX - pointerSelection.startPoint.x,
+            event.clientY - pointerSelection.startPoint.y,
+          )
+        : 0;
+      if (pointerDistance < 4) {
+        onTextSelectionChange?.(null);
+        return;
+      }
+
+      const selectedRows = pointerSelection.rowIds
+        .map((rowId) => diffData.rows.find((row) => row.id === rowId))
+        .filter(Boolean);
+      const selectedElements = pointerSelection.rowIds
+        .map((rowId) => scrollRef.current?.querySelector(`[data-diff-row-id="${CSS.escape(rowId)}"] .plan-diff-row-code-text`))
+        .filter((element) => element instanceof HTMLElement);
+      if (selectedRows.length === 0 || selectedElements.length === 0) return;
+
+      const bounds = selectedElements.reduce((acc, element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          top: Math.min(acc.top, rect.top),
+          right: Math.max(acc.right, rect.right),
+          bottom: Math.max(acc.bottom, rect.bottom),
+          left: Math.min(acc.left, rect.left),
+        };
+      }, {
+        top: Number.POSITIVE_INFINITY,
+        right: Number.NEGATIVE_INFINITY,
+        bottom: Number.NEGATIVE_INFINITY,
+        left: Number.POSITIVE_INFINITY,
+      });
+      onTextSelectionChange?.({
+        rect: {
+          ...bounds,
+          width: bounds.right - bounds.left,
+          height: bounds.bottom - bounds.top,
+        },
+        rowId: pointerSelection.rowIds[0],
+        rowIds: pointerSelection.rowIds,
+        selectedText: selectedRows.map((row) => row.text || '').join('\n').trim(),
+      });
     };
 
     window.addEventListener('mouseup', finishPointerSelection);
@@ -3154,9 +3209,9 @@ export function PlanDiffOverlay({
     return () => {
       window.removeEventListener('mouseup', finishPointerSelection);
     };
-  }, []);
+  }, [diffData.rows, onTextSelectionChange]);
 
-  const trackPointerSelectionRow = useCallback((rowId, { start = false } = {}) => {
+  const trackPointerSelectionRow = useCallback((rowId, { start = false, point = null } = {}) => {
     if (!rowId) return;
 
     const currentPointerSelection = pointerSelectionRef.current;
@@ -3168,6 +3223,7 @@ export function PlanDiffOverlay({
         startRowId: rowId,
         currentRowId: rowId,
         rowIds,
+        startPoint: point,
       };
       latestSelectionTargetRowIdsRef.current = rowIds;
       return;
@@ -3196,7 +3252,11 @@ export function PlanDiffOverlay({
       const rowId = getDiffRowIdAtViewportPoint(event.clientX, event.clientY);
       if (!rowId) return;
 
-      trackPointerSelectionRow(rowId, { start: true });
+      onTextSelectionChange?.(null);
+      trackPointerSelectionRow(rowId, {
+        start: true,
+        point: { x: event.clientX, y: event.clientY },
+      });
     };
 
     const handlePointerMouseMove = (event) => {
@@ -3226,7 +3286,7 @@ export function PlanDiffOverlay({
       document.removeEventListener('mousemove', handlePointerMouseMove, true);
       document.removeEventListener('mouseup', handlePointerMouseUp, true);
     };
-  }, [getDiffRowIdAtViewportPoint, trackPointerSelectionRow]);
+  }, [getDiffRowIdAtViewportPoint, onTextSelectionChange, trackPointerSelectionRow]);
 
   const toggleCommentForRow = (rowId, { selectionSnapshot = null, targetRowIds = null, targetHasSelection = null, forceOpen = false } = {}) => {
     const resolvedSelectionSnapshot = selectionSnapshot ?? null;
@@ -4025,7 +4085,11 @@ export function PlanDiffOverlay({
                 onMouseDown={(event) => {
                   if (event.button !== 0) return;
                   if (event.target instanceof Element && event.target.closest('button, .plan-diff-gutter-icon-slot')) return;
-                  trackPointerSelectionRow(row.id, { start: true });
+                  onTextSelectionChange?.(null);
+                  trackPointerSelectionRow(row.id, {
+                    start: true,
+                    point: { x: event.clientX, y: event.clientY },
+                  });
                 }}
                 onMouseEnter={(event) => {
                   if ((event.buttons & 1) !== 1) return;
@@ -4743,6 +4807,7 @@ export function PlanDiffEditorArea({
   onDiffGutterCommentsEnabledChange = null,
   pendingCommentRowIds = [],
   commentShortcutHintRowId = null,
+  onTextSelectionChange = null,
   externalCommentRequest = null,
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
@@ -4880,6 +4945,7 @@ export function PlanDiffEditorArea({
           inspectionWidget={inspectionWidget}
           renderSubmitTargetPicker={renderSubmitTargetPicker}
           externalCommentRequest={externalCommentRequest}
+          onTextSelectionChange={onTextSelectionChange}
 	          pendingCommentRowIds={pendingCommentRowIds}
 	          commentShortcutHintRowId={commentShortcutHintRowId}
 	        />,
