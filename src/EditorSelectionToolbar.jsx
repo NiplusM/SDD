@@ -121,10 +121,9 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                       role="menuitemradio"
                       aria-checked={action.id === selectedAction.id}
                       onMouseDown={preventSelectionReset}
-                      onClick={(event) => {
+                      onClick={() => {
                         setDefaultActionBySurface((current) => ({ ...current, [surface]: action.id }));
                         setOpenActionMenu(false);
-                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
                       }}
                     >
                       <Icon name={action.iconName} size={16} />

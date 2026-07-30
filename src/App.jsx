@@ -8424,10 +8424,9 @@ function SpecSelectionToolbar({ position, onAction }) {
                       role="menuitemradio"
                       aria-checked={action.id === selectedAction.id}
                       onMouseDown={preventSelectionReset}
-                      onClick={(event) => {
+                      onClick={() => {
                         setSelectedActionId(action.id);
                         setActionMenuOpen(false);
-                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
                       }}
                     >
                       <Icon name={action.iconName} size={16} />
