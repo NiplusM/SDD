@@ -3841,13 +3841,6 @@ export function PlanDiffOverlay({
             const hiddenRowCommentCount = hiddenRowCommentTexts.length;
             const aiNoteHint = singleLineNumbers ? AI_NOTE_FILE_HINT : AI_NOTE_DIFF_HINT;
             const isCommentComposeOpen = commentRowId === row.id;
-            const shouldRenderGutterCommentControl = showGutterComments
-              && showRowCommentControls
-              && (
-                singleLineNumbers
-                  ? (isCommentComposeOpen || hasVisibleRowComments || hiddenRowCommentCount > 0)
-                  : (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0)
-              );
             const isCommentSelectionHighlighted =
               commentTargetHasSelection
               &&
@@ -4168,6 +4161,13 @@ export function PlanDiffOverlay({
 	              // resolved comment on a removed line has no gutter icon to reopen it.
 	              const rowCommentSide = row.kind === 'removed' ? 'left' : 'right';
 	              const showRowCommentControls = !isSplitSide || splitSide === rowCommentSide;
+	              const shouldRenderGutterCommentControl = showGutterComments
+	                && showRowCommentControls
+	                && (
+	                  singleLineNumbers
+	                    ? (isCommentComposeOpen || hasVisibleRowComments || hiddenRowCommentCount > 0)
+	                    : (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0)
+	                );
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
 	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id);
 	              return (
