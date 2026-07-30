@@ -16194,13 +16194,9 @@ function AiChatTabView({
     : [];
   const isSpecChat = Boolean(scenario?.isSpecChat || String(chatId).startsWith('spec-chat-'));
   const scenarioAttachments = Array.isArray(scenario?.attachments) ? scenario.attachments : [];
-  const renderAnnotatedParagraph = useCallback((text, blockId, paragraphMessageId = messageId) => (
-    renderAiChatAnnotatedText(
-      text,
-      getAiChatBlockAnnotations(chatAnnotations, paragraphMessageId, blockId),
-      onEditAnnotation,
-    )
-  ), [chatAnnotations, messageId, onEditAnnotation]);
+  // Chat context is represented only by composer/message attachments. Keep the
+  // conversation text visually unchanged after adding an AI Note or Selection.
+  const renderAnnotatedParagraph = useCallback((text) => text, []);
   const focusComposerAtEnd = useCallback(() => {
     const focus = () => {
       const textarea = composerRef.current;
