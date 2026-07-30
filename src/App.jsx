@@ -6373,6 +6373,7 @@ function DoneCommentPopup({
   onHide,
   onHideAll,
   canAddSelection = true,
+  showAddSelectionAction = true,
   preserveEditorSelection = false,
   selectionSnapshot = null,
   footerMetaLabel = '',
@@ -6416,7 +6417,7 @@ function DoneCommentPopup({
       inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
       showSubmitActionMenu={false}
-      secondarySubmitAction={!isEditing
+      secondarySubmitAction={showAddSelectionAction && !isEditing
         ? {
           id: 'selection',
           label: 'Add Selection',
@@ -9044,6 +9045,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               isAnnotation: false,
               annotationOrder: null,
               selectedText: getEditorSelectionSnapshotText(selectionSnapshot) || rowMeta.line.trim(),
+              showAddSelectionAction: true,
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -9145,6 +9147,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               isAnnotation: false,
               annotationOrder: null,
               selectedText: getEditorSelectionSnapshotText(selectionSnapshot) || rowMeta.line.trim(),
+              showAddSelectionAction: true,
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -9324,6 +9327,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       editingIndex: commentIndex,
       isAnnotation,
       selectedText: isAnnotation ? comment.selectedText : '',
+      showAddSelectionAction: false,
       annotationOrder: isAnnotation ? getSpecTextAnnotationOrder(comment, commentIndex + 1) : null,
       footerMetaLabel: isAnnotation ? (getStoredCommentLineLabel(comment) || `Annotation ${getSpecTextAnnotationOrder(comment, commentIndex + 1)}`) : '',
     });
@@ -9349,6 +9353,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       editingIndex: commentIndex,
       isAnnotation: true,
       selectedText: typeof comment?.selectedText === 'string' ? comment.selectedText : '',
+      showAddSelectionAction: false,
       annotationOrder: order,
       preserveEditorSelection: false,
       selectionSnapshot: null,
@@ -10063,6 +10068,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           isAnnotation: false,
                           annotationOrder: null,
                           selectedText: getEditorSelectionSnapshotText(options.selectionSnapshot) || effectiveLine.trim(),
+                          showAddSelectionAction: false,
                           preserveEditorSelection: Boolean(options.preserveEditorSelection),
                           selectionSnapshot: options.selectionSnapshot ?? null,
                           footerMetaLabel: '',
@@ -10424,6 +10430,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           onHideAll={handleHideAllComments}
           onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
           canAddSelection={Boolean(commentPopup.selectedText?.trim())}
+          showAddSelectionAction={Boolean(commentPopup.showAddSelectionAction)}
           onSubmit={handleCommentSubmit}
         />
       </PositionedPopup>
