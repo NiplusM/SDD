@@ -1173,7 +1173,7 @@ export function DiffInlineCommentPopup({
   showSubmitTargetLabel = true,
   showSubmitActionMenu = true,
   submitActionOptions = null,
-  submitActionsWithoutValue = [],
+  secondarySubmitAction = null,
   inputPlaceholder = 'Write an AI Note',
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
@@ -1281,13 +1281,7 @@ export function DiffInlineCommentPopup({
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
-  const normalizedSubmitActionsWithoutValue = Array.isArray(submitActionsWithoutValue)
-    ? submitActionsWithoutValue.filter((actionId) => typeof actionId === 'string' && actionId.length > 0)
-    : [];
-  const hasSubmitValue = typeof value === 'string' && value.trim().length > 0;
-  const canSubmitComment = hasSubmitValue || normalizedSubmitActionsWithoutValue.includes(selectedSubmitAction);
-  const canOpenSubmitActionMenu = hasSubmitValue
-    || normalizedSubmitActionOptions.some((option) => normalizedSubmitActionsWithoutValue.includes(option.id));
+  const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -1441,6 +1435,19 @@ export function DiffInlineCommentPopup({
       submitAction,
       targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
       targetDocumentTabId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetDocumentTabId : null,
+    });
+  };
+
+  const handleSecondarySubmit = () => {
+    if (!secondarySubmitAction?.id || secondarySubmitAction.disabled) return;
+    setSubmitOptionsRect(null);
+    setSubmitOptionsWidth(null);
+    setSubmitActionMenuRect(null);
+    onSubmit?.({
+      attachMode: submitAttachMode,
+      submitAction: secondarySubmitAction.id,
+      targetChatId: submitAttachTarget?.attachMode === submitAttachMode ? submitAttachTarget.targetChatId : null,
+      targetDocumentTabId: submitAttachTarget?.attachMode === submitAttachMode ? submitAttachTarget.targetDocumentTabId : null,
     });
   };
 
@@ -2026,8 +2033,28 @@ export function DiffInlineCommentPopup({
               >
                 Cancel
               </Button>
+              {secondarySubmitAction?.id && (
+                <Button
+                  type="secondary"
+                  className="diff-comment-secondary-submit"
+                  data-demo-id={`diff-comment-submit-${secondarySubmitAction.id}`}
+                  disabled={Boolean(secondarySubmitAction.disabled)}
+                  onClick={handleSecondarySubmit}
+                >
+                  <span className="diff-comment-secondary-submit-content">
+                    {secondarySubmitAction.iconName && (
+                      <Icon
+                        name={secondarySubmitAction.iconName}
+                        size={16}
+                        className={secondarySubmitAction.accent ? `is-${secondarySubmitAction.accent}` : ''}
+                      />
+                    )}
+                    {secondarySubmitAction.label}
+                  </span>
+                </Button>
+              )}
               {showSubmitActionMenu ? (
-                <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canOpenSubmitActionMenu ? ' is-disabled' : ''}`}>
+                <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canSubmitComment ? ' is-disabled' : ''}`}>
                   <button
                     type="button"
                     className="diff-comment-primary-split-main"
@@ -2052,7 +2079,7 @@ export function DiffInlineCommentPopup({
                     aria-label={`${selectedPrimarySubmitButtonLabel} options`}
                     aria-haspopup="menu"
                     aria-expanded={Boolean(submitActionMenuRect)}
-                    disabled={!canOpenSubmitActionMenu}
+                    disabled={!canSubmitComment}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -2074,7 +2101,16 @@ export function DiffInlineCommentPopup({
                   disabled={!canSubmitComment}
                   onClick={() => handleSubmit()}
                 >
-                  {selectedPrimarySubmitButtonLabel}
+                  <span className="diff-comment-primary-submit-content">
+                    {selectedSubmitActionOption.iconName && (
+                      <Icon
+                        name={selectedSubmitActionOption.iconName}
+                        size={16}
+                        className={selectedSubmitActionOption.accent ? `is-${selectedSubmitActionOption.accent}` : ''}
+                      />
+                    )}
+                    {selectedPrimarySubmitButtonLabel}
+                  </span>
                 </Button>
               )}
             </div>

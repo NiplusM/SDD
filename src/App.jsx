@@ -6372,6 +6372,7 @@ function DoneCommentPopup({
   onDelete,
   onHide,
   onHideAll,
+  canAddSelection = true,
   preserveEditorSelection = false,
   selectionSnapshot = null,
   footerMetaLabel = '',
@@ -6414,17 +6415,19 @@ function DoneCommentPopup({
       submitButtonLabel={submitButtonLabel}
       inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
-      showSubmitActionMenu={!isEditing}
+      showSubmitActionMenu={false}
       submitActionOptions={[
-        { id: 'default', label: 'Attach AI Note', iconName: 'general/balloon' },
-        {
+        { id: 'default', label: submitButtonLabel, iconName: 'general/balloon' },
+      ]}
+      secondarySubmitAction={!isEditing
+        ? {
           id: 'selection',
           label: 'Add Selection',
           iconName: 'aiAssistant/toolWindowChat@20x20',
           accent: 'assistant',
-        },
-      ]}
-      submitActionsWithoutValue={['selection']}
+          disabled: !canAddSelection,
+        }
+        : null}
       footerMetaLabel={footerMetaLabel}
       onChange={onChange}
       onCancel={onCancel}
@@ -9043,7 +9046,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               editingIndex: null,
               isAnnotation: false,
               annotationOrder: null,
-              selectedText: getEditorSelectionSnapshotText(selectionSnapshot),
+              selectedText: getEditorSelectionSnapshotText(selectionSnapshot) || rowMeta.line.trim(),
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -9144,7 +9147,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               editingIndex: null,
               isAnnotation: false,
               annotationOrder: null,
-              selectedText: getEditorSelectionSnapshotText(selectionSnapshot),
+              selectedText: getEditorSelectionSnapshotText(selectionSnapshot) || rowMeta.line.trim(),
               preserveEditorSelection: Boolean(selectionSnapshot),
               selectionSnapshot,
               footerMetaLabel,
@@ -10423,6 +10426,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           onHide={(commentIndex) => handleCommentHide(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
           onHideAll={handleHideAllComments}
           onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
+          canAddSelection={Boolean(commentPopup.selectedText?.trim())}
           onSubmit={handleCommentSubmit}
         />
       </PositionedPopup>

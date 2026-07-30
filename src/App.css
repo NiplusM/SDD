@@ -1007,8 +1007,16 @@ body {
 .editor-selection-toolbar-btn.is-assistant .icon,
 .editor-selection-toolbar-menu-item.is-assistant .icon,
 .diff-comment-primary-split-main .icon.is-assistant,
+.diff-comment-secondary-submit .icon.is-assistant,
 .diff-comment-submit-action-popup .cmp-cell.is-assistant .icon {
   color: #A894F6;
+}
+
+.diff-comment-secondary-submit-content,
+.diff-comment-primary-submit-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .spec-done-selection-toolbar-btn.is-active {
