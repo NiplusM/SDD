@@ -20850,7 +20850,7 @@ export default function App() {
         return;
       }
 
-      if (isDiffTab) {
+      if (isDiffTab || isPlainFileOverlayTab) {
         return;
       }
 
@@ -26382,7 +26382,7 @@ export default function App() {
                         }
                         setEditorSelectionToolbarPos({
                           ...getSelectionToolbarPosition(selectionState.rect, { safeWidth: 430, safeHeight: 44 }),
-                          surface: 'diff',
+                          surface: isDiffTab ? 'diff' : 'file',
                           rowId: selectionState.rowId,
                           rowIds: selectionState.rowIds,
                           selectedText: selectionState.selectedText,
