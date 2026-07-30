@@ -31,11 +31,6 @@ const CHAT_SELECTION_ACTIONS = [
 export function EditorSelectionToolbar({ position, onAction = null }) {
   const rootRef = useRef(null);
   const [openActionMenu, setOpenActionMenu] = useState(false);
-  const [defaultActionBySurface, setDefaultActionBySurface] = useState({
-    diff: 'comment',
-    file: 'comment',
-    'ai-chat': 'chat-annotate',
-  });
 
   const surface = position?.surface === 'ai-chat'
     ? 'ai-chat'
@@ -43,8 +38,7 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
       ? 'diff'
       : 'file';
   const selectionActions = surface === 'ai-chat' ? CHAT_SELECTION_ACTIONS : CODE_SELECTION_ACTIONS;
-  const selectedAction = selectionActions.find((action) => action.id === defaultActionBySurface[surface])
-    ?? selectionActions[0];
+  const primaryAction = selectionActions[0];
 
   useEffect(() => {
     setOpenActionMenu(false);
@@ -90,14 +84,13 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
             <span key={item.id} className="editor-selection-toolbar-menu-anchor">
               <button
                 type="button"
-                className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${selectedAction.accent ? ` is-${selectedAction.accent}` : ''}`}
-                aria-label={selectedAction.label}
-                title={selectedAction.title ?? selectedAction.label}
+                className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${primaryAction.accent ? ` is-${primaryAction.accent}` : ''}`}
+                aria-label={primaryAction.label}
+                title={primaryAction.title ?? primaryAction.label}
                 onMouseDown={preventSelectionReset}
-                onClick={(event) => onAction?.(selectedAction.id, event.currentTarget.getBoundingClientRect(), position)}
+                onClick={(event) => onAction?.(primaryAction.id, event.currentTarget.getBoundingClientRect(), position)}
               >
-                <Icon name={selectedAction.iconName} size={16} />
-                <span className="editor-selection-toolbar-text">{selectedAction.label}</span>
+                <span className="editor-selection-toolbar-text">{primaryAction.label}</span>
               </button>
               <span className="editor-selection-toolbar-separator is-split" aria-hidden="true" />
               <button
@@ -118,19 +111,14 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                       key={action.id}
                       type="button"
                       className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
-                      role="menuitemradio"
-                      aria-checked={action.id === selectedAction.id}
+                      role="menuitem"
                       onMouseDown={preventSelectionReset}
-                      onClick={() => {
-                        setDefaultActionBySurface((current) => ({ ...current, [surface]: action.id }));
+                      onClick={(event) => {
                         setOpenActionMenu(false);
+                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
                       }}
                     >
-                      <Icon name={action.iconName} size={16} />
                       <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
-                      <span className="editor-selection-toolbar-menu-item-check" aria-hidden="true">
-                        {action.id === selectedAction.id ? '✓' : ''}
-                      </span>
                     </button>
                   ))}
                 </div>

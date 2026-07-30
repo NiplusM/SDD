@@ -8351,10 +8351,8 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
 
 function SpecSelectionToolbar({ position, onAction }) {
   const rootRef = useRef(null);
-  const [selectedActionId, setSelectedActionId] = useState('comment');
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const selectedAction = SPEC_SELECTION_ACTIONS.find((action) => action.id === selectedActionId)
-    ?? SPEC_SELECTION_ACTIONS[0];
+  const primaryAction = SPEC_SELECTION_ACTIONS[0];
 
   useEffect(() => {
     setActionMenuOpen(false);
@@ -8396,14 +8394,13 @@ function SpecSelectionToolbar({ position, onAction }) {
             <span key={item.id} className="editor-selection-toolbar-menu-anchor">
               <button
                 type="button"
-                className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${selectedAction.accent ? ` is-${selectedAction.accent}` : ''}`}
-                aria-label={selectedAction.label}
-                title={selectedAction.title ?? selectedAction.label}
+                className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${primaryAction.accent ? ` is-${primaryAction.accent}` : ''}`}
+                aria-label={primaryAction.label}
+                title={primaryAction.title ?? primaryAction.label}
                 onMouseDown={preventSelectionReset}
-                onClick={(event) => onAction?.(selectedAction.id, event.currentTarget.getBoundingClientRect(), position)}
+                onClick={(event) => onAction?.(primaryAction.id, event.currentTarget.getBoundingClientRect(), position)}
               >
-                <Icon name={selectedAction.iconName} size={16} />
-                <span className="editor-selection-toolbar-text">{selectedAction.label}</span>
+                <span className="editor-selection-toolbar-text">{primaryAction.label}</span>
               </button>
               <span className="editor-selection-toolbar-separator is-split" aria-hidden="true" />
               <button
@@ -8424,19 +8421,14 @@ function SpecSelectionToolbar({ position, onAction }) {
                       key={action.id}
                       type="button"
                       className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
-                      role="menuitemradio"
-                      aria-checked={action.id === selectedAction.id}
+                      role="menuitem"
                       onMouseDown={preventSelectionReset}
-                      onClick={() => {
-                        setSelectedActionId(action.id);
+                      onClick={(event) => {
                         setActionMenuOpen(false);
+                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
                       }}
                     >
-                      <Icon name={action.iconName} size={16} />
                       <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
-                      <span className="editor-selection-toolbar-menu-item-check" aria-hidden="true">
-                        {action.id === selectedAction.id ? '✓' : ''}
-                      </span>
                     </button>
                   ))}
                 </div>

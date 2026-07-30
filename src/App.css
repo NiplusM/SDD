@@ -1005,7 +1005,6 @@ body {
 
 .spec-done-selection-toolbar-btn.is-assistant .icon,
 .editor-selection-toolbar-btn.is-assistant .icon,
-.editor-selection-toolbar-menu-item.is-assistant .icon,
 .diff-comment-primary-split-main .icon.is-assistant,
 .diff-comment-secondary-submit .icon.is-assistant,
 .diff-comment-submit-action-popup .cmp-cell.is-assistant .icon {
@@ -1220,7 +1219,6 @@ body {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 8px;
   height: 26px;
   padding: 0 8px;
   border-radius: 6px;
@@ -1232,24 +1230,6 @@ body {
 .editor-selection-toolbar-menu-item:hover,
 .editor-selection-toolbar-menu-item:focus-visible {
   background: var(--editor-selection-toolbar-hover-bg);
-}
-
-.editor-selection-toolbar-menu-item .icon {
-  display: block;
-  flex-shrink: 0;
-}
-
-.editor-selection-toolbar-menu-item-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  margin-left: auto;
-  flex-shrink: 0;
-  color: var(--text-default, #CED0D6);
-  font-family: Inter, -apple-system, sans-serif;
-  font-size: 12px;
-  line-height: 1;
 }
 
 .editor-selection-toolbar-menu-item-label {
