@@ -1779,9 +1779,11 @@ export function DiffInlineCommentPopup({
               <button
                 type="button"
                 className="spec-done-comment-agent-reply-link is-dismiss-cta"
+                aria-label="Dismiss comment"
+                title="Dismiss comment"
                 onClick={(event) => { event.stopPropagation(); startAgentCommentProcessing(comment, 'dismiss', draftKey, fallbackIndex, context); }}
               >
-                Dismiss
+                <Icon name="general/close" size={16} />
               </button>
             </div>
           )}
@@ -4655,12 +4657,14 @@ export function PlanDiffOverlay({
 	                                          <button
 	                                            type="button"
 	                                            className="spec-done-comment-agent-reply-link is-dismiss-cta"
+	                                            aria-label="Dismiss comment"
+	                                            title="Dismiss comment"
 	                                            onClick={(event) => {
 	                                              event.stopPropagation();
 	                                              runAsideAction('dismiss');
 	                                            }}
 	                                          >
-	                                            Dismiss
+	                                            <Icon name="general/close" size={16} />
 	                                          </button>
 	                                        </div>
 	                                      )}

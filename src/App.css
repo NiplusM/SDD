@@ -15413,11 +15413,24 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .spec-done-comment-agent-reply-link.is-dismiss-cta {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  justify-content: center;
+  border-radius: 4px;
   color: #8a8f98;
 }
 
 .spec-done-comment-agent-reply-link.is-dismiss-cta:hover {
+  background: rgba(255, 255, 255, 0.07);
   color: #b4b8bf;
+  text-decoration: none;
+}
+
+.spec-done-comment-agent-reply-link.is-dismiss-cta .icon,
+.spec-done-comment-agent-reply-link.is-dismiss-cta svg {
+  width: 16px;
+  height: 16px;
 }
 
 .spec-done-comment-agent-reply-badge {
