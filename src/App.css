@@ -15257,10 +15257,12 @@ button.aiux543-answer-change-card:focus-visible {
 /* Agent/user replies stay in the same thread card without an extra visual indent. */
 .spec-done-comment-agent-reply {
   --spec-done-comment-agent-reply-content-indent: 0px;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 10px;
+  padding-right: 28px;
 }
 
 /* Agent-authored comment (e.g. a review comment): it IS the comment, not a
@@ -15268,6 +15270,38 @@ button.aiux543-answer-change-card:focus-visible {
 .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
   margin-top: 0;
   --spec-done-comment-agent-reply-content-indent: 0px;
+}
+
+.spec-done-comment-agent-dismiss-btn {
+  all: unset;
+  box-sizing: border-box;
+  position: absolute;
+  top: -2px;
+  right: 0;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #8a8f98;
+  cursor: pointer;
+}
+
+.spec-done-comment-agent-dismiss-btn:hover,
+.spec-done-comment-agent-dismiss-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  color: #b4b8bf;
+}
+
+.spec-done-comment-agent-dismiss-btn:focus-visible {
+  outline: 2px solid var(--control-focus-border-brand);
+}
+
+.spec-done-comment-agent-dismiss-btn .icon,
+.spec-done-comment-agent-dismiss-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply-head {
@@ -15390,27 +15424,6 @@ button.aiux543-answer-change-card:focus-visible {
 
 .spec-done-comment-agent-reply-link.is-change-cta:hover {
   text-decoration: underline;
-}
-
-.spec-done-comment-agent-reply-link.is-dismiss-cta {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  justify-content: center;
-  border-radius: 4px;
-  color: #8a8f98;
-}
-
-.spec-done-comment-agent-reply-link.is-dismiss-cta:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #b4b8bf;
-  text-decoration: none;
-}
-
-.spec-done-comment-agent-reply-link.is-dismiss-cta .icon,
-.spec-done-comment-agent-reply-link.is-dismiss-cta svg {
-  width: 16px;
-  height: 16px;
 }
 
 .spec-done-comment-agent-reply-badge {
