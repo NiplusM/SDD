@@ -1705,9 +1705,8 @@ export function DiffInlineCommentPopup({
     hasComments ? 'has-comments' : '',
   ].filter(Boolean).join(' ');
 
-  // Agent reply to a left note. Its own card structure stays as-is; it is
-  // embedded under the user's comment as a clearly-separated nested reply
-  // (divider + "replied" connector + indent).
+  // Agent/user replies stay in the same left-thread card without adding a
+  // second visual indentation level.
   const hasAgentResolutionThread = (comment) => Boolean(comment && typeof comment === 'object' && comment.resolution);
 
   const renderAgentResolution = (comment, fallbackIndex = 0, context = null, options = {}) => {

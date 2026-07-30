@@ -15274,10 +15274,9 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* In-code AI Note resolution states shown after the run completes */
-/* Agent reply embedded as a light nested thread INSIDE the same note card:
-   a left connector line + indent — no second card, no extra background. */
+/* Agent/user replies stay in the same thread card without an extra visual indent. */
 .spec-done-comment-agent-reply {
-  --spec-done-comment-agent-reply-content-indent: 24px;
+  --spec-done-comment-agent-reply-content-indent: 0px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -15285,21 +15284,14 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* Agent-authored comment (e.g. a review comment): it IS the comment, not a
-   reply nested under a user note, so drop the connector top margin. Its outer
-   paddings and ⋯ position come from the normal comment item — structurally the
-   same component — while the body + actions align under the "Claude Agent"
-   byline (the default reply content indent). */
+   reply nested under a user note, so drop the connector top margin. */
 .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
   margin-top: 0;
-  /* Body + actions sit at the item indent (like a user comment's body). */
   --spec-done-comment-agent-reply-content-indent: 0px;
 }
 
-/* The byline (avatar + "Claude Agent" + severity + line) sits at the group
-   level — where a user comment's context header sits — while the body stays at
-   the item indent. So the two comments line up identically. */
 .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply-head {
-  margin-left: -26px;
+  margin-left: 0;
 }
 
 /* Line label sits in the byline, muted like the other meta. */
@@ -15488,7 +15480,6 @@ button.aiux543-answer-change-card:focus-visible {
 
 .spec-done-comment-agent-user-reply-text {
   margin: 0;
-  margin-left: 24px;
   color: #c4c7cd;
   font: 400 13px/19px Inter, system-ui, sans-serif;
   overflow-wrap: anywhere;
@@ -15508,7 +15499,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-text {
-  margin-left: 24px;
+  margin-left: 0;
 }
 
 .spec-done-comment-agent-reply-compose {
