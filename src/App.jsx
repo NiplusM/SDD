@@ -16207,7 +16207,8 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
       state,
       openTarget: group.openTarget,
     };
-  });
+  }).filter((item) => item.state !== 'done');
+
   return (
     <div className="aiux550-loading-plan-shell">
       <div className="aiux550-loading-plan-running" aria-live="polite">
@@ -16242,9 +16243,6 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
                   </span>
                   <span className="aiux550-loading-plan-note">
                     <span className="aiux550-loading-plan-text">{item.text}</span>
-                  </span>
-                  <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
-                    {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
                   </span>
                 </button>
               );

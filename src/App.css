@@ -14947,7 +14947,7 @@ button.aiux543-answer-change-card:focus-visible {
   align-items: center;
   gap: 8px;
   align-self: flex-start;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: #c7cad1;
   font: 500 13px/18px Inter, system-ui, sans-serif;
 }
@@ -14970,7 +14970,7 @@ button.aiux543-answer-change-card:focus-visible {
   box-sizing: border-box;
   flex-direction: column;
   margin-bottom: -1px;
-  padding: 8px 12px 6px;
+  padding: 8px 12px 8px;
   border: 1px solid #33353b;
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
@@ -14982,7 +14982,7 @@ button.aiux543-answer-change-card:focus-visible {
   all: unset;
   display: flex;
   width: 100%;
-  min-height: 28px;
+  min-height: 26px;
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -15007,7 +15007,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-loading-plan-title-badge {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   height: 24px;
   padding: 0 8px;
@@ -15072,18 +15072,18 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-review-file-queue {
-  padding: 8px 12px 10px;
+  padding: 8px 12px 8px;
 }
 
 .aiux550-review-file-queue .aiux550-loading-plan-list {
   max-height: 150px;
-  gap: 4px;
-  padding-top: 8px;
+  gap: 0;
+  padding-top: 6px;
 }
 
 .aiux550-review-file-queue .aiux550-loading-plan-row {
-  min-height: 38px;
-  padding: 4px;
+  min-height: 30px;
+  padding: 2px 4px;
   background: transparent;
 }
 
@@ -15104,18 +15104,6 @@ button.aiux543-answer-change-card:focus-visible {
   width: 16px;
   height: 16px;
   color: #a9adb6;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row-action {
-  color: #9ca0a8;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row-action.is-active {
-  color: #8fb1ff;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row-action.is-done {
-  color: #7fb98d;
 }
 
 /* File-grouped comments shown while the agent works. Review runs and AI Note
