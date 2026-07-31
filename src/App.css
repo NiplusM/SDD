@@ -15042,6 +15042,30 @@ button.aiux543-answer-change-card:focus-visible {
   text-decoration: underline;
 }
 
+.aiux550-loading-plan-review-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: #aeb3bd;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.aiux550-loading-plan-review-link:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #dfe1e5;
+}
+
+.aiux550-loading-plan-review-link .icon,
+.aiux550-loading-plan-review-link svg {
+  width: 14px;
+  height: 14px;
+}
+
 .aiux550-loading-plan-list {
   display: flex;
   min-width: 0;
@@ -15468,15 +15492,17 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-open {
   display: inline-flex;
-  width: 24px;
-  height: 24px;
+  height: 28px;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   margin-left: auto;
+  padding: 0 8px;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: #b4b8bf;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
   cursor: pointer;
 }
 
