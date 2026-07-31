@@ -15800,9 +15800,9 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* In-code AI Note resolution states shown after the run completes */
-/* Agent/user replies stay in the same thread card without an extra visual indent. */
+/* Align agent-comment body content with the text label after the avatar. */
 .spec-done-comment-agent-reply {
-  --spec-done-comment-agent-reply-content-indent: 0px;
+  --spec-done-comment-agent-reply-content-indent: 24px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -15815,7 +15815,7 @@ button.aiux543-answer-change-card:focus-visible {
    reply nested under a user note, so drop the connector top margin. */
 .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
   margin-top: 0;
-  --spec-done-comment-agent-reply-content-indent: 0px;
+  --spec-done-comment-agent-reply-content-indent: 24px;
 }
 
 .spec-done-comment-agent-dismiss-btn {
@@ -16032,6 +16032,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 .spec-done-comment-agent-user-reply-text {
   margin: 0;
+  margin-left: var(--spec-done-comment-agent-reply-content-indent);
   color: #c4c7cd;
   font: 400 13px/19px Inter, system-ui, sans-serif;
   overflow-wrap: anywhere;
@@ -16051,7 +16052,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-text {
-  margin-left: 0;
+  margin-left: var(--spec-done-comment-agent-reply-content-indent);
 }
 
 .spec-done-comment-agent-reply-compose {
