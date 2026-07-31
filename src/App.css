@@ -15755,7 +15755,7 @@ button.aiux543-answer-change-card:focus-visible {
    reply nested under a user note, so drop the connector top margin. */
 .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
   margin-top: 0;
-  --spec-done-comment-agent-reply-content-indent: 24px;
+  --spec-done-comment-agent-reply-content-indent: 0px;
 }
 
 .spec-done-comment-agent-dismiss-btn {
