@@ -416,13 +416,6 @@ function buildAiux550HistoryRows(dynamicRows = []) {
     : [];
   const dynamicRowIds = new Set(normalizedDynamicRows.map((row) => row.id));
   const staticRows = [
-    {
-      id: AIUX_NEW_SESSION_TAB_ID,
-      title: 'New Agent',
-      agent: 'claude',
-      time: 'now',
-      type: 'new-session',
-    },
     ...normalizedDynamicRows.map(withAiux550CollapsedChildren),
     ...[
       {
