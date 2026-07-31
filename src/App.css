@@ -2788,6 +2788,16 @@ body {
   padding-bottom: 4px;
 }
 
+.spec-done-comment-popup-context-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-width: 0;
+  max-width: calc(100% - 4px);
+  margin: 0 2px 3px var(--spec-done-comment-popup-inline-padding);
+}
+
 .spec-done-comment-popup-context-header {
   display: inline-flex;
   justify-content: flex-start;
@@ -2798,6 +2808,14 @@ body {
   min-width: 0;
   max-width: calc(100% - 4px);
   margin: 0 2px 3px var(--spec-done-comment-popup-inline-padding);
+}
+
+.spec-done-comment-popup-context-row .spec-done-comment-popup-context-header {
+  margin: 0;
+}
+
+.spec-done-comment-popup-context-row .spec-done-comment-popup-more-btn {
+  margin: 0;
 }
 
 .spec-done-comment-popup-context-header .toolbar-button-content {

@@ -1871,10 +1871,38 @@ export function DiffInlineCommentPopup({
   };
 
   let hasRenderedThreadLoaderSlot = false;
+  const visibleUngroupedComments = comments.map((comment, index) => ({ comment, index })).filter(({ comment, index }) => (
+    isCommentVisibleForRender(comment)
+    && (!isEditing || index !== editingIndex)
+  ));
+  const showUngroupedHeader = !hasGroupedComments
+    && (!showCompose || hasComments)
+    && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent'));
+  const ungroupedHeaderComment = showUngroupedHeader && visibleUngroupedComments.length === 1
+    ? visibleUngroupedComments[0]
+    : null;
+  const ungroupedHeaderCommentIsAgentAuthored = Boolean(
+    ungroupedHeaderComment?.comment
+      && typeof ungroupedHeaderComment.comment === 'object'
+      && ungroupedHeaderComment.comment.author === 'agent',
+  );
+  const ungroupedHeaderActions = ungroupedHeaderComment
+    ? ungroupedHeaderCommentIsAgentAuthored
+      ? []
+      : commentsReadOnly
+        ? getReturnToContextActions()
+        : getEditableCommentActions(ungroupedHeaderComment.index)
+    : [];
+  const moveUngroupedSingleCommentMenuToHeader = ungroupedHeaderActions.length > 0;
 
   return (
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
-      {!hasGroupedComments && (!showCompose || hasComments) && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent')) && renderCommentContextHeader({ pending: hasUngroupedPendingComments })}
+      {showUngroupedHeader && (
+        <div className="spec-done-comment-popup-context-row">
+          {renderCommentContextHeader({ pending: hasUngroupedPendingComments })}
+          {moveUngroupedSingleCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
+        </div>
+      )}
       {hasGroupedComments && (
         <div className="spec-done-comment-popup-groups">
           {normalizedCommentGroups.map((group) => {
@@ -1903,6 +1931,22 @@ export function DiffInlineCommentPopup({
                 source: 'diff-comment-context',
               });
             };
+            const visibleGroupComments = group.comments.filter((commentEntry, i) => (
+              isCommentVisibleForRender(commentEntry)
+              && (!isEditing || (commentEntry.localIndex ?? i) !== editingIndex)
+            ));
+            const headerCommentEntry = showGroupHeader && visibleGroupComments.length === 1
+              ? visibleGroupComments[0]
+              : null;
+            const headerCommentActionContext = headerCommentEntry ? { chatId: headerCommentEntry.chatId } : null;
+            const headerCommentActions = headerCommentEntry
+              ? headerCommentEntry.editable
+                ? getEditableCommentActions(headerCommentEntry.localIndex, headerCommentEntry.source, headerCommentActionContext)
+                : headerCommentEntry.author === 'agent'
+                  ? []
+                  : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId })
+              : [];
+            const moveSingleCommentMenuToHeader = headerCommentActions.length > 0;
 
             return (
             <div
@@ -1910,13 +1954,15 @@ export function DiffInlineCommentPopup({
               key={`${group.chatId || group.label}-${group.messageId || group.label}`}
               onClick={handleGroupClick}
             >
-              {showGroupHeader && renderCommentContextHeader({ ...group, pending: hasPendingGroupComments })}
+              {showGroupHeader && (
+                <div className="spec-done-comment-popup-context-row">
+                  {renderCommentContextHeader({ ...group, pending: hasPendingGroupComments })}
+                  {moveSingleCommentMenuToHeader && renderMoreButton(headerCommentActions)}
+                </div>
+              )}
               {group.comments.length > 0 && (
                 <div className="spec-done-comment-popup-list">
-                  {group.comments.filter((commentEntry, i) => (
-                    isCommentVisibleForRender(commentEntry)
-                    && (!isEditing || (commentEntry.localIndex ?? i) !== editingIndex)
-                  )).map((commentEntry, i) => {
+                  {visibleGroupComments.map((commentEntry, i) => {
                     const commentActionContext = { chatId: commentEntry.chatId };
                     const isAgentAuthored = commentEntry.author === 'agent';
                     const actions = commentEntry.editable
@@ -1951,7 +1997,7 @@ export function DiffInlineCommentPopup({
                             showPendingLoader: shouldUseThreadLoaderSlot,
                           })}
                         </div>
-                        {renderMoreButton(actions)}
+                        {!moveSingleCommentMenuToHeader && renderMoreButton(actions)}
                       </div>
                     );
                   })}
@@ -1964,10 +2010,7 @@ export function DiffInlineCommentPopup({
       )}
       {!hasGroupedComments && hasComments && (
         <div className="spec-done-comment-popup-list">
-          {comments.map((comment, index) => ({ comment, index })).filter(({ comment, index }) => (
-            isCommentVisibleForRender(comment)
-            && (!isEditing || index !== editingIndex)
-          )).map(({ comment, index }) => {
+          {visibleUngroupedComments.map(({ comment, index }) => {
             const commentText = getCommentEntryText(comment);
             const entryLineLabel = getCommentEntryLineLabel(comment) || normalizedFooterMetaLabel;
             const isPending = Boolean(comment && typeof comment === 'object' && comment.pending);
@@ -2005,7 +2048,7 @@ export function DiffInlineCommentPopup({
                     showPendingLoader: shouldUseThreadLoaderSlot,
                   })}
                 </div>
-                {renderMoreButton(actions)}
+                {!moveUngroupedSingleCommentMenuToHeader && renderMoreButton(actions)}
               </div>
             );
           })}
