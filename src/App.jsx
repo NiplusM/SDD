@@ -16144,7 +16144,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
 // runs intentionally share the same structure: file header with icon, then the
 // comment body rows underneath. Status/severity live inside the body metadata
 // so review and agent-response rows stay structurally equivalent.
-function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null, onOpenDiff = null, onApplyAll = null, onDismissAll = null }) {
+function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null }) {
   const items = Array.isArray(notes) ? notes : [];
   const total = items.length;
   const doneCount = items.filter((note) => note.state === 'done').length;
@@ -16274,66 +16274,89 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         )}
       </button>
       {expanded && (
-        isDone ? (
-          <div className="aiux550-loading-plan-summary">
-            <div className="aiux550-loading-plan-summary-copy">
-              <span className="aiux550-loading-plan-summary-title">Review ready</span>
-              <span className="aiux550-loading-plan-summary-text">{headerCount}</span>
-            </div>
-            <div className="aiux550-loading-plan-summary-actions">
-              <button type="button" className="aiux550-loading-plan-action is-primary" onClick={onApplyAll ?? undefined}>
-                Apply all
+        <div className="aiux550-loading-plan-list">
+          {flatQueueItems.map((item) => {
+            const severityClass = item.severity ? ` is-${item.severity}` : '';
+            const isFile = item.kind === 'file';
+            const meta = !isFile && [item.lineLabel, item.state === 'active' ? 'Processing now' : item.state === 'done' ? 'Done' : 'Queued']
+              .filter(Boolean)
+              .join(' · ');
+            return (
+              <button
+                type="button"
+                className={`aiux550-loading-plan-row ${item.state}${isFile ? ' is-file' : ' is-note'}`}
+                key={item.id}
+                onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
+              >
+                <span className="aiux550-loading-plan-marker">
+                  {isFile && item.icon ? (
+                    <Icon name={item.icon} size={16} />
+                  ) : item.state === 'active' ? (
+                    <Loader size={14} />
+                  ) : item.state === 'done' ? (
+                    <Icon name="general/checkmark" size={16} />
+                  ) : null}
+                </span>
+                <span className="aiux550-loading-plan-note">
+                  <span className="aiux550-loading-plan-text">{item.text}</span>
+                  {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
+                </span>
+                {item.severity && (
+                  <span className={`spec-done-status-severity${severityClass}`}>{item.severity}</span>
+                )}
+                <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
+                  {isFile ? item.rightLabel : item.state === 'active' ? 'Reviewing' : item.state === 'done' ? 'Done' : 'Queued'}
+                </span>
+                <Icon name="general/more" size={16} className="aiux550-loading-plan-more" />
               </button>
-              <button type="button" className="aiux550-loading-plan-action" onClick={onDismissAll ?? undefined}>
-                Dismiss
-              </button>
-              <button type="button" className="aiux550-loading-plan-action" onClick={onOpenDiff ?? undefined}>
-                Open Review
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="aiux550-loading-plan-list">
-            {flatQueueItems.map((item) => {
-              const severityClass = item.severity ? ` is-${item.severity}` : '';
-              const isFile = item.kind === 'file';
-              const meta = !isFile && [item.lineLabel, item.state === 'active' ? 'Processing now' : item.state === 'done' ? 'Done' : 'Queued']
-                .filter(Boolean)
-                .join(' · ');
-              return (
-                <button
-                  type="button"
-                  className={`aiux550-loading-plan-row ${item.state}${isFile ? ' is-file' : ' is-note'}`}
-                  key={item.id}
-                  onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
-                >
-                  <span className="aiux550-loading-plan-marker">
-                    {isFile && item.icon ? (
-                      <Icon name={item.icon} size={16} />
-                    ) : item.state === 'active' ? (
-                      <Loader size={14} />
-                    ) : item.state === 'done' ? (
-                      <Icon name="general/checkmark" size={16} />
-                    ) : null}
-                  </span>
-                  <span className="aiux550-loading-plan-note">
-                    <span className="aiux550-loading-plan-text">{item.text}</span>
-                    {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
-                  </span>
-                  {item.severity && (
-                    <span className={`spec-done-status-severity${severityClass}`}>{item.severity}</span>
-                  )}
-                  <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
-                    {isFile ? item.rightLabel : item.state === 'active' ? 'Reviewing' : item.state === 'done' ? 'Done' : 'Queued'}
-                  </span>
-                  <Icon name="general/more" size={16} className="aiux550-loading-plan-more" />
-                </button>
-              );
-            })}
-          </div>
-        )
+            );
+          })}
+        </div>
       )}
     </section>
+  );
+}
+
+function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null, onOpenReview = null }) {
+  const fileCount = Number.isFinite(summary?.fileCount) ? summary.fileCount : 0;
+  const commentCount = Number.isFinite(summary?.commentCount) ? summary.commentCount : 0;
+  const severitySummary = typeof summary?.severitySummary === 'string' ? summary.severitySummary : '';
+  const brief = commentCount > 0
+    ? `Found ${commentCount} review comment${commentCount === 1 ? '' : 's'} across ${fileCount || 1} file${fileCount === 1 ? '' : 's'}${severitySummary ? ` (${severitySummary})` : ''}.`
+    : 'No blocking review comments were found.';
+
+  return (
+    <article className="aiux550-review-summary-message">
+      <div className="aiux550-review-summary-message-head">
+        <span>Accept this review?</span>
+        <button
+          type="button"
+          className="aiux550-review-summary-open"
+          aria-label="Open full review"
+          title="Open full review"
+          onClick={onOpenReview ?? undefined}
+        >
+          <Icon name="general/openNewTab" size={16} />
+        </button>
+      </div>
+      <div className="aiux550-review-summary-body">
+        <h3>AI Review summary: {fileCount || 1} file{fileCount === 1 ? '' : 's'} checked</h3>
+        <h4>Brief summary</h4>
+        <p>{brief} Accept to apply all suggested changes, or reject and tell Codex what to do differently.</p>
+      </div>
+      <div className="aiux550-review-summary-choices">
+        <button type="button" className="aiux550-review-summary-choice is-accept" onClick={onAccept ?? undefined}>
+          <Icon name="general/checkmark" size={16} />
+          <span>Yes, apply all review changes</span>
+          <span className="aiux550-review-summary-key">⌘1</span>
+        </button>
+        <button type="button" className="aiux550-review-summary-choice" onClick={onReject ?? undefined}>
+          <span className="aiux550-review-summary-reject-icon" aria-hidden="true" />
+          <span>No, and tell Codex what to do differently</span>
+          <span className="aiux550-review-summary-key">⌘2</span>
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -16376,7 +16399,7 @@ function AiChatTabView({
   // so it must not raise the review card.
   const isReviewRun = agentRun?.kind === 'review';
   const shouldShowAgentRunPlan = isReviewRun
-    && (isAgentRunProcessing || (agentRun?.status === 'done' && hasAgentRunNotes));
+    && isAgentRunProcessing;
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
     userPrompt: fallbackTitle,
@@ -16672,7 +16695,15 @@ function AiChatTabView({
         )}
 
         {sentMessages.map((message) => (
-          message.role === 'assistant' ? (
+          message.role === 'assistant' && message.kind === 'review-summary' ? (
+            <ReviewSummaryMessage
+              key={message.id}
+              summary={message.reviewSummary}
+              onAccept={() => onApplyReviewAll?.(chatId)}
+              onReject={() => onDismissReviewAll?.(chatId)}
+              onOpenReview={() => onOpenReviewDiff?.(chatId)}
+            />
+          ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>Claude Agent</h3>
               <p
@@ -16719,9 +16750,6 @@ function AiChatTabView({
             status={agentRun?.status}
             kind={agentRun?.kind}
             onOpenTarget={onOpenReviewTarget}
-            onOpenDiff={() => onOpenReviewDiff?.(chatId)}
-            onApplyAll={() => onApplyReviewAll?.(chatId)}
-            onDismissAll={() => onDismissReviewAll?.(chatId)}
           />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
@@ -25706,6 +25734,7 @@ export default function App() {
       let index = 0;
       const finishRun = () => {
         resolveCommentAttachmentResponse({ chatId: targetChatId, attachments: commentAttachments });
+        let finalReviewNotes = [];
         setAgentRunByChatId((prev) => {
           const run = prev[targetChatId];
           // An agent reply to a comment is NOT "processed" — it awaits an explicit
@@ -25719,11 +25748,43 @@ export default function App() {
                 .filter((note) => run?.kind === 'review' || note?.severity)
                 .map((note) => ({ ...note, state: 'done' }))
             : run?.notes;
+          if (run?.kind === 'review' && Array.isArray(keptNotes)) finalReviewNotes = keptNotes;
           return {
             ...prev,
             [targetChatId]: { ...(run ?? {}), status: 'done', notes: keptNotes },
           };
         });
+        if (isReviewCommand) {
+          const reviewNotes = finalReviewNotes.length > 0 ? finalReviewNotes : noteItems.map((note) => ({ ...note, state: 'done' }));
+          const summarySeverityTotals = { critical: 0, warning: 0, info: 0 };
+          reviewNotes.forEach((note) => {
+            const sev = String(note?.severity || '').toLowerCase();
+            if (sev in summarySeverityTotals) summarySeverityTotals[sev] += 1;
+          });
+          const summarySeverityText = ['critical', 'warning', 'info']
+            .filter((sev) => summarySeverityTotals[sev] > 0)
+            .map((sev) => `${summarySeverityTotals[sev]} ${sev}`)
+            .join(', ');
+          const summaryFileCount = new Set(reviewNotes.map((note) => note?.sourceLabel).filter(Boolean)).size || reviewFileCount;
+          handleSelectedAiChatSentMessagesChange(
+            (prev) => prev.map((message) => (
+              message.id === assistantMessageId
+                ? {
+                    ...message,
+                    kind: 'review-summary',
+                    streaming: false,
+                    text: 'AI Review summary',
+                    reviewSummary: {
+                      fileCount: summaryFileCount,
+                      commentCount: reviewNotes.length,
+                      severitySummary: summarySeverityText,
+                    },
+                  }
+                : message
+            )),
+            targetChatId,
+          );
+        }
       };
       const streamNextChunk = () => {
         delete aiChatTabCommentResponseTimersRef.current[timerKey];
