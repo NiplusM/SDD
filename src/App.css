@@ -91,7 +91,17 @@ body {
 }
 
 .main-toolbar-new-chat-picker-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.main-toolbar-new-chat-picker-icon > svg {
+  width: 20px;
+  height: 20px;
 }
 
 .main-toolbar-new-chat-picker-label {
@@ -2460,9 +2470,9 @@ body {
   --spec-done-comment-popup-inline-padding: 12px;
   --spec-done-comment-popup-text-offset: 2px;
   --spec-done-comment-popup-item-offset: 4px;
-  width: min(420px, calc(100vw - 16px));
-  min-width: min(420px, calc(100vw - 16px));
-  max-width: min(420px, calc(100vw - 16px));
+  width: min(400px, calc(100vw - 16px));
+  min-width: min(400px, calc(100vw - 16px));
+  max-width: min(400px, calc(100vw - 16px));
   background: var(--popup-bg);
   border-color: var(--popup-border);
   box-shadow: 0 8px 24px var(--shadow-popup, rgba(0, 0, 0, 0.32));
@@ -2794,7 +2804,7 @@ body {
   gap: 4px;
   align-self: stretch;
   box-sizing: border-box;
-  width: calc(100% - (2 * var(--spec-done-comment-popup-inline-padding)));
+  width: calc(100% - var(--spec-done-comment-popup-inline-padding) - var(--spec-done-comment-popup-inline-padding));
   min-width: 0;
   max-width: none;
   margin: 0 var(--spec-done-comment-popup-inline-padding) 3px;
@@ -4439,6 +4449,15 @@ body {
   color: #ced0d6;
 }
 
+/* Keep the Commit composer at the same compact, interface-sized dimensions as
+   the diff launcher instead of stretching it across the entire viewport. */
+.plan-diff-ai-review-dialog.is-commit-launch.commit-ai-review-popup {
+  width: min(920px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
+}
+
 .plan-diff-ai-review-dialog .dialog-header {
   min-height: 38px;
   box-sizing: border-box;
@@ -4570,15 +4589,19 @@ body {
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  padding: 18px 22px 16px;
+  margin: 10px 16px 8px;
+  padding: 14px 16px 12px;
   box-sizing: border-box;
-  border-bottom: 1px solid #33373d;
+  border: 2px solid #3574e8;
+  border-radius: 8px;
+  background: #191b1f;
 }
 
-.plan-diff-ai-review-dialog-context {
+.plan-diff-ai-review-dialog-composer-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   min-height: 24px;
 }
 
@@ -4611,20 +4634,34 @@ body {
   color: #c7ccd5;
 }
 
-.plan-diff-ai-review-dialog-context-side > .icon {
+.plan-diff-ai-review-dialog-context-side > .icon,
+.plan-diff-ai-review-dialog-context-side > svg {
   width: 18px;
   height: 18px;
 }
 
-.plan-diff-ai-review-dialog-attachments {
-  margin-top: 10px;
+.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  max-height: none;
+}
+
+.plan-diff-ai-review-source-attachment {
+  max-width: 260px;
+}
+
+.plan-diff-ai-review-source-attachment > .ai-chat-attachment-comment-preview {
+  top: calc(100% + 6px);
+  bottom: auto;
 }
 
 .plan-diff-ai-review-dialog-main > textarea {
   width: 100%;
   min-height: 0;
   flex: 1 1 auto;
-  margin: 22px 0 0;
+  margin: 20px 0 0;
   padding: 0;
   border: 0;
   outline: 0;
@@ -4661,35 +4698,71 @@ body {
   color: #565b65;
 }
 
+.plan-diff-ai-review-dialog-send:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.plan-diff-ai-review-dialog-send:not(:disabled) {
+  color: #b9bec7;
+}
+
+.plan-diff-ai-review-dialog-send:not(:disabled):hover,
+.plan-diff-ai-review-dialog-send:not(:disabled):focus-visible {
+  color: #548af7;
+}
+
 .plan-diff-ai-review-dialog-plus > .icon,
 .plan-diff-ai-review-dialog-send-icon {
   width: 22px;
   height: 22px;
 }
 
-.plan-diff-ai-review-dialog-model-row {
+.plan-diff-ai-review-session-list {
   display: flex;
-  min-height: 44px;
-  align-items: center;
-  gap: 20px;
-  padding: 0 22px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0;
+  max-height: 112px;
+  padding: 8px 22px 4px;
   box-sizing: border-box;
+  overflow-y: auto;
+  border-top: 1px solid #33373d;
 }
 
-.plan-diff-ai-review-dialog-footer-select {
+.plan-diff-ai-review-session-item {
   all: unset;
-  display: inline-flex;
+  display: flex;
+  min-height: 24px;
   align-items: center;
-  gap: 6px;
-  color: #7f838c;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #d1d3d9;
   cursor: pointer;
-  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 500 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.plan-diff-ai-review-dialog-footer-select > .icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+.plan-diff-ai-review-session-item:hover,
+.plan-diff-ai-review-session-item:focus-visible,
+.plan-diff-ai-review-session-item.is-selected {
+  background: #30333a;
+  outline: none;
+}
+
+.plan-diff-ai-review-session-time {
+  margin-left: 2px;
+  color: #777b84;
+  font-size: 12px;
+}
+
+.plan-diff-ai-review-session-hint {
+  flex: 0 0 auto;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 2px 22px 8px;
+  color: #777b84;
+  font: 500 12px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-agent,
@@ -5660,9 +5733,9 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  width: clamp(300px, 66%, 640px);
+  width: clamp(300px, 54%, 520px);
   min-width: 0;
-  max-width: min(100%, 640px);
+  max-width: min(100%, 520px);
   box-sizing: border-box;
 }
 
@@ -9238,9 +9311,9 @@ body {
 
 .cmp-popup.spec-done-comment-popup {
   flex: 0 0 auto;
-  width: min(420px, calc(100vw - 16px));
-  min-width: min(420px, calc(100vw - 16px));
-  max-width: min(420px, calc(100vw - 16px));
+  width: min(400px, calc(100vw - 16px));
+  min-width: min(400px, calc(100vw - 16px));
+  max-width: min(400px, calc(100vw - 16px));
 }
 
 
@@ -14969,26 +15042,6 @@ button.aiux543-answer-change-card:focus-visible {
   margin-left: auto;
 }
 
-.aiux550-loading-plan-running {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  margin: 0 0 8px;
-  color: #c7cad1;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-running-indicator {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 10px;
-  border: 2px solid #626873;
-  border-top-color: #a5abb6;
-  border-radius: 50%;
-  animation: aiux543-spin 0.9s linear infinite;
-}
-
 /* "AI Notes" review checklist that butts against the top of the composer */
 .aiux550-loading-plan {
   display: flex;
@@ -15539,19 +15592,17 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-review-summary-file {
-  overflow: hidden;
-  border: 1px solid #30343b;
-  border-radius: 8px;
-  background: #202226;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .aiux550-review-summary-file-head {
   display: flex;
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
-  border-bottom: 1px solid #2d3036;
+  padding: 0 2px;
 }
 
 .aiux550-review-summary-file-head > .icon,
@@ -15578,28 +15629,31 @@ button.aiux543-answer-change-card:focus-visible {
   font: 650 11px/16px Inter, system-ui, sans-serif;
 }
 
-.aiux550-review-summary-file-head .spec-done-status-severity {
-  margin-left: auto;
-}
-
-.aiux550-review-summary-issue-list {
+.aiux550-review-summary-comment-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 8px 12px 10px 28px;
-  color: #aeb3bd;
-  font: 500 13px/19px Inter, system-ui, sans-serif;
+  gap: 8px;
 }
 
-.aiux550-review-summary-issue-list li::marker {
-  color: #6f737a;
+.aiux550-review-summary-comment.spec-done-comment-popup-item {
+  padding: 12px 14px;
+  border: 1px solid #30343b;
+  border-radius: 8px;
+  background: #202226;
 }
 
-.aiux550-review-summary-line {
-  margin-right: 6px;
-  color: #7f838c;
-  white-space: nowrap;
+.aiux550-review-summary-comment .spec-done-comment-agent-reply {
+  margin-top: 0;
+}
+
+.aiux550-review-summary-comment .spec-done-comment-agent-reply-text,
+.aiux550-review-summary-comment .spec-done-comment-agent-reply-line {
+  margin-left: 24px;
+}
+
+.aiux550-review-summary-body .aiux550-review-summary-comment .spec-done-comment-agent-reply-text {
+  color: var(--text-primary, #dfe1e5);
+  font: 400 13px/20px Inter, system-ui, sans-serif;
 }
 
 .aiux550-review-summary-decision-copy {
@@ -15711,6 +15765,7 @@ button.aiux543-answer-change-card:focus-visible {
   padding: 0 6px;
   border-radius: 4px;
   font: 600 11px/16px Inter, system-ui, sans-serif;
+  text-transform: capitalize;
   white-space: nowrap;
 }
 
@@ -15781,7 +15836,13 @@ button.aiux543-answer-change-card:focus-visible {
    reply nested under a user note, so drop the connector top margin. */
 .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
   margin-top: 0;
-  --spec-done-comment-agent-reply-content-indent: 0px;
+  --spec-done-comment-agent-reply-content-indent: 24px;
+}
+
+/* In the review side panel, align the finding copy, line label, and actions
+   with the agent name rather than with the avatar column. */
+.plan-diff-aside-comment .spec-done-comment-popup-item.is-agent-authored .spec-done-comment-agent-reply {
+  --spec-done-comment-agent-reply-content-indent: 24px;
 }
 
 .spec-done-comment-popup-item:not(.is-agent-authored) .spec-done-comment-agent-reply {
@@ -16341,11 +16402,6 @@ button.aiux543-answer-change-card:focus-visible {
 
 .commit-ai-review-entry .plan-diff-ai-review-button:disabled::before {
   background: transparent;
-}
-
-.commit-ai-review-popup.plan-diff-ai-review-popup {
-  width: 316px;
-  max-width: 316px;
 }
 
 /* Rows reuse the library .tree-node chrome (height/padding/hover/indent). */

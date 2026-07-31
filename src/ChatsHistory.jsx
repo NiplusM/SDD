@@ -47,11 +47,11 @@ function ChatsHistoryToolWindow({
   const selectedId = activeChatId ?? null;
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
 
-  // When an agent run starts for a chat, auto-reveal its node and the new
-  // "AI Notes" folder so the comments are visible the moment processing begins.
+  // Reveal a newly queued review immediately in history. The queued state is
+  // static; processing and its animation begin only when the chat tab is opened.
   useEffect(() => {
     const active = Object.entries(agentRunByChatId)
-      .filter(([, run]) => run?.status === 'processing')
+      .filter(([, run]) => run?.status === 'queued' || run?.status === 'processing')
       .map(([chatId]) => chatId);
     if (active.length === 0) return;
     setExpandedRows((prev) => {
@@ -1011,6 +1011,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         // While processing, a loader sits in the action column; once done it shows
         // a green "Open" badge and the "Open review" link.
         const isAiNotesDone = isAiNotes && ['done', 'completed', 'dismissed'].includes(section.status);
+        const isAiNotesQueued = isAiNotes && section.status === 'queued';
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
             <div
@@ -1035,7 +1036,9 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                         Open
                       </span>
                     ) : (
-                      <span className="aiux550-ainotes-summary-status aiux550-ainotes-progress-text">In progress</span>
+                      <span className="aiux550-ainotes-summary-status aiux550-ainotes-progress-text">
+                        {isAiNotesQueued ? 'Queued' : 'In progress'}
+                      </span>
                     )}
                   </span>
                 </span>
@@ -1076,7 +1079,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                   >
                     Open review
                   </button>
-                ) : (
+                ) : isAiNotesQueued ? null : (
                   <Loader className="aiux550-ainotes-loader" size={16} />
                 )
               ) : null}

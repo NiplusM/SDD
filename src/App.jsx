@@ -187,17 +187,9 @@ function MainToolbarNewChatPicker({ onNewChat = null }) {
         onClick={onNewChat ?? undefined}
       >
         <span className="main-toolbar-new-chat-picker-label-wrap">
-          <svg
-            className="main-toolbar-new-chat-picker-icon"
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path d="M4.68354 12.8842L8.12595 10.954L8.18354 10.7858L8.12595 10.6928H7.95759L7.38165 10.6574L5.41456 10.6043L3.70886 10.5335L2.05633 10.4449L1.63987 10.3564L1.25 9.84284L1.28987 9.58607L1.63987 9.35144L2.14051 9.39571L3.2481 9.47097L4.90949 9.58607L6.11456 9.65691L7.9 9.84284H8.18354L8.22342 9.72774L8.12595 9.65691L8.05063 9.58607L6.33165 8.42177L4.47089 7.19106L3.4962 6.48273L2.96899 6.12415L2.70316 5.78769L2.58797 5.05281L3.06646 4.52599L3.70886 4.57026L3.87278 4.61453L4.52405 5.11479L5.91519 6.19055L7.73165 7.52751L7.99747 7.74886L8.1038 7.6736L8.11709 7.62048L7.99747 7.42126L7.00949 5.63717L5.95506 3.8221L5.48544 3.0695L5.36139 2.61795C5.31709 2.43201 5.28608 2.27707 5.28608 2.08671L5.83101 1.34739L6.13228 1.25L6.85886 1.34739L7.16456 1.61302L7.61646 2.64451L8.34747 4.26923L9.48165 6.47831L9.81392 7.13351L9.99114 7.74001L10.0576 7.92594H10.1728V7.81969L10.2658 6.5757L10.4386 5.04838L10.607 3.08279L10.6646 2.52941L10.9392 1.86536L11.4842 1.50677L11.9095 1.71041L12.2595 2.21066L12.2108 2.53384L12.0025 3.88408L11.5949 6.00019L11.3291 7.41684H11.4842L11.6614 7.23975L12.3791 6.28795L13.5842 4.78276L14.1158 4.18511L14.7361 3.52549L15.1348 3.21117H15.888L16.4418 4.03459L16.1937 4.88458L15.4184 5.86738L14.7759 6.69966L13.8544 7.93922L13.2785 8.93088L13.3316 9.01056L13.469 8.99728L15.5513 8.55458L16.6766 8.35094L18.019 8.12073L18.6259 8.40406L18.6924 8.69182L18.4532 9.28061L17.0177 9.63477L15.3342 9.97122L12.8266 10.5644L12.7956 10.5866L12.831 10.6308L13.9608 10.7371L14.4437 10.7637H15.6266L17.8285 10.9275L18.4044 11.3082L18.75 11.773L18.6924 12.1272L17.8063 12.5787L16.6101 12.2954L13.819 11.6314L12.862 11.3923H12.7291V11.472L13.5266 12.2511L14.9886 13.5704L16.8184 15.2704L16.9114 15.6909L16.6766 16.023L16.4285 15.9875L14.8203 14.779L14.2 14.2344L12.7956 13.0524H12.7025V13.1764L13.0259 13.6501L14.7361 16.2177L14.8247 17.0058L14.7006 17.2625L14.2576 17.4175L13.7703 17.3289L12.769 15.9256L11.7367 14.3451L10.9038 12.9285L10.8019 12.986L10.3101 18.2763L10.0797 18.5464L9.5481 18.75L9.10506 18.4135L8.87025 17.869L9.10506 16.7933L9.38861 15.3899L9.61899 14.2743L9.82722 12.8886L9.95127 12.4282L9.94241 12.3972L9.84051 12.4105L8.79494 13.8449L7.20443 15.992L5.9462 17.3378L5.64494 17.4573L5.12215 17.1873L5.17089 16.7047L5.46329 16.2753L7.20443 14.0618L8.25443 12.6894L8.93228 11.897L8.92785 11.7819H8.88797L4.26266 14.7834L3.43861 14.8896L3.08418 14.5576L3.12848 14.0131L3.29684 13.836L4.68797 12.8798L4.68354 12.8842Z" fill="#D97757" />
-          </svg>
+          <span className="main-toolbar-new-chat-picker-icon" aria-hidden="true">
+            <AiChatAgentIcon icon="junie" title="New Chat" />
+          </span>
           <span className="main-toolbar-new-chat-picker-label">New Chat</span>
         </span>
       </button>
@@ -696,7 +688,7 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
 // show the changed-line counters (the library rows have no badge slot). Keeps the
 // commit chrome: toolbar with the AI Review entry, a grouped/collapsible file tree
 // with checkboxes, and the bottom panel (amend + summary + Commit).
-function CommitToolWindow({ ctx, onOpenFile = null }) {
+function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
   const [amend, setAmend] = useState(false);
@@ -707,6 +699,23 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
   // "Current file" scope in the AI Review popup follows the first checked file.
   const reviewScopeFileLabel = useMemo(() => (
     COMMIT_CHANGE_FILES.find((file) => checkedIds.has(file.id))?.label ?? COMMIT_CHANGE_FILES[0]?.label ?? ''
+  ), [checkedIds]);
+  const reviewContextMeta = useMemo(() => {
+    const selectedFiles = COMMIT_CHANGE_FILES.filter((file) => checkedIds.has(file.id));
+    const changeCount = selectedFiles.reduce((total, file) => total + commitFileChangedLines(file), 0);
+    const fileLabel = selectedFiles.length === 1 ? 'file' : 'files';
+    const changeLabel = changeCount === 1 ? 'change' : 'changes';
+    return `${selectedFiles.length} ${fileLabel} · ${changeCount} ${changeLabel}`;
+  }, [checkedIds]);
+  const reviewSourceAttachments = useMemo(() => (
+    COMMIT_CHANGE_FILES
+      .filter((file) => checkedIds.has(file.id))
+      .map((file) => ({
+        id: `commit-${file.id}`,
+        label: file.label,
+        meta: `${file.added ?? 0} added · ${file.removed ?? 0} removed`,
+        icon: file.icon,
+      }))
   ), [checkedIds]);
 
   const toggleGroup = (id) => setCollapsedGroups((prev) => {
@@ -754,6 +763,12 @@ function CommitToolWindow({ ctx, onOpenFile = null }) {
             <PlanDiffNewReviewButton
               currentScopeLabel="Local changes"
               currentFileLabel={reviewScopeFileLabel}
+              contextLabel="Changes"
+              contextMeta={reviewContextMeta}
+              contextIcon="general/listFiles"
+              sourceAttachments={reviewSourceAttachments}
+              onStartReview={onStartReview}
+              launchSource="commit"
               triggerClassName="commit-ai-review-trigger"
               popupClassName="commit-ai-review-popup"
             />
@@ -6372,13 +6387,10 @@ function DoneCommentPopup({
   onDelete,
   onHide,
   onHideAll,
-  canAddSelection = true,
-  showAddSelectionAction = true,
   preserveEditorSelection = false,
   selectionSnapshot = null,
   footerMetaLabel = '',
 }) {
-  const isEditing = Number.isInteger(editingIndex);
   const showCompose = true;
   const commentGroups = comments.length > 0
     ? [{
@@ -6417,15 +6429,8 @@ function DoneCommentPopup({
       inputPlaceholder={inputPlaceholder}
       showSubmitTargetLabel={false}
       showSubmitActionMenu={false}
-      secondarySubmitAction={showAddSelectionAction && !isEditing
-        ? {
-          id: 'selection',
-          label: 'Add Selection',
-          iconName: 'aiAssistant/toolWindowChat@20x20',
-          accent: 'assistant',
-          disabled: !canAddSelection,
-        }
-        : null}
+      showSendToAgentAction={false}
+      secondarySubmitAction={null}
       footerMetaLabel={footerMetaLabel}
       onChange={onChange}
       onCancel={onCancel}
@@ -8250,6 +8255,7 @@ const SPEC_SELECTION_TOOLBAR_ITEMS = [
 const SPEC_SELECTION_ACTIONS = [
   { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
   { id: 'annotation', label: 'Add Selection', iconName: 'aiAssistant/toolWindowChat@20x20', accent: 'assistant' },
+  { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
 function getDoneIssueFixActionLabel(issueTarget) {
@@ -8868,38 +8874,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return null;
   }, []);
   const getDoneCommentFooterMetaLabel = useCallback((rowMeta, selectionSnapshot = null) => {
-    const fallbackLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
-
-    if (selectionSnapshot?.type === 'textarea') {
-      return getTextareaEditorCommentLineLabel(selectionSnapshot) || fallbackLabel;
-    }
-
-    if (selectionSnapshot?.type !== 'range' || !selectionSnapshot.range || !scrollRef.current) {
-      return fallbackLabel;
-    }
-
-    const selectedLineNumbers = [];
-    const rowElements = Array.from(scrollRef.current.querySelectorAll('.spec-done-row[data-row-key]'));
-
-    rowElements.forEach((rowElement) => {
-      if (!(rowElement instanceof HTMLElement)) return;
-
-      const rowKey = rowElement.dataset.rowKey;
-      const selectedRowMeta = rowKey ? rowMetaByKey.get(rowKey) : null;
-      if (!selectedRowMeta) return;
-
-      const targetElement = rowElement.querySelector('.spec-done-row-content') ?? rowElement;
-      try {
-        if (selectionSnapshot.range.intersectsNode(targetElement)) {
-          selectedLineNumbers.push(getDoneRowLineNumber(selectedRowMeta));
-        }
-      } catch {
-        // The stored Range can become detached if the editor rerenders between mouse events.
-      }
-    });
-
-    return formatEditorCommentLineLabel(selectedLineNumbers) || fallbackLabel;
-  }, [getDoneRowLineNumber, rowMetaByKey]);
+    const selectedText = getEditorSelectionSnapshotText(selectionSnapshot).trim();
+    return selectedText.length > 0 ? 'Selected text' : 'Current document';
+  }, []);
   const hydratedRowComments = useMemo(
     () => buildRowCommentsStateFromEntries(rowMetaList, persistedCommentEntries),
     [persistedCommentEntries, rowMetaList]
@@ -9071,7 +9048,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       return;
     }
 
-    if (actionId === 'annotation') {
+    if (actionId === 'annotation' || actionId === 'ask-in-side-chat') {
       const capturedSnapshot = captureActiveEditorSelectionSnapshot();
       const liveSelection = typeof window !== 'undefined' ? window.getSelection() : null;
       const selectionSnapshot = capturedSnapshot ?? (
@@ -9091,6 +9068,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         rowKey: rowMeta.stableKey,
         rowIndex: rowMeta.rowIndex,
         lineLabel: formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]),
+        mode: actionId === 'ask-in-side-chat' ? 'side-chat' : 'selection',
       });
       return;
     }
@@ -10446,8 +10424,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           onHide={(commentIndex) => handleCommentHide(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
           onHideAll={handleHideAllComments}
           onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
-          canAddSelection={Boolean(commentPopup.selectedText?.trim())}
-          showAddSelectionAction={Boolean(commentPopup.showAddSelectionAction)}
           onSubmit={handleCommentSubmit}
         />
       </PositionedPopup>
@@ -12388,6 +12364,13 @@ function getAiChatAttachmentInlineCount(attachment = null) {
   return commentCount + selectionCount;
 }
 
+function getChatSelectionEntryCount(annotations = [], selectionAttachments = []) {
+  const annotationCount = Array.isArray(annotations) ? annotations.length : 0;
+  const selectionCount = (Array.isArray(selectionAttachments) ? selectionAttachments : [])
+    .reduce((count, attachment) => count + getSelectionContextItems(attachment).length, 0);
+  return annotationCount + selectionCount;
+}
+
 function getTransientComposerContextAttachments(attachments = []) {
   return (Array.isArray(attachments) ? attachments : [])
     .filter((attachment) => (
@@ -12452,6 +12435,7 @@ function getSelectionContextPreviewItems(attachment = null) {
       lineLabel: normalizedLineLabel || 'Selection',
       selectedText: selection.selectedText,
       isSelectionContextPreview: true,
+      createdAt: Number.isFinite(selection.createdAt) ? selection.createdAt : null,
     };
   });
 }
@@ -12488,13 +12472,23 @@ function getAiChatAttachmentCommentPreviewItems(attachment = null) {
       .filter((annotation) => typeof annotation?.comment === 'string' && annotation.comment.trim().length > 0)
       .map((annotation, index) => ({
         text: annotation.comment.trim(),
-        sourceLabel: 'Annotations',
+        sourceLabel: 'Selections',
         lineLabel: typeof annotation.lineLabel === 'string' && annotation.lineLabel.trim().length > 0
-          ? annotation.lineLabel.trim()
-          : `Annotation ${index + 1}`,
+          ? annotation.lineLabel.trim().replace(/^Annotation\b/iu, 'Selection')
+          : `Selection ${index + 1}`,
         selectedText: annotation.selectedText ?? '',
+        createdAt: Number.isFinite(annotation.createdAt) ? annotation.createdAt : null,
       }));
-    return [...annotationPreviewItems, ...selectionPreviewItems];
+    return [...annotationPreviewItems, ...selectionPreviewItems]
+      .sort((left, right) => {
+        const leftCreatedAt = Number.isFinite(left.createdAt) ? left.createdAt : Number.POSITIVE_INFINITY;
+        const rightCreatedAt = Number.isFinite(right.createdAt) ? right.createdAt : Number.POSITIVE_INFINITY;
+        return leftCreatedAt - rightCreatedAt;
+      })
+      .map((item, index) => ({
+        ...item,
+        lineLabel: `Selection ${index + 1}`,
+      }));
   }
 
   const seenComments = new Set();
@@ -12580,9 +12574,9 @@ function AttachmentCommentHoverCard({
   const visible = items.slice(0, 3);
   const hidden = Math.max(0, items.length - visible.length);
   if (visible.length === 0) return null;
-  const isAnnotationsContext = typeof contextLabel === 'string' && contextLabel.trim() === 'Annotations';
-  const resolvedItemLabel = isAnnotationsContext ? 'Annotation' : itemLabel;
-  const resolvedItemLabelPlural = isAnnotationsContext ? 'Annotations' : itemLabelPlural;
+  const isAnnotationsContext = typeof contextLabel === 'string' && contextLabel.trim() === 'Selections';
+  const resolvedItemLabel = isAnnotationsContext ? 'Selection' : itemLabel;
+  const resolvedItemLabelPlural = isAnnotationsContext ? 'Selections' : itemLabelPlural;
   const normalize = (label) => (typeof label === 'string' ? label.trim().toLowerCase() : '');
   // The chip already names the file, so its own label is dropped from the note's
   // meta; a label is kept only when the note comes from some other source.
@@ -12608,7 +12602,7 @@ function AttachmentCommentHoverCard({
             {visible.map((item, index) => {
               const annotationLabel = typeof item.lineLabel === 'string' && item.lineLabel.trim().length > 0
                 ? item.lineLabel.trim().replace('#', '')
-                : `Annotation ${index + 1}`;
+                : `Selection ${index + 1}`;
 
               return (
                 <div className="ai-chat-attachment-hover-note" key={`annotation-hover-${index}`}>
@@ -14626,11 +14620,14 @@ function ChatSelectionCommentPopover({
             showCompose
             defaultSubmitAttachMode="current"
             submitAttachModes={['current']}
-            submitButtonLabel={isEditing ? 'Save Annotation' : 'Add Annotation'}
+            submitButtonLabel={isEditing ? 'Save Selection' : 'Add Selection'}
             showSubmitTargetLabel={false}
             showSubmitActionMenu={false}
-            inputPlaceholder="Write an annotation"
-            footerMetaLabel={isEditing && request.lineLabel ? request.lineLabel : `Annotation ${commentNumber}`}
+            showSendToAgentAction={false}
+            inputPlaceholder="Write a Selection"
+            footerMetaLabel={isEditing && request.lineLabel
+              ? request.lineLabel.replace(/^Annotation\b/iu, 'Selection')
+              : `Selection ${commentNumber}`}
             onChange={onChange}
             onCancel={onCancel}
             onSubmit={onSubmit}
@@ -16217,10 +16214,6 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
 
   return (
     <div className="aiux550-loading-plan-shell">
-      <div className="aiux550-loading-plan-running" aria-live="polite">
-        <span className="aiux550-loading-plan-running-indicator" aria-hidden="true" />
-        <span>Running…</span>
-      </div>
       <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
         <button
           type="button"
@@ -16350,16 +16343,30 @@ function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null
                   <Icon name={file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.fileName)} size={16} />
                   <span className="aiux550-review-summary-file-name">{file.fileName}</span>
                   {file.isDiff && <span className="aiux550-review-summary-file-kind">Diff</span>}
-                  <span className={`spec-done-status-severity is-${file.severity}`}>{file.severity}</span>
                 </div>
-                <ul className="aiux550-review-summary-issue-list">
+                <div className="aiux550-review-summary-comment-list">
                   {file.findings.map((finding, index) => (
-                    <li key={`${file.sourceLabel}-${index}`}>
-                      {finding.lineLabel && <span className="aiux550-review-summary-line">{finding.lineLabel}</span>}
-                      <span>{finding.text}</span>
-                    </li>
+                    <article className="aiux550-review-summary-comment spec-done-comment-popup-item is-agent-authored" key={`${file.sourceLabel}-${index}`}>
+                      <div className="spec-done-comment-popup-item-body">
+                        <div className="spec-done-comment-agent-reply">
+                          <div className="spec-done-comment-agent-reply-thread">
+                            <div className="spec-done-comment-agent-reply-head">
+                              <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
+                                <AiChatAgentIcon icon="claude" />
+                              </span>
+                              <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
+                              <span className={`spec-done-status-severity is-${finding.severity}`}>{finding.severity}</span>
+                            </div>
+                            <p className="spec-done-comment-agent-reply-text">{finding.text}</p>
+                            {finding.lineLabel && (
+                              <span className="spec-done-comment-agent-reply-line text-ui-small">{finding.lineLabel}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
                   ))}
-                </ul>
+                </div>
               </section>
             ))}
           </div>
@@ -17465,8 +17472,8 @@ function ChatAnnotationInlineHint({ annotation }) {
   if (!comment) return null;
 
   const label = typeof annotation?.lineLabel === 'string' && annotation.lineLabel.trim().length > 0
-    ? annotation.lineLabel.trim().replace('#', '')
-    : 'Annotation';
+    ? annotation.lineLabel.trim().replace('#', '').replace(/^Annotation\b/iu, 'Selection')
+    : 'Selection';
 
   return (
     <span className="ai-chat-annotation-inline-hint" role="tooltip">
@@ -17616,7 +17623,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['chat-history', 'commit']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [diffCommentsOptionIsNew, setDiffCommentsOptionIsNew] = useState(true);
@@ -17627,6 +17634,7 @@ export default function App() {
   const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  const [pendingReviewLaunchByChatId, setPendingReviewLaunchByChatId] = useState({});
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
   const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
   const [chatSelectionCommentRequest, setChatSelectionCommentRequest] = useState(null);
@@ -19453,6 +19461,7 @@ export default function App() {
 
   const openChatInEditorTab = useCallback((chatId, metaOverride = null) => {
     if (!chatId) return;
+    const shouldActivate = metaOverride?.activate !== false;
     const chatTabId = `ai-chat-${chatId}`;
     const scenario = getAiChatScenarioById(chatId);
     const listItem = getAiChatListItemById(chatId);
@@ -19463,12 +19472,14 @@ export default function App() {
       icon: <AiChatAgentIcon icon={metaOverride?.icon ?? listItem?.icon ?? 'claude'} title={chatTitle} />,
       closable: true,
     };
-    setSelectedAiChatId(chatId);
-    setScreen('ide');
+    if (shouldActivate) {
+      setSelectedAiChatId(chatId);
+      setScreen('ide');
+    }
     const existingIndex = ideTabs.findIndex((tab) => tab.id === chatTabId);
     if (existingIndex >= 0) {
       setIdeTabs((prev) => prev.map((tab) => (tab.id === chatTabId ? { ...tab, ...chatTab } : tab)));
-      setActiveEditorTab(existingIndex);
+      if (shouldActivate) setActiveEditorTab(existingIndex);
       return;
     }
     const insertIndex = Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
@@ -19480,7 +19491,7 @@ export default function App() {
     setIdeTabContents((prev) => (prev[chatTabId]
       ? prev
       : { ...prev, [chatTabId]: { language: 'text', code: '' } }));
-    setActiveEditorTab(insertIndex);
+    if (shouldActivate) setActiveEditorTab(insertIndex);
   }, [
     activeEditorTab,
     getAiChatListItemById,
@@ -22702,7 +22713,10 @@ export default function App() {
   // run so review comments keep their review-specific resolve behavior.
   const hasReviewRun = useMemo(
     () => Object.values(agentRunByChatId).some(
-      (run) => run?.kind === 'review' && Array.isArray(run?.notes) && run.notes.length > 0,
+      (run) => run?.kind === 'review'
+        && run?.status !== 'queued'
+        && Array.isArray(run?.notes)
+        && run.notes.length > 0,
     ),
     [agentRunByChatId],
   );
@@ -23329,19 +23343,53 @@ export default function App() {
     openAiToolWindow,
     selectedAiChatId,
   ]);
+  const askSelectionInSideChat = useCallback((selectionContext = {}) => {
+    const selectedText = typeof selectionContext?.selectedText === 'string'
+      ? selectionContext.selectedText.trim()
+      : '';
+    if (!selectedText) return false;
+
+    const sideChat = createEmptyAiChatSession({
+      title: 'New Chat',
+      icon: 'claude',
+      emptyState: true,
+      showAttachmentsInComposer: true,
+      select: true,
+    });
+
+    return addSelectionContextToChat({
+      ...selectionContext,
+      chatId: sideChat.id,
+      selectedText,
+    });
+  }, [addSelectionContextToChat, createEmptyAiChatSession]);
   const handleAddSpecSelectionToChat = useCallback(({
     selectedText = '',
     lineLabel = '',
+    mode = 'selection',
   } = {}) => {
     const sourceTabId = visibleEditorStateTabId ?? activeSourceEditorTabId ?? activeTabId;
-    const boundChatId = ensureSpecStatusChat(activeSpecTopBarStatus, {
-      select: false,
-      sourceTabId,
-    });
     const sourceLabel =
       activeEditorTabMeta?.label
       ?? currentAgentTaskLabel
       ?? 'Spec';
+
+    if (mode === 'side-chat') {
+      return askSelectionInSideChat({
+        selectedText,
+        sourceLabel,
+        sourceTabId,
+        sourceIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
+        chipLabel: sourceLabel,
+        chipIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
+        lineLabel,
+      });
+    }
+
+    const boundChatId = ensureSpecStatusChat(activeSpecTopBarStatus, {
+      select: false,
+      sourceTabId,
+    });
 
     return addSelectionContextToChat({
       chatId: boundChatId,
@@ -23360,11 +23408,61 @@ export default function App() {
     activeSourceEditorTabId,
     activeTabId,
     addSelectionContextToChat,
+    askSelectionInSideChat,
     currentAgentTaskLabel,
     ensureSpecStatusChat,
     visibleEditorStateTabId,
   ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
+    if (actionId === 'ask-in-side-chat') {
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      if (!selectedText) return;
+
+      const isChatSurface = toolbarState?.surface === 'ai-chat';
+      const sourceChatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
+        ? toolbarState.chatId.trim()
+        : activeAiChatTabChatId;
+      const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
+      const sourceLabel = isChatSurface
+        ? 'Chat response'
+        : (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0
+            ? toolbarState.sourceLabel.trim()
+            : (activeTab?.label ?? 'Selected context'));
+      const sourceTabId = isChatSurface
+        ? `ai-chat-${sourceChatId}`
+        : (typeof toolbarState?.sourceTabId === 'string' && toolbarState.sourceTabId.trim().length > 0
+            ? toolbarState.sourceTabId
+            : activeTabId);
+      const rowIds = Array.isArray(toolbarState?.rowIds)
+        ? toolbarState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+        : [];
+      const lineLabel = rowIds.length > 0
+        ? formatEditorCommentLineLabel(rowIds.map((rowId) => {
+            const match = rowId.match(/(\d+)\s*$/u);
+            return match ? Number.parseInt(match[1], 10) : null;
+          }))
+        : '';
+      const didOpenSideChat = askSelectionInSideChat({
+        selectedText,
+        sourceLabel,
+        sourceTabId,
+        sourceIcon: isChatSurface ? 'claude' : (activeTab?.icon ?? 'fileTypes/text'),
+        chipLabel: isChatSurface ? 'Chat response' : sourceLabel,
+        chipIcon: isChatSurface ? 'claude' : (activeTab?.icon ?? 'fileTypes/text'),
+        isChatSelectionContext: isChatSurface,
+        messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
+        blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
+        startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
+        endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
+        rowIds,
+        lineLabel,
+      });
+      if (didOpenSideChat) clearDocumentTextSelection();
+      return;
+    }
+
     if (actionId === 'chat-annotate') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
         ? toolbarState.selectedText.trim()
@@ -23637,6 +23735,7 @@ export default function App() {
     isDiffTab,
     isPlainFileOverlayTab,
     addSelectionContextToChat,
+    askSelectionInSideChat,
     selectedAiChatId,
   ]);
   const activePlanDiffTarget = isDiffTab
@@ -23651,11 +23750,15 @@ export default function App() {
   const activePlanDiffSessionCommentsByChatId = (isDiffTab || isPlainFileOverlayTab)
     ? normalizeDiffSessionCommentsByChatId(activeTabContent?.diffSessionCommentsByChatId)
     : {};
+  const activePlanDiffCommentChatId = typeof activeTabContent?.diffActiveCommentChatId === 'string'
+    && activeTabContent.diffActiveCommentChatId.length > 0
+    ? activeTabContent.diffActiveCommentChatId
+    : selectedAiChatId;
   const activePlanDiffComments =
     (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
       ? (
           Object.keys(activePlanDiffSessionCommentsByChatId).length > 0
-            ? normalizeStoredDiffCommentsState(activePlanDiffSessionCommentsByChatId[selectedAiChatId]?.comments)
+            ? normalizeStoredDiffCommentsState(activePlanDiffSessionCommentsByChatId[activePlanDiffCommentChatId]?.comments)
             : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
         )
       : {};
@@ -23688,16 +23791,14 @@ export default function App() {
   const activePlanDiffUiState = activeTabId ? (planDiffUiStates[activeTabId] ?? null) : null;
   const activePlanDiffLineText = (isDiffTab || isPlainFileOverlayTab) ? (activeTabContent?.diffLineText ?? '') : '';
   const planDiffContextChatId = activePlanDiffCommentsReadOnly
-    ? (activePlanDiffContextChatId ?? selectedAiChatId)
-    : selectedAiChatId;
+    ? (activePlanDiffContextChatId ?? activePlanDiffCommentChatId)
+    : activePlanDiffCommentChatId;
   const planDiffContextChatTitle = getAiChatScenarioById(planDiffContextChatId)?.title ?? AI_CHAT_SCENARIOS['visit-model-attributes'].title;
   const planDiffContextChatListItem = getAiChatListItemById(planDiffContextChatId);
   const planDiffContextChatIcon = planDiffContextChatListItem?.icon ?? 'claude';
   const planDiffContextSessionLabel = activePlanDiffCommentsReadOnly
     ? 'Archive'
-    : planDiffContextChatId === selectedAiChatId
-      ? 'Active'
-      : 'Inactive';
+    : 'Active';
   const openMarkdownDocumentTabs = ideTabs.filter((tab) => (
     tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
   ));
@@ -23760,10 +23861,9 @@ export default function App() {
       }));
     const selectedChatId = selectedTarget?.targetChatId
       ?? (selectedTarget?.attachMode === 'current' ? selectedAiChatId : null);
-    const selectedDraftChat = typeof selectedChatId === 'string'
-      ? (aiChatDraftSessionsById[selectedChatId] ?? null)
-      : null;
-    const hasSelectedCreatedNewChat = Boolean(selectedDraftChat?.emptyState);
+    const hasSelectedCreatedNewChat = Boolean(
+      selectedTarget?.attachMode === 'new' && selectedTarget?.createdNewChat,
+    );
     const selectedDocumentSourceTabId = selectedTarget?.attachMode === 'document'
       ? (selectedTarget?.targetDocumentTabId ?? activePlanDiffDocumentSourceTabId)
       : null;
@@ -23795,20 +23895,15 @@ export default function App() {
     };
 
     const handleCreateNewChat = () => {
-      const session = createEmptyAiChatSession({
-        title: 'New Chat',
-        icon: 'claude',
-        emptyState: true,
-        select: true,
-      });
-      const label = session?.title ?? 'New Chat';
       onSelectTarget?.({
-        attachMode: 'current',
-        targetChatId: session.id,
+        // This is only a virtual target while the user is composing. The real
+        // chat is created on submit, not when this picker item is selected.
+        attachMode: 'new',
+        targetChatId: null,
         targetDocumentTabId: null,
-        label,
-        icon: session.icon ?? 'claude',
-        buttonLabel: `Add to ${label}`,
+        label: 'New Chat',
+        icon: 'junie',
+        buttonLabel: 'Add to New Chat',
         createdNewChat: true,
       });
     };
@@ -23831,6 +23926,7 @@ export default function App() {
             flattenDocuments
             showOlderSections={false}
             hideMeta
+            showActiveBadge={false}
             footerAction={canCreateNewChat && !hasSelectedCreatedNewChat ? {
               label: 'Create New Chat',
               icon: 'general/add',
@@ -23842,9 +23938,7 @@ export default function App() {
     );
   }, [
     activePlanDiffDocumentSourceTabId,
-    aiChatDraftSessionsById,
     aiChatRecentItems,
-    createEmptyAiChatSession,
     getAiChatListItemById,
     getAiChatScenarioById,
     ideTabs,
@@ -24143,7 +24237,10 @@ export default function App() {
       return;
     }
 
-    const commentNumber = (aiChatAnnotationsByChatId[request.chatId]?.length ?? 0) + 1;
+    const commentNumber = getChatSelectionEntryCount(
+      aiChatAnnotationsByChatId[request.chatId],
+      aiChatSelectionContextByChatId[request.chatId],
+    ) + 1;
     const annotation = {
       id: `chat-annotation-${request.chatId}-${Date.now()}`,
       chatId: request.chatId,
@@ -24154,7 +24251,7 @@ export default function App() {
       endOffset: request.endOffset,
       order: commentNumber,
       comment,
-      lineLabel: `Annotation ${commentNumber}`,
+      lineLabel: `Selection ${commentNumber}`,
       createdAt: Date.now(),
     };
 
@@ -24167,7 +24264,7 @@ export default function App() {
     }));
     setChatSelectionCommentRequest(null);
     setChatSelectionCommentValue('');
-  }, [aiChatAnnotationsByChatId, chatSelectionCommentRequest, chatSelectionCommentValue]);
+  }, [aiChatAnnotationsByChatId, aiChatSelectionContextByChatId, chatSelectionCommentRequest, chatSelectionCommentValue]);
   const handleDoneVersionSelect = (version) => {
     if (!visibleEditorStateTabId || !version || !activeVersionHistory?.versions?.length) {
       return;
@@ -24269,8 +24366,8 @@ export default function App() {
 
 	    // Resolving/applying a user's own comment is also written to chat history:
 	    // a sent message carrying the comment as an attachment (file/line context)
-	    // plus the agent's reply. Quick fixes stay visible in the gutter as Applied;
-	    // plain Resolve closes the live thread.
+	    // plus the agent's reply. The live editor thread and composer attachment
+	    // are removed after the action completes.
     if (metadata?.resolveAction && !metadata.resolveAction.isReviewFinding) {
       const action = metadata.resolveAction;
       const recordChatId = (typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim())
@@ -24443,8 +24540,15 @@ export default function App() {
       ? createEmptyAiChatSession({
           diffRequest: activePlanDiffRequest,
           attachmentLabel: activePlanDiffData?.title || `Diff ${activePlanDiffSourceLabel}`,
+          icon: 'junie',
+          select: false,
         })
       : null;
+    if (newChatSession) {
+      // Make the newly created target the active comment context without
+      // navigating away from the diff to a chat tab.
+      setSelectedAiChatId(newChatSession.id);
+    }
     const explicitTargetChatId = typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim().length > 0
       ? metadata.targetChatId
       : null;
@@ -24541,6 +24645,7 @@ export default function App() {
           === JSON.stringify(targetSessionComments)
           && JSON.stringify(normalizeStoredDiffCommentsState(existing.diffSessionCommentsByChatId?.[targetChatId]?.comments))
           === JSON.stringify(targetSessionComments)
+          && existing.diffActiveCommentChatId === targetChatId
         ) {
           return prev;
         }
@@ -24567,6 +24672,7 @@ export default function App() {
             ...existing,
             initialDiffComments: nextMergedDiffComments,
             diffSessionCommentsByChatId: nextSessionComments,
+            diffActiveCommentChatId: targetChatId,
             diffCommentsReadOnly: false,
           },
         };
@@ -25152,9 +25258,13 @@ export default function App() {
           [rowId]: rowComments.map((comment) => ({
             ...((comment && typeof comment === 'object') ? comment : {}),
             text: getStoredCommentText(comment),
-            pending: true,
+            pending: false,
           })),
         }), {});
+        const firstRowId = Object.keys(pendingComments)[0];
+        if (firstRowId && pendingComments[firstRowId]?.length > 0) {
+          pendingComments[firstRowId][0] = { ...pendingComments[firstRowId][0], pending: true };
+        }
         entries[tabId] = mergeStoredDiffCommentsStates(entries[tabId], pendingComments);
         return entries;
       };
@@ -25178,9 +25288,13 @@ export default function App() {
           [rowId]: rowComments.map((comment) => ({
             ...((comment && typeof comment === 'object') ? comment : {}),
             text: getStoredCommentText(comment),
-            pending: true,
+            pending: false,
           })),
         }), {});
+        const firstRowId = Object.keys(pendingComments)[0];
+        if (firstRowId && pendingComments[firstRowId]?.length > 0) {
+          pendingComments[firstRowId][0] = { ...pendingComments[firstRowId][0], pending: true };
+        }
         entries[tabId] = mergeStoredDiffCommentsStates(entries[tabId], pendingComments);
         return entries;
       };
@@ -25620,11 +25734,12 @@ export default function App() {
     sweepSolvedComments();
 
     const targetChatId = chatId;
-    // "Review this" / /review with no attached notes → the agent authors review
-    // comments in the code (with severities) instead of answering a prompt.
-    const isReviewCommand = commentAttachments.length === 0
-      && /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
-    const shouldStreamCommentResponse = commentAttachments.length > 0;
+    // A review launched from the dialog carries its diff/commit attachments,
+    // including any comments already left in the diff. The explicit /review
+    // command still starts the review flow; those comments remain context and
+    // must not turn this into the ordinary "reply to attached note" flow.
+    const isReviewCommand = /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
+    const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
@@ -25873,6 +25988,63 @@ export default function App() {
     resolveCommentAttachmentResponse,
     handleSelectedAiChatSentMessagesChange,
   ]);
+
+  const handleStartReviewFromDialog = useCallback(({
+    agentIcon = 'junie',
+    attachments = [],
+  } = {}) => {
+    const reviewChat = createEmptyAiChatSession({
+      title: 'AI Review',
+      icon: agentIcon,
+      emptyState: true,
+      showAttachmentsInComposer: false,
+      select: false,
+    });
+
+    setPendingReviewLaunchByChatId((prev) => ({
+      ...prev,
+      [reviewChat.id]: { attachments },
+    }));
+    setAgentRunByChatId((prev) => ({
+      ...prev,
+      [reviewChat.id]: {
+        status: 'queued',
+        kind: 'review',
+        iteration: prev[reviewChat.id]?.iteration ?? 0,
+        notes: AGENT_REVIEW_FINDINGS.map((finding, index) => ({
+          id: `review-${index}`,
+          text: finding.text,
+          sourceLabel: finding.sourceLabel || '',
+          lineLabel: finding.lineLabel || '',
+          severity: finding.severity || null,
+          state: 'pending',
+          openTarget: {
+            diffTabId: finding.tabId ?? null,
+            sourceLabel: finding.sourceLabel ?? null,
+            rowId: finding.rowId ?? null,
+          },
+        })),
+      },
+    }));
+    openChatInEditorTabRef.current?.(reviewChat.id, {
+      title: 'AI Review',
+      icon: agentIcon,
+      activate: true,
+    });
+  }, [createEmptyAiChatSession]);
+
+  useEffect(() => {
+    if (!activeAiChatTabChatId) return;
+    const pendingReview = pendingReviewLaunchByChatId[activeAiChatTabChatId];
+    if (!pendingReview) return;
+
+    setPendingReviewLaunchByChatId((prev) => {
+      const next = { ...prev };
+      delete next[activeAiChatTabChatId];
+      return next;
+    });
+    handleAiChatTabSend(activeAiChatTabChatId, '/review', pendingReview.attachments ?? []);
+  }, [activeAiChatTabChatId, handleAiChatTabSend, pendingReviewLaunchByChatId]);
 
   // Stop the agent run early: cancel any pending stream timers for the chat and
   // resolve whatever in-code notes are still pending so nothing spins forever.
@@ -26818,7 +26990,7 @@ export default function App() {
                     commentContextIcon={planDiffContextChatIcon}
                     commentContextSessionLabel={planDiffContextSessionLabel}
 	                    commentSessions={activePlanDiffSessionComments}
-	                    commentSessionActiveChatId={selectedAiChatId}
+	                    commentSessionActiveChatId={activePlanDiffCommentChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
                       onTextSelectionChange={(selectionState) => {
                         if (!selectionState?.rect) {
@@ -26871,6 +27043,8 @@ export default function App() {
                         errorCount={activePlainFileProblemSummary.errorCount}
                       />
                     ) : null}
+                    reviewSourceTabId={activeTabId}
+                    onStartReview={handleStartReviewFromDialog}
                   />
                 )
                 : undefined)
@@ -26891,7 +27065,7 @@ export default function App() {
         defaultOpenToolWindows={ideOpenWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onStartReview={handleStartReviewFromDialog} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
@@ -26917,7 +27091,10 @@ export default function App() {
       <ChatSelectionCommentPopover
         request={chatSelectionCommentRequest}
         value={chatSelectionCommentValue}
-        commentNumber={(aiChatAnnotationsByChatId[chatSelectionCommentRequest?.chatId]?.length ?? 0) + 1}
+        commentNumber={getChatSelectionEntryCount(
+          aiChatAnnotationsByChatId[chatSelectionCommentRequest?.chatId],
+          aiChatSelectionContextByChatId[chatSelectionCommentRequest?.chatId],
+        ) + 1}
         onChange={setChatSelectionCommentValue}
         onCancel={() => {
           setChatSelectionCommentRequest(null);
