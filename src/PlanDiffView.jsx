@@ -996,74 +996,78 @@ export function PlanDiffNewReviewButton({
             if (event.target === event.currentTarget) closePopup();
           }}
         >
-          <Dialog
-            title="Start AI Review"
-            width="min(800px, calc(100vw - 48px))"
-            height="min(560px, calc(100vh - 48px))"
-            showMacOSButtons={false}
-            showHelp={false}
+          <div
             role="dialog"
             aria-modal="true"
             aria-label="Start AI Review"
-            className={`plan-diff-ai-review-dialog text-ui-default${popupClassName ? ` ${popupClassName}` : ''}`}
-            buttons={[
-              { children: 'Cancel', type: 'secondary', onClick: closePopup },
-              { children: 'Start review', type: 'primary', onClick: closePopup },
-            ]}
+            className={`dialog plan-diff-ai-review-dialog text-ui-default${popupClassName ? ` ${popupClassName}` : ''}`}
           >
-            <IconButton
-              icon="general/close"
-              tooltip="Close"
-              className="plan-diff-ai-review-dialog-close"
-              onClick={closePopup}
-            />
             <div className="plan-diff-ai-review-dialog-content">
               <div className="plan-diff-ai-review-dialog-mode-row">
+                <span className="plan-diff-ai-review-dialog-mode">
+                  <Icon name="codeInsight/intentionBulb" size={16} />
+                  Explain code
+                </span>
+                <span className="plan-diff-ai-review-dialog-separator">·</span>
+                <span className="plan-diff-ai-review-dialog-mode">
+                  <Icon name="vcs/vcs" size={16} />
+                  Refactor code
+                </span>
+                <span className="plan-diff-ai-review-dialog-separator">·</span>
                 <span className="plan-diff-ai-review-dialog-mode is-active">
-                  <Icon name="general/balloon" size={16} />
+                  <Icon name="general/show" size={16} />
                   Review code
                 </span>
-                <span className="plan-diff-ai-review-dialog-summary text-ui-small">1 file · 2 changes</span>
-                <Checkbox checked={runInContainer} onChange={() => setRunInContainer((value) => !value)} />
-                <span className="plan-diff-ai-review-dialog-container-label">Run in container</span>
               </div>
 
-              <div className="plan-diff-ai-review-dialog-context">
-                <span className="plan-diff-ai-review-dropdown">
-                  <button
-                    type="button"
-                    className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip"
-                    onClick={() => toggleMenu('scope')}
+              <div className="plan-diff-ai-review-dialog-session-row">
+                <button type="button" className="plan-diff-ai-review-dialog-session-button" onClick={() => toggleMenu('agent')}>
+                  <AiChatAgentIcon icon="codex" />
+                  <span>Codex</span>
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+                {renderAgentMenu()}
+                <button type="button" className="plan-diff-ai-review-dialog-session-button" onClick={() => toggleMenu('scope')}>
+                  <span>New Session</span>
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+                {renderMenu('scope', scopeOptions.map((item) => (
+                  <PopupCell
+                    key={item.id}
+                    type="multiline"
+                    hint={item.meta}
+                    selected={item.id === selectedScope.id}
+                    onClick={() => { setSelectedScopeId(item.id); setOpenMenu(null); }}
                   >
-                    <Icon name="vcs/diff" size={16} className="ai-chat-attachment-icon" />
-                    <span className="ai-chat-attachment-name">{selectedScope.label}</span>
-                    <Icon name="general/chevronDown" size={16} />
-                  </button>
-                  {renderMenu('scope', scopeOptions.map((item) => (
-                    <PopupCell
-                      key={item.id}
-                      type="multiline"
-                      hint={item.meta}
-                      selected={item.id === selectedScope.id}
-                      onClick={() => { setSelectedScopeId(item.id); setOpenMenu(null); }}
-                    >
-                      {item.label}
-                    </PopupCell>
-                  )))}
-                </span>
-                <span className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip">
-                  <Icon name="fileTypes/java" size={16} className="ai-chat-attachment-icon" />
-                  <span className="ai-chat-attachment-name">{currentFileLabel}</span>
-                </span>
-                <span className="ai-chat-attachment-chip plan-diff-ai-review-dialog-context-chip">
-                  <Icon name="vcs/diff" size={16} className="ai-chat-attachment-icon" />
-                  <span className="ai-chat-attachment-name">2 changes</span>
-                </span>
+                    {item.label}
+                  </PopupCell>
+                )))}
+                <button
+                  type="button"
+                  className="plan-diff-ai-review-dialog-pin"
+                  aria-label="Pin"
+                  title="Pin"
+                >
+                  <svg className="icon plan-diff-ai-review-dialog-pin-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M5.25 2.5H10.75M6.5 2.5V7.2L4.75 9H11.25L9.5 7.2V2.5M8 9V13.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
               </div>
 
-              <div className="ai-chat-composer plan-diff-ai-review-dialog-composer">
+              <div className="plan-diff-ai-review-dialog-main">
+                <div className="plan-diff-ai-review-dialog-context">
+                  <span className="plan-diff-ai-review-dialog-context-label">
+                    <Icon name="vcs/commit" size={16} />
+                    Changes
+                  </span>
+                  <span className="plan-diff-ai-review-dialog-context-meta">1 file · 2 changes</span>
+                  <span className="plan-diff-ai-review-dialog-context-side">
+                    <Icon name="general/balloon" size={16} />
+                  </span>
+                </div>
+
                 {attachments.length > 0 && (
-                  <div className="ai-chat-attachments">
+                  <div className="ai-chat-attachments plan-diff-ai-review-dialog-attachments">
                     {attachments.map((attachmentId) => {
                       const attachment = attachmentOptions.find((item) => item.id === attachmentId);
                       if (!attachment) return null;
@@ -1084,60 +1088,75 @@ export function PlanDiffNewReviewButton({
                     })}
                   </div>
                 )}
+
                 <textarea
                   autoFocus
                   rows={1}
                   value={instructions}
-                  placeholder="What should the reviewer agent focus on?"
+                  placeholder="What should the agent do?"
                   aria-label="Review instructions"
                   onChange={(event) => setInstructions(event.target.value)}
                 />
-                <div className="ai-chat-composer-toolbar">
-                  <div className="ai-chat-composer-left">
-                    <span className="plan-diff-ai-review-dropdown">
-                      <button
-                        className="ai-chat-plus-button"
-                        type="button"
-                        aria-label="Add context"
-                        onClick={() => toggleMenu('attach')}
-                      >
-                        <Icon name="general/add" size={16} />
-                      </button>
-                      {renderMenu('attach', availableAttachmentOptions.length > 0
-                        ? availableAttachmentOptions.map((option) => (
-                          <PopupCell
-                            key={option.id}
-                            type="multiline"
-                            icon={option.icon}
-                            hint={option.meta}
-                            onClick={() => addAttachment(option.id)}
-                          >
-                            {option.label}
-                          </PopupCell>
-                        ))
-                        : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
-                    </span>
-                    <span className="plan-diff-ai-review-dropdown">
-                      <button
-                        type="button"
-                        className="ai-chat-mode-button plan-diff-ai-review-dialog-agent"
-                        onClick={() => toggleMenu('agent')}
-                      >
-                        <AiChatAgentIcon icon={selectedAgent.icon} />
-                        <span>{selectedAgent.id === 'codex' ? 'Recommended Agent' : selectedAgent.label}</span>
-                        <Icon name="general/chevronDown" size={16} />
-                      </button>
-                      {renderAgentMenu()}
-                    </span>
-                    <button type="button" className="ai-chat-mode-button">
-                      Full Access
-                      <Icon name="general/chevronDown" size={16} />
+
+                <div className="plan-diff-ai-review-dialog-main-actions">
+                  <span className="plan-diff-ai-review-dropdown">
+                    <button
+                      className="plan-diff-ai-review-dialog-plus"
+                      type="button"
+                      aria-label="Add context"
+                      onClick={() => toggleMenu('attach')}
+                    >
+                      <Icon name="general/add" size={24} />
                     </button>
-                  </div>
+                    {renderMenu('attach', availableAttachmentOptions.length > 0
+                      ? availableAttachmentOptions.map((option) => (
+                        <PopupCell
+                          key={option.id}
+                          type="multiline"
+                          icon={option.icon}
+                          hint={option.meta}
+                          onClick={() => addAttachment(option.id)}
+                        >
+                          {option.label}
+                        </PopupCell>
+                      ))
+                      : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
+                  </span>
+                  <button
+                    type="button"
+                    className="plan-diff-ai-review-dialog-send"
+                    aria-label="Start review"
+                    title="Start review"
+                    onClick={closePopup}
+                  >
+                    <svg className="icon plan-diff-ai-review-dialog-send-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                      <path d="M7 5.75L22 14L7 22.25L9.4 14L7 5.75Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                    </svg>
+                  </button>
                 </div>
               </div>
+
+              <div className="plan-diff-ai-review-dialog-model-row">
+                <button type="button" className="plan-diff-ai-review-dialog-footer-select">
+                  GPT-5.6-Sol
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+                <button type="button" className="plan-diff-ai-review-dialog-footer-select">
+                  Extra High
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="plan-diff-ai-review-dialog-footer-select"
+                  onClick={() => setRunInContainer((value) => !value)}
+                  aria-pressed={runInContainer}
+                >
+                  Standard Access · Plan
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+              </div>
             </div>
-          </Dialog>
+          </div>
         </div>,
         document.body,
       )}

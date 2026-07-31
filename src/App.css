@@ -4398,8 +4398,18 @@ body {
 
 .plan-diff-ai-review-dialog.dialog {
   position: relative;
+  display: flex;
+  width: min(1360px, calc(100vw - 48px));
+  height: min(800px, calc(100vh - 48px));
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 2px solid #565a62;
+  border-radius: 14px;
+  background: #24272b;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.56), 0 0 0 1px rgba(0, 0, 0, 0.42);
+  color: #ced0d6;
 }
 
 .plan-diff-ai-review-dialog .dialog-header {
@@ -4432,105 +4442,226 @@ body {
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 16px;
+  gap: 0;
+  padding: 0;
 }
 
 .plan-diff-ai-review-dialog-mode-row {
   display: flex;
-  min-height: 28px;
+  min-height: 66px;
   align-items: center;
-  gap: 10px;
-  color: var(--text-secondary, #8b8e94);
+  gap: 16px;
+  padding: 0 28px;
+  box-sizing: border-box;
+  color: #7f838c;
 }
 
 .plan-diff-ai-review-dialog-mode {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  color: var(--text-default, #d1d3d9);
-  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 9px;
+  color: #7f838c;
+  font: 500 24px/32px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .plan-diff-ai-review-dialog-mode.is-active {
-  color: #dfe1e5;
+  color: #7f838c;
 }
 
-.plan-diff-ai-review-dialog-mode.is-active > .icon {
-  color: #71a1fe;
+.plan-diff-ai-review-dialog-mode > .icon,
+.plan-diff-ai-review-dialog-mode > svg {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  color: #b9bec7;
 }
 
-.plan-diff-ai-review-dialog-summary {
-  color: var(--text-secondary, #8b8e94);
+.plan-diff-ai-review-dialog-mode:first-child > .icon {
+  color: #f6c453;
 }
 
-.plan-diff-ai-review-dialog-mode-row .checkbox-container {
+.plan-diff-ai-review-dialog-separator {
+  color: #696d75;
+  font: 500 22px/30px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-session-row {
+  position: relative;
+  display: flex;
+  min-height: 86px;
+  align-items: center;
+  gap: 24px;
+  padding: 0 26px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #33373d;
+}
+
+.plan-diff-ai-review-dialog-session-button {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d7d9df;
+  cursor: pointer;
+  font: 500 28px/36px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-session-button > .icon,
+.plan-diff-ai-review-dialog-session-button > svg {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.plan-diff-ai-review-dialog-session-button .ai-chat-agent-icon,
+.plan-diff-ai-review-dialog-session-button .ai-chat-codex-mark {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+}
+
+.plan-diff-ai-review-dialog-pin {
+  all: unset;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
   margin-left: auto;
-  padding: 0;
+  color: #c7ccd5;
+  cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-container-label {
-  color: var(--text-default, #d1d3d9);
-  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+.plan-diff-ai-review-dialog-pin-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.plan-diff-ai-review-dialog-main {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 26px 26px 24px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #33373d;
 }
 
 .plan-diff-ai-review-dialog-context {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  min-height: 24px;
+  gap: 14px;
+  min-height: 32px;
 }
 
-.plan-diff-ai-review-dialog-context-chip.ai-chat-attachment-chip {
-  position: relative;
-  width: auto;
-  max-width: 260px;
+.plan-diff-ai-review-dialog-context-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  color: #d7d9df;
+  font: 600 24px/32px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-context-label > .icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+
+.plan-diff-ai-review-dialog-context-meta {
+  color: #7f838c;
+  font: 500 18px/24px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-context-side {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  color: #c7ccd5;
+}
+
+.plan-diff-ai-review-dialog-context-side > .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.plan-diff-ai-review-dialog-attachments {
+  margin-top: 14px;
+}
+
+.plan-diff-ai-review-dialog-main > textarea {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 26px 0 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: #d7d9df;
+  font: 500 26px/34px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-ai-review-dialog-main > textarea::placeholder {
+  color: #7f838c;
+}
+
+.plan-diff-ai-review-dialog-main-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+}
+
+.plan-diff-ai-review-dialog-plus,
+.plan-diff-ai-review-dialog-send {
+  all: unset;
+  display: inline-flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  color: #c7ccd5;
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-context-chip > .icon:last-child {
-  flex: 0 0 16px;
-  color: var(--icon-secondary-stroke, #9fa2a8);
+.plan-diff-ai-review-dialog-send {
+  color: #565b65;
 }
 
-.plan-diff-ai-review-dialog .plan-diff-ai-review-dialog-composer.ai-chat-composer {
+.plan-diff-ai-review-dialog-model-row {
   display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  margin: 0;
-  border-radius: 8px;
+  min-height: 78px;
+  align-items: center;
+  gap: 28px;
+  padding: 0 26px;
+  box-sizing: border-box;
 }
 
-.plan-diff-ai-review-dialog-composer > textarea {
-  min-height: 180px;
-  flex: 1 1 auto;
-  padding-top: 14px;
-  font-size: 14px;
-  line-height: 20px;
+.plan-diff-ai-review-dialog-footer-select {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #7f838c;
+  cursor: pointer;
+  font: 500 22px/30px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.plan-diff-ai-review-dialog-composer .ai-chat-attachments {
-  z-index: 3;
-}
-
-.plan-diff-ai-review-dialog-composer .ai-chat-composer-toolbar {
-  overflow: visible;
-}
-
-.plan-diff-ai-review-dialog-composer .ai-chat-composer-left {
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.plan-diff-ai-review-dialog-agent > svg,
-.plan-diff-ai-review-dialog-agent > .icon {
-  width: 16px;
-  height: 16px;
+.plan-diff-ai-review-dialog-footer-select > .icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
 }
 
 .plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-agent,
-.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-attach {
+.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-attach,
+.plan-diff-ai-review-dialog-main .plan-diff-ai-review-submenu-attach {
   top: auto;
   bottom: calc(100% + 4px);
 }
