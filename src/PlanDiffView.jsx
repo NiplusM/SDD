@@ -1878,7 +1878,7 @@ export function DiffInlineCommentPopup({
   const showUngroupedHeader = !hasGroupedComments
     && (!showCompose || hasComments)
     && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent'));
-  const ungroupedHeaderComment = showUngroupedHeader && visibleUngroupedComments.length === 1
+  const ungroupedHeaderComment = showUngroupedHeader && visibleUngroupedComments.length > 0
     ? visibleUngroupedComments[0]
     : null;
   const ungroupedHeaderCommentIsAgentAuthored = Boolean(
@@ -1893,14 +1893,14 @@ export function DiffInlineCommentPopup({
         ? getReturnToContextActions()
         : getEditableCommentActions(ungroupedHeaderComment.index)
     : [];
-  const moveUngroupedSingleCommentMenuToHeader = ungroupedHeaderActions.length > 0;
+  const moveUngroupedCommentMenuToHeader = showUngroupedHeader && ungroupedHeaderActions.length > 0;
 
   return (
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
       {showUngroupedHeader && (
         <div className="spec-done-comment-popup-context-row">
           {renderCommentContextHeader({ pending: hasUngroupedPendingComments })}
-          {moveUngroupedSingleCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
+          {moveUngroupedCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
         </div>
       )}
       {hasGroupedComments && (
@@ -1935,7 +1935,7 @@ export function DiffInlineCommentPopup({
               isCommentVisibleForRender(commentEntry)
               && (!isEditing || (commentEntry.localIndex ?? i) !== editingIndex)
             ));
-            const headerCommentEntry = showGroupHeader && visibleGroupComments.length === 1
+            const headerCommentEntry = showGroupHeader && visibleGroupComments.length > 0
               ? visibleGroupComments[0]
               : null;
             const headerCommentActionContext = headerCommentEntry ? { chatId: headerCommentEntry.chatId } : null;
@@ -1946,7 +1946,7 @@ export function DiffInlineCommentPopup({
                   ? []
                   : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId })
               : [];
-            const moveSingleCommentMenuToHeader = headerCommentActions.length > 0;
+            const moveCommentMenuToHeader = showGroupHeader && headerCommentActions.length > 0;
 
             return (
             <div
@@ -1957,7 +1957,7 @@ export function DiffInlineCommentPopup({
               {showGroupHeader && (
                 <div className="spec-done-comment-popup-context-row">
                   {renderCommentContextHeader({ ...group, pending: hasPendingGroupComments })}
-                  {moveSingleCommentMenuToHeader && renderMoreButton(headerCommentActions)}
+                  {moveCommentMenuToHeader && renderMoreButton(headerCommentActions)}
                 </div>
               )}
               {group.comments.length > 0 && (
@@ -1997,7 +1997,7 @@ export function DiffInlineCommentPopup({
                             showPendingLoader: shouldUseThreadLoaderSlot,
                           })}
                         </div>
-                        {!moveSingleCommentMenuToHeader && renderMoreButton(actions)}
+                        {!showGroupHeader && renderMoreButton(actions)}
                       </div>
                     );
                   })}
@@ -2048,7 +2048,7 @@ export function DiffInlineCommentPopup({
                     showPendingLoader: shouldUseThreadLoaderSlot,
                   })}
                 </div>
-                {!moveUngroupedSingleCommentMenuToHeader && renderMoreButton(actions)}
+                {!showUngroupedHeader && renderMoreButton(actions)}
               </div>
             );
           })}

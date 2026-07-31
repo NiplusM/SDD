@@ -15776,6 +15776,15 @@ button.aiux543-answer-change-card:focus-visible {
   --spec-done-comment-agent-reply-content-indent: 0px;
 }
 
+.spec-done-comment-popup-item:not(.is-agent-authored) .spec-done-comment-agent-reply {
+  --spec-done-comment-agent-reply-content-indent: 0px;
+}
+
+.spec-done-comment-popup-item:not(.is-agent-authored) .spec-done-comment-agent-reply-head,
+.spec-done-comment-popup-item:not(.is-agent-authored) .spec-done-comment-agent-user-reply-head {
+  margin-left: -24px;
+}
+
 .spec-done-comment-agent-dismiss-btn {
   all: unset;
   box-sizing: border-box;
