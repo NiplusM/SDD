@@ -16417,14 +16417,6 @@ function AiChatTabView({
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
-  const hasAgentRunNotes = Array.isArray(agentRun?.notes) && agentRun.notes.length > 0;
-  // The "AI Review" checklist card above the composer is shown ONLY for an
-  // explicit /review run. A plain "send comment to agent" run is not a review:
-  // its comment stays as a composer attachment chip (worked with until resolved),
-  // so it must not raise the review card.
-  const isReviewRun = agentRun?.kind === 'review';
-  const shouldShowAgentRunPlan = isReviewRun
-    && isAgentRunProcessing;
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
     userPrompt: fallbackTitle,
@@ -16768,14 +16760,6 @@ function AiChatTabView({
               <Icon name="general/chevronDown" size={16} />
             </button>
           </div>
-        )}
-        {shouldShowAgentRunPlan && (
-          <AgentRunLoadingPlan
-            notes={agentRun?.notes}
-            status={agentRun?.status}
-            kind={agentRun?.kind}
-            onOpenTarget={onOpenReviewTarget}
-          />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {!isAgentRunProcessing && editorComposerAttachments.length > 0 && (
