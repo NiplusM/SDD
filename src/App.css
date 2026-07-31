@@ -14971,14 +14971,6 @@ button.aiux543-answer-change-card:focus-visible {
   transform: rotate(90deg);
 }
 
-.aiux550-loading-plan-header > .icon,
-.aiux550-loading-plan-header > svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  color: #a0a3a9;
-}
-
 .aiux550-loading-plan-title {
   color: #dfe1e5;
   font: 650 14px/20px Inter, system-ui, sans-serif;
@@ -14999,6 +14991,14 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux550-loading-plan-title-count {
   color: #7f838c;
   font: 500 13px/20px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-chevron,
+.aiux550-loading-plan-chevron.icon,
+.aiux550-loading-plan-chevron svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .aiux550-loading-plan-list {
