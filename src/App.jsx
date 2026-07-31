@@ -16165,91 +16165,61 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   );
 }
 
-// Card attached to the top of the composer. Review runs and AI Note processing
-// runs intentionally share the same structure: file header with icon, then the
-// comment body rows underneath. Status/severity live inside the body metadata
-// so review and agent-response rows stay structurally equivalent.
 function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null }) {
   const items = Array.isArray(notes) ? notes : [];
-  const total = items.length;
-  const doneCount = items.filter((note) => note.state === 'done').length;
   const isDone = status === 'done';
   const isReview = kind === 'review';
-  const [expanded, setExpanded] = useState(() => !isDone);
+  const [expanded, setExpanded] = useState(true);
 
   const displayItems = items.length > 0
     ? items
-    : [{ id: 'placeholder', text: isReview ? 'Reviewing…' : 'Reviewing AI Notes…', state: 'active' }];
+    : [{ id: 'placeholder', sourceLabel: isReview ? 'Preparing review files…' : 'Preparing files…', state: 'active' }];
 
   const fileGroups = [];
-  const severityTotals = { critical: 0, warning: 0, info: 0 };
   const byFile = new Map();
   displayItems.forEach((note) => {
     const file = String(note.sourceLabel || note.openTarget?.sourceLabel || 'File').trim() || 'File';
     const isDiff = /^diff\s+/i.test(file);
     if (!byFile.has(file)) {
-      byFile.set(file, { file, isDiff, notes: [] });
+      byFile.set(file, { file, isDiff, notes: [], openTarget: note.openTarget ?? null });
       fileGroups.push(byFile.get(file));
     }
     const group = byFile.get(file);
+    if (!group.openTarget && note.openTarget) {
+      group.openTarget = note.openTarget;
+    }
     const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
     group.notes.push({
       ...note,
-      text: typeof note.text === 'string' && note.text.trim().length > 0 ? note.text.trim() : 'Processing comment…',
-      lineLabel: normalizeAgentRunLineLabel(note.lineLabel),
       state,
     });
-    const sev = String(note.severity || '').toLowerCase();
-    if (sev in severityTotals) severityTotals[sev] += 1;
-  });
-  const severitySummary = ['critical', 'warning', 'info']
-    .filter((sev) => severityTotals[sev] > 0)
-    .map((sev) => `${severityTotals[sev]} ${sev}`)
-    .join(', ');
-  const headerCount = total > 0
-    ? `${fileGroups.length} file${fileGroups.length === 1 ? '' : 's'}, ${total} comment${total === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}`
-    : 'Reviewing comments…';
-  const visibleActiveCount = displayItems.filter((note) => (note.state ?? 'pending') === 'active').length;
-  const queueLabel = isDone
-    ? headerCount
-    : total > 0
-      ? `${Math.max(visibleActiveCount, 1)} processing · ${Math.max(total - doneCount - Math.max(visibleActiveCount, 1), 0)} queued`
-      : 'Waiting…';
-  const flatQueueItems = fileGroups.flatMap((group) => {
-    const fileName = group.file.replace(/^diff\s+/iu, '');
-    const groupActive = group.notes.filter((note) => note.state === 'active').length;
-    const groupQueued = group.notes.filter((note) => note.state !== 'active' && note.state !== 'done').length;
-    const groupDone = group.notes.filter((note) => note.state === 'done').length;
-    return [
-      {
-        id: `file-${group.file}`,
-        kind: 'file',
-        text: fileName,
-        icon: group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName),
-        state: groupActive > 0 ? 'active' : groupQueued > 0 ? 'pending' : 'done',
-        rightLabel: groupActive > 0
-          ? 'Reviewing now'
-          : groupQueued > 0
-            ? `${groupQueued} queued`
-            : `${groupDone} done`,
-      },
-      ...group.notes.map((note, index) => ({
-        id: note.id ?? `${group.file}-${index}`,
-        kind: 'note',
-        text: note.text,
-        lineLabel: note.lineLabel,
-        severity: String(note.severity || '').toLowerCase(),
-        state: note.state === 'done' || note.state === 'active' ? note.state : 'pending',
-        openTarget: note.openTarget,
-      })),
-    ];
   });
 
-  // Expandable queue above the composer. While processing it shows which files
-  // and comments are being worked through; once done it stays collapsible and
-  // exposes the same resolved queue for review context.
+  const fileQueueItems = fileGroups.map((group) => {
+    const fileName = group.file.replace(/^diff\s+/iu, '');
+    const hasActive = group.notes.some((note) => note.state === 'active');
+    const hasPending = group.notes.some((note) => note.state !== 'active' && note.state !== 'done');
+    const state = hasActive ? 'active' : hasPending ? 'pending' : 'done';
+
+    return {
+      id: `file-${group.file}`,
+      text: fileName,
+      icon: group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName),
+      state,
+      openTarget: group.openTarget,
+    };
+  });
+  const activeFileCount = fileQueueItems.filter((item) => item.state === 'active').length;
+  const doneFileCount = fileQueueItems.filter((item) => item.state === 'done').length;
+  const queuedFileCount = Math.max(fileQueueItems.length - activeFileCount - doneFileCount, 0);
+  const queueLabel = isDone
+    ? `${fileQueueItems.length} file${fileQueueItems.length === 1 ? '' : 's'} ready for diff`
+    : fileQueueItems.length > 0
+      ? `${Math.max(activeFileCount, 1)} processing · ${queuedFileCount} queued`
+      : 'Waiting…';
+
   return (
-    <section className={`aiux550-loading-plan${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review comments' : 'AI Review checklist'}>
+    <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
       <button
         type="button"
         className="aiux550-loading-plan-header"
@@ -16263,76 +16233,31 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         )}
         <span className="aiux550-loading-plan-title-badge">
           <span className="aiux550-loading-plan-title">AI Review</span>
-          <span className="aiux550-loading-plan-title-count">{total || fileGroups.length}</span>
+          <span className="aiux550-loading-plan-title-count">{fileQueueItems.length}</span>
         </span>
-        {isDone ? (
-          <>
-            <span className="aiux550-review-done-badge">
-              <span className="aiux550-review-done-dot" aria-hidden="true" />
-              Open
-            </span>
-            <span className="aiux550-loading-plan-count">{headerCount}</span>
-          </>
-        ) : (
-          <span className="aiux550-loading-plan-progress">In progress</span>
-        )}
+        <span className="aiux550-loading-plan-progress">{isDone ? 'Ready for diff' : 'In progress'}</span>
         <span className="aiux550-loading-plan-count">{queueLabel}</span>
         <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
-        {isDone && (
-          <span
-            role="button"
-            tabIndex={0}
-            className="aiux550-loading-plan-diff-link"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenDiff?.();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              event.stopPropagation();
-              onOpenDiff?.();
-            }}
-          >
-            View diff
-          </span>
-        )}
       </button>
       {expanded && (
         <div className="aiux550-loading-plan-list">
-          {flatQueueItems.map((item) => {
-            const severityClass = item.severity ? ` is-${item.severity}` : '';
-            const isFile = item.kind === 'file';
-            const meta = !isFile && [item.lineLabel, item.state === 'active' ? 'Processing now' : item.state === 'done' ? 'Done' : 'Queued']
-              .filter(Boolean)
-              .join(' · ');
+          {fileQueueItems.map((item) => {
             return (
               <button
                 type="button"
-                className={`aiux550-loading-plan-row ${item.state}${isFile ? ' is-file' : ' is-note'}`}
+                className={`aiux550-loading-plan-row ${item.state} is-file`}
                 key={item.id}
                 onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
               >
                 <span className="aiux550-loading-plan-marker">
-                  {isFile && item.icon ? (
-                    <Icon name={item.icon} size={16} />
-                  ) : item.state === 'active' ? (
-                    <Loader size={14} />
-                  ) : item.state === 'done' ? (
-                    <Icon name="general/checkmark" size={16} />
-                  ) : null}
+                  <Icon name={item.icon} size={16} />
                 </span>
                 <span className="aiux550-loading-plan-note">
                   <span className="aiux550-loading-plan-text">{item.text}</span>
-                  {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
                 </span>
-                {item.severity && (
-                  <span className={`spec-done-status-severity${severityClass}`}>{item.severity}</span>
-                )}
                 <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
-                  {isFile ? item.rightLabel : item.state === 'active' ? 'Reviewing' : item.state === 'done' ? 'Done' : 'Queued'}
+                  {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
                 </span>
-                <Icon name="general/more" size={16} className="aiux550-loading-plan-more" />
               </button>
             );
           })}
@@ -16417,6 +16342,7 @@ function AiChatTabView({
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
+  const shouldShowAgentRunPlan = agentRun?.kind === 'review' && isAgentRunProcessing;
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
     userPrompt: fallbackTitle,
@@ -16760,6 +16686,14 @@ function AiChatTabView({
               <Icon name="general/chevronDown" size={16} />
             </button>
           </div>
+        )}
+        {shouldShowAgentRunPlan && (
+          <AgentRunLoadingPlan
+            notes={agentRun?.notes}
+            status={agentRun?.status}
+            kind={agentRun?.kind}
+            onOpenTarget={onOpenReviewTarget}
+          />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {!isAgentRunProcessing && editorComposerAttachments.length > 0 && (

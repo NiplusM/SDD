@@ -15084,6 +15084,53 @@ button.aiux543-answer-change-card:focus-visible {
   font-weight: 650;
 }
 
+.aiux550-review-file-queue {
+  padding: 8px 12px 10px;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-list {
+  max-height: 150px;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row {
+  min-height: 30px;
+  padding: 3px 4px;
+  background: transparent;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row.active {
+  background: transparent;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-marker::before {
+  display: none;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-marker > .icon,
+.aiux550-review-file-queue .aiux550-loading-plan-marker > svg {
+  width: 16px;
+  height: 16px;
+  color: #a9adb6;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row-action {
+  color: #9ca0a8;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row-action.is-active {
+  color: #8fb1ff;
+}
+
+.aiux550-review-file-queue .aiux550-loading-plan-row-action.is-done {
+  color: #7fb98d;
+}
+
 /* File-grouped comments shown while the agent works. Review runs and AI Note
    processing runs use this same structure: file header + comment body rows. */
 .aiux550-agent-comment-tree {
