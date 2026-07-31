@@ -16388,7 +16388,7 @@ function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null
             ))}
           </div>
         )}
-        <p className="aiux550-review-summary-decision-copy">Accept to apply all suggested changes, or reject and tell Codex what to do differently.</p>
+        <p className="aiux550-review-summary-decision-copy">Accept to apply all suggested changes, or reject this review.</p>
       </div>
       <div className="aiux550-review-summary-choices">
         <button type="button" className="aiux550-review-summary-choice is-accept" onClick={onAccept ?? undefined}>
@@ -16398,7 +16398,7 @@ function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null
         </button>
         <button type="button" className="aiux550-review-summary-choice" onClick={onReject ?? undefined}>
           <span className="aiux550-review-summary-reject-icon" aria-hidden="true" />
-          <span>No, and tell Codex what to do differently</span>
+          <span>No, reject this review</span>
           <span className="aiux550-review-summary-key">⌘2</span>
         </button>
       </div>
