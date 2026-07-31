@@ -4069,6 +4069,34 @@ function mergeDiffCommentsFromSessions(sessionCommentsByChatId = {}) {
   }, {});
 }
 
+function removeStoredDiffCommentsPayload(commentState = {}, removedState = {}) {
+  const currentComments = normalizeStoredDiffCommentsState(commentState);
+  const removedComments = normalizeStoredDiffCommentsState(removedState);
+  if (Object.keys(removedComments).length === 0) return currentComments;
+
+  const commentKey = (comment) => [
+    getStoredCommentText(comment).trim().toLowerCase(),
+    comment && typeof comment === 'object' ? String(comment.author ?? '') : '',
+  ].join('\u0000');
+
+  return Object.entries(currentComments).reduce((nextState, [rowId, comments]) => {
+    const removalCounts = (removedComments[rowId] ?? []).reduce((counts, comment) => {
+      const key = commentKey(comment);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return counts;
+    }, new Map());
+    const remainingComments = comments.filter((comment) => {
+      const key = commentKey(comment);
+      const remainingCount = removalCounts.get(key) ?? 0;
+      if (remainingCount <= 0) return true;
+      removalCounts.set(key, remainingCount - 1);
+      return false;
+    });
+    if (remainingComments.length > 0) nextState[rowId] = remainingComments;
+    return nextState;
+  }, {});
+}
+
 function getCommentsForCommentTarget(commentEntries = [], target) {
   const normalizedTarget = normalizeCommentTarget(target);
   if (!normalizedTarget) return [];
@@ -22773,6 +22801,7 @@ export default function App() {
       isSddDocument: true,
       isSddCommentAttachment: commentCount > 0,
       sddCommentEntries: commentEntries,
+      sddRelatedCommentIssues: relatedCommentIssues,
     };
   }, [activeRelatedDiffCommentIssues, currentAgentTaskLabel, getCommentEntriesForTaskTab, ideTabs, resolveSpecStatusSourceTabId, visibleEditorStateTabId]);
   const getSpecStatusChatTitle = useCallback((status, tabId = null) => {
@@ -24530,6 +24559,7 @@ export default function App() {
           isSddDocument: true,
           isSddCommentAttachment: commentCount > 0,
           sddCommentEntries: nextDocumentEntries,
+          sddRelatedCommentIssues: [],
         });
       }
       // No shortcut hint here: document comments are not the diff flow it teaches.
@@ -24907,27 +24937,44 @@ export default function App() {
         const { [targetChatId]: _removed, ...rest } = prev;
         return rest;
       });
+      setChatSelectionCommentRequest((prev) => (
+        prev?.chatId === targetChatId ? null : prev
+      ));
+      setChatSelectionCommentValue('');
       return;
     }
 
     if (attachment.isSddDocument) {
       const sourceDocumentTabId = getSourceTabIdFromSddAttachment(attachment);
       const removedEntries = normalizeSpecVersionCommentEntries(attachment.sddCommentEntries);
-      if (!sourceDocumentTabId || removedEntries.length === 0) return;
+      const removedRelatedIssues = Array.isArray(attachment.sddRelatedCommentIssues)
+        ? attachment.sddRelatedCommentIssues
+        : [];
+      if (!sourceDocumentTabId) return;
 
       const removedEntryIds = new Set(removedEntries.map((entry) => entry.id).filter(Boolean));
-      const sourceRowsByTabId = removedEntries.reduce((rowsByTabId, entry) => {
+      const sourceCommentsByTabId = removedEntries.reduce((commentsByTabId, entry) => {
         const navigationTabId = typeof entry.sourceNavigationTabId === 'string' && entry.sourceNavigationTabId.length > 0
           ? entry.sourceNavigationTabId
           : null;
-        const rowIds = Object.keys(normalizeStoredDiffCommentsState(entry.diffComments));
-        if (!navigationTabId || rowIds.length === 0) return rowsByTabId;
-
-        const tabRows = rowsByTabId[navigationTabId] ?? new Set();
-        rowIds.forEach((rowId) => tabRows.add(rowId));
-        rowsByTabId[navigationTabId] = tabRows;
-        return rowsByTabId;
+        const diffComments = normalizeStoredDiffCommentsState(entry.diffComments);
+        if (!navigationTabId || Object.keys(diffComments).length === 0) return commentsByTabId;
+        commentsByTabId[navigationTabId] = mergeStoredDiffCommentsStates(
+          commentsByTabId[navigationTabId],
+          diffComments,
+        );
+        return commentsByTabId;
       }, {});
+      removedRelatedIssues.forEach((issue) => {
+        const navigationTabId = typeof issue?.navigationTabId === 'string' ? issue.navigationTabId : '';
+        const navigationRowId = typeof issue?.navigationRowId === 'string' ? issue.navigationRowId : '';
+        const text = typeof issue?.label === 'string' ? issue.label.trim() : '';
+        if (!navigationTabId || !navigationRowId || !text) return;
+        sourceCommentsByTabId[navigationTabId] = mergeStoredDiffCommentsStates(
+          sourceCommentsByTabId[navigationTabId],
+          { [navigationRowId]: [{ text, lineLabel: getCommentIssueLineLabel(issue) }] },
+        );
+      });
       const removeCommentEntries = (commentEntries = []) => (
         normalizeSpecVersionCommentEntries(commentEntries).filter((entry) => !removedEntryIds.has(entry.id))
       );
@@ -24958,27 +25005,39 @@ export default function App() {
         setAgentTaskCommentEntries((prev) => removeCommentEntries(prev));
       }
 
-      if (Object.keys(sourceRowsByTabId).length > 0) {
+      if (Object.keys(sourceCommentsByTabId).length > 0) {
         setIdeTabContents((prev) => {
           let didChange = false;
           const next = { ...prev };
 
-          Object.entries(sourceRowsByTabId).forEach(([tabId, rowIds]) => {
+          Object.entries(sourceCommentsByTabId).forEach(([tabId, removedComments]) => {
             const existing = next[tabId];
             if (!existing) return;
 
             const previousDocumentComments = normalizeStoredDiffCommentsState(existing.documentDiffComments);
-            const remainingDocumentComments = Object.entries(previousDocumentComments).reduce((remaining, [rowId, comments]) => {
-              if (!rowIds.has(rowId)) {
-                remaining[rowId] = comments;
+            const remainingDocumentComments = removeStoredDiffCommentsPayload(previousDocumentComments, removedComments);
+            const previousSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+            const remainingSessions = Object.entries(previousSessions).reduce((sessions, [chatId, session]) => {
+              const remainingComments = removeStoredDiffCommentsPayload(session.comments, removedComments);
+              if (Object.keys(remainingComments).length > 0) {
+                sessions[chatId] = { ...session, comments: remainingComments };
               }
-              return remaining;
+              return sessions;
             }, {});
+            const remainingInitialComments = Object.keys(remainingSessions).length > 0
+              ? mergeDiffCommentsFromSessions(remainingSessions)
+              : removeStoredDiffCommentsPayload(existing.initialDiffComments, removedComments);
 
-            if (JSON.stringify(previousDocumentComments) === JSON.stringify(remainingDocumentComments)) return;
+            if (
+              JSON.stringify(previousDocumentComments) === JSON.stringify(remainingDocumentComments)
+              && JSON.stringify(previousSessions) === JSON.stringify(remainingSessions)
+              && JSON.stringify(normalizeStoredDiffCommentsState(existing.initialDiffComments)) === JSON.stringify(remainingInitialComments)
+            ) return;
 
             next[tabId] = {
               ...existing,
+              initialDiffComments: remainingInitialComments,
+              diffSessionCommentsByChatId: remainingSessions,
               documentDiffComments: remainingDocumentComments,
               documentCommentSourceTabId: Object.keys(remainingDocumentComments).length > 0
                 ? existing.documentCommentSourceTabId
@@ -24989,35 +25048,46 @@ export default function App() {
 
           return didChange ? next : prev;
         });
+
+        Object.entries(sourceCommentsByTabId).forEach(([tabId, removedComments]) => {
+          const removedRowIds = new Set(Object.keys(normalizeStoredDiffCommentsState(removedComments)));
+          setPendingDiffCommentRowsByTabId((prev) => {
+            const currentRows = prev[tabId] ?? [];
+            const remainingRows = currentRows.filter((rowId) => !removedRowIds.has(rowId));
+            if (remainingRows.length === currentRows.length) return prev;
+            const next = { ...prev };
+            if (remainingRows.length > 0) next[tabId] = remainingRows;
+            else delete next[tabId];
+            return next;
+          });
+          setPendingDiffCommentSnapshotsByTabId((prev) => {
+            if (!prev[tabId]) return prev;
+            const remaining = removeStoredDiffCommentsPayload(prev[tabId], removedComments);
+            const next = { ...prev };
+            if (Object.keys(remaining).length > 0) next[tabId] = remaining;
+            else delete next[tabId];
+            return next;
+          });
+          setPendingDocumentDiffCommentSnapshotsByTabId((prev) => {
+            if (!prev[tabId]) return prev;
+            const remaining = removeStoredDiffCommentsPayload(prev[tabId], removedComments);
+            const next = { ...prev };
+            if (Object.keys(remaining).length > 0) next[tabId] = remaining;
+            else delete next[tabId];
+            return next;
+          });
+        });
       }
 
       setAiChatDraftSessionsById((prev) => {
         const existingSession = prev[targetChatId] ?? getAiChatScenarioById(targetChatId);
         if (!existingSession || !Array.isArray(existingSession.attachments)) return prev;
 
-        let didChange = false;
-        const nextAttachments = existingSession.attachments
-          .map((item) => {
-            const isSameDocumentAttachment =
-              item?.isSddDocument
-              && (
-                item.sourceTabId === sourceDocumentTabId
-                || item.id === attachment.id
-              );
-            if (!isSameDocumentAttachment) return item;
-
-            const nextCommentEntries = removeCommentEntries(item.sddCommentEntries ?? []);
-            didChange = true;
-            return {
-              ...item,
-              commentCount: getAggregatedCommentIssueCount(nextCommentEntries),
-              isSddCommentAttachment: nextCommentEntries.length > 0,
-              sddCommentEntries: nextCommentEntries,
-            };
-          })
-          .filter((item) => !(item?.isSddDocument && item.sourceTabId === sourceDocumentTabId && item.isSddCommentAttachment === false));
-
-        if (!didChange) return prev;
+        const nextAttachments = existingSession.attachments.filter((item) => !(
+          item?.isSddDocument
+          && (item.sourceTabId === sourceDocumentTabId || item.id === attachment.id)
+        ));
+        if (nextAttachments.length === existingSession.attachments.length) return prev;
 
         return {
           ...prev,
@@ -25040,8 +25110,23 @@ export default function App() {
     if (!diffTabId) return;
 
     const diffTabContent = ideTabContents[diffTabId];
+    const removedDiffComments = normalizeStoredDiffCommentsState(attachment.diffComments);
     const diffSessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(diffTabContent?.diffSessionCommentsByChatId);
-    const { [targetChatId]: _removedSessionForSync, ...remainingSessionCommentsForSync } = diffSessionCommentsByChatId;
+    const remainingSessionCommentsForSync = { ...diffSessionCommentsByChatId };
+    const targetSessionForSync = remainingSessionCommentsForSync[targetChatId];
+    if (targetSessionForSync) {
+      const remainingTargetComments = Object.keys(removedDiffComments).length > 0
+        ? removeStoredDiffCommentsPayload(targetSessionForSync.comments, removedDiffComments)
+        : {};
+      if (Object.keys(remainingTargetComments).length > 0) {
+        remainingSessionCommentsForSync[targetChatId] = {
+          ...targetSessionForSync,
+          comments: remainingTargetComments,
+        };
+      } else {
+        delete remainingSessionCommentsForSync[targetChatId];
+      }
+    }
     const remainingDiffCommentsForTask = mergeDiffCommentsFromSessions(remainingSessionCommentsForSync);
     const diffSourceTabId = diffTabContent?.diffSourceTabId
       ?? attachment.diffRequest?.source?.tabId
@@ -25054,8 +25139,21 @@ export default function App() {
       const existing = prev[diffTabId];
       if (!existing) return prev;
       const previousSessionComments = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
-      const { [targetChatId]: _removedSession, ...remainingSessionComments } = previousSessionComments;
-      const nextMergedDiffComments = mergeDiffCommentsFromSessions(remainingSessionComments);
+      const remainingSessionComments = { ...previousSessionComments };
+      const targetSession = remainingSessionComments[targetChatId];
+      if (targetSession) {
+        const remainingTargetComments = Object.keys(removedDiffComments).length > 0
+          ? removeStoredDiffCommentsPayload(targetSession.comments, removedDiffComments)
+          : {};
+        if (Object.keys(remainingTargetComments).length > 0) {
+          remainingSessionComments[targetChatId] = { ...targetSession, comments: remainingTargetComments };
+        } else {
+          delete remainingSessionComments[targetChatId];
+        }
+      }
+      const nextMergedDiffComments = Object.keys(remainingSessionComments).length > 0
+        ? mergeDiffCommentsFromSessions(remainingSessionComments)
+        : removeStoredDiffCommentsPayload(existing.initialDiffComments, removedDiffComments);
 
       return {
         ...prev,
@@ -25067,6 +25165,35 @@ export default function App() {
         },
       };
     });
+
+    const removedDiffRowIds = new Set(Object.keys(removedDiffComments));
+    if (removedDiffRowIds.size > 0) {
+      setPendingDiffCommentRowsByTabId((prev) => {
+        const currentRows = prev[diffTabId] ?? [];
+        const remainingRows = currentRows.filter((rowId) => !removedDiffRowIds.has(rowId));
+        if (remainingRows.length === currentRows.length) return prev;
+        const next = { ...prev };
+        if (remainingRows.length > 0) next[diffTabId] = remainingRows;
+        else delete next[diffTabId];
+        return next;
+      });
+      setPendingDiffCommentSnapshotsByTabId((prev) => {
+        if (!prev[diffTabId]) return prev;
+        const remaining = removeStoredDiffCommentsPayload(prev[diffTabId], removedDiffComments);
+        const next = { ...prev };
+        if (Object.keys(remaining).length > 0) next[diffTabId] = remaining;
+        else delete next[diffTabId];
+        return next;
+      });
+      setPendingDocumentDiffCommentSnapshotsByTabId((prev) => {
+        if (!prev[diffTabId]) return prev;
+        const remaining = removeStoredDiffCommentsPayload(prev[diffTabId], removedDiffComments);
+        const next = { ...prev };
+        if (Object.keys(remaining).length > 0) next[diffTabId] = remaining;
+        else delete next[diffTabId];
+        return next;
+      });
+    }
 
     setAiChatComposerDiffTabByChatId((prev) => {
       if (prev[targetChatId] !== diffTabId) {
