@@ -14951,13 +14951,23 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-loading-plan-header {
+  all: unset;
   display: flex;
   width: 100%;
   height: 24px;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  cursor: default;
+  cursor: pointer;
+}
+
+.aiux550-loading-plan-chevron {
+  color: #8e939d;
+  transition: transform 0.12s ease;
+}
+
+.aiux550-loading-plan-chevron.is-expanded {
+  transform: rotate(90deg);
 }
 
 .aiux550-loading-plan-header > .icon,
@@ -15025,11 +15035,26 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-loading-plan-row {
+  all: unset;
   display: flex;
+  width: calc(100% + 8px);
   min-width: 0;
   align-items: flex-start;
   gap: 8px;
-  padding: 4px 0;
+  margin: 0 -4px;
+  padding: 4px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  cursor: pointer;
+  animation: aiux550-review-row-in 0.18s ease-out;
+}
+
+.aiux550-loading-plan-row:hover {
+  background: var(--selection-bg-hovered, rgba(255, 255, 255, 0.06));
+}
+
+.aiux550-loading-plan-row.active {
+  background: rgba(84, 138, 247, 0.08);
 }
 
 /* File-grouped comments shown while the agent works. Review runs and AI Note
@@ -15286,6 +15311,10 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-loading-plan-stat.is-done {
   color: #6db083;
+}
+
+.aiux550-loading-plan-stat.is-active {
+  color: #7ca7ff;
 }
 
 .aiux550-loading-plan-stat-marker {

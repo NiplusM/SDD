@@ -16150,6 +16150,7 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
   const doneCount = items.filter((note) => note.state === 'done').length;
   const isDone = status === 'done';
   const isReview = kind === 'review';
+  const [expanded, setExpanded] = useState(() => !isDone);
 
   const displayItems = items.length > 0
     ? items
@@ -16183,13 +16184,25 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
   const headerCount = total > 0
     ? `${fileGroups.length} file${fileGroups.length === 1 ? '' : 's'}, ${total} comment${total === 1 ? '' : 's'}${severitySummary ? `: ${severitySummary}` : ''}`
     : 'Reviewing comments…';
+  const visibleActiveCount = displayItems.filter((note) => (note.state ?? 'pending') === 'active').length;
+  const queueLabel = isDone
+    ? headerCount
+    : total > 0
+      ? `${Math.max(visibleActiveCount, 1)} processing · ${Math.max(total - doneCount - Math.max(visibleActiveCount, 1), 0)} queued`
+      : 'Waiting…';
 
-  // Single, non-expandable summary row above the composer. While processing we
-  // show a loader + "In progress"; once done we show a status icon, the gray
-  // review summary, and a right-aligned link to the diff (wired up later).
+  // Expandable queue above the composer. While processing it shows which files
+  // and comments are being worked through; once done it stays collapsible and
+  // exposes the same resolved queue for review context.
   return (
-    <section className="aiux550-loading-plan" aria-label={isReview ? 'AI Review comments' : 'AI Review checklist'}>
-      <div className="aiux550-loading-plan-header is-static">
+    <section className={`aiux550-loading-plan${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review comments' : 'AI Review checklist'}>
+      <button
+        type="button"
+        className="aiux550-loading-plan-header"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
         {isDone ? (
           <Icon name="general/balloon" size={16} className="aiux550-loading-plan-status-icon" />
         ) : (
@@ -16207,16 +16220,98 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         ) : (
           <span className="aiux550-loading-plan-progress">In progress</span>
         )}
+        <span className="aiux550-loading-plan-count">{queueLabel}</span>
         {isDone && (
-          <button
-            type="button"
+          <span
+            role="button"
+            tabIndex={0}
             className="aiux550-loading-plan-diff-link"
-            onClick={onOpenDiff ?? undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenDiff?.();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenDiff?.();
+            }}
           >
             View diff
-          </button>
+          </span>
         )}
-      </div>
+      </button>
+      {expanded && (
+        <div className="aiux550-loading-plan-list">
+          {fileGroups.map((group) => {
+            const groupDone = group.notes.filter((note) => note.state === 'done').length;
+            const groupActive = group.notes.filter((note) => note.state === 'active').length;
+            const groupQueued = group.notes.length - groupDone - groupActive;
+            const fileName = group.file.replace(/^diff\s+/iu, '');
+            return (
+              <div className="aiux550-loading-plan-file" key={group.file}>
+                <div className="aiux550-loading-plan-file-head">
+                  <Icon name={group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName)} size={16} />
+                  <span className="aiux550-loading-plan-file-name">{fileName}</span>
+                </div>
+                <div className="aiux550-loading-plan-file-stats">
+                  {groupActive > 0 && (
+                    <span className="aiux550-loading-plan-stat is-active">
+                      <span className="aiux550-loading-plan-stat-marker"><Loader size={14} /></span>
+                      {groupActive} processing
+                    </span>
+                  )}
+                  {groupQueued > 0 && (
+                    <span className="aiux550-loading-plan-stat is-pending">
+                      <span className="aiux550-loading-plan-stat-marker" aria-hidden="true" />
+                      {groupQueued} queued
+                    </span>
+                  )}
+                  {groupDone > 0 && (
+                    <span className="aiux550-loading-plan-stat is-done">
+                      <span className="aiux550-loading-plan-stat-marker"><Icon name="general/checkmark" size={14} /></span>
+                      {groupDone} done
+                    </span>
+                  )}
+                </div>
+                {group.notes.map((note, index) => {
+                  const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
+                  const severity = String(note.severity || '').toLowerCase();
+                  const severityClass = severity ? ` is-${severity}` : '';
+                  const meta = [note.lineLabel, state === 'active' ? 'Processing now' : state === 'done' ? 'Done' : 'Queued']
+                    .filter(Boolean)
+                    .join(' · ');
+                  return (
+                    <button
+                      type="button"
+                      className={`aiux550-loading-plan-row ${state}`}
+                      key={note.id ?? `${group.file}-${index}`}
+                      onClick={() => note.openTarget && onOpenTarget?.(note.openTarget)}
+                    >
+                      <span className="aiux550-loading-plan-marker">
+                        {state === 'active' ? <Loader size={14} /> : state === 'done' ? <Icon name="general/checkmark" size={16} /> : null}
+                      </span>
+                      <span className="aiux550-loading-plan-note">
+                        <span className="aiux550-loading-plan-text">{note.text}</span>
+                        {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
+                      </span>
+                      {severity && !note.resolved && (
+                        <span className={`spec-done-status-severity${severityClass}`}>{severity}</span>
+                      )}
+                      {state === 'done' && (
+                        <span className="spec-done-status-solved">
+                          <Icon name="general/checkmark" size={12} />
+                          Done
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
