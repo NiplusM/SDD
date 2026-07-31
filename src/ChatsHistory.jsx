@@ -1008,7 +1008,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         // While processing, a loader sits in the action column; once done it shows
         // a green "Done" badge and the "View diff" link. The full file / comment
         // breakdown lives in the composer card and behind "View diff".
-        const isAiNotesDone = isAiNotes && section.status === 'done';
+        const isAiNotesDone = isAiNotes && ['done', 'completed', 'dismissed'].includes(section.status);
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
             <div

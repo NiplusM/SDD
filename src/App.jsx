@@ -19982,12 +19982,19 @@ export default function App() {
     });
   }, []);
 
-  const dropReviewRun = useCallback((chatId) => {
+  const finalizeReviewRun = useCallback((chatId, status = 'completed') => {
     if (!chatId) return;
     setAgentRunByChatId((prev) => {
-      if (!prev[chatId]) return prev;
-      const { [chatId]: _removed, ...rest } = prev;
-      return rest;
+      const run = prev[chatId];
+      if (!run || run.kind !== 'review') return prev;
+      return {
+        ...prev,
+        [chatId]: {
+          ...run,
+          status,
+          completedAt: Date.now(),
+        },
+      };
     });
   }, []);
 
@@ -20086,17 +20093,17 @@ export default function App() {
     if (chatId && count > 0) {
       streamAssistantMessageRef.current?.(chatId, `Review completed — saved the current state of ${count} comment${count === 1 ? '' : 's'}.`);
     }
-    dropReviewRun(chatId);
+    finalizeReviewRun(chatId, 'completed');
     closeReviewDiffTab();
-  }, [agentRunByChatId, dropReviewRun, closeReviewDiffTab]);
+  }, [agentRunByChatId, finalizeReviewRun, closeReviewDiffTab]);
 
   // The close icon dismisses every remaining open finding, preserves that state
   // in the files, ends the active run and closes the review surface.
   const cancelReview = useCallback((chatId) => {
     dismissReviewComments(reviewNoteTextsFor(chatId));
-    dropReviewRun(chatId);
+    finalizeReviewRun(chatId, 'dismissed');
     closeReviewDiffTab();
-  }, [agentRunByChatId, dismissReviewComments, dropReviewRun, closeReviewDiffTab]);
+  }, [agentRunByChatId, dismissReviewComments, finalizeReviewRun, closeReviewDiffTab]);
 
   const runTerminalLineAnimation = useCallback((lines, options = {}) => {
     const { baseLines = [], onComplete } = options;
