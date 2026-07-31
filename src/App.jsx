@@ -16458,6 +16458,14 @@ function AiChatTabView({
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
+  const sentMessageScrollKey = sentMessages
+    .map((message) => [
+      message.id,
+      message.kind ?? '',
+      message.streaming ? 'streaming' : 'done',
+      message.reviewSummary?.commentCount ?? '',
+    ].join(':'))
+    .join('|');
   const isSpecChat = Boolean(scenario?.isSpecChat || String(chatId).startsWith('spec-chat-'));
   const scenarioAttachments = Array.isArray(scenario?.attachments) ? scenario.attachments : [];
   // Chat context is represented only by composer/message attachments. Keep the
@@ -16484,8 +16492,16 @@ function AiChatTabView({
     if (!scrollElement) return;
     // Opening a chat shows it from the top (prompt → answer → changes → result);
     // only jump to the latest once the user has sent a message.
-    scrollElement.scrollTop = sentMessages.length > 0 ? scrollElement.scrollHeight : 0;
-  }, [chatId, sentMessages.length]);
+    const targetScrollTop = sentMessages.length > 0 ? scrollElement.scrollHeight : 0;
+    scrollElement.scrollTop = targetScrollTop;
+    if (sentMessages.length > 0) {
+      requestAnimationFrame(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      });
+    }
+  }, [chatId, sentMessages.length, sentMessageScrollKey]);
 
   useEffect(() => {
     const targetMessageId = scrollTarget?.chatId === chatId ? scrollTarget.messageId : null;

@@ -10217,7 +10217,7 @@ body {
   flex-direction: column;
   gap: 12px;
   overflow: hidden auto;
-  padding: 8px 24px 18px;
+  padding: 8px 24px 36px;
   position: relative;
 }
 
@@ -15470,7 +15470,7 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux550-review-summary-message {
   box-sizing: border-box;
   width: min(750px, 100%);
-  overflow: hidden;
+  overflow: visible;
   margin: 10px auto 12px;
   border: 1px solid #383c43;
   border-radius: 10px;
