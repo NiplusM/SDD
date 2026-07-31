@@ -15514,6 +15514,81 @@ button.aiux543-answer-change-card:focus-visible {
   font: 500 14px/22px Inter, system-ui, sans-serif;
 }
 
+.aiux550-review-summary-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.aiux550-review-summary-file {
+  overflow: hidden;
+  border: 1px solid #30343b;
+  border-radius: 8px;
+  background: #202226;
+}
+
+.aiux550-review-summary-file-head {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid #2d3036;
+}
+
+.aiux550-review-summary-file-head > .icon,
+.aiux550-review-summary-file-head > svg {
+  flex: 0 0 16px;
+  color: #aeb3bd;
+}
+
+.aiux550-review-summary-file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #dfe1e5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 650 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-summary-file-kind {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(84, 138, 247, 0.14);
+  color: #8fb1ff;
+  font: 650 11px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-summary-file-head .spec-done-status-severity {
+  margin-left: auto;
+}
+
+.aiux550-review-summary-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px 10px 28px;
+  color: #aeb3bd;
+  font: 500 13px/19px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-summary-issue-list li::marker {
+  color: #6f737a;
+}
+
+.aiux550-review-summary-line {
+  margin-right: 6px;
+  color: #7f838c;
+  white-space: nowrap;
+}
+
+.aiux550-review-summary-decision-copy {
+  margin-top: 2px !important;
+}
+
 .aiux550-review-summary-choices {
   display: flex;
   flex-direction: column;

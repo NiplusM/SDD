@@ -16267,12 +16267,60 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
   );
 }
 
+const REVIEW_SUMMARY_SEVERITY_ORDER = { critical: 3, warning: 2, info: 1 };
+
+function normalizeReviewSummarySeverity(severity = '') {
+  const normalized = String(severity || '').trim().toLowerCase();
+  return normalized in REVIEW_SUMMARY_SEVERITY_ORDER ? normalized : 'info';
+}
+
+function formatReviewSummaryFileName(sourceLabel = '') {
+  return String(sourceLabel || 'File').replace(/^diff\s+/iu, '').trim() || 'File';
+}
+
+function buildReviewSummaryFiles(summary = null) {
+  const findings = Array.isArray(summary?.findings) ? summary.findings : [];
+  const byFile = new Map();
+
+  findings.forEach((finding) => {
+    const sourceLabel = String(finding?.sourceLabel || 'File').trim() || 'File';
+    const severity = normalizeReviewSummarySeverity(finding?.severity);
+    if (!byFile.has(sourceLabel)) {
+      byFile.set(sourceLabel, {
+        sourceLabel,
+        fileName: formatReviewSummaryFileName(sourceLabel),
+        isDiff: /^diff\s+/iu.test(sourceLabel),
+        severity,
+        findings: [],
+      });
+    }
+
+    const group = byFile.get(sourceLabel);
+    if (REVIEW_SUMMARY_SEVERITY_ORDER[severity] > REVIEW_SUMMARY_SEVERITY_ORDER[group.severity]) {
+      group.severity = severity;
+    }
+    group.findings.push({
+      text: String(finding?.text || '').trim(),
+      lineLabel: normalizeAgentRunLineLabel(finding?.lineLabel),
+      severity,
+    });
+  });
+
+  return Array.from(byFile.values()).sort((a, b) => (
+    REVIEW_SUMMARY_SEVERITY_ORDER[b.severity] - REVIEW_SUMMARY_SEVERITY_ORDER[a.severity]
+    || a.fileName.localeCompare(b.fileName)
+  ));
+}
+
 function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null, onOpenReview = null }) {
   const fileCount = Number.isFinite(summary?.fileCount) ? summary.fileCount : 0;
   const commentCount = Number.isFinite(summary?.commentCount) ? summary.commentCount : 0;
   const severitySummary = typeof summary?.severitySummary === 'string' ? summary.severitySummary : '';
+  const summaryFiles = buildReviewSummaryFiles(summary);
+  const criticalCount = summaryFiles.filter((file) => file.severity === 'critical').length;
+  const warningCount = summaryFiles.filter((file) => file.severity === 'warning').length;
   const brief = commentCount > 0
-    ? `Found ${commentCount} review comment${commentCount === 1 ? '' : 's'} across ${fileCount || 1} file${fileCount === 1 ? '' : 's'}${severitySummary ? ` (${severitySummary})` : ''}.`
+    ? `The review found ${commentCount} concrete issue${commentCount === 1 ? '' : 's'} across ${fileCount || 1} file${fileCount === 1 ? '' : 's'}${severitySummary ? ` (${severitySummary})` : ''}. ${criticalCount > 0 ? `${criticalCount} file${criticalCount === 1 ? '' : 's'} contain critical lifecycle or validation risks` : 'No critical files were found'}${warningCount > 0 ? `, and ${warningCount} file${warningCount === 1 ? '' : 's'} need cleanup before applying` : ''}.`
     : 'No blocking review comments were found.';
 
   return (
@@ -16292,7 +16340,30 @@ function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null
       <div className="aiux550-review-summary-body">
         <h3>AI Review summary: {fileCount || 1} file{fileCount === 1 ? '' : 's'} checked</h3>
         <h4>Brief summary</h4>
-        <p>{brief} Accept to apply all suggested changes, or reject and tell Codex what to do differently.</p>
+        <p>{brief}</p>
+        {summaryFiles.length > 0 && (
+          <div className="aiux550-review-summary-files" aria-label="Reviewed files and issues">
+            {summaryFiles.map((file) => (
+              <section className="aiux550-review-summary-file" key={file.sourceLabel}>
+                <div className="aiux550-review-summary-file-head">
+                  <Icon name={file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.fileName)} size={16} />
+                  <span className="aiux550-review-summary-file-name">{file.fileName}</span>
+                  {file.isDiff && <span className="aiux550-review-summary-file-kind">Diff</span>}
+                  <span className={`spec-done-status-severity is-${file.severity}`}>{file.severity}</span>
+                </div>
+                <ul className="aiux550-review-summary-issue-list">
+                  {file.findings.map((finding, index) => (
+                    <li key={`${file.sourceLabel}-${index}`}>
+                      {finding.lineLabel && <span className="aiux550-review-summary-line">{finding.lineLabel}</span>}
+                      <span>{finding.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+        <p className="aiux550-review-summary-decision-copy">Accept to apply all suggested changes, or reject and tell Codex what to do differently.</p>
       </div>
       <div className="aiux550-review-summary-choices">
         <button type="button" className="aiux550-review-summary-choice is-accept" onClick={onAccept ?? undefined}>
@@ -25721,6 +25792,12 @@ export default function App() {
                       fileCount: summaryFileCount,
                       commentCount: reviewNotes.length,
                       severitySummary: summarySeverityText,
+                      findings: reviewNotes.map((note) => ({
+                        text: note?.text || '',
+                        sourceLabel: note?.sourceLabel || '',
+                        lineLabel: note?.lineLabel || '',
+                        severity: note?.severity || '',
+                      })),
                     },
                   }
                 : message
