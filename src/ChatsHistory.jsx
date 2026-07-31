@@ -26,6 +26,7 @@ function ChatsHistoryToolWindow({
   ctx,
   activeChatId = null,
   agentRunByChatId = {},
+  chatRows = [],
   onOpenNewSession = null,
   onOpenChatInTab = null,
   onOpenSpecChat = null,
@@ -44,7 +45,7 @@ function ChatsHistoryToolWindow({
   // Selection follows the active chat editor tab. When no chat tab is active
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;
-  const flatRows = useMemo(() => buildAiux550HistoryRows(), []);
+  const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
 
   // When an agent run starts for a chat, auto-reveal its node and the new
   // "AI Notes" folder so the comments are visible the moment processing begins.
@@ -409,8 +410,12 @@ function withAiux550CollapsedChildren(row) {
   return { ...row, children: buildAiux550HistoryChildren(row.id, row.diff) };
 }
 
-function buildAiux550HistoryRows() {
-  return [
+function buildAiux550HistoryRows(dynamicRows = []) {
+  const normalizedDynamicRows = Array.isArray(dynamicRows)
+    ? dynamicRows.filter((row) => row?.id && row.id !== AIUX_NEW_SESSION_TAB_ID)
+    : [];
+  const dynamicRowIds = new Set(normalizedDynamicRows.map((row) => row.id));
+  const staticRows = [
     {
       id: AIUX_NEW_SESSION_TAB_ID,
       title: 'New Agent',
@@ -418,63 +423,68 @@ function buildAiux550HistoryRows() {
       time: 'now',
       type: 'new-session',
     },
-    {
-      id: 'refactor-time-slots',
-      title: 'Refactor VisitController.java time slots',
-      agent: 'claude',
-      time: '5m',
-      diff: { added: 10, deleted: 7 },
-      children: buildAiux550HistoryChildren('refactor-time-slots', { added: 10, deleted: 7 }),
-    },
-    {
-      id: 'visit-model-attributes',
-      title: 'Review Visit.java model fields',
-      agent: 'claude',
-      time: '12m',
-      diff: { added: 6, deleted: 2 },
-      children: buildAiux550HistoryChildren('visit-model-attributes', { added: 6, deleted: 2 }),
-    },
-    {
-      id: 'request-logging',
-      title: 'Add request logging to a Java application',
-      agent: 'claude',
-      time: '2m',
-      status: 'approval',
-      diff: { added: 14, deleted: 23 },
-      children: buildAiux550HistoryChildren('request-logging', { added: 14, deleted: 23 }),
-    },
-    {
-      id: 'understand-codebase',
-      title: 'Understanding the existing Java codebase',
-      agent: 'claude',
-      time: '3m',
-      diff: { added: 5, deleted: 0 },
-      planProgress: { current: 2, total: 5 },
-      children: buildAiux550HistoryChildren('understand-codebase', { added: 5, deleted: 0 }),
-    },
-    {
-      id: 'class-three-params-green',
-      title: 'Create a class with 3 int parameters',
-      agent: 'junie',
-      cloud: true,
-      time: '22h',
-      children: buildAiux550HistoryChildren('class-three-params-green'),
-    },
-    {
-      id: 'reminders',
-      title: 'Implement reminders and notifications',
-      agent: 'claude',
-      time: '1d',
-    },
-    {
-      id: 'related-items',
-      title: 'Add ‘related items’ section',
-      agent: 'claude',
-      cloud: true,
-      time: '16d',
-    },
-    ...AIUX550_HISTORY_FALLBACK_ROWS.map(withAiux550CollapsedChildren),
+    ...normalizedDynamicRows.map(withAiux550CollapsedChildren),
+    ...[
+      {
+        id: 'refactor-time-slots',
+        title: 'Refactor VisitController.java time slots',
+        agent: 'claude',
+        time: '5m',
+        diff: { added: 10, deleted: 7 },
+        children: buildAiux550HistoryChildren('refactor-time-slots', { added: 10, deleted: 7 }),
+      },
+      {
+        id: 'visit-model-attributes',
+        title: 'Review Visit.java model fields',
+        agent: 'claude',
+        time: '12m',
+        diff: { added: 6, deleted: 2 },
+        children: buildAiux550HistoryChildren('visit-model-attributes', { added: 6, deleted: 2 }),
+      },
+      {
+        id: 'request-logging',
+        title: 'Add request logging to a Java application',
+        agent: 'claude',
+        time: '2m',
+        status: 'approval',
+        diff: { added: 14, deleted: 23 },
+        children: buildAiux550HistoryChildren('request-logging', { added: 14, deleted: 23 }),
+      },
+      {
+        id: 'understand-codebase',
+        title: 'Understanding the existing Java codebase',
+        agent: 'claude',
+        time: '3m',
+        diff: { added: 5, deleted: 0 },
+        planProgress: { current: 2, total: 5 },
+        children: buildAiux550HistoryChildren('understand-codebase', { added: 5, deleted: 0 }),
+      },
+      {
+        id: 'class-three-params-green',
+        title: 'Create a class with 3 int parameters',
+        agent: 'junie',
+        cloud: true,
+        time: '22h',
+        children: buildAiux550HistoryChildren('class-three-params-green'),
+      },
+      {
+        id: 'reminders',
+        title: 'Implement reminders and notifications',
+        agent: 'claude',
+        time: '1d',
+      },
+      {
+        id: 'related-items',
+        title: 'Add ‘related items’ section',
+        agent: 'claude',
+        cloud: true,
+        time: '16d',
+      },
+      ...AIUX550_HISTORY_FALLBACK_ROWS,
+    ].filter((row) => !dynamicRowIds.has(row.id)).map(withAiux550CollapsedChildren),
   ];
+
+  return staticRows;
 }
 
 // Spec-driven entries shown above the flat Agents list. Each spec is a `.md`

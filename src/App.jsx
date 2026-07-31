@@ -17735,6 +17735,15 @@ export default function App() {
     ],
     [aiChatDraftListItems, aiChatDraftSessionsById],
   );
+  const aiChatHistoryRows = useMemo(
+    () => aiChatDraftListItems.map((item) => ({
+      id: item.id,
+      title: item.title || 'New Chat',
+      agent: item.icon === 'codex' || item.icon === 'junie' ? item.icon : 'claude',
+      time: item.time || 'now',
+    })),
+    [aiChatDraftListItems],
+  );
   const getAiChatScenarioById = useCallback(
     (chatId) => aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'],
     [aiChatScenarios],
@@ -26576,7 +26585,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
             if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
             return defaultLeftPanelContent(id, ctx);
           }}
@@ -26887,7 +26896,7 @@ export default function App() {
 
         leftPanelContent={(id, ctx) => {
           if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} />;
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
