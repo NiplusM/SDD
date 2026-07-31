@@ -16165,9 +16165,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   );
 }
 
-function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null, onOpenReview = null }) {
+function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
   const items = Array.isArray(notes) ? notes : [];
-  const isDone = status === 'done';
   const isReview = kind === 'review';
   const [expanded, setExpanded] = useState(true);
 
@@ -16209,15 +16208,6 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
       openTarget: group.openTarget,
     };
   });
-  const activeFileCount = fileQueueItems.filter((item) => item.state === 'active').length;
-  const doneFileCount = fileQueueItems.filter((item) => item.state === 'done').length;
-  const queuedFileCount = Math.max(fileQueueItems.length - activeFileCount - doneFileCount, 0);
-  const queueLabel = isDone
-    ? `${fileQueueItems.length} file${fileQueueItems.length === 1 ? '' : 's'} ready for diff`
-    : fileQueueItems.length > 0
-      ? `${Math.max(activeFileCount, 1)} processing · ${queuedFileCount} queued`
-      : 'Waiting…';
-
   return (
     <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
       <button
@@ -16226,38 +16216,11 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        {isDone ? (
-          <Icon name="general/balloon" size={16} className="aiux550-loading-plan-status-icon" />
-        ) : (
-          <Loader size={16} className="aiux550-loading-plan-status-loader" />
-        )}
         <span className="aiux550-loading-plan-title-badge">
-          <span className="aiux550-loading-plan-title">AI Review</span>
+          <span className="aiux550-loading-plan-title">Review</span>
           <span className="aiux550-loading-plan-title-count">{fileQueueItems.length}</span>
         </span>
-        <span className="aiux550-loading-plan-progress">{isDone ? 'Ready for diff' : 'In progress'}</span>
-        <span className="aiux550-loading-plan-count">{queueLabel}</span>
         <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
-        {isDone && (
-          <span
-            role="button"
-            tabIndex={0}
-            className="aiux550-loading-plan-review-link"
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenReview?.();
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return;
-              event.preventDefault();
-              event.stopPropagation();
-              onOpenReview?.();
-            }}
-          >
-            Open review
-            <Icon name="general/openNewTab" size={14} />
-          </span>
-        )}
       </button>
       {expanded && (
         <div className="aiux550-loading-plan-list">
@@ -16802,10 +16765,8 @@ function AiChatTabView({
         {shouldShowAgentRunPlan && (
           <AgentRunLoadingPlan
             notes={agentRun?.notes}
-            status={agentRun?.status}
             kind={agentRun?.kind}
             onOpenTarget={onOpenReviewTarget}
-            onOpenReview={() => onOpenReviewDiff?.(chatId)}
           />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>

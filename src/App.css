@@ -14979,11 +14979,6 @@ button.aiux543-answer-change-card:focus-visible {
   color: #a0a3a9;
 }
 
-/* Done: the review (balloon) icon, matching the Chat History AI Review row. */
-.aiux550-loading-plan-header > .aiux550-loading-plan-status-icon {
-  color: #a0a3a9;
-}
-
 .aiux550-loading-plan-title {
   color: #dfe1e5;
   font: 650 14px/20px Inter, system-ui, sans-serif;
@@ -15004,66 +14999,6 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux550-loading-plan-title-count {
   color: #7f838c;
   font: 500 13px/20px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-count {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #6f737a;
-  font: 400 13px/18px Inter, system-ui, sans-serif;
-}
-
-/* Processing status text — a touch brighter than the done summary. */
-.aiux550-loading-plan-progress {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #a0a3a9;
-  font: 400 13px/18px Inter, system-ui, sans-serif;
-}
-
-/* Right-aligned link to the review diff (target wired up later). */
-.aiux550-loading-plan-diff-link {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #548af7;
-  font: 400 13px/18px Inter, system-ui, sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.aiux550-loading-plan-diff-link:hover {
-  text-decoration: underline;
-}
-
-.aiux550-loading-plan-review-link {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  color: #aeb3bd;
-  font: 500 12px/16px Inter, system-ui, sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.aiux550-loading-plan-review-link:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #dfe1e5;
-}
-
-.aiux550-loading-plan-review-link .icon,
-.aiux550-loading-plan-review-link svg {
-  width: 14px;
-  height: 14px;
 }
 
 .aiux550-loading-plan-list {
