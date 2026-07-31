@@ -16238,24 +16238,26 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         <span className="aiux550-loading-plan-progress">{isDone ? 'Ready for diff' : 'In progress'}</span>
         <span className="aiux550-loading-plan-count">{queueLabel}</span>
         <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
-        <span
-          role="button"
-          tabIndex={0}
-          className="aiux550-loading-plan-review-link"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenReview?.();
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            event.stopPropagation();
-            onOpenReview?.();
-          }}
-        >
-          Open review
-          <Icon name="general/openNewTab" size={14} />
-        </span>
+        {isDone && (
+          <span
+            role="button"
+            tabIndex={0}
+            className="aiux550-loading-plan-review-link"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenReview?.();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenReview?.();
+            }}
+          >
+            Open review
+            <Icon name="general/openNewTab" size={14} />
+          </span>
+        )}
       </button>
       {expanded && (
         <div className="aiux550-loading-plan-list">
