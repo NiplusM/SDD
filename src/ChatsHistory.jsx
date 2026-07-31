@@ -1009,8 +1009,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         // per-comment detail lives in the diff gutters and the Commit tool window,
         // so we don't render a file tree here (it doesn't scale to large reviews).
         // While processing, a loader sits in the action column; once done it shows
-        // a green "Done" badge and the "View diff" link. The full file / comment
-        // breakdown lives in the composer card and behind "View diff".
+        // a green "Open" badge and the "View review" link.
         const isAiNotesDone = isAiNotes && ['done', 'completed', 'dismissed'].includes(section.status);
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
@@ -1075,7 +1074,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                       onOpenReviewDiff?.(rowId);
                     }}
                   >
-                    View diff
+                    View review
                   </button>
                 ) : (
                   <Loader className="aiux550-ainotes-loader" size={16} />
