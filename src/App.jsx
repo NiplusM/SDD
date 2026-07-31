@@ -13929,7 +13929,7 @@ function AiChatFooterSelector({ icon = null, label }) {
     <button type="button" className="ai-chat-agent-select">
       {icon}
       <span>{label}</span>
-      <Icon name="general/chevronDown" size={16} />
+      <Icon name="general/chevronDown" size={16} className="ai-chat-footer-chevron" />
     </button>
   );
 }
@@ -16735,8 +16735,8 @@ function AiChatTabView({
         </div>
         <footer className="aiux543-editor-footer">
           <span className="aiux543-editor-footer-left">
-            <span>Accepts Edits <Icon name="general/chevronDown" size={16} /></span>
-            <span>Sonnet 1M · high <Icon name="general/chevronDown" size={16} /></span>
+            <span>Accepts Edits <Icon name="general/chevronDown" size={16} className="ai-chat-footer-chevron" /></span>
+            <span>Sonnet 1M · high <Icon name="general/chevronDown" size={16} className="ai-chat-footer-chevron" /></span>
           </span>
           <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
         </footer>

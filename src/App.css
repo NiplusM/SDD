@@ -8937,6 +8937,15 @@ body {
   line-height: 16px;
 }
 
+.ai-chat-footer-chevron {
+  display: block;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  transform: translateY(1px);
+}
+
 .ai-chat-add-context-separator {
   height: 1px;
   padding: 4px 0;
@@ -10811,6 +10820,12 @@ button.aiux543-answer-change-card:focus-visible {
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.aiux543-editor-footer-left > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 
