@@ -14932,8 +14932,7 @@ button.aiux543-answer-change-card:focus-visible {
   gap: 0;
 }
 
-/* "AI Notes" review checklist that butts against the top of the composer */
-.aiux550-loading-plan {
+.aiux550-loading-plan-shell {
   display: flex;
   width: min(750px, 100%);
   min-height: 0;
@@ -14941,6 +14940,35 @@ button.aiux543-answer-change-card:focus-visible {
   flex-direction: column;
   margin-right: auto;
   margin-left: auto;
+}
+
+.aiux550-loading-plan-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin: 0 0 10px;
+  color: #c7cad1;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-running-indicator {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 2px solid #626873;
+  border-top-color: #a5abb6;
+  border-radius: 50%;
+  animation: aiux543-spin 0.9s linear infinite;
+}
+
+/* "AI Notes" review checklist that butts against the top of the composer */
+.aiux550-loading-plan {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  flex-direction: column;
   margin-bottom: -1px;
   padding: 8px 12px 6px;
   border: 1px solid #33353b;

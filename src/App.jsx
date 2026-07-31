@@ -16209,44 +16209,50 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
     };
   });
   return (
-    <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
-      <button
-        type="button"
-        className="aiux550-loading-plan-header"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="aiux550-loading-plan-title-badge">
-          <span className="aiux550-loading-plan-title">Review</span>
-          <span className="aiux550-loading-plan-title-count">{fileQueueItems.length}</span>
-        </span>
-        <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
-      </button>
-      {expanded && (
-        <div className="aiux550-loading-plan-list">
-          {fileQueueItems.map((item) => {
-            return (
-              <button
-                type="button"
-                className={`aiux550-loading-plan-row ${item.state} is-file`}
-                key={item.id}
-                onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
-              >
-                <span className="aiux550-loading-plan-marker">
-                  <Icon name={item.icon} size={16} />
-                </span>
-                <span className="aiux550-loading-plan-note">
-                  <span className="aiux550-loading-plan-text">{item.text}</span>
-                </span>
-                <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
-                  {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </section>
+    <div className="aiux550-loading-plan-shell">
+      <div className="aiux550-loading-plan-running" aria-live="polite">
+        <span className="aiux550-loading-plan-running-indicator" aria-hidden="true" />
+        <span>Running…</span>
+      </div>
+      <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
+        <button
+          type="button"
+          className="aiux550-loading-plan-header"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <span className="aiux550-loading-plan-title-badge">
+            <span className="aiux550-loading-plan-title">Review</span>
+            <span className="aiux550-loading-plan-title-count">{fileQueueItems.length}</span>
+          </span>
+          <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
+        </button>
+        {expanded && (
+          <div className="aiux550-loading-plan-list">
+            {fileQueueItems.map((item) => {
+              return (
+                <button
+                  type="button"
+                  className={`aiux550-loading-plan-row ${item.state} is-file`}
+                  key={item.id}
+                  onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
+                >
+                  <span className="aiux550-loading-plan-marker">
+                    <Icon name={item.icon} size={16} />
+                  </span>
+                  <span className="aiux550-loading-plan-note">
+                    <span className="aiux550-loading-plan-text">{item.text}</span>
+                  </span>
+                  <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
+                    {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
