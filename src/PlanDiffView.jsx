@@ -1272,12 +1272,12 @@ export function DiffInlineCommentPopup({
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
-    ? submitActionOptions
-    : [
-        { id: 'default', label: primarySubmitButtonLabel },
-        { id: 'send-to-agent', label: 'Send AI Note to Agent' },
-        { id: 'send-all-to-agent', label: 'Send All AI Notes to Agent' },
-      ];
+      ? submitActionOptions
+      : [
+          { id: 'default', label: primarySubmitButtonLabel },
+          { id: 'send-to-agent', label: 'Send AI Note to Agent' },
+          // { id: 'send-all-to-agent', label: 'Send All AI Notes to Agent' },
+        ];
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
@@ -1449,6 +1449,10 @@ export function DiffInlineCommentPopup({
       targetChatId: submitAttachTarget?.attachMode === submitAttachMode ? submitAttachTarget.targetChatId : null,
       targetDocumentTabId: submitAttachTarget?.attachMode === submitAttachMode ? submitAttachTarget.targetDocumentTabId : null,
     });
+  };
+
+  const handleSendToAgentSubmit = () => {
+    handleSubmit(submitAttachMode, 'send-to-agent');
   };
 
   const handleSubmitOptionSelect = (attachMode) => {
@@ -2070,6 +2074,25 @@ export function DiffInlineCommentPopup({
                   </span>
                 </Button>
               )}
+              {!isEditing && (
+                <Button
+                  type="secondary"
+                  data-demo-id="diff-comment-submit-send-to-agent"
+                  disabled={!canSubmitComment}
+                  onClick={handleSendToAgentSubmit}
+                >
+                  Send AI Note to Agent
+                </Button>
+              )}
+              <Button
+                type="primary"
+                data-demo-id="diff-comment-submit"
+                disabled={!canSubmitComment}
+                onClick={() => handleSubmit(submitAttachMode, 'default')}
+              >
+                {primarySubmitButtonLabel}
+              </Button>
+              {/*
               {showSubmitActionMenu ? (
                 <span className={`diff-comment-primary-split${submitActionMenuRect ? ' is-open' : ''}${!canSubmitComment ? ' is-disabled' : ''}`}>
                   <button
@@ -2130,8 +2153,10 @@ export function DiffInlineCommentPopup({
                   </span>
                 </Button>
               )}
+              */}
             </div>
           </div>
+          {/*
           {showSubmitActionMenu && submitActionMenuRect && createPortal(
             <div className="theme-dark">
               <PositionedPopup triggerRect={submitActionMenuRect} onDismiss={() => setSubmitActionMenuRect(null)} gap={4}>
@@ -2152,6 +2177,7 @@ export function DiffInlineCommentPopup({
             </div>,
             document.body,
           )}
+          */}
           {canChooseSubmitAttachMode && submitOptionsRect && createPortal(
             typeof renderSubmitTargetPicker === 'function'
               ? renderSubmitTargetPicker({
