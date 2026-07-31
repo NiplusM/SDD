@@ -16345,6 +16345,10 @@ function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null
     <article className="aiux550-review-summary-message">
       <div className="aiux550-review-summary-message-head">
         <span>Accept this review?</span>
+        <span className="aiux550-review-done-badge aiux550-review-summary-status">
+          <span className="aiux550-review-done-dot" aria-hidden="true" />
+          Open
+        </span>
         <button
           type="button"
           className="aiux550-review-summary-open"

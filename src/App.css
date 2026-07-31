@@ -15506,6 +15506,14 @@ button.aiux543-answer-change-card:focus-visible {
   cursor: pointer;
 }
 
+.aiux550-review-summary-status {
+  margin-left: auto;
+}
+
+.aiux550-review-summary-status + .aiux550-review-summary-open {
+  margin-left: 4px;
+}
+
 .aiux550-review-summary-open:hover {
   background: rgba(255, 255, 255, 0.07);
   color: #d1d3d9;
