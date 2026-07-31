@@ -1735,10 +1735,6 @@ export function DiffInlineCommentPopup({
   const renderAgentResolution = (comment, fallbackIndex = 0, context = null, options = {}) => {
     const resolution = comment && typeof comment === 'object' ? comment.resolution : null;
     if (!resolution) return null;
-    const severity = typeof comment.severity === 'string' ? comment.severity : null;
-    // Severity renders as a coloured status pill — Critical (red), Warning
-    // (yellow), Info (blue). Anything else (legacy "Suggestion") is not shown.
-    const severityTone = { critical: 'is-critical', warning: 'is-warning', info: 'is-info' }[(severity || '').toLowerCase()] || null;
     const draftKey = getAgentReplyDraftKey(comment, fallbackIndex);
     const draftValue = agentReplyDrafts[draftKey] ?? '';
     const userReply = typeof comment.userReply === 'string' ? comment.userReply.trim() : '';
@@ -1764,9 +1760,6 @@ export function DiffInlineCommentPopup({
               {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
             </span>
             <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
-            {severityTone && (
-              <span className={`spec-done-status-severity ${severityTone}`}>{severity}</span>
-            )}
             {isResolved && (
               <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
             )}
@@ -4580,8 +4573,6 @@ export function PlanDiffOverlay({
 	                <Fragment key={`aside-comment-${row.id}`}>
 	                  {indexComments.map(({ comment, group }, commentIndex) => {
 	                    const text = getCommentEntryText(comment).trim();
-	                    const severity = typeof comment?.severity === 'string' ? comment.severity.trim() : '';
-	                    const severityTone = { critical: 'is-critical', warning: 'is-warning', info: 'is-info' }[severity.toLowerCase()] || '';
                     const resolved = Boolean(comment && typeof comment === 'object' && comment.resolved);
                     const resolvedKind = typeof comment?.resolvedKind === 'string' ? comment.resolvedKind : '';
                     const resolvedLabel = resolvedKind === 'applied'
@@ -4674,9 +4665,6 @@ export function PlanDiffOverlay({
 	                                          {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
 	                                        </span>
 	                                        <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
-	                                        {severityTone && !resolved && (
-	                                          <span className={`spec-done-status-severity ${severityTone}`}>{severity}</span>
-	                                        )}
                                         {resolved && (
                                           <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
                                         )}
