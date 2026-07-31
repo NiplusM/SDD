@@ -15106,6 +15106,11 @@ button.aiux543-answer-change-card:focus-visible {
   color: #a9adb6;
 }
 
+.aiux550-review-file-queue .aiux550-loading-plan-row-action {
+  color: #aeb3bd;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
 /* File-grouped comments shown while the agent works. Review runs and AI Note
    processing runs use this same structure: file header + comment body rows. */
 .aiux550-agent-comment-tree {
