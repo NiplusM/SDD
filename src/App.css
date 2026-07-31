@@ -2527,6 +2527,7 @@ body {
 }
 
 .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored {
+  padding-left: var(--spec-done-comment-popup-inline-padding);
   padding-right: var(--spec-done-comment-popup-inline-padding);
 }
 
