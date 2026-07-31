@@ -7946,10 +7946,34 @@ function getClientRectBounds(rects) {
 function getRangeViewportRect(range) {
   if (!range) return null;
 
+  const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+  if (rects.length > 0) {
+    return rects[rects.length - 1];
+  }
+
   const rect = range.getBoundingClientRect();
   if (rect && (rect.width > 0 || rect.height > 0)) return rect;
 
-  return getClientRectBounds(range.getClientRects());
+  return null;
+}
+
+function getViewportPointRect(point) {
+  if (
+    !point
+    || !Number.isFinite(point.x)
+    || !Number.isFinite(point.y)
+  ) {
+    return null;
+  }
+
+  return {
+    top: point.y,
+    right: point.x,
+    bottom: point.y,
+    left: point.x,
+    width: 0,
+    height: 0,
+  };
 }
 
 function getVisibleAgentTaskTopBarBottom(rect) {
@@ -8019,9 +8043,10 @@ function getTextareaSelectionViewportRect(textarea) {
   if (selectionStart === selectionEnd) return null;
 
   const mirror = document.createElement('div');
-  const selectionNode = document.createElement('span');
+  const focusNode = document.createElement('span');
   const textareaRect = textarea.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(textarea);
+  const focusOffset = textarea.selectionDirection === 'backward' ? selectionStart : selectionEnd;
 
   mirror.setAttribute('aria-hidden', 'true');
   mirror.style.position = 'fixed';
@@ -8050,26 +8075,26 @@ function getTextareaSelectionViewportRect(textarea) {
   mirror.style.overflowWrap = 'break-word';
   mirror.style.overflow = 'hidden';
 
-  mirror.append(document.createTextNode(textarea.value.slice(0, selectionStart)));
-  selectionNode.textContent = textarea.value.slice(selectionStart, selectionEnd) || ' ';
-  mirror.append(selectionNode);
-  mirror.append(document.createTextNode(textarea.value.slice(selectionEnd) || ' '));
+  mirror.append(document.createTextNode(textarea.value.slice(0, focusOffset)));
+  focusNode.textContent = '\u200b';
+  mirror.append(focusNode);
+  mirror.append(document.createTextNode(textarea.value.slice(focusOffset) || ' '));
   document.body.append(mirror);
 
   const mirrorRect = mirror.getBoundingClientRect();
-  const selectionRect = getClientRectBounds(selectionNode.getClientRects());
+  const focusRect = getClientRectBounds(focusNode.getClientRects());
 
   mirror.remove();
 
-  if (!selectionRect) return null;
+  if (!focusRect) return null;
 
   return {
-    top: textareaRect.top + (selectionRect.top - mirrorRect.top) - textarea.scrollTop,
-    right: textareaRect.left + (selectionRect.right - mirrorRect.left) - textarea.scrollLeft,
-    bottom: textareaRect.top + (selectionRect.bottom - mirrorRect.top) - textarea.scrollTop,
-    left: textareaRect.left + (selectionRect.left - mirrorRect.left) - textarea.scrollLeft,
-    width: selectionRect.width,
-    height: selectionRect.height,
+    top: textareaRect.top + (focusRect.top - mirrorRect.top) - textarea.scrollTop,
+    right: textareaRect.left + (focusRect.right - mirrorRect.left) - textarea.scrollLeft,
+    bottom: textareaRect.top + (focusRect.bottom - mirrorRect.top) - textarea.scrollTop,
+    left: textareaRect.left + (focusRect.left - mirrorRect.left) - textarea.scrollLeft,
+    width: focusRect.width,
+    height: focusRect.height,
   };
 }
 
@@ -26773,8 +26798,9 @@ export default function App() {
                           setEditorSelectionToolbarPos(null);
                           return;
                         }
+                        const anchorRect = getViewportPointRect(selectionState.point) ?? selectionState.rect;
                         setEditorSelectionToolbarPos({
-                          ...getSelectionToolbarPosition(selectionState.rect, { safeWidth: 430, safeHeight: 44 }),
+                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44 }),
                           surface: isDiffTab ? 'diff' : 'file',
                           rowId: selectionState.rowId,
                           rowIds: selectionState.rowIds,

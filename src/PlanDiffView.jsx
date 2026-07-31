@@ -3338,6 +3338,7 @@ export function PlanDiffOverlay({
           width: bounds.right - bounds.left,
           height: bounds.bottom - bounds.top,
         },
+        point: { x: event.clientX, y: event.clientY },
         rowId: selectedRowIds[0],
         rowIds: selectedRowIds,
         selectedText: nativeSelectionText || selectedRows.map((row) => row.text || '').join('\n').trim(),
