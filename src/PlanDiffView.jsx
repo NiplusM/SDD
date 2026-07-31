@@ -2506,6 +2506,7 @@ export function PlanDiffOverlay({
   commentIndexFileLabel = '',
   showCommentIndexFileLabel = false,
   commentIndexStatusFilter = 'all',
+  onReviewProcessingChange = null,
   inlineCommentRowIdOnly = false,
   expandedInlineCommentRowId = null,
   onInlineCommentExpand = null,
@@ -2548,7 +2549,13 @@ export function PlanDiffOverlay({
     if (commentIndexStatusFilter === 'resolved' && !isResolved) return false;
     if (commentIndexStatusFilter === 'replied' && !isReplied) return false;
     if (commentIndexStatusFilter === 'open' && (isResolved || isReplied)) return false;
-    if (isResolved) return filterValues.includes('resolved');
+    if (isResolved) {
+      if (filterValues.includes('resolved')) return true;
+      const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
+        ? comment.severity.toLowerCase()
+        : '';
+      return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
+    }
     if (filterValues.length === 1 && filterValues.includes('resolved')) return false;
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
@@ -4140,10 +4147,10 @@ export function PlanDiffOverlay({
                     text: getCommentEntryText(comment),
                     resolved: true,
                     resolvedKind: kind === 'quickfix' ? 'applied' : (kind === 'dismiss' ? 'dismissed' : 'manual'),
-                    // Auto-collapse into the gutter. Reopen a single one from its
-                    // gutter badge (clears this flag) or reveal them all via the
-                    // "Resolved" filter.
-                    hidden: true,
+                    // Review findings stay visible after handling so the card can
+                    // clearly change status instead of disappearing. Non-review
+                    // resolved notes keep the older auto-collapse behavior.
+                    hidden: resolveKeepsComment && targetIsReviewFinding ? false : true,
                   };
                 });
                 return { ...state, [row.id]: nextRow };
@@ -4599,6 +4606,7 @@ export function PlanDiffOverlay({
 	                      if (commentsReadOnly || isProcessing) return;
 	                      setAsideReplyComposerKey(null);
 	                      setAsideProcessingCommentKey(actionKey);
+	                      onReviewProcessingChange?.(true);
 	                      window.setTimeout(() => {
 	                        if (kind === 'quickfix') {
 	                          handleAgentQuickFixRowComment(localIndex, source, context);
@@ -4610,7 +4618,8 @@ export function PlanDiffOverlay({
 	                        setAsideProcessingCommentKey((currentKey) => (
 	                          currentKey === actionKey ? null : currentKey
 	                        ));
-	                      }, 1400);
+	                        onReviewProcessingChange?.(false);
+	                      }, 2800);
 	                    };
 	                    const submitAsideReply = () => {
 	                      const trimmedReply = replyDraft.trim();

@@ -5110,6 +5110,15 @@ body {
   background: rgba(84, 138, 247, 0.12);
 }
 
+.aiux-review-panel-cat-resolve:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.aiux-review-panel-cat-resolve:disabled:hover {
+  background: transparent;
+}
+
 .aiux-review-panel-cat-resolve.is-dismiss {
   color: #8a8f98;
 }
@@ -16605,6 +16614,15 @@ button.aiux543-answer-change-card:focus-visible {
   background: #4a82f2;
 }
 
+.aiux-review-overview-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.aiux-review-overview-btn.is-primary:disabled:hover {
+  background: #3574f0;
+}
+
 .aiux-review-overview-scroll {
   flex: 1;
   min-height: 0;
@@ -16699,6 +16717,16 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux-review-overview-file-resolve:hover {
   background: #2b2d31;
   color: #6b9bf7;
+}
+
+.aiux-review-overview-file-resolve:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.aiux-review-overview-file-resolve:disabled:hover {
+  background: transparent;
+  color: #548af7;
 }
 
 .aiux-review-overview-file-resolve.is-dismiss {

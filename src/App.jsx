@@ -15000,10 +15000,18 @@ function groupReviewFilesForStack(files = [], mode = 'file', severityFilter = 'a
   const selectedFilters = normalizeReviewSeverityFilter(severityFilter);
   const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => selectedFilters.includes(sev));
   const includesResolved = selectedFilters.includes(REVIEW_RESOLVED_FILTER_ID);
-  const countOpenFindings = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS) => (
+  const countFindingsForSeverities = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS, { openOnly = false } = {}) => (
     bucket.reduce((sum, file) => (
-      sum + severities.reduce((fileSum, sev) => fileSum + (file.severityTotals?.[sev] ?? 0), 0)
+      sum + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => {
+        if (!getStoredCommentText(comment).trim()) return false;
+        if (openOnly && comment?.resolved) return false;
+        const sev = String(comment?.severity || '').toLowerCase();
+        return severities.includes(sev);
+      }).length
     ), 0)
+  );
+  const countOpenFindings = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS) => (
+    countFindingsForSeverities(bucket, severities, { openOnly: true })
   );
   const countResolvedFindings = (bucket) => (
     bucket.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0)
@@ -15022,9 +15030,9 @@ function groupReviewFilesForStack(files = [], mode = 'file', severityFilter = 'a
     const sections = [];
     order.forEach(([sev, label]) => {
       if (!selectedFilters.includes(sev)) return;
-      const bucket = list.filter((file) => (file.severityTotals?.[sev] ?? 0) > 0);
+      const bucket = list.filter((file) => countFindingsForSeverities([file], [sev]) > 0);
       if (bucket.length > 0) {
-        sections.push({ id: `sev-${sev}`, tone: sev, label, severity: [sev], severityIcon: sev, files: bucket, count: countOpenFindings(bucket, [sev]) });
+        sections.push({ id: `sev-${sev}`, tone: sev, label, severity: [sev], severityIcon: sev, files: bucket, count: countFindingsForSeverities(bucket, [sev]) });
       }
     });
     if (includesResolved) {
@@ -15051,7 +15059,7 @@ function groupReviewFilesForStack(files = [], mode = 'file', severityFilter = 'a
       icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
       severity: selectedFilters,
       files: [file],
-      count: countOpenFindings([file], selectedOpenSeverities) + (includesResolved ? countResolvedFindings([file]) : 0),
+      count: countFindingsForSeverities([file], selectedOpenSeverities) + (includesResolved ? countResolvedFindings([file]) : 0),
     }))
     .filter((section) => section.count > 0);
 }
@@ -15281,6 +15289,7 @@ const REVIEW_SEVERITY_FILTERS = [
 ];
 const REVIEW_SEVERITY_FILTER_IDS = REVIEW_SEVERITY_FILTERS.map((option) => option.id);
 const REVIEW_RESOLVED_FILTER_ID = 'resolved';
+const REVIEW_ACTION_DELAY_MS = 2800;
 
 function normalizeReviewSeverityFilter(value = REVIEW_SEVERITY_FILTER_IDS) {
   const rawValues = Array.isArray(value)
@@ -15609,6 +15618,18 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   const [panelHighlightedRowIdsByTabId, setPanelHighlightedRowIdsByTabId] = useState({});
   const [activeIndex, setActiveIndex] = useState(0);
   const [filesPopupRect, setFilesPopupRect] = useState(null);
+  const [processingReviewActionCount, setProcessingReviewActionCount] = useState(0);
+  const beginReviewProcessing = useCallback(() => {
+    setProcessingReviewActionCount((count) => count + 1);
+  }, []);
+  const endReviewProcessing = useCallback(() => {
+    setProcessingReviewActionCount((count) => Math.max(0, count - 1));
+  }, []);
+  const trackReviewProcessing = useCallback((isProcessing) => {
+    if (isProcessing) beginReviewProcessing();
+    else endReviewProcessing();
+  }, [beginReviewProcessing, endReviewProcessing]);
+  const isReviewProcessing = processingReviewActionCount > 0;
   // Both layouts use the same grouping model; panel mode only moves comment
   // cards to the right, it does not change the list structure.
   const groupedSections = groupReviewFilesForStack(files, groupMode, severityFilter);
@@ -15620,7 +15641,11 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     if (!getStoredCommentText(comment).trim()) return false;
     const resolved = Boolean(comment?.resolved);
     const filterValues = normalizeReviewSeverityFilter(filter);
-    if (resolved) return filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
+    if (resolved) {
+      if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID)) return true;
+      const sev = String(comment?.severity || '').toLowerCase();
+      return filterValues.includes(sev);
+    }
     if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID) && filterValues.length === 1) return false;
     const sev = String(comment?.severity || '').toLowerCase();
     return filterValues.includes(sev);
@@ -15638,6 +15663,45 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentFilter(comment, filter)).length, 0);
   const countReviewCommentsForStatusFilter = (fileList, filter, status = 'all') => fileList.reduce((sum, file) => sum
     + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentStatusFilter(comment, filter, status)).length, 0);
+  const markReviewFileCommentsPending = useCallback((tabId, filter, pending = true) => {
+    if (!tabId || !onFileCommentsChange) return;
+    const file = files.find((candidate) => candidate.tabId === tabId);
+    if (!file) return;
+    let changed = false;
+    const next = {};
+    Object.entries(normalizeStoredDiffCommentsState(file.comments)).forEach(([rowId, list]) => {
+      next[rowId] = list.map((comment) => {
+        if (!matchesReviewCommentFilter(comment, filter) || comment?.resolved) return comment;
+        changed = true;
+        const base = (comment && typeof comment === 'object') ? comment : { text: comment };
+        return { ...base, text: getStoredCommentText(comment), pending };
+      });
+    });
+    if (changed) onFileCommentsChange(tabId, next);
+  }, [files, matchesReviewCommentFilter, onFileCommentsChange]);
+  const runReviewFileAction = useCallback((tabId, filter, action = 'applied') => {
+    if (!tabId || isReviewProcessing) return;
+    markReviewFileCommentsPending(tabId, filter, true);
+    beginReviewProcessing();
+    window.setTimeout(() => {
+      if (action === 'dismissed') onDismissFile?.(tabId, filter);
+      else onApplyFile?.(tabId, filter);
+      endReviewProcessing();
+    }, REVIEW_ACTION_DELAY_MS);
+  }, [beginReviewProcessing, endReviewProcessing, isReviewProcessing, markReviewFileCommentsPending, onApplyFile, onDismissFile]);
+  const runReviewFilesAction = useCallback((targetFiles, filter, action = 'applied') => {
+    const list = (Array.isArray(targetFiles) ? targetFiles : []).filter((file) => file?.tabId);
+    if (list.length === 0 || isReviewProcessing) return;
+    list.forEach((file) => markReviewFileCommentsPending(file.tabId, filter, true));
+    beginReviewProcessing();
+    window.setTimeout(() => {
+      list.forEach((file) => {
+        if (action === 'dismissed') onDismissFile?.(file.tabId, filter);
+        else onApplyFile?.(file.tabId, filter);
+      });
+      endReviewProcessing();
+    }, REVIEW_ACTION_DELAY_MS);
+  }, [beginReviewProcessing, endReviewProcessing, isReviewProcessing, markReviewFileCommentsPending, onApplyFile, onDismissFile]);
   // Groups for the shared comments column — every group gets a header, driven by
   // the SAME Group control as the rest of the review.
   const commentCategories = (() => {
@@ -15797,6 +15861,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             <button
               type="button"
               className="aiux-review-panel-cat-resolve"
+              disabled={isReviewProcessing}
               onClick={() => onApply?.(filter)}
             >
               Apply all
@@ -15804,6 +15869,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             <button
               type="button"
               className="aiux-review-panel-cat-resolve is-dismiss"
+              disabled={isReviewProcessing}
               onClick={() => onDismiss?.(filter)}
             >
               Dismiss all
@@ -15889,6 +15955,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
           <button
             type="button"
             className="aiux-review-overview-btn is-primary"
+            disabled={isReviewProcessing}
             onClick={() => onComplete?.()}
           >
             Complete review
@@ -15912,8 +15979,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
               {section.label && groupMode !== 'file' && !isPanel && (
                 renderReviewGroupHeader(section, {
                   className: 'aiux-review-overview-group-head',
-                  onApply: (filter) => section.files.forEach((file) => onApplyFile?.(file.tabId, filter)),
-                  onDismiss: (filter) => section.files.forEach((file) => onDismissFile?.(file.tabId, filter)),
+                  onApply: (filter) => runReviewFilesAction(section.files, filter, 'applied'),
+                  onDismiss: (filter) => runReviewFilesAction(section.files, filter, 'dismissed'),
                 })
               )}
               {section.files.map((file) => {
@@ -15972,14 +16039,16 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                           <button
                             type="button"
                             className="aiux-review-overview-file-resolve"
-                            onClick={() => onApplyFile?.(file.tabId, cardFilter)}
+                            disabled={isReviewProcessing}
+                            onClick={() => runReviewFileAction(file.tabId, cardFilter, 'applied')}
                           >
                             Apply all
                           </button>
                           <button
                             type="button"
                             className="aiux-review-overview-file-resolve is-dismiss"
-                            onClick={() => onDismissFile?.(file.tabId, cardFilter)}
+                            disabled={isReviewProcessing}
+                            onClick={() => runReviewFileAction(file.tabId, cardFilter, 'dismissed')}
                           >
                             Dismiss all
                           </button>
@@ -16001,6 +16070,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                         inlineCommentRowIdOnly={isPanel}
                         expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
                         highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
+                        onReviewProcessingChange={trackReviewProcessing}
                         onInlineCommentExpand={(rowId) => {
                           if (!isPanel) return;
                           setPanelExpandedRowIdsByTabId((prev) => ({
@@ -16023,8 +16093,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             {commentCategories.map((cat) => (
               <div className={`aiux-review-panel-cat is-${cat.tone}`} key={cat.key}>
                 {renderReviewGroupHeader(cat, {
-                  onApply: (filter) => cat.files.forEach((file) => onApplyFile?.(file.tabId, filter)),
-                  onDismiss: (filter) => cat.files.forEach((file) => onDismissFile?.(file.tabId, filter)),
+                  onApply: (filter) => runReviewFilesAction(cat.files, filter, 'applied'),
+                  onDismiss: (filter) => runReviewFilesAction(cat.files, filter, 'dismissed'),
                 })}
                 {cat.files.map((file) => (
                   <PlanDiffOverlay
@@ -16041,6 +16111,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
                     commentIndexFileLabel={file.name}
                     showCommentIndexFileLabel={cat.showFile}
                     commentIndexStatusFilter={cat.statusFilter ?? 'all'}
+                    onReviewProcessingChange={trackReviewProcessing}
                     onCommentNavigate={(rowId, details) => navigateToComment(file.tabId, rowId, details)}
                     onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
                   />
@@ -19084,9 +19155,14 @@ export default function App() {
           if (!commentMatchesFilter(comment)) return comment;
           changed = true;
           const base = (comment && typeof comment === 'object') ? comment : { text: comment };
-          // Auto-collapse handled findings out of the active review. They remain
-          // available through the gutter and the Resolved filter.
-          return { ...base, text: getStoredCommentText(comment), resolved: true, resolvedKind, hidden: true };
+          return {
+            ...base,
+            text: getStoredCommentText(comment),
+            resolved: true,
+            resolvedKind,
+            pending: false,
+            hidden: false,
+          };
         });
       });
       return changed ? next : null;
