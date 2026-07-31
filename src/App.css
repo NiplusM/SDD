@@ -7702,15 +7702,15 @@ body {
 }
 
 .ai-chat-list-main {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   min-width: 0;
-  max-width: 100%;
+  width: 100%;
   gap: 6px;
 }
 
 .ai-chat-list-main .ai-chat-list-title {
-  flex: 0 1 auto;
+  flex: 0 1 max-content;
   min-width: 0;
 }
 
