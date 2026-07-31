@@ -16159,7 +16159,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 /* AI Review is a non-expandable summary row (icon + label + status badge). While
    processing, a loader sits in the action column; when done it becomes the
-   "View diff" link. */
+   "Open review" link. */
 .aiux550-ainotes-summary {
   cursor: default;
 }
@@ -16182,7 +16182,7 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-/* Push the status badge to the right of the row, next to the "View diff" link. */
+/* Push the status badge to the right of the row, next to the "Open review" link. */
 .aiux550-ainotes-summary-status {
   margin-left: auto;
 }
