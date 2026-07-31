@@ -1756,20 +1756,8 @@ export function DiffInlineCommentPopup({
         : 'Resolved manually';
     const resolvedBadgeTone = resolvedKind === 'dismissed' ? ' is-dismissed' : '';
     const changeLabel = typeof comment.fixLabel === 'string' ? comment.fixLabel.trim() : '';
-    const showDismissButton = !isProcessing && !isResolved;
     return (
       <div className={`spec-done-comment-agent-reply${isResolved ? ' is-resolved' : ''}`}>
-        {showDismissButton && (
-          <button
-            type="button"
-            className="spec-done-comment-agent-dismiss-btn"
-            aria-label="Dismiss comment"
-            title="Dismiss comment"
-            onClick={(event) => { event.stopPropagation(); startAgentCommentProcessing(comment, 'dismiss', draftKey, fallbackIndex, context); }}
-          >
-            <Icon name="general/close" size={16} />
-          </button>
-        )}
         <div className="spec-done-comment-agent-reply-thread">
           <div className="spec-done-comment-agent-reply-head">
             <span className={`spec-done-comment-agent-reply-avatar${isProcessing ? ' is-processing' : ''}`} aria-hidden="true">
@@ -4680,20 +4668,6 @@ export function PlanDiffOverlay({
 	                              <div className="spec-done-comment-popup-item is-agent-authored">
 	                                <div className="spec-done-comment-popup-item-body">
 	                                  <div className={`spec-done-comment-agent-reply${resolved ? ' is-resolved' : ''}`}>
-	                                    {!resolved && isAgentAuthored && !isProcessing && (
-	                                      <button
-	                                        type="button"
-	                                        className="spec-done-comment-agent-dismiss-btn"
-	                                        aria-label="Dismiss comment"
-	                                        title="Dismiss comment"
-	                                        onClick={(event) => {
-	                                          event.stopPropagation();
-	                                          runAsideAction('dismiss');
-	                                        }}
-	                                      >
-	                                        <Icon name="general/close" size={16} />
-	                                      </button>
-	                                    )}
 	                                    <div className="spec-done-comment-agent-reply-thread">
 	                                      <div className="spec-done-comment-agent-reply-head">
 	                                        <span className={`spec-done-comment-agent-reply-avatar${isProcessing ? ' is-processing' : ''}`} aria-hidden="true">

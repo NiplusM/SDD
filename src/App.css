@@ -15748,7 +15748,7 @@ button.aiux543-answer-change-card:focus-visible {
   flex-direction: column;
   gap: 6px;
   margin-top: 10px;
-  padding-right: 28px;
+  padding-right: 0;
 }
 
 /* Agent-authored comment (e.g. a review comment): it IS the comment, not a
