@@ -2789,13 +2789,15 @@ body {
 }
 
 .spec-done-comment-popup-context-row {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: 4px;
-  align-self: flex-start;
+  align-self: stretch;
+  box-sizing: border-box;
+  width: calc(100% - (2 * var(--spec-done-comment-popup-inline-padding)));
   min-width: 0;
-  max-width: calc(100% - 4px);
-  margin: 0 2px 3px var(--spec-done-comment-popup-inline-padding);
+  max-width: none;
+  margin: 0 var(--spec-done-comment-popup-inline-padding) 3px;
 }
 
 .spec-done-comment-popup-context-header {
@@ -2811,11 +2813,17 @@ body {
 }
 
 .spec-done-comment-popup-context-row .spec-done-comment-popup-context-header {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 24px;
   margin: 0;
+  overflow: visible;
 }
 
 .spec-done-comment-popup-context-row .spec-done-comment-popup-more-btn {
-  margin: 0;
+  margin: 2px 0 0 auto;
 }
 
 .spec-done-comment-popup-context-header .toolbar-button-content {
@@ -2834,11 +2842,11 @@ body {
 
 .spec-done-comment-popup-context-prefix {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   width: auto;
   min-width: 0;
-  max-width: 100%;
+  max-width: none;
 }
 
 .spec-done-comment-popup-context-icon-slot {
@@ -2870,15 +2878,15 @@ body {
 }
 
 .spec-done-comment-popup-context-title {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   display: block;
   min-width: 0;
-  max-width: 220px;
-  overflow: hidden;
+  max-width: none;
+  overflow: visible;
   color: var(--text-default);
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .spec-done-comment-popup-context-header.is-muted-session {
