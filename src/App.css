@@ -14954,14 +14954,15 @@ button.aiux543-answer-change-card:focus-visible {
   all: unset;
   display: flex;
   width: 100%;
-  height: 24px;
+  min-height: 28px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   cursor: pointer;
 }
 
 .aiux550-loading-plan-chevron {
+  margin-left: auto;
   color: #8e939d;
   transition: transform 0.12s ease;
 }
@@ -14985,8 +14986,24 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-loading-plan-title {
   color: #dfe1e5;
-  font: 600 13px/18px Inter, system-ui, sans-serif;
+  font: 650 14px/20px Inter, system-ui, sans-serif;
   white-space: nowrap;
+}
+
+.aiux550-loading-plan-title-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #42464e;
+  border-radius: 6px;
+  background: #34373d;
+}
+
+.aiux550-loading-plan-title-count {
+  color: #7f838c;
+  font: 500 13px/20px Inter, system-ui, sans-serif;
 }
 
 .aiux550-loading-plan-count {
@@ -15031,18 +15048,19 @@ button.aiux543-answer-change-card:focus-visible {
   max-height: 184px;
   overflow-y: auto;
   flex-direction: column;
+  gap: 1px;
   padding: 8px 0 0;
 }
 
 .aiux550-loading-plan-row {
   all: unset;
   display: flex;
-  width: calc(100% + 8px);
+  width: 100%;
   min-width: 0;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 -4px;
-  padding: 4px;
+  min-height: 28px;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 4px;
   box-sizing: border-box;
   border-radius: 4px;
   cursor: pointer;
@@ -15055,6 +15073,15 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-loading-plan-row.active {
   background: rgba(84, 138, 247, 0.08);
+}
+
+.aiux550-loading-plan-row.is-note {
+  padding-left: 28px;
+}
+
+.aiux550-loading-plan-row.is-file .aiux550-loading-plan-text {
+  color: #dfe1e5;
+  font-weight: 650;
 }
 
 /* File-grouped comments shown while the agent works. Review runs and AI Note
@@ -15346,7 +15373,90 @@ button.aiux543-answer-change-card:focus-visible {
   min-width: 0;
   flex: 1 1 auto;
   flex-direction: column;
+  gap: 0;
+}
+
+.aiux550-loading-plan-row-action {
+  flex: 0 0 auto;
+  color: #a0a3a9;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550-loading-plan-row-action.is-active {
+  color: #7ca7ff;
+}
+
+.aiux550-loading-plan-row-action.is-done {
+  color: #6db083;
+}
+
+.aiux550-loading-plan-more {
+  flex: 0 0 16px;
+  color: #7f838c;
+}
+
+.aiux550-loading-plan-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 2px;
+  border-top: 1px solid #33353b;
+}
+
+.aiux550-loading-plan-summary-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
   gap: 1px;
+}
+
+.aiux550-loading-plan-summary-title {
+  color: #dfe1e5;
+  font: 650 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8e939d;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-loading-plan-summary-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiux550-loading-plan-action {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #4b4d52;
+  border-radius: 6px;
+  background: transparent;
+  color: #ced0d6;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.aiux550-loading-plan-action:hover {
+  background: #2b2d31;
+}
+
+.aiux550-loading-plan-action.is-primary {
+  border-color: transparent;
+  background: #3574f0;
+  color: #fff;
+}
+
+.aiux550-loading-plan-action.is-primary:hover {
+  background: #4a82f2;
 }
 
 /* "Solved" status pill — shown on resolved notes (done card items and answered
@@ -15413,8 +15523,10 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux550-loading-plan-text {
   min-width: 0;
   color: #dcdee2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font: 400 13px/20px Inter, system-ui, sans-serif;
-  overflow-wrap: anywhere;
 }
 
 .aiux550-loading-plan-note-meta {

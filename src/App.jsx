@@ -16144,7 +16144,7 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
 // runs intentionally share the same structure: file header with icon, then the
 // comment body rows underneath. Status/severity live inside the body metadata
 // so review and agent-response rows stay structurally equivalent.
-function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null, onOpenDiff = null }) {
+function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, onOpenTarget = null, onOpenDiff = null, onApplyAll = null, onDismissAll = null }) {
   const items = Array.isArray(notes) ? notes : [];
   const total = items.length;
   const doneCount = items.filter((note) => note.state === 'done').length;
@@ -16190,6 +16190,35 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
     : total > 0
       ? `${Math.max(visibleActiveCount, 1)} processing · ${Math.max(total - doneCount - Math.max(visibleActiveCount, 1), 0)} queued`
       : 'Waiting…';
+  const flatQueueItems = fileGroups.flatMap((group) => {
+    const fileName = group.file.replace(/^diff\s+/iu, '');
+    const groupActive = group.notes.filter((note) => note.state === 'active').length;
+    const groupQueued = group.notes.filter((note) => note.state !== 'active' && note.state !== 'done').length;
+    const groupDone = group.notes.filter((note) => note.state === 'done').length;
+    return [
+      {
+        id: `file-${group.file}`,
+        kind: 'file',
+        text: fileName,
+        icon: group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName),
+        state: groupActive > 0 ? 'active' : groupQueued > 0 ? 'pending' : 'done',
+        rightLabel: groupActive > 0
+          ? 'Reviewing now'
+          : groupQueued > 0
+            ? `${groupQueued} queued`
+            : `${groupDone} done`,
+      },
+      ...group.notes.map((note, index) => ({
+        id: note.id ?? `${group.file}-${index}`,
+        kind: 'note',
+        text: note.text,
+        lineLabel: note.lineLabel,
+        severity: String(note.severity || '').toLowerCase(),
+        state: note.state === 'done' || note.state === 'active' ? note.state : 'pending',
+        openTarget: note.openTarget,
+      })),
+    ];
+  });
 
   // Expandable queue above the composer. While processing it shows which files
   // and comments are being worked through; once done it stays collapsible and
@@ -16202,13 +16231,15 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
         {isDone ? (
           <Icon name="general/balloon" size={16} className="aiux550-loading-plan-status-icon" />
         ) : (
           <Loader size={16} className="aiux550-loading-plan-status-loader" />
         )}
-        <span className="aiux550-loading-plan-title">AI Review</span>
+        <span className="aiux550-loading-plan-title-badge">
+          <span className="aiux550-loading-plan-title">AI Review</span>
+          <span className="aiux550-loading-plan-title-count">{total || fileGroups.length}</span>
+        </span>
         {isDone ? (
           <>
             <span className="aiux550-review-done-badge">
@@ -16221,6 +16252,7 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
           <span className="aiux550-loading-plan-progress">In progress</span>
         )}
         <span className="aiux550-loading-plan-count">{queueLabel}</span>
+        <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
         {isDone && (
           <span
             role="button"
@@ -16242,75 +16274,64 @@ function AgentRunLoadingPlan({ notes = [], status = 'processing', kind = null, o
         )}
       </button>
       {expanded && (
-        <div className="aiux550-loading-plan-list">
-          {fileGroups.map((group) => {
-            const groupDone = group.notes.filter((note) => note.state === 'done').length;
-            const groupActive = group.notes.filter((note) => note.state === 'active').length;
-            const groupQueued = group.notes.length - groupDone - groupActive;
-            const fileName = group.file.replace(/^diff\s+/iu, '');
-            return (
-              <div className="aiux550-loading-plan-file" key={group.file}>
-                <div className="aiux550-loading-plan-file-head">
-                  <Icon name={group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName)} size={16} />
-                  <span className="aiux550-loading-plan-file-name">{fileName}</span>
-                </div>
-                <div className="aiux550-loading-plan-file-stats">
-                  {groupActive > 0 && (
-                    <span className="aiux550-loading-plan-stat is-active">
-                      <span className="aiux550-loading-plan-stat-marker"><Loader size={14} /></span>
-                      {groupActive} processing
-                    </span>
+        isDone ? (
+          <div className="aiux550-loading-plan-summary">
+            <div className="aiux550-loading-plan-summary-copy">
+              <span className="aiux550-loading-plan-summary-title">Review ready</span>
+              <span className="aiux550-loading-plan-summary-text">{headerCount}</span>
+            </div>
+            <div className="aiux550-loading-plan-summary-actions">
+              <button type="button" className="aiux550-loading-plan-action is-primary" onClick={onApplyAll ?? undefined}>
+                Apply all
+              </button>
+              <button type="button" className="aiux550-loading-plan-action" onClick={onDismissAll ?? undefined}>
+                Dismiss
+              </button>
+              <button type="button" className="aiux550-loading-plan-action" onClick={onOpenDiff ?? undefined}>
+                Open Review
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="aiux550-loading-plan-list">
+            {flatQueueItems.map((item) => {
+              const severityClass = item.severity ? ` is-${item.severity}` : '';
+              const isFile = item.kind === 'file';
+              const meta = !isFile && [item.lineLabel, item.state === 'active' ? 'Processing now' : item.state === 'done' ? 'Done' : 'Queued']
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <button
+                  type="button"
+                  className={`aiux550-loading-plan-row ${item.state}${isFile ? ' is-file' : ' is-note'}`}
+                  key={item.id}
+                  onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
+                >
+                  <span className="aiux550-loading-plan-marker">
+                    {isFile && item.icon ? (
+                      <Icon name={item.icon} size={16} />
+                    ) : item.state === 'active' ? (
+                      <Loader size={14} />
+                    ) : item.state === 'done' ? (
+                      <Icon name="general/checkmark" size={16} />
+                    ) : null}
+                  </span>
+                  <span className="aiux550-loading-plan-note">
+                    <span className="aiux550-loading-plan-text">{item.text}</span>
+                    {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
+                  </span>
+                  {item.severity && (
+                    <span className={`spec-done-status-severity${severityClass}`}>{item.severity}</span>
                   )}
-                  {groupQueued > 0 && (
-                    <span className="aiux550-loading-plan-stat is-pending">
-                      <span className="aiux550-loading-plan-stat-marker" aria-hidden="true" />
-                      {groupQueued} queued
-                    </span>
-                  )}
-                  {groupDone > 0 && (
-                    <span className="aiux550-loading-plan-stat is-done">
-                      <span className="aiux550-loading-plan-stat-marker"><Icon name="general/checkmark" size={14} /></span>
-                      {groupDone} done
-                    </span>
-                  )}
-                </div>
-                {group.notes.map((note, index) => {
-                  const state = note.state === 'done' || note.state === 'active' ? note.state : 'pending';
-                  const severity = String(note.severity || '').toLowerCase();
-                  const severityClass = severity ? ` is-${severity}` : '';
-                  const meta = [note.lineLabel, state === 'active' ? 'Processing now' : state === 'done' ? 'Done' : 'Queued']
-                    .filter(Boolean)
-                    .join(' · ');
-                  return (
-                    <button
-                      type="button"
-                      className={`aiux550-loading-plan-row ${state}`}
-                      key={note.id ?? `${group.file}-${index}`}
-                      onClick={() => note.openTarget && onOpenTarget?.(note.openTarget)}
-                    >
-                      <span className="aiux550-loading-plan-marker">
-                        {state === 'active' ? <Loader size={14} /> : state === 'done' ? <Icon name="general/checkmark" size={16} /> : null}
-                      </span>
-                      <span className="aiux550-loading-plan-note">
-                        <span className="aiux550-loading-plan-text">{note.text}</span>
-                        {meta && <span className="aiux550-loading-plan-note-meta">{meta}</span>}
-                      </span>
-                      {severity && !note.resolved && (
-                        <span className={`spec-done-status-severity${severityClass}`}>{severity}</span>
-                      )}
-                      {state === 'done' && (
-                        <span className="spec-done-status-solved">
-                          <Icon name="general/checkmark" size={12} />
-                          Done
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+                  <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
+                    {isFile ? item.rightLabel : item.state === 'active' ? 'Reviewing' : item.state === 'done' ? 'Done' : 'Queued'}
+                  </span>
+                  <Icon name="general/more" size={16} className="aiux550-loading-plan-more" />
+                </button>
+              );
+            })}
+          </div>
+        )
       )}
     </section>
   );
@@ -16340,6 +16361,8 @@ function AiChatTabView({
   onStopMessage = null,
   onOpenReviewTarget = null,
   onOpenReviewDiff = null,
+  onApplyReviewAll = null,
+  onDismissReviewAll = null,
   chatAnnotations = [],
   scrollTarget = null,
   onEditAnnotation = null,
@@ -16691,7 +16714,15 @@ function AiChatTabView({
           </div>
         )}
         {shouldShowAgentRunPlan && (
-          <AgentRunLoadingPlan notes={agentRun?.notes} status={agentRun?.status} kind={agentRun?.kind} onOpenTarget={onOpenReviewTarget} onOpenDiff={() => onOpenReviewDiff?.(chatId)} />
+          <AgentRunLoadingPlan
+            notes={agentRun?.notes}
+            status={agentRun?.status}
+            kind={agentRun?.kind}
+            onOpenTarget={onOpenReviewTarget}
+            onOpenDiff={() => onOpenReviewDiff?.(chatId)}
+            onApplyAll={() => onApplyReviewAll?.(chatId)}
+            onDismissAll={() => onDismissReviewAll?.(chatId)}
+          />
         )}
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {!isAgentRunProcessing && editorComposerAttachments.length > 0 && (
@@ -19920,6 +19951,62 @@ export default function App() {
         });
       });
       return changed ? next : null;
+    });
+    setAgentRunByChatId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([cid, run]) => {
+        if (!Array.isArray(run?.notes)) return;
+        let runChanged = false;
+        const notes = run.notes.map((note) => {
+          const text = (note?.text || '').trim();
+          if (!noteTexts.has(text) || note?.resolved) return note;
+          runChanged = true;
+          return { ...note, resolved: true, resolvedKind: 'dismissed' };
+        });
+        if (runChanged) { changed = true; next[cid] = { ...run, notes }; }
+      });
+      return changed ? next : prev;
+    });
+  }, [transformReviewComments]);
+
+  const applyReviewComments = useCallback((noteTexts) => {
+    transformReviewComments(noteTexts, (rowState) => {
+      let changed = false;
+      const next = {};
+      Object.entries(rowState).forEach(([rowId, list]) => {
+        next[rowId] = list.map((comment) => {
+          const commentText = getStoredCommentText(comment).trim();
+          if (!noteTexts.has(commentText) || comment?.resolved) return comment;
+          changed = true;
+          const base = (comment && typeof comment === 'object') ? comment : { text: commentText };
+          return {
+            ...base,
+            text: commentText,
+            resolved: true,
+            resolvedKind: 'applied',
+            pending: false,
+            hidden: false,
+          };
+        });
+      });
+      return changed ? next : null;
+    });
+    setAgentRunByChatId((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([cid, run]) => {
+        if (!Array.isArray(run?.notes)) return;
+        let runChanged = false;
+        const notes = run.notes.map((note) => {
+          const text = (note?.text || '').trim();
+          if (!noteTexts.has(text) || note?.resolved) return note;
+          runChanged = true;
+          return { ...note, resolved: true, resolvedKind: 'applied' };
+        });
+        if (runChanged) { changed = true; next[cid] = { ...run, notes }; }
+      });
+      return changed ? next : prev;
     });
   }, [transformReviewComments]);
 
@@ -26570,6 +26657,8 @@ export default function App() {
                   onStopMessage={handleAiChatTabStop}
                   onOpenReviewTarget={openCommentTarget}
                   onOpenReviewDiff={openReviewDiffTab}
+                  onApplyReviewAll={(chatId) => applyReviewComments(reviewNoteTextsFor(chatId))}
+                  onDismissReviewAll={(chatId) => dismissReviewComments(reviewNoteTextsFor(chatId))}
                   chatAnnotations={[]}
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
