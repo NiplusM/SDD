@@ -15397,9 +15397,10 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-review-summary-message {
-  width: min(810px, 100%);
+  box-sizing: border-box;
+  width: min(750px, 100%);
   overflow: hidden;
-  margin: 10px 0 12px;
+  margin: 10px auto 12px;
   border: 1px solid #383c43;
   border-radius: 10px;
   background: #191b1f;
