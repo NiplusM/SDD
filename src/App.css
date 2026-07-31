@@ -15090,23 +15090,6 @@ button.aiux543-answer-change-card:focus-visible {
   color: #7fb98d;
 }
 
-.aiux550-review-file-queue .aiux550-loading-plan-note {
-  gap: 1px;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-note-meta {
-  color: #8e939d;
-  font: 500 12px/16px Inter, system-ui, sans-serif;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-note-meta.is-active {
-  color: #8fb1ff;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-note-meta.is-done {
-  color: #7fb98d;
-}
-
 /* File-grouped comments shown while the agent works. Review runs and AI Note
    processing runs use this same structure: file header + comment body rows. */
 .aiux550-agent-comment-tree {

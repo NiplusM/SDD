@@ -16237,9 +16237,9 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
                 </span>
                 <span className="aiux550-loading-plan-note">
                   <span className="aiux550-loading-plan-text">{item.text}</span>
-                  <span className={`aiux550-loading-plan-note-meta is-${item.state}`}>
-                    {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
-                  </span>
+                </span>
+                <span className={`aiux550-loading-plan-row-action is-${item.state}`}>
+                  {item.state === 'active' ? 'Reviewing now' : item.state === 'done' ? 'Ready in diff' : 'Queued'}
                 </span>
               </button>
             );
