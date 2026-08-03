@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
 import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
+import { AiChatAgentIcon } from './AiChatListParts.jsx';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
@@ -30,13 +31,17 @@ const CHAT_SELECTION_ACTIONS = [
   { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
-export function EditorSelectionToolbar({ position, onAction = null }) {
+export function EditorSelectionToolbar({ position, onAction = null, chatTargets = [], onMenuOpenChange = null, onDismiss = null }) {
   const rootRef = useRef(null);
   const [openActionMenu, setOpenActionMenu] = useState(false);
+  const [openChatTargetsForActionId, setOpenChatTargetsForActionId] = useState(null);
+  const [frozenPosition, setFrozenPosition] = useState(position);
+  const menuPositionLocked = openActionMenu || Boolean(openChatTargetsForActionId);
+  const renderPosition = menuPositionLocked ? (frozenPosition ?? position) : position;
 
-  const surface = position?.surface === 'ai-chat'
+  const surface = renderPosition?.surface === 'ai-chat'
     ? 'ai-chat'
-    : position?.surface === 'diff'
+    : renderPosition?.surface === 'diff'
       ? 'diff'
       : 'file';
   const selectionActions = surface === 'ai-chat' ? CHAT_SELECTION_ACTIONS : CODE_SELECTION_ACTIONS;
@@ -44,6 +49,10 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
 
   useEffect(() => {
     setOpenActionMenu(false);
+    setOpenChatTargetsForActionId(null);
+    if (position) {
+      setFrozenPosition(position);
+    }
   }, [
     surface,
     position?.selectedText,
@@ -55,19 +64,39 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
   ]);
 
   useEffect(() => {
-    if (!openActionMenu) return undefined;
+    if (position && !menuPositionLocked) {
+      setFrozenPosition(position);
+    }
+  }, [position, menuPositionLocked]);
+
+  useEffect(() => {
+    onMenuOpenChange?.(openActionMenu);
+    return () => onMenuOpenChange?.(false);
+  }, [onMenuOpenChange, openActionMenu]);
+
+  useEffect(() => {
+    if (!renderPosition) return undefined;
 
     const closeOnOutsidePointer = (event) => {
       if (rootRef.current?.contains(event.target)) return;
+      onMenuOpenChange?.(false);
       setOpenActionMenu(false);
+      setOpenChatTargetsForActionId(null);
+      onDismiss?.();
     };
     document.addEventListener('mousedown', closeOnOutsidePointer, true);
     return () => document.removeEventListener('mousedown', closeOnOutsidePointer, true);
+  }, [onDismiss, onMenuOpenChange, renderPosition]);
+
+  useEffect(() => {
+    if (!openActionMenu) {
+      setOpenChatTargetsForActionId(null);
+    }
   }, [openActionMenu]);
 
-  if (!position) return null;
+  if (!renderPosition) return null;
 
-  const items = position.surface === 'ai-chat' || position.surface === 'diff'
+  const items = renderPosition.surface === 'ai-chat' || renderPosition.surface === 'diff'
     ? CHAT_SELECTION_TOOLBAR_ITEMS
     : EDITOR_SELECTION_TOOLBAR_ITEMS;
 
@@ -77,13 +106,28 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
 
   const handleActionMouseDown = (event, actionId) => {
     event.preventDefault();
-    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
+    setOpenActionMenu(false);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onDismiss?.();
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), renderPosition);
   };
 
   const handleMenuItemMouseDown = (event, actionId) => {
     event.preventDefault();
     setOpenActionMenu(false);
-    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), renderPosition);
+  };
+
+  const handleTargetChatMouseDown = (event, actionId, chatId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setOpenActionMenu(false);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onAction?.(`${actionId}:${chatId}`, event.currentTarget.getBoundingClientRect(), renderPosition);
   };
 
   const renderInlineSelectionAction = (action) => (
@@ -102,8 +146,8 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
   return createPortal(
     <div
       ref={rootRef}
-      className={`editor-selection-toolbar editor-selection-toolbar-${position.placement}`}
-      style={{ top: position.top, left: position.left }}
+      className={`editor-selection-toolbar editor-selection-toolbar-${renderPosition.placement}`}
+      style={{ top: renderPosition.top, left: renderPosition.left }}
       role="toolbar"
       aria-label="Selected text actions"
       onMouseDown={preventSelectionReset}
@@ -149,24 +193,87 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                 aria-expanded={openActionMenu}
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  setOpenActionMenu((open) => !open);
+                  setFrozenPosition(renderPosition);
+                  setOpenActionMenu((open) => {
+                    const nextOpen = !open;
+                    onMenuOpenChange?.(nextOpen);
+                    return nextOpen;
+                  });
                 }}
               >
                 <Icon name="general/chevronDown" size={16} />
               </button>
               {openActionMenu && (
                 <div className="editor-selection-toolbar-menu" role="menu">
-                  {selectionActions.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
-                      role="menuitem"
-                      onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
-                    >
-                      <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
-                    </button>
-                  ))}
+                  {selectionActions.map((action) => {
+                    const hasChatTargets = action.id === 'add-context' && chatTargets.length > 0;
+
+                    if (hasChatTargets) {
+                      return (
+                        <div
+                          key={action.id}
+                          className="editor-selection-toolbar-submenu-anchor"
+                          onMouseEnter={() => setOpenChatTargetsForActionId(action.id)}
+                        >
+                          <button
+                            type="button"
+                            className={`editor-selection-toolbar-menu-item has-submenu${action.accent ? ` is-${action.accent}` : ''}`}
+                            role="menuitem"
+                            onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
+                          >
+                            <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="editor-selection-toolbar-menu-item-chevron"
+                            aria-label={`Choose chat for ${action.label}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openChatTargetsForActionId === action.id}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenChatTargetsForActionId((openActionId) => (
+                                openActionId === action.id ? null : action.id
+                              ));
+                            }}
+                          >
+                            <Icon name="general/chevronRight" size={16} />
+                          </button>
+                          {openChatTargetsForActionId === action.id && (
+                            <div className="editor-selection-toolbar-submenu is-chat-targets" role="menu" aria-label="Attach selection to chat">
+                              {chatTargets.map((chat) => (
+                                <button
+                                  key={chat.id}
+                                  type="button"
+                                  className="editor-selection-toolbar-chat-target"
+                                  role="menuitem"
+                                  onMouseDown={(event) => handleTargetChatMouseDown(event, action.id, chat.id)}
+                                >
+                                  <span className="editor-selection-toolbar-chat-target-icon" aria-hidden="true">
+                                    <AiChatAgentIcon icon={chat.icon} title={chat.title} />
+                                  </span>
+                                  <span className="editor-selection-toolbar-chat-target-title">{chat.title}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
+                        role="menuitem"
+                        onMouseEnter={() => setOpenChatTargetsForActionId(null)}
+                        onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
+                      >
+                        <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </span>
@@ -188,7 +295,7 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
             className={className}
             aria-label={item.ariaLabel}
             onMouseDown={preventSelectionReset}
-            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), position)}
+            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), renderPosition)}
           >
             {item.kind === 'icon' ? (
               <Icon name={item.iconName} size={16} />

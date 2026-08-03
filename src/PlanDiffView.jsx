@@ -1398,6 +1398,11 @@ export function DiffInlineCommentPopup({
   const normalizedActiveChatTargetKey = typeof activeChatTargetKey === 'string'
     ? activeChatTargetKey.trim()
     : '';
+  const fallbackSubmitTarget = {
+    attachMode: submitAttachMode,
+    targetChatId: submitAttachMode === 'current' ? normalizedActiveChatTargetKey : null,
+    targetDocumentTabId: submitAttachMode === 'document' ? normalizedDefaultSubmitTargetKey : null,
+  };
   const previousActiveChatTargetKeyRef = useRef(normalizedActiveChatTargetKey);
   const isEditing = Number.isInteger(editingIndex);
   const normalizedCommentGroups = Array.isArray(commentGroups) ? commentGroups : null;
@@ -2343,7 +2348,7 @@ export function DiffInlineCommentPopup({
               ? renderSubmitTargetPicker({
                   triggerRect: submitOptionsRect,
                   width: submitOptionsWidth,
-                  selectedTarget: submitAttachTarget ?? { attachMode: submitAttachMode },
+                  selectedTarget: submitAttachTarget ?? fallbackSubmitTarget,
                   canCreateNewChat: !hasCreatedNewChatTarget,
                   onSelectTarget: handleSubmitTargetSelect,
                   onDismiss: () => {
@@ -2638,6 +2643,7 @@ export function PlanDiffOverlay({
   pendingCommentRowIds = [],
   commentShortcutHintRowId = null,
   onTextSelectionChange = null,
+  onInlineCommentOpenChange = null,
   externalCommentRequest = null,
   onDiffCommentsChange = null,
   onDiffCommentSubmit = null,
@@ -2800,6 +2806,11 @@ export function PlanDiffOverlay({
   useEffect(() => {
     onDiffCommentsChangeRef.current = onDiffCommentsChange;
   }, [onDiffCommentsChange]);
+
+  useEffect(() => {
+    onInlineCommentOpenChange?.(Boolean(commentRowId));
+    return () => onInlineCommentOpenChange?.(false);
+  }, [commentRowId, onInlineCommentOpenChange]);
 
   const commitDiffComments = (nextComments, metadata = null) => {
     const normalizedComments = normalizeDiffCommentsState(nextComments);
@@ -3599,6 +3610,7 @@ export function PlanDiffOverlay({
       clearCommentComposeState(anchorRowId);
       return;
     }
+    onTextSelectionChange?.(null);
     setCommentFooterMetaLabel(
       getDiffCommentLineLabelForRowIds(nextTargetRowIds, rowId)
       || getDiffCommentFooterMetaLabel(rowId, resolvedSelectionSnapshot)
@@ -3615,6 +3627,7 @@ export function PlanDiffOverlay({
 
   const openAdditionalCommentForRow = (rowId) => {
     if (!rowId || !canCreateInlineComments) return;
+    onTextSelectionChange?.(null);
     activateRow(rowId);
     setCommentFooterMetaLabel(getDiffCommentFooterMetaLabel(rowId));
     setCommentTargetRowIds([rowId]);
@@ -5061,6 +5074,7 @@ export function PlanDiffEditorArea({
   pendingCommentRowIds = [],
   commentShortcutHintRowId = null,
   onTextSelectionChange = null,
+  onInlineCommentOpenChange = null,
   externalCommentRequest = null,
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
@@ -5252,6 +5266,7 @@ export function PlanDiffEditorArea({
           renderSubmitTargetPicker={renderSubmitTargetPicker}
           externalCommentRequest={externalCommentRequest}
           onTextSelectionChange={onTextSelectionChange}
+          onInlineCommentOpenChange={onInlineCommentOpenChange}
 	          pendingCommentRowIds={pendingCommentRowIds}
 	          commentShortcutHintRowId={commentShortcutHintRowId}
 	        />,

@@ -6489,79 +6489,6 @@ function DoneCommentCountIcon() {
   );
 }
 
-function DoneCommentPopup({
-  comments = [],
-  commentContextLabel = '',
-  commentContextIcon = 'claude',
-  commentContextSessionLabel = 'Active',
-  submitButtonLabel = 'Attach AI Note',
-  inputPlaceholder = 'Write an AI Note',
-  value,
-  editingIndex = null,
-  onChange,
-  onCancel,
-  onSubmit,
-  onStartEdit,
-  onDelete,
-  onHide,
-  onHideAll,
-  preserveEditorSelection = false,
-  selectionSnapshot = null,
-  footerMetaLabel = '',
-}) {
-  const showCompose = true;
-  const commentGroups = comments.length > 0
-    ? [{
-        label: commentContextLabel,
-        icon: commentContextIcon,
-        sessionLabel: 'Document',
-        showHeaderWhenEmpty: true,
-        comments: comments.map((text, index) => ({
-          ...((text && typeof text === 'object') ? text : {}),
-          text: getStoredCommentText(text),
-          lineLabel: '',
-          editable: true,
-          localIndex: Number.isInteger(text?.localIndex) ? text.localIndex : index,
-        })),
-      }]
-    : null;
-
-  useLayoutEffect(() => {
-    if (!preserveEditorSelection || !selectionSnapshot) return;
-    scheduleEditorSelectionSnapshotRestore(selectionSnapshot);
-  }, [preserveEditorSelection, selectionSnapshot]);
-
-  return (
-    <DiffInlineCommentPopup
-      comments={commentGroups ? [] : comments}
-      commentGroups={commentGroups}
-      commentContextLabel={commentContextLabel}
-      commentContextIcon={commentContextIcon}
-      commentContextSessionLabel={commentContextSessionLabel}
-      value={value}
-      editingIndex={editingIndex}
-      showCompose={showCompose}
-      defaultSubmitAttachMode="document"
-      submitAttachModes={['document']}
-      submitButtonLabel={submitButtonLabel}
-      inputPlaceholder={inputPlaceholder}
-      showSubmitTargetLabel={false}
-      showSubmitActionMenu={false}
-      showSendToAgentAction={false}
-      secondarySubmitAction={null}
-      footerMetaLabel={footerMetaLabel}
-      onChange={onChange}
-      onCancel={onCancel}
-      onSubmit={onSubmit}
-      onStartEdit={onStartEdit}
-      onDelete={onDelete}
-      onHide={onHide}
-      onHideAll={onHideAll}
-      preserveEditorSelection={preserveEditorSelection}
-    />
-  );
-}
-
 function DoneReferenceFileLine({ label, addPopupFiles, commentAdornment = null }) {
   return (
     <div className="spec-done-line spec-done-line-meta">
@@ -8291,34 +8218,6 @@ function getEditorSelectionSnapshotText(snapshot = null) {
   return '';
 }
 
-function restoreEditorSelectionSnapshot(snapshot) {
-  if (!snapshot || typeof window === 'undefined' || typeof document === 'undefined') return;
-
-  if (snapshot.type === 'textarea' && snapshot.element instanceof HTMLTextAreaElement) {
-    snapshot.element.focus({ preventScroll: true });
-    snapshot.element.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
-    return;
-  }
-
-  if (snapshot.type === 'range' && snapshot.range) {
-    const selection = window.getSelection();
-    if (!selection) return;
-    selection.removeAllRanges();
-    selection.addRange(snapshot.range);
-  }
-}
-
-function scheduleEditorSelectionSnapshotRestore(snapshot) {
-  if (!snapshot || typeof window === 'undefined') return;
-
-  const restore = () => restoreEditorSelectionSnapshot(snapshot);
-  restore();
-  window.requestAnimationFrame(() => {
-    restore();
-    window.requestAnimationFrame(restore);
-  });
-}
-
 function formatEditorCommentLineLabel(lineNumbers = []) {
   const normalizedLineNumbers = Array.from(new Set(
     lineNumbers
@@ -8336,6 +8235,17 @@ function formatEditorCommentLineLabel(lineNumbers = []) {
   return firstLineNumber === lastLineNumber
     ? `Comment to line ${firstLineNumber}`
     : `Comment to lines from ${firstLineNumber} to ${lastLineNumber}`;
+}
+
+function formatEditorCommentFooterLabel(label = '') {
+  const normalizedLabel = typeof label === 'string' ? label.trim() : '';
+  const singleLineMatch = normalizedLabel.match(/^Comment to line (\d+)$/);
+  if (singleLineMatch) return `Line ${singleLineMatch[1]}`;
+
+  const lineRangeMatch = normalizedLabel.match(/^Comment to lines from (\d+) to (\d+)$/);
+  if (lineRangeMatch) return `Lines ${lineRangeMatch[1]}–${lineRangeMatch[2]}`;
+
+  return normalizedLabel;
 }
 
 function getTextareaEditorCommentLineLabel(snapshot = null) {
@@ -8498,27 +8408,55 @@ function DoneEnhanceGuidePopup({ arrowPosition = 'top', dismissing = false }) {
   );
 }
 
-function SpecSelectionToolbar({ position, onAction }) {
+function SpecSelectionToolbar({ position, onAction, chatTargets = [], onMenuOpenChange = null, onDismiss = null }) {
   const rootRef = useRef(null);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [openChatTargetsForActionId, setOpenChatTargetsForActionId] = useState(null);
+  const [frozenPosition, setFrozenPosition] = useState(position);
+  const menuPositionLocked = actionMenuOpen || Boolean(openChatTargetsForActionId);
+  const renderPosition = menuPositionLocked ? (frozenPosition ?? position) : position;
   const primaryAction = SPEC_SELECTION_ACTIONS[0];
 
   useEffect(() => {
     setActionMenuOpen(false);
+    setOpenChatTargetsForActionId(null);
+    if (position) {
+      setFrozenPosition(position);
+    }
   }, [position?.rowKey, position?.placement]);
 
   useEffect(() => {
-    if (!actionMenuOpen) return undefined;
+    if (position && !menuPositionLocked) {
+      setFrozenPosition(position);
+    }
+  }, [position, menuPositionLocked]);
+
+  useEffect(() => {
+    onMenuOpenChange?.(actionMenuOpen);
+    return () => onMenuOpenChange?.(false);
+  }, [onMenuOpenChange, actionMenuOpen]);
+
+  useEffect(() => {
+    if (!renderPosition) return undefined;
 
     const closeOnOutsidePointer = (event) => {
       if (rootRef.current?.contains(event.target)) return;
+      onMenuOpenChange?.(false);
       setActionMenuOpen(false);
+      setOpenChatTargetsForActionId(null);
+      onDismiss?.();
     };
     document.addEventListener('mousedown', closeOnOutsidePointer, true);
     return () => document.removeEventListener('mousedown', closeOnOutsidePointer, true);
+  }, [onDismiss, onMenuOpenChange, renderPosition]);
+
+  useEffect(() => {
+    if (!actionMenuOpen) {
+      setOpenChatTargetsForActionId(null);
+    }
   }, [actionMenuOpen]);
 
-  if (!position) return null;
+  if (!renderPosition) return null;
 
   const preventSelectionReset = (event) => {
     event.preventDefault();
@@ -8526,20 +8464,35 @@ function SpecSelectionToolbar({ position, onAction }) {
 
   const handleActionMouseDown = (event, actionId) => {
     event.preventDefault();
-    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
+    setActionMenuOpen(false);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onDismiss?.();
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), renderPosition);
   };
 
   const handleMenuItemMouseDown = (event, actionId) => {
     event.preventDefault();
     setActionMenuOpen(false);
-    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), renderPosition);
+  };
+
+  const handleTargetChatMouseDown = (event, actionId, chatId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setActionMenuOpen(false);
+    setOpenChatTargetsForActionId(null);
+    onMenuOpenChange?.(false);
+    onAction?.(`${actionId}:${chatId}`, event.currentTarget.getBoundingClientRect(), renderPosition);
   };
 
   return createPortal(
     <div
       ref={rootRef}
-      className={`spec-done-selection-toolbar spec-done-selection-toolbar-${position.placement}`}
-      style={{ top: position.top, left: position.left }}
+      className={`spec-done-selection-toolbar spec-done-selection-toolbar-${renderPosition.placement}`}
+      style={{ top: renderPosition.top, left: renderPosition.left }}
       role="toolbar"
       aria-label="Selected text actions"
       onMouseDown={preventSelectionReset}
@@ -8570,24 +8523,87 @@ function SpecSelectionToolbar({ position, onAction }) {
                 aria-expanded={actionMenuOpen}
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  setActionMenuOpen((open) => !open);
+                  setFrozenPosition(renderPosition);
+                  setActionMenuOpen((open) => {
+                    const nextOpen = !open;
+                    onMenuOpenChange?.(nextOpen);
+                    return nextOpen;
+                  });
                 }}
               >
                 <Icon name="general/chevronDown" size={16} />
               </button>
               {actionMenuOpen && (
                 <div className="editor-selection-toolbar-menu spec-done-selection-toolbar-menu" role="menu">
-                  {SPEC_SELECTION_ACTIONS.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
-                      role="menuitem"
-                      onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
-                    >
-                      <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
-                    </button>
-                  ))}
+                  {SPEC_SELECTION_ACTIONS.map((action) => {
+                    const hasChatTargets = action.id === 'annotation' && chatTargets.length > 0;
+
+                    if (hasChatTargets) {
+                      return (
+                        <div
+                          key={action.id}
+                          className="editor-selection-toolbar-submenu-anchor"
+                          onMouseEnter={() => setOpenChatTargetsForActionId(action.id)}
+                        >
+                          <button
+                            type="button"
+                            className={`editor-selection-toolbar-menu-item has-submenu${action.accent ? ` is-${action.accent}` : ''}`}
+                            role="menuitem"
+                            onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
+                          >
+                            <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="editor-selection-toolbar-menu-item-chevron"
+                            aria-label={`Choose chat for ${action.label}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openChatTargetsForActionId === action.id}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setOpenChatTargetsForActionId((openActionId) => (
+                                openActionId === action.id ? null : action.id
+                              ));
+                            }}
+                          >
+                            <Icon name="general/chevronRight" size={16} />
+                          </button>
+                          {openChatTargetsForActionId === action.id && (
+                            <div className="editor-selection-toolbar-submenu is-chat-targets" role="menu" aria-label="Attach selection to chat">
+                              {chatTargets.map((chat) => (
+                                <button
+                                  key={chat.id}
+                                  type="button"
+                                  className="editor-selection-toolbar-chat-target"
+                                  role="menuitem"
+                                  onMouseDown={(event) => handleTargetChatMouseDown(event, action.id, chat.id)}
+                                >
+                                  <span className="editor-selection-toolbar-chat-target-icon" aria-hidden="true">
+                                    <AiChatAgentIcon icon={chat.icon} title={chat.title} />
+                                  </span>
+                                  <span className="editor-selection-toolbar-chat-target-title">{chat.title}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
+                        role="menuitem"
+                        onMouseEnter={() => setOpenChatTargetsForActionId(null)}
+                        onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
+                      >
+                        <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </span>
@@ -8602,7 +8618,7 @@ function SpecSelectionToolbar({ position, onAction }) {
             aria-label={item.label}
             title={item.label}
             onMouseDown={preventSelectionReset}
-            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), position)}
+            onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), renderPosition)}
           >
             {item.iconName ? (
               <Icon name={item.iconName} size={16} />
@@ -8659,7 +8675,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, defaultSubmitTargetKey = '', acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -8779,6 +8795,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const pendingFocusNextRowKeyRef = useRef(null);
   const scrollRef = useRef(null);
   const [selectionToolbarPos, setSelectionToolbarPos] = useState(null);
+  const selectionToolbarMenuOpenRef = useRef(false);
+  const handleSelectionToolbarMenuOpenChange = useCallback((open) => {
+    selectionToolbarMenuOpenRef.current = Boolean(open);
+  }, []);
   const [activeIssueRowKey, setActiveIssueRowKey] = useState(null);
   const [navigatedIssueRowKey, setNavigatedIssueRowKey] = useState(null);
   const [resolvedProposalRowKeys, setResolvedProposalRowKeys] = useState(() => new Set());
@@ -8786,11 +8806,23 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [hoveredRowKey, setHoveredRowKey] = useState(null);
   const [hoveredIssueRowKey, setHoveredIssueRowKey] = useState(null);
   const [commentPopup, setCommentPopup] = useState(null);
+  const commentPopupOpenRef = useRef(false);
   const [intentionPopup, setIntentionPopup] = useState(null);
   const normalizedCode = useMemo(
     () => normalizeSpecCodeForComparison(effectiveCode),
     [effectiveCode]
   );
+  useEffect(() => {
+    commentPopupOpenRef.current = Boolean(commentPopup);
+    if (commentPopup) {
+      setSelectionToolbarPos(null);
+    }
+  }, [commentPopup]);
+  const openCommentPopup = useCallback((nextPopup) => {
+    commentPopupOpenRef.current = true;
+    setSelectionToolbarPos(null);
+    setCommentPopup(nextPopup);
+  }, []);
   const runStatusMetaByStableKey = useMemo(() => {
     const nextMeta = new Map();
     let acVisibleIndex = 0;
@@ -9000,9 +9032,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     return null;
   }, []);
   const getDoneCommentFooterMetaLabel = useCallback((rowMeta, selectionSnapshot = null) => {
-    const selectedText = getEditorSelectionSnapshotText(selectionSnapshot).trim();
-    return selectedText.length > 0 ? 'Selected text' : 'Current document';
-  }, []);
+    const rowLineLabel = formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]);
+    return formatEditorCommentFooterLabel(rowLineLabel);
+  }, [getDoneRowLineNumber]);
   const hydratedRowComments = useMemo(
     () => buildRowCommentsStateFromEntries(rowMetaList, persistedCommentEntries),
     [persistedCommentEntries, rowMetaList]
@@ -9151,8 +9183,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const selectionSnapshot = captureActiveEditorSelectionSnapshot();
       const footerMetaLabel = getDoneCommentFooterMetaLabel(rowMeta, selectionSnapshot);
       setIntentionPopup(null);
-      setSelectionToolbarPos(null);
-      setCommentPopup((prev) => (
+      openCommentPopup((prev) => (
         prev?.rowKey === rowMeta.stableKey
           ? null
           : {
@@ -9174,7 +9205,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       return;
     }
 
-    if (actionId === 'annotation' || actionId === 'ask-in-side-chat') {
+    const annotationTargetPrefix = 'annotation:';
+    const targetAnnotationChatId = typeof actionId === 'string' && actionId.startsWith(annotationTargetPrefix)
+      ? actionId.slice(annotationTargetPrefix.length)
+      : null;
+
+    if (actionId === 'annotation' || targetAnnotationChatId || actionId === 'ask-in-side-chat') {
       const capturedSnapshot = captureActiveEditorSelectionSnapshot();
       const liveSelection = typeof window !== 'undefined' ? window.getSelection() : null;
       const selectionSnapshot = capturedSnapshot ?? (
@@ -9195,11 +9231,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         rowIndex: rowMeta.rowIndex,
         lineLabel: formatEditorCommentLineLabel([getDoneRowLineNumber(rowMeta)]),
         mode: actionId === 'ask-in-side-chat' ? 'side-chat' : 'selection',
+        chatId: targetAnnotationChatId,
       });
       return;
     }
 
     if (actionId === 'suggest') {
+      commentPopupOpenRef.current = false;
       setCommentPopup(null);
       setSelectionToolbarPos(null);
       setActiveIssueRowKey(rowMeta.stableKey);
@@ -9217,7 +9255,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             }
       ));
     }
-  }, [getDoneCommentFooterMetaLabel, getSelectionToolbarRowMeta, onAddSelectionToChat, rowMetaByKey]);
+  }, [getDoneCommentFooterMetaLabel, getSelectionToolbarRowMeta, onAddSelectionToChat, openCommentPopup, rowMetaByKey]);
 
   const getShortcutCommentRowMeta = useCallback(() => {
     const selectionRowMeta = getSelectionToolbarRowMeta();
@@ -9254,8 +9292,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       event.preventDefault();
       event.stopPropagation();
       setIntentionPopup(null);
-      setSelectionToolbarPos(null);
-      setCommentPopup((prev) => (
+      openCommentPopup((prev) => (
         prev?.rowKey === rowMeta.stableKey
           ? null
           : {
@@ -9278,9 +9315,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [getDoneCommentFooterMetaLabel, getShortcutCommentRowMeta]);
+  }, [getDoneCommentFooterMetaLabel, getShortcutCommentRowMeta, openCommentPopup]);
 
   const closeCommentPopup = useCallback((rowIndex = null) => {
+    commentPopupOpenRef.current = false;
     setCommentPopup(null);
     if (Number.isInteger(rowIndex)) {
       requestAnimationFrame(() => focusDoneRowEditable(rowIndex));
@@ -9409,6 +9447,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         ? comments.map((comment) => setStoredCommentHidden(comment, true))
         : [],
     }), {}));
+    commentPopupOpenRef.current = false;
     setCommentPopup(null);
   }, []);
 
@@ -9439,7 +9478,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     const comment = rowComments[rowCommentKey]?.[commentIndex] ?? '';
     const isAnnotation = isSpecTextAnnotationComment(comment);
 
-    setCommentPopup({
+    openCommentPopup({
       rowKey: rowMeta.stableKey,
       rowCommentKey,
       rowIndex: rowMeta.rowIndex,
@@ -9452,7 +9491,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       annotationOrder: isAnnotation ? getSpecTextAnnotationOrder(comment, commentIndex + 1) : null,
       footerMetaLabel: isAnnotation ? (getStoredCommentLineLabel(comment) || `Annotation ${getSpecTextAnnotationOrder(comment, commentIndex + 1)}`) : '',
     });
-  }, [rowComments]);
+  }, [openCommentPopup, rowComments]);
 
   const handleTextAnnotationEditStart = useCallback((rowMeta, rowCommentKey, commentIndex, triggerRect = null) => {
     if (!rowMeta?.stableKey) return;
@@ -9463,9 +9502,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     const comment = rowComments[rowCommentKey]?.[commentIndex] ?? '';
     const order = getSpecTextAnnotationOrder(comment, commentIndex + 1);
 
-    setSelectionToolbarPos(null);
     setIntentionPopup(null);
-    setCommentPopup({
+    openCommentPopup({
       rowKey: rowMeta.stableKey,
       rowCommentKey,
       rowIndex: rowMeta.rowIndex,
@@ -9480,7 +9518,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       selectionSnapshot: null,
       footerMetaLabel: getStoredCommentLineLabel(comment) || `Annotation ${order}`,
     });
-  }, [rowComments]);
+  }, [openCommentPopup, rowComments]);
 
   const toggleBreakpoint = (rowKey) => {
     if (typeof rowKey !== 'string' || !rowKey) return;
@@ -9771,6 +9809,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       el.querySelectorAll('.spec-done-active-line').forEach((node) => node.classList.remove('spec-done-active-line'));
     };
     const updateSelectionUi = () => {
+      if (commentPopupOpenRef.current) {
+        setSelectionToolbarPos(null);
+        return;
+      }
+
+      if (selectionToolbarMenuOpenRef.current) {
+        return;
+      }
+
       clearHighlights();
 
       const selection = window.getSelection();
@@ -9983,6 +10030,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     });
 
     if (commentPopup?.rowKey && !rowMetaByKey.has(commentPopup.rowKey)) {
+      commentPopupOpenRef.current = false;
       setCommentPopup(null);
     }
 
@@ -10023,6 +10071,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setHoveredIssueRowKey(null);
     setResolvedProposalRowKeys(new Set());
     setFocusedCommentRowKey(null);
+    commentPopupOpenRef.current = false;
     setCommentPopup(null);
     setIntentionPopup(null);
   }, [displayRows.length]);
@@ -10042,6 +10091,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setClearedRowKeys(new Set());
     setResolvedProposalRowKeys(new Set());
     setHasEditedLines(false);
+    commentPopupOpenRef.current = false;
     setCommentPopup(null);
     setSelectionToolbarPos(null);
     setActiveIssueRowKey(null);
@@ -10176,7 +10226,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 isOpen={isCommentPopupOpen}
                 demoId={demoTargetId ? `spec-comment-${demoTargetId}` : null}
                 onOpen={(rect, options = {}) => {
-                  setCommentPopup((prev) => (
+                  openCommentPopup((prev) => (
                     prev?.rowKey === stableKey
                       ? null
                       : {
@@ -10192,7 +10242,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                           showAddSelectionAction: false,
                           preserveEditorSelection: Boolean(options.preserveEditorSelection),
                           selectionSnapshot: options.selectionSnapshot ?? null,
-                          footerMetaLabel: '',
+                          footerMetaLabel: rowLineLabel,
                         }
                   ));
                 }}
@@ -10214,6 +10264,30 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   })),
                 }]
               : null;
+            const activeCommentPopupForRow = isCommentPopupOpen ? commentPopup : null;
+            const activeCommentPopupCommentsForRow = activeCommentPopupForRow
+              ? getSpecCommentPopupComments(commentsForRow, Boolean(activeCommentPopupForRow.isAnnotation))
+              : [];
+            const inlineCommentPopupGroups = activeCommentPopupForRow
+              ? (activeCommentPopupCommentsForRow.length > 0
+                  ? [{
+                      label: activeCommentPopupForRow.isAnnotation ? 'Annotations' : commentContextLabel,
+                      icon: activeCommentPopupForRow.isAnnotation ? 'general/balloon' : 'fileTypes/markdown',
+                      sessionLabel: 'Document',
+                      showHeaderWhenEmpty: true,
+                      comments: activeCommentPopupCommentsForRow.map((comment, index) => ({
+                        ...((comment && typeof comment === 'object') ? comment : {}),
+                        text: getStoredCommentText(comment),
+                        lineLabel: activeCommentPopupForRow.isAnnotation
+                          ? (getStoredCommentLineLabel(comment) || activeCommentPopupForRow.footerMetaLabel || '')
+                          : '',
+                        editable: true,
+                        localIndex: Number.isInteger(comment?.localIndex) ? comment.localIndex : index,
+                      })),
+                    }]
+                  : null)
+              : commentThreadGroups;
+            const shouldRenderInlineCommentPopup = Boolean(activeCommentPopupForRow || commentThreadGroups);
             return (
             <Fragment key={stableKey}>
             <div
@@ -10406,7 +10480,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 )}
               </div>
             </div>
-            {commentThreadGroups && (
+            {shouldRenderInlineCommentPopup && (
               <div
                 className="spec-done-row spec-done-row-comment"
                 data-row-key={`${stableKey}:comments`}
@@ -10417,19 +10491,40 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   <div className="plan-diff-inline-comment spec-done-inline-comment-thread">
                     <DiffInlineCommentPopup
                       comments={[]}
-                      commentGroups={commentThreadGroups}
-                      value=""
-                      editingIndex={null}
-                      showCompose={false}
-                      commentContextLabel={commentContextLabel}
-                      commentContextIcon="fileTypes/markdown"
+                      commentGroups={inlineCommentPopupGroups}
+                      value={activeCommentPopupForRow ? activeCommentPopupForRow.value : ''}
+                      editingIndex={activeCommentPopupForRow ? (activeCommentPopupForRow.editingIndex ?? null) : null}
+                      showCompose={Boolean(activeCommentPopupForRow)}
+                      commentContextLabel={activeCommentPopupForRow?.isAnnotation ? 'Annotations' : commentContextLabel}
+                      commentContextIcon={activeCommentPopupForRow?.isAnnotation ? 'general/balloon' : 'fileTypes/markdown'}
                       commentContextSessionLabel={commentContextSessionLabel}
+                      submitButtonLabel={activeCommentPopupForRow?.isAnnotation
+                        ? (Number.isInteger(activeCommentPopupForRow.editingIndex) ? 'Save Annotation' : 'Add Annotation')
+                        : (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save AI Note' : 'Attach AI Note')}
+                      inputPlaceholder={activeCommentPopupForRow?.isAnnotation ? 'Write an Annotation' : 'Write an AI Note'}
+                      defaultSubmitAttachMode="document"
+                      submitAttachModes={activeCommentPopupForRow?.isAnnotation ? ['document'] : ['document', 'current', 'new']}
+                      defaultSubmitTargetLabel={commentContextLabel}
+                      defaultSubmitTargetIcon="fileTypes/markdown"
+                      defaultSubmitTargetKey={defaultSubmitTargetKey}
+                      activeChatTargetKey={chatTargets[0]?.id ?? ''}
+                      renderSubmitTargetPicker={renderSubmitTargetPicker}
+                      showSubmitTargetLabel={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation)}
+                      showSubmitActionMenu={false}
+                      showSendToAgentAction={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation)}
+                      secondarySubmitAction={null}
+                      preserveEditorSelection={false}
+                      preservedEditorSelectionSnapshot={activeCommentPopupForRow?.selectionSnapshot ?? null}
+                      footerMetaLabel=""
+                      onChange={(nextValue) => {
+                        setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
+                      }}
                       onStartEdit={(commentIndex) => handleInlineCommentEditStart(rowMeta, rowCommentKey, commentIndex)}
                       onDelete={(commentIndex) => handleCommentDelete(stableKey, rowCommentKey, commentIndex)}
                       onHide={(commentIndex) => handleCommentHide(stableKey, rowCommentKey, commentIndex)}
                       onHideAll={handleHideAllComments}
-                      onCancel={() => {}}
-                      onSubmit={() => {}}
+                      onCancel={() => activeCommentPopupForRow ? closeCommentPopup(activeCommentPopupForRow.rowIndex) : undefined}
+                      onSubmit={activeCommentPopupForRow ? handleCommentSubmit : undefined}
                     />
                   </div>
                 </div>
@@ -10523,38 +10618,16 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       </>,
       document.body
     )}
-    {commentPopup && (
-      <PositionedPopup triggerRect={commentPopup.rect} onDismiss={() => closeCommentPopup()} gap={8}>
-        <DoneCommentPopup
-          comments={getSpecCommentPopupComments(
-            rowComments[commentPopup.rowCommentKey] ?? [],
-            Boolean(commentPopup.isAnnotation),
-          )}
-          commentContextLabel={commentPopup.isAnnotation ? 'Annotations' : commentContextLabel}
-          commentContextIcon={commentPopup.isAnnotation ? 'general/balloon' : 'fileTypes/markdown'}
-          commentContextSessionLabel={commentContextSessionLabel}
-          submitButtonLabel={commentPopup.isAnnotation
-            ? (Number.isInteger(commentPopup.editingIndex) ? 'Save Annotation' : 'Add Annotation')
-            : (Number.isInteger(commentPopup.editingIndex) ? 'Save AI Note' : 'Attach AI Note')}
-          inputPlaceholder={commentPopup.isAnnotation ? 'Write an Annotation' : 'Write an AI Note'}
-          value={commentPopup.value}
-          editingIndex={commentPopup.editingIndex ?? null}
-          preserveEditorSelection={Boolean(commentPopup.preserveEditorSelection)}
-          selectionSnapshot={commentPopup.selectionSnapshot ?? null}
-          footerMetaLabel={commentPopup.footerMetaLabel ?? ''}
-          onChange={(nextValue) => {
-            setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
-          }}
-          onStartEdit={(commentIndex) => handleCommentEditStart(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
-          onDelete={(commentIndex) => handleCommentDelete(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
-          onHide={(commentIndex) => handleCommentHide(commentPopup.rowKey, commentPopup.rowCommentKey, commentIndex)}
-          onHideAll={handleHideAllComments}
-          onCancel={() => closeCommentPopup(commentPopup.rowIndex)}
-          onSubmit={handleCommentSubmit}
-        />
-      </PositionedPopup>
-    )}
-    <SpecSelectionToolbar position={selectionToolbarPos} onAction={handleSelectionToolbarAction} />
+    <SpecSelectionToolbar
+      position={selectionToolbarPos}
+      onAction={handleSelectionToolbarAction}
+      chatTargets={chatTargets}
+      onMenuOpenChange={handleSelectionToolbarMenuOpenChange}
+      onDismiss={() => {
+        selectionToolbarMenuOpenRef.current = false;
+        setSelectionToolbarPos(null);
+      }}
+    />
     {intentionPopup && (
       <PositionedPopup triggerRect={intentionPopup.rect} onDismiss={() => setIntentionPopup(null)} gap={4}>
         <DoneIssueIntentionPopup
@@ -10721,7 +10794,7 @@ function AgentTaskTopBarIcon({ style }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -11461,7 +11534,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -11476,7 +11549,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -11603,7 +11676,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
           doneOverlayHost
         )}
       </>
@@ -17847,6 +17920,11 @@ export default function App() {
   const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
   const [pendingDocumentDiffCommentSnapshotsByTabId, setPendingDocumentDiffCommentSnapshotsByTabId] = useState({});
   const [editorExternalCommentRequest, setEditorExternalCommentRequest] = useState(null);
+  const editorSelectionToolbarMenuOpenRef = useRef(false);
+  const editorInlineCommentOpenRef = useRef(false);
+  const handleEditorSelectionToolbarMenuOpenChange = useCallback((open) => {
+    editorSelectionToolbarMenuOpenRef.current = Boolean(open);
+  }, []);
   useEffect(() => {
     if (!commentShortcutHintTarget) return undefined;
     const timeoutId = window.setTimeout(() => {
@@ -17938,6 +18016,20 @@ export default function App() {
     })),
     [aiChatDraftListItems],
   );
+  const selectionChatTargets = useMemo(() => {
+    const seen = new Set();
+    return [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS]
+      .filter((item) => {
+        if (!item || typeof item.id !== 'string' || item.id.length === 0 || seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      })
+      .map((item) => ({
+        id: item.id,
+        title: typeof item.title === 'string' && item.title.trim().length > 0 ? item.title : 'New Chat',
+        icon: typeof item.icon === 'string' && item.icon.length > 0 ? item.icon : 'claude',
+      }));
+  }, [aiChatRecentItems]);
   const getAiChatScenarioById = useCallback(
     (chatId) => aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'],
     [aiChatScenarios],
@@ -18049,6 +18141,13 @@ export default function App() {
   const editorCompletionRef = useRef(null);
   const [idleSelectionToolbarPos, setIdleSelectionToolbarPos] = useState(null);
   const [editorSelectionToolbarPos, setEditorSelectionToolbarPos] = useState(null);
+  const handleEditorInlineCommentOpenChange = useCallback((open) => {
+    editorInlineCommentOpenRef.current = Boolean(open);
+    if (open) {
+      editorSelectionToolbarMenuOpenRef.current = false;
+      setEditorSelectionToolbarPos(null);
+    }
+  }, []);
 
   // Attached files for editor toolbar
   const [attachedFilesByTab, setAttachedFilesByTab] = useState({});
@@ -21321,6 +21420,15 @@ export default function App() {
         return;
       }
 
+      if (editorInlineCommentOpenRef.current) {
+        setEditorSelectionToolbarPos(null);
+        return;
+      }
+
+      if (editorSelectionToolbarMenuOpenRef.current) {
+        return;
+      }
+
       const activeTab = ideTabs[activeEditorTab ?? 0];
       const tabId = activeTab?.id ?? '';
 
@@ -23563,7 +23671,7 @@ export default function App() {
           icon: 'claude',
           emptyState: true,
           showAttachmentsInComposer: true,
-          initialComposerText: selectedText,
+          initialComposerText: '',
           temporary: true,
           select: false,
         });
@@ -23622,6 +23730,7 @@ export default function App() {
   }, [sideChatState?.chatId]);
   const handleAddSpecSelectionToChat = useCallback(({
     selectedText = '',
+    chatId = null,
     rowKey = null,
     rowIndex = null,
     lineLabel = '',
@@ -23647,10 +23756,12 @@ export default function App() {
       });
     }
 
-    const boundChatId = ensureSpecStatusChat(activeSpecTopBarStatus, {
-      select: false,
-      sourceTabId,
-    });
+    const boundChatId = typeof chatId === 'string' && chatId.trim().length > 0
+      ? chatId.trim()
+      : ensureSpecStatusChat(activeSpecTopBarStatus, {
+          select: false,
+          sourceTabId,
+        });
 
     return addSelectionContextToChat({
       chatId: boundChatId,
@@ -23677,6 +23788,13 @@ export default function App() {
     visibleEditorStateTabId,
   ]);
   const handleEditorSelectionToolbarAction = useCallback((actionId, triggerRect = null, toolbarState = null) => {
+    editorSelectionToolbarMenuOpenRef.current = false;
+    setEditorSelectionToolbarPos(null);
+    const opensInlineEditorComment = actionId === 'comment' || actionId === 'add-context-comment';
+    if (!opensInlineEditorComment) {
+      clearDocumentTextSelection();
+    }
+
     if (actionId === 'ask-in-side-chat') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
         ? toolbarState.selectedText.trim()
@@ -23807,7 +23925,12 @@ export default function App() {
       return;
     }
 
-    if (actionId === 'add-context') {
+    const addContextTargetPrefix = 'add-context:';
+    const targetContextChatId = typeof actionId === 'string' && actionId.startsWith(addContextTargetPrefix)
+      ? actionId.slice(addContextTargetPrefix.length)
+      : null;
+
+    if (actionId === 'add-context' || targetContextChatId) {
       if (!activeTabId) return;
 
       const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
@@ -23816,7 +23939,7 @@ export default function App() {
         : '';
       if (!selectedText) return;
 
-      const targetChatId = selectedAiChatId;
+      const targetChatId = targetContextChatId || selectedAiChatId;
       const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
         ? toolbarState.sourceLabel.trim()
         : (activeTab?.label ?? 'Selected context');
@@ -23919,6 +24042,7 @@ export default function App() {
     if (isDiffTab) {
       setDiffGutterCommentsEnabled(true);
     }
+    editorInlineCommentOpenRef.current = true;
     setEditorSelectionToolbarPos(null);
     setEditorExternalCommentRequest({
       nonce: `${activeTabId}:${Date.now()}:${rowIds.join(',')}`,
@@ -27271,7 +27395,7 @@ export default function App() {
               </div>
             )
             : isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}
@@ -27313,6 +27437,10 @@ export default function App() {
 	                    commentSessionActiveChatId={activePlanDiffCommentChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
                       onTextSelectionChange={(selectionState) => {
+                        if (editorInlineCommentOpenRef.current) {
+                          setEditorSelectionToolbarPos(null);
+                          return;
+                        }
                         if (!selectionState?.rect) {
                           setEditorSelectionToolbarPos(null);
                           return;
@@ -27334,6 +27462,7 @@ export default function App() {
                         ? editorExternalCommentRequest
                         : null
                     }
+	                    onInlineCommentOpenChange={handleEditorInlineCommentOpenChange}
 	                    renderSubmitTargetPicker={renderCommentSubmitTargetPicker}
                     onDiffCommentsChange={handleActivePlanDiffCommentsChange}
                     onRowDelete={handlePlanDiffRowDelete}
@@ -27426,7 +27555,16 @@ export default function App() {
       {settingsDialogPortal}
       {editorTabsMorePortal}
       {terminalPermissionPortal}
-      <EditorSelectionToolbar position={editorSelectionToolbarPos} onAction={handleEditorSelectionToolbarAction} />
+      <EditorSelectionToolbar
+        position={editorSelectionToolbarPos}
+        onAction={handleEditorSelectionToolbarAction}
+        chatTargets={selectionChatTargets}
+        onMenuOpenChange={handleEditorSelectionToolbarMenuOpenChange}
+        onDismiss={() => {
+          editorSelectionToolbarMenuOpenRef.current = false;
+          setEditorSelectionToolbarPos(null);
+        }}
+      />
       <ChatSelectionCommentPopover
         request={chatSelectionCommentRequest}
         value={chatSelectionCommentValue}
