@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
 import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
@@ -86,6 +86,19 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
     onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
   };
 
+  const renderInlineSelectionAction = (action) => (
+    <button
+      key={action.id}
+      type="button"
+      className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-chat-action${action.accent ? ` is-${action.accent}` : ''}`}
+      aria-label={action.label}
+      title={action.title ?? action.label}
+      onMouseDown={(event) => handleActionMouseDown(event, action.id)}
+    >
+      <span className="editor-selection-toolbar-text">{action.label}</span>
+    </button>
+  );
+
   return createPortal(
     <div
       ref={rootRef}
@@ -101,6 +114,21 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
         }
 
         if (item.kind === 'selectionAction') {
+          if (surface === 'ai-chat') {
+            return (
+              <span key={item.id} className="editor-selection-toolbar-chat-actions">
+                {selectionActions.map((action, actionIndex) => (
+                  <Fragment key={action.id}>
+                    {actionIndex > 0 ? (
+                      <span className="editor-selection-toolbar-separator is-chat-action" aria-hidden="true" />
+                    ) : null}
+                    {renderInlineSelectionAction(action)}
+                  </Fragment>
+                ))}
+              </span>
+            );
+          }
+
           return (
             <span key={item.id} className="editor-selection-toolbar-menu-anchor">
               <button

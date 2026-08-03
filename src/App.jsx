@@ -21369,7 +21369,7 @@ export default function App() {
           return;
         }
 
-        const basePos = getSelectionToolbarPosition(rect, { safeWidth: 176, safeHeight: 44 });
+        const basePos = getSelectionToolbarPosition(rect, { safeWidth: 382, safeHeight: 44 });
         const rawSelectedText = selection.toString();
         const selectedText = rawSelectedText.trim();
         const leadingSelectionWhitespace = rawSelectedText.length - rawSelectedText.trimStart().length;

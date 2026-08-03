@@ -1205,6 +1205,21 @@ body {
   align-items: center;
 }
 
+.editor-selection-toolbar-chat-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.editor-selection-toolbar-chat-action {
+  white-space: nowrap;
+}
+
+.editor-selection-toolbar-separator.is-chat-action {
+  height: 16px;
+  margin: 0 2px;
+}
+
 .editor-selection-toolbar-menu {
   position: absolute;
   top: calc(100% + 6px);
