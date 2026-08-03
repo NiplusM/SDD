@@ -16409,8 +16409,7 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 16px;
 }
 
-/* The icon+name form a clickable button that navigates to the diff; it fills the
-   row and ellipsizes, leaving the change summary pinned right. */
+/* The icon, name, and project path form one clickable row. */
 .commit-file-open {
   flex: 1 1 auto;
   min-width: 0;
@@ -16427,10 +16426,22 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .commit-file-node .commit-file-name {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  max-width: 46%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-file-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 4px;
+  overflow: hidden;
+  color: var(--text-secondary, #868a91);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .commit-file-change-summary {

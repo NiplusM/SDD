@@ -58,6 +58,7 @@ import './App.css';
 
 const PROJECT_NAME = 'Code-review';
 const BRANCH_NAME = 'Code-review';
+const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
@@ -529,68 +530,82 @@ class VisitControllerTests {
   },
 };
 
-// Flat source of truth for the Commit tool window. Each file carries the fields
-// CommitWindow renders ({id,label,path,icon,status}) plus metadata the filter uses
-// to regroup the list: `severity` (for "by severity"), `functionality` (a module
-// label for "by functionality") and `changeCount` (number of changes in the file).
-// Source of truth for the Commit tool window. Each file carries the render fields
-// ({id,label,path,icon,status}) plus: `category` (review-result bucket used by the
-// "by review result" grouping) and `added`/`removed` (changed-line counters shown
-// on the row, like the VCS log's "+3 -26").
-// Labels match real editor tabs (MY_EDITOR_TABS) so clicking a row navigates to
-// the file.
-const COMMIT_CHANGE_FILES = [
+// Commit content is grouped by project-specific AI tasks. Every child points to
+// a real file from the payment-service project tree.
+const COMMIT_CHAT_GROUPS = [
   {
-    id: 'visit-controller',
-    label: 'VisitController.java',
-    path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
-    icon: 'fileTypes/java',
-    status: 'modified',
-    category: 'Security',
-    added: 27,
-    removed: 9,
+    id: 'request-logging',
+    label: 'Add request logging to visit workflows',
+    files: [
+      { label: 'VisitController.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`, status: 'modified' },
+      { label: 'application.properties', path: `${PROJECT_ROOT_PATH}/src/main/resources`, status: 'modified' },
+      { label: 'VisitControllerTests.java', path: `${PROJECT_ROOT_PATH}/src/test/java/org/springframework/samples/petclinic/owner`, status: 'added' },
+    ],
   },
   {
-    id: 'diff-visit',
-    label: 'Visit.java',
-    path: '~/IdeaProjects/payment-service/src/main/java/org/springframework/samples/petclinic/owner',
-    icon: 'fileTypes/java',
-    status: 'modified',
-    category: 'Correctness',
-    added: 6,
-    removed: 2,
+    id: 'understand-codebase',
+    label: 'Review the PetClinic domain model',
+    files: [
+      { label: 'Owner.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`, status: 'modified' },
+      { label: 'Pet.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`, status: 'modified' },
+      { label: 'BaseEntity.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/model`, status: 'modified' },
+    ],
   },
   {
-    id: 'visit-form',
-    label: 'createOrUpdateVisitForm.html',
-    path: '~/IdeaProjects/payment-service/src/main/resources/templates/pets',
-    icon: 'fileTypes/html',
-    status: 'modified',
-    category: 'Performance',
-    added: 4,
-    removed: 1,
+    id: 'class-three-params',
+    label: 'Add vet scheduling domain support',
+    files: [
+      { label: 'VetSchedule.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/vet`, status: 'added' },
+      { label: 'Vet.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/vet`, status: 'modified' },
+      { label: 'Person.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/model`, status: 'modified' },
+    ],
   },
   {
-    id: 'schema-sql',
-    label: 'schema.sql',
-    path: '~/IdeaProjects/payment-service/src/main/resources/db/hsqldb',
-    icon: 'fileTypes/text',
-    status: 'modified',
-    category: 'Reliability',
-    added: 12,
-    removed: 3,
+    id: 'solver-test-fixtures',
+    label: 'Refresh visit booking test fixtures',
+    files: [
+      { label: 'data.sql', path: `${PROJECT_ROOT_PATH}/src/main/resources/db/h2`, status: 'modified' },
+      { label: 'schema.sql', path: `${PROJECT_ROOT_PATH}/src/main/resources/db/h2`, status: 'modified' },
+      { label: 'ClinicServiceTests.java', path: `${PROJECT_ROOT_PATH}/src/test/java/org/springframework/samples/petclinic`, status: 'added' },
+    ],
   },
   {
-    id: 'visit-controller-test',
-    label: 'VisitControllerTests.java',
-    path: '~/IdeaProjects/payment-service/src/test/java/org/springframework/samples/petclinic/owner',
-    icon: 'fileTypes/java',
-    status: 'added',
-    category: 'Testing',
-    added: 34,
-    removed: 0,
+    id: 'polynomial-nullability',
+    label: 'Review repository nullability contracts',
+    files: [
+      { label: 'VisitRepository.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/owner`, status: 'modified' },
+      { label: 'VetRepository.java', path: `${PROJECT_ROOT_PATH}/src/main/java/org/springframework/samples/petclinic/vet`, status: 'modified' },
+    ],
+  },
+  {
+    id: 'related-chat-ranking',
+    label: 'Update visit and owner templates',
+    files: [
+      { label: 'createOrUpdateVisitForm.html', path: `${PROJECT_ROOT_PATH}/src/main/resources/templates/pets`, status: 'modified' },
+      { label: 'ownerDetails.html', path: `${PROJECT_ROOT_PATH}/src/main/resources/templates/owners`, status: 'modified' },
+    ],
   },
 ];
+
+function getCommitFileIcon(fileName = '') {
+  const normalized = fileName.toLowerCase();
+  if (normalized.endsWith('.html')) return 'fileTypes/html';
+  if (normalized.endsWith('.js') || normalized.endsWith('.jsx')) return 'fileTypes/javaScript';
+  if (normalized.endsWith('.css')) return 'fileTypes/css';
+  if (normalized.endsWith('.java')) return 'fileTypes/java';
+  if (normalized.endsWith('.md')) return 'fileTypes/markdown';
+  if (normalized.endsWith('.xml')) return 'fileTypes/xml';
+  return 'fileTypes/text';
+}
+
+const COMMIT_CHANGE_FILES = COMMIT_CHAT_GROUPS.flatMap((group) => (
+  group.files.map((file, index) => ({
+    ...file,
+    id: `${group.id}-${index}`,
+    groupId: group.id,
+    icon: getCommitFileIcon(file.label),
+  }))
+));
 
 // Severity ordering for the Commit tool window: critical first, then warning, info.
 const COMMIT_SEVERITY_ORDER = ['critical', 'warning', 'info'];
@@ -605,9 +620,21 @@ function commitFileChangedLines(file) {
   return (file?.added ?? 0) + (file?.removed ?? 0);
 }
 
-// Build the grouped file tree for the active filter mode. Children are the full
-// file objects (so the custom rows can render the changed-line counters).
+// Build the grouped file tree for the active filter mode.
 function buildCommitGroups(files = COMMIT_CHANGE_FILES, mode = 'directory') {
+  if (mode === 'chat') {
+    return COMMIT_CHAT_GROUPS.map((group) => {
+      const children = files.filter((file) => file.groupId === group.id);
+      return {
+        id: `chat-changes-${group.id}`,
+        label: group.label,
+        count: commitFilesPluralized(children.length, 'file'),
+        isExpanded: true,
+        children,
+      };
+    });
+  }
+
   if (mode === 'category') {
     const names = [...new Set(files.map((f) => f.category || 'Other'))].sort((a, b) => a.localeCompare(b));
     return names.map((name) => {
@@ -694,8 +721,7 @@ function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
   const [amend, setAmend] = useState(false);
   const [message, setMessage] = useState('');
 
-  // Grouping is fixed to the Changes / Unversioned split (the group-by filter is gone).
-  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, 'directory'), []);
+  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, 'chat'), []);
   // "Current file" scope in the AI Review popup follows the first checked file.
   const reviewScopeFileLabel = useMemo(() => (
     COMMIT_CHANGE_FILES.find((file) => checkedIds.has(file.id))?.label ?? COMMIT_CHANGE_FILES[0]?.label ?? ''
@@ -824,8 +850,8 @@ function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
                     >
                       <Icon name={file.icon} size={16} className="commit-file-row-icon" />
                       <span className={`commit-file-name commit-status-${file.status}`}>{file.label}</span>
+                      <span className="commit-file-path">{file.path}</span>
                     </button>
-                    <CommitChangeCounters added={file.added} removed={file.removed} />
                   </div>
                 ))}
               </div>
@@ -1144,7 +1170,6 @@ const MY_PROJECT_TREE = [
   },
 ];
 
-const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
