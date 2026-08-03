@@ -23688,8 +23688,23 @@ export default function App() {
         ? toolbarState.chatId.trim()
         : activeAiChatTabChatId;
       const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
+      const sourceChatListItem = isChatSurface && sourceChatId
+        ? getAiChatListItemById(sourceChatId)
+        : null;
+      const sourceChatScenario = isChatSurface && sourceChatId
+        ? getAiChatScenarioById(sourceChatId)
+        : null;
+      const sourceChatTitle =
+        sourceChatListItem?.title
+        ?? sourceChatScenario?.title
+        ?? activeTab?.label
+        ?? 'Chat';
+      const sourceChatIcon =
+        sourceChatListItem?.icon
+        ?? sourceChatScenario?.icon
+        ?? 'claude';
       const sourceLabel = isChatSurface
-        ? 'Chat response'
+        ? sourceChatTitle
         : (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0
             ? toolbarState.sourceLabel.trim()
             : (activeTab?.label ?? 'Selected context'));
@@ -23711,9 +23726,9 @@ export default function App() {
         selectedText,
         sourceLabel,
         sourceTabId,
-        sourceIcon: isChatSurface ? 'claude' : (activeTab?.icon ?? 'fileTypes/text'),
-        chipLabel: isChatSurface ? 'Chat response' : sourceLabel,
-        chipIcon: isChatSurface ? 'claude' : (activeTab?.icon ?? 'fileTypes/text'),
+        sourceIcon: isChatSurface ? sourceChatIcon : (activeTab?.icon ?? 'fileTypes/text'),
+        chipLabel: isChatSurface ? sourceChatTitle : sourceLabel,
+        chipIcon: isChatSurface ? sourceChatIcon : (activeTab?.icon ?? 'fileTypes/text'),
         isChatSelectionContext: isChatSurface,
         messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
         blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
@@ -24298,7 +24313,7 @@ export default function App() {
         icon: chatListItem?.icon ?? selectedAiChatScenario?.icon ?? firstChatSelectionAttachment?.icon ?? 'claude',
         chatId: selectedAiChatId,
         sourceTabId: chatSourceTabId,
-        sourceLabel: 'Chat response',
+        sourceLabel: chatTitle,
         isChatAnnotation: chatAnnotations.length > 0,
         annotations: chatAnnotations,
         commentCount: chatAnnotations.length,
