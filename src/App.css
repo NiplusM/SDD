@@ -9883,6 +9883,129 @@ body {
   background: #191a1c;
 }
 
+/* Temporary Side Chat opened from selected text. It uses the real right
+   tool-window slot, so the editor remains a separate IDE surface on the left. */
+.side-chat-tool-window {
+  width: 617px !important;
+  min-width: 617px;
+  max-width: 617px;
+  border-left: 1px solid #303238;
+  background: #191a1c;
+}
+
+.side-chat-tool-window .tool-window-header {
+  min-height: 40px;
+  border-bottom: 1px solid #303238;
+  background: #191a1c;
+}
+
+.side-chat-tool-window .tool-window-header-title {
+  display: none;
+}
+
+.side-chat-tool-window .tool-window-content {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  background: #191a1c;
+}
+
+.side-chat-tool-window-header {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.side-chat-tool-window-tab {
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 28px;
+  max-width: min(180px, 100%);
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #2f5eb9;
+  border-radius: 4px;
+  padding: 0 4px 0 8px;
+  background: #233558;
+  color: #d7d9df;
+  font: 500 13px/20px Inter, system-ui, sans-serif;
+}
+
+.side-chat-tool-window-tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-chat-tool-window-tab-close {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 3px;
+  padding: 0;
+  background: transparent;
+  color: #9fa2a8;
+  cursor: default;
+}
+
+.side-chat-tool-window-tab-close:hover,
+.side-chat-tool-window-more:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #dfe1e5;
+}
+
+.side-chat-tool-window-more {
+  margin-left: auto;
+  color: #9fa2a8;
+}
+
+.side-chat-tool-window-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #191a1c;
+}
+
+.side-chat-tool-window-body > .aiux543-conversation {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: #191a1c;
+}
+
+.side-chat-tool-window .aiux543-conversation-scroll {
+  padding-top: 0;
+}
+
+.side-chat-tool-window-empty-state {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: min(320px, calc(100% - 72px));
+  transform: translate(-50%, -50%);
+  color: #73767c;
+  font: 400 13px/18px Inter, system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
+.side-chat-tool-window-empty-state[aria-hidden="true"] {
+  display: none;
+}
+
 
 .aiux550-chat-tab-scroll {
 
@@ -16409,7 +16532,7 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 16px;
 }
 
-/* The icon, name, and project path form one clickable row. */
+/* The icon, name, and AI-chat path form one clickable row. */
 .commit-file-open {
   flex: 1 1 auto;
   min-width: 0;

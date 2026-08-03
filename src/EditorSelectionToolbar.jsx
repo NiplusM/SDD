@@ -44,7 +44,15 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
 
   useEffect(() => {
     setOpenActionMenu(false);
-  }, [surface, position?.top, position?.left]);
+  }, [
+    surface,
+    position?.selectedText,
+    position?.sourceTabId,
+    position?.chatId,
+    position?.messageId,
+    position?.blockId,
+    position?.rowId,
+  ]);
 
   useEffect(() => {
     if (!openActionMenu) return undefined;
@@ -65,6 +73,17 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
 
   const preventSelectionReset = (event) => {
     event.preventDefault();
+  };
+
+  const handleActionMouseDown = (event, actionId) => {
+    event.preventDefault();
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
+  };
+
+  const handleMenuItemMouseDown = (event, actionId) => {
+    event.preventDefault();
+    setOpenActionMenu(false);
+    onAction?.(actionId, event.currentTarget.getBoundingClientRect(), position);
   };
 
   return createPortal(
@@ -89,8 +108,7 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                 className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${primaryAction.accent ? ` is-${primaryAction.accent}` : ''}`}
                 aria-label={primaryAction.label}
                 title={primaryAction.title ?? primaryAction.label}
-                onMouseDown={preventSelectionReset}
-                onClick={(event) => onAction?.(primaryAction.id, event.currentTarget.getBoundingClientRect(), position)}
+                onMouseDown={(event) => handleActionMouseDown(event, primaryAction.id)}
               >
                 <span className="editor-selection-toolbar-text">{primaryAction.label}</span>
               </button>
@@ -101,8 +119,10 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                 aria-label="Choose selected text action"
                 aria-haspopup="menu"
                 aria-expanded={openActionMenu}
-                onMouseDown={preventSelectionReset}
-                onClick={() => setOpenActionMenu((open) => !open)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  setOpenActionMenu((open) => !open);
+                }}
               >
                 <Icon name="general/chevronDown" size={16} />
               </button>
@@ -114,11 +134,7 @@ export function EditorSelectionToolbar({ position, onAction = null }) {
                       type="button"
                       className={`editor-selection-toolbar-menu-item${action.accent ? ` is-${action.accent}` : ''}`}
                       role="menuitem"
-                      onMouseDown={preventSelectionReset}
-                      onClick={(event) => {
-                        setOpenActionMenu(false);
-                        onAction?.(action.id, event.currentTarget.getBoundingClientRect(), position);
-                      }}
+                      onMouseDown={(event) => handleMenuItemMouseDown(event, action.id)}
                     >
                       <span className="editor-selection-toolbar-menu-item-label">{action.label}</span>
                     </button>
