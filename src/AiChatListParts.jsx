@@ -1,3 +1,6 @@
+import openAiIconUrl from './assets/openAI.svg';
+import githubCopilotIconUrl from './assets/github-copilot.svg';
+
 export function AiChatClaudeIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon ai-chat-agent-mark">
@@ -16,11 +19,43 @@ export function AiChatJunieIcon() {
   );
 }
 
-export function AiChatCodexIcon() {
+// The real OpenAI mark, same asset the AIUX-550 prototype ships
+// (int-ui-prototypes/src/assets/openAI.svg) — keeps the tab, the chat list and the
+// session picker on one icon instead of a hand-drawn stand-in.
+export function AiChatCodexIcon({ className = '' }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon ai-chat-codex-mark">
-      <path d="M8 1.25C4.272 1.25 1.25 4.272 1.25 8S4.272 14.75 8 14.75 14.75 11.728 14.75 8 11.728 1.25 8 1.25Zm0 1.2a5.55 5.55 0 0 1 4.617 8.63l-1.43-.825A3.9 3.9 0 0 0 8.62 4.15V2.49A5.6 5.6 0 0 0 8 2.45Zm-.62.04v1.66a3.9 3.9 0 0 0-3.07 2.246L2.88 5.57A5.56 5.56 0 0 1 7.38 2.49ZM2.45 8c0-.45.054-.888.155-1.306l1.435.828A3.9 3.9 0 0 0 5.25 11.1l-1.43.826A5.53 5.53 0 0 1 2.45 8Zm2.45 4.78 1.43-.826A3.9 3.9 0 0 0 10.75 11.1l1.43.826A5.55 5.55 0 0 1 4.9 12.78Zm3.1-2.33A2.45 2.45 0 1 1 8 5.55a2.45 2.45 0 0 1 0 4.9Z" fill="currentColor" />
+    <img
+      src={openAiIconUrl}
+      alt=""
+      width="16"
+      height="16"
+      aria-hidden="true"
+      data-agent="codex"
+      className={`icon ai-chat-codex-mark ${className}`.trim()}
+    />
+  );
+}
+
+export function AiChatGeminiIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon ai-chat-agent-mark">
+      <path d="M8 1.25c.38 3.3 3.45 6.37 6.75 6.75C11.45 8.38 8.38 11.45 8 14.75 7.62 11.45 4.55 8.38 1.25 8 4.55 7.62 7.62 4.55 8 1.25Z" fill="#8AB4F8" />
     </svg>
+  );
+}
+
+// Same for GitHub Copilot: the prototype's github-copilot.svg.
+export function AiChatCopilotIcon({ className = '' }) {
+  return (
+    <img
+      src={githubCopilotIconUrl}
+      alt=""
+      width="16"
+      height="16"
+      aria-hidden="true"
+      data-agent="copilot"
+      className={`icon ai-chat-agent-mark ${className}`.trim()}
+    />
   );
 }
 
@@ -38,6 +73,8 @@ export function AiChatAgentIcon({ icon = 'claude', title = '' }) {
   const normalizedTitle = typeof title === 'string' ? title : '';
   if (normalizedIcon === 'junie') return <AiChatJunieIcon />;
   if (normalizedIcon === 'codex') return <AiChatCodexIcon />;
+  if (normalizedIcon === 'gemini') return <AiChatGeminiIcon />;
+  if (normalizedIcon === 'copilot') return <AiChatCopilotIcon />;
   if (normalizedIcon === 'fileTypes/markdown' || normalizedTitle.endsWith('.md')) return <AiChatMarkdownFileIcon />;
   return <AiChatClaudeIcon />;
 }

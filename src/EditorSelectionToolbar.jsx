@@ -7,7 +7,6 @@ import { AiChatAgentIcon } from './AiChatListParts.jsx';
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'selection-action', kind: 'selectionAction' },
-  { id: 'separator-ai', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
   { id: 'search', kind: 'icon', iconName: 'general/search_dark', ariaLabel: 'Search' },
   { id: 'code', kind: 'icon', iconName: 'nodes/tag', ariaLabel: 'Code actions' },
@@ -21,13 +20,13 @@ const CHAT_SELECTION_TOOLBAR_ITEMS = [
 
 const CODE_SELECTION_ACTIONS = [
   { id: 'comment', iconName: 'general/balloon', label: 'Attach AI Note', title: AI_NOTE_FILE_HINT },
-  { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Add Selection', accent: 'assistant' },
+  { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
   { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
 const CHAT_SELECTION_ACTIONS = [
   { id: 'chat-annotate', iconName: 'general/balloon', label: 'Attach AI Note', title: AI_NOTE_FILE_HINT },
-  { id: 'chat-add-to-chat', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Add Selection', accent: 'assistant' },
+  { id: 'chat-add-to-chat', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
   { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
@@ -153,10 +152,6 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       onMouseDown={preventSelectionReset}
     >
       {items.map((item) => {
-        if (item.kind === 'separator') {
-          return <span key={item.id} className="editor-selection-toolbar-separator" aria-hidden="true" />;
-        }
-
         if (item.kind === 'selectionAction') {
           if (surface === 'ai-chat') {
             return (

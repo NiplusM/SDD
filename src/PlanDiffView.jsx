@@ -2,9 +2,11 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createPortal } from 'react-dom';
 import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator, TooltipHelp } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
+import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
+import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCounts.js';
-import openAiIconUrl from '../tmp/aia-design-main 2/int-ui-prototypes/src/assets/openAI.svg';
+import openAiIconUrl from './assets/openAI.svg';
 
 const PLAN_DIFF_DEFAULT_CARET_LEFT = 12;
 const JAVA_SCRIPT_KEYWORDS = [
@@ -878,6 +880,42 @@ const AI_REVIEW_EXISTING_SESSIONS = [
   { id: 'junie-session', label: 'Junie', time: '17h' },
 ];
 
+// Header/footer pickers of the Figma popup (501:57949). They carry no behaviour of their own
+// beyond the value they hand to onStartReview.
+// Chips shown before the strip collapses behind a "Show all +N" toggle.
+const AI_REVIEW_ATTACHMENT_COLLAPSED_LIMIT = 6;
+
+const AI_REVIEW_LOCATION_OPTIONS = [
+  { id: 'local', label: 'Local' },
+  { id: 'cloud', label: 'Cloud' },
+];
+const AI_REVIEW_MODEL_OPTIONS = [
+  { id: 'sonnet-1m', label: 'Sonnet · 1M' },
+  { id: 'sonnet', label: 'Sonnet' },
+  { id: 'opus', label: 'Opus' },
+];
+const AI_REVIEW_EFFORT_OPTIONS = [
+  { id: 'high', label: 'High' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'low', label: 'Low' },
+];
+const AI_REVIEW_EDIT_MODE_OPTIONS = [
+  { id: 'accepts-edits', label: 'Accepts Edits' },
+  { id: 'ask-before-edits', label: 'Ask Before Edits' },
+  { id: 'read-only', label: 'Read Only' },
+];
+
+function PlanDiffMicIcon() {
+  return (
+    <svg className="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 2.5a1.75 1.75 0 0 0-1.75 1.75v3.5a1.75 1.75 0 0 0 3.5 0v-3.5A1.75 1.75 0 0 0 8 2.5Zm-2.75 1.75a2.75 2.75 0 0 1 5.5 0v3.5a2.75 2.75 0 0 1-5.5 0v-3.5ZM4 7.25a.5.5 0 0 1 .5.5v.25a3.5 3.5 0 1 0 7 0v-.25a.5.5 0 0 1 1 0V8a4.5 4.5 0 0 1-4 4.473V14h1.75a.5.5 0 0 1 0 1h-4.5a.5.5 0 0 1 0-1H7.5v-1.527A4.5 4.5 0 0 1 3.5 8v-.25a.5.5 0 0 1 .5-.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function PlanDiffOpenAiIcon() {
   return (
     <img src={openAiIconUrl} alt="" aria-hidden="true" className="icon plan-diff-openai-icon" />
@@ -897,51 +935,13 @@ function PlanDiffRefactorIcon() {
   );
 }
 
-function PlanDiffReviewAttachmentHoverCard({ comments = [] }) {
-  const items = (Array.isArray(comments) ? comments : [])
-    .map((comment) => ({
-      text: typeof comment === 'string' ? comment.trim() : String(comment?.text ?? '').trim(),
-      lineLabel: typeof comment === 'object' ? String(comment?.lineLabel ?? '').trim() : '',
-      agentReply: typeof comment === 'object' ? String(comment?.agentReply ?? '').trim() : '',
-    }))
-    .filter((comment) => comment.text.length > 0);
-  const visibleItems = items.slice(0, 3);
-  const hiddenCount = Math.max(0, items.length - visibleItems.length);
-  if (visibleItems.length === 0) return null;
 
-  const renderMessage = (author, text, key) => (
-    <div className="ai-chat-attachment-hover-message" key={key}>
-      <div className="ai-chat-attachment-hover-meta">{author}</div>
-      <div className="ai-chat-attachment-hover-text">{text}</div>
-    </div>
-  );
 
-  return (
-    <TooltipHelp
-      className="ai-chat-attachment-hover-tooltip"
-      header={null}
-      body={(
-        <>
-          {visibleItems.map((comment, index) => (
-            <div className="ai-chat-attachment-hover-note" key={`review-attachment-comment-${index}`}>
-              {renderMessage(
-                ['You', comment.lineLabel || (items.length === 1 ? 'AI Note' : `AI Note ${index + 1}`)].join(' · '),
-                comment.text,
-                `review-attachment-comment-${index}-user`,
-              )}
-              {comment.agentReply
-                ? renderMessage('Claude Agent', comment.agentReply, `review-attachment-comment-${index}-agent`)
-                : null}
-            </div>
-          ))}
-          {hiddenCount > 0 && <div className="ai-chat-attachment-hover-more">{`+${hiddenCount} more`}</div>}
-        </>
-      )}
-    />
-  );
-}
-
-export function PlanDiffNewReviewButton({
+// The popup itself, controlled from outside: the toolbar button below mounts one, and App
+// mounts a global one that the Control+Control shortcut opens over whatever is on screen.
+export function AiReviewComposerDialog({
+  open = false,
+  onClose = null,
   currentScopeLabel = 'New changes',
   currentFileLabel = 'VisitController.java',
   initialScopeId = 'current',
@@ -950,35 +950,45 @@ export function PlanDiffNewReviewButton({
   contextIcon = 'general/listFiles',
   sourceAttachments = [],
   onStartReview = null,
+  // Clicking a chip opens the attachment, the same way the chat composer's chips do.
+  onOpenAttachment = null,
   launchSource = 'diff',
-  triggerClassName = '',
   popupClassName = '',
 }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState('junie');
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [attachments, setAttachments] = useState([]);
-  const [instructions, setInstructions] = useState('/review');
+  const [addContextRect, setAddContextRect] = useState(null);
+  const [instructions, setInstructions] = useState('');
+  const [locationId, setLocationId] = useState(AI_REVIEW_LOCATION_OPTIONS[0].id);
+  const [modelId, setModelId] = useState(AI_REVIEW_MODEL_OPTIONS[0].id);
+  const [effortId, setEffortId] = useState(AI_REVIEW_EFFORT_OPTIONS[0].id);
+  const [editModeId, setEditModeId] = useState(AI_REVIEW_EDIT_MODE_OPTIONS[0].id);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const isCommitLaunch = launchSource === 'commit';
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
   const [openMenu, setOpenMenu] = useState(null);
-  const isOpen = dialogOpen;
-  const togglePopup = () => {
-    setOpenMenu(null);
-    if (!dialogOpen) {
-      setSelectedSessionId(null);
-      setInstructions('/review');
-    }
-    setDialogOpen((prev) => !prev);
-  };
   const closePopup = () => {
     setOpenMenu(null);
-    setDialogOpen(false);
+    onClose?.();
   };
+  // Every launch starts from the same clean state the trigger used to set up.
+  useEffect(() => {
+    if (!open) return;
+    setOpenMenu(null);
+    setSelectedSessionId(null);
+    setInstructions('');
+    setAttachments(sourceAttachments);
+    setAttachmentsExpanded(false);
+    setAddContextRect(null);
+  }, [open]);
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
   const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
     ?? AI_REVIEW_AGENT_OPTIONS[0];
+  const selectedSession = AI_REVIEW_EXISTING_SESSIONS.find((item) => item.id === selectedSessionId) ?? null;
+  const selectedLocation = AI_REVIEW_LOCATION_OPTIONS.find((item) => item.id === locationId)
+    ?? AI_REVIEW_LOCATION_OPTIONS[0];
   const selectAgent = (agent) => {
     setSelectedAgentId(agent.id);
     setOpenMenu(null);
@@ -988,43 +998,32 @@ export function PlanDiffNewReviewButton({
     { id: 'all', label: 'All generated changes', meta: '3 files · 12 hunks' },
     { id: 'file', label: 'Current file', meta: currentFileLabel },
   ];
-  const attachmentOptions = [
-    { id: 'diff', label: 'Current diff', meta: 'VisitController.java · 2 changes', icon: 'vcs/diff' },
-    { id: 'context', label: 'Project context', meta: 'Related files and project structure', icon: 'general/projectStructure' },
-  ];
-  const fallbackSourceAttachment = {
-    id: `source-${launchSource}`,
-    label: isCommitLaunch ? contextLabel : `Diff ${currentFileLabel}`,
-    meta: contextMeta,
-    icon: isCommitLaunch ? contextIcon : 'vcs/diff',
-  };
-  const pinnedSourceAttachments = sourceAttachments.length > 0
-    ? sourceAttachments
-    : [fallbackSourceAttachment];
-  const availableAttachmentOptions = attachmentOptions.filter((option) => !attachments.includes(option.id));
-  const addAttachment = (attachmentId) => {
-    setAttachments((prev) => prev.includes(attachmentId) ? prev : [...prev, attachmentId]);
-    setOpenMenu(null);
+
+  const addAttachment = (attachment) => {
+    if (!attachment?.id) return;
+    setAttachments((prev) => (prev.some((item) => item.id === attachment.id) ? prev : [...prev, attachment]));
   };
   const removeAttachment = (attachmentId) => {
-    setAttachments((prev) => prev.filter((id) => id !== attachmentId));
+    setAttachments((prev) => prev.filter((item) => item.id !== attachmentId));
   };
   const startReview = () => {
-    const optionalAttachments = attachments
-      .map((attachmentId) => attachmentOptions.find((item) => item.id === attachmentId))
-      .filter(Boolean);
     onStartReview?.({
       agentId: selectedAgent.id,
       agentIcon: selectedAgent.icon,
       sessionId: selectedSessionId,
       instructions: instructions.trim(),
       launchSource,
-      attachments: [...pinnedSourceAttachments, ...optionalAttachments],
+      attachments,
+      // Values of the popup's own pickers; consumers that don't know about them just ignore these.
+      locationId,
+      modelId,
+      effortId,
+      editModeId,
     });
     closePopup();
   };
   useEffect(() => {
-    if (!dialogOpen) return undefined;
+    if (!open) return undefined;
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
@@ -1032,7 +1031,7 @@ export function PlanDiffNewReviewButton({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen]);
+  }, [open]);
   // Dropdowns are composed from the library Popup/PopupCell primitives and kept
   // inside this popup so they do not dismiss the parent review popup.
   const renderMenu = (menu, children) => (
@@ -1081,17 +1080,231 @@ export function PlanDiffNewReviewButton({
     </div>
   ));
 
+  if (!open || typeof document === 'undefined') return null;
+
+  return createPortal(
+        <div
+          className="theme-dark plan-diff-ai-review-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closePopup();
+          }}
+        >
+          {/* Figma 501:57949 "Popup / Find in Files" composer popup: header pickers,
+              a focused input island and the model/effort/mode row underneath. */}
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={isCommitLaunch ? 'Start AI Review for commit changes' : 'Start AI Review'}
+            data-launch-source={launchSource}
+            className={`plan-diff-ai-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
+          >
+            <div className="plan-diff-ai-review-dialog-header">
+              <div className="plan-diff-ai-review-dialog-pickers">
+                <span className="plan-diff-ai-review-dropdown">
+                  <button
+                    type="button"
+                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'agent' ? ' is-open' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={openMenu === 'agent'}
+                    onClick={() => toggleMenu('agent')}
+                  >
+                    <PlanDiffReviewAgentIcon icon={selectedAgent.icon} />
+                    <span>{selectedAgent.label}</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  {renderAgentMenu()}
+                </span>
+                <span className="plan-diff-ai-review-dropdown">
+                  <button
+                    type="button"
+                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'session' ? ' is-open' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={openMenu === 'session'}
+                    onClick={() => toggleMenu('session')}
+                  >
+                    <span>{selectedSession ? selectedSession.label : 'New Session'}</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  {renderMenu('session', (
+                    <>
+                      <PopupCell
+                        selected={!selectedSessionId}
+                        onClick={() => { setSelectedSessionId(null); setOpenMenu(null); }}
+                      >
+                        New Session
+                      </PopupCell>
+                      <PopupCell type="separator" text="Existing sessions" />
+                      {AI_REVIEW_EXISTING_SESSIONS.map((item) => (
+                        <PopupCell
+                          key={item.id}
+                          shortcut={item.time}
+                          selected={item.id === selectedSessionId}
+                          onClick={() => { setSelectedSessionId(item.id); setOpenMenu(null); }}
+                        >
+                          {item.label}
+                        </PopupCell>
+                      ))}
+                    </>
+                  ))}
+                </span>
+                <span className="plan-diff-ai-review-dropdown">
+                  <button
+                    type="button"
+                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'location' ? ' is-open' : ''}`}
+                    aria-haspopup="menu"
+                    aria-expanded={openMenu === 'location'}
+                    onClick={() => toggleMenu('location')}
+                  >
+                    <Icon name="nodes/desktop" size={16} />
+                    <span>{selectedLocation.label}</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  {renderMenu('location', AI_REVIEW_LOCATION_OPTIONS.map((option) => (
+                    <PopupCell
+                      key={option.id}
+                      selected={option.id === locationId}
+                      onClick={() => { setLocationId(option.id); setOpenMenu(null); }}
+                    >
+                      {option.label}
+                    </PopupCell>
+                  )))}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="plan-diff-ai-review-dialog-pin"
+                aria-label="Pin"
+                title="Pin"
+              >
+                <Icon name="general/pin" size={16} className="plan-diff-ai-review-dialog-pin-icon" />
+              </button>
+            </div>
+
+            <div className="plan-diff-ai-review-dialog-main">
+              <span className="plan-diff-ai-review-dialog-context-side" aria-hidden="true">
+                <Icon name="general/listFiles" size={16} />
+              </span>
+              <div className="plan-diff-ai-review-dialog-composer-header">
+                <AiChatAttachmentStrip
+                  attachments={attachments}
+                  collapsedLimit={AI_REVIEW_ATTACHMENT_COLLAPSED_LIMIT}
+                  expanded={attachmentsExpanded}
+                  onExpandedChange={setAttachmentsExpanded}
+                  onOpen={onOpenAttachment ?? undefined}
+                  onRemove={(attachment) => removeAttachment(attachment.id)}
+                  className="plan-diff-ai-review-dialog-attachments"
+                />
+              </div>
+
+              <textarea
+                autoFocus
+                rows={1}
+                value={instructions}
+                placeholder="Type task, use @mentions or /commands"
+                aria-label="Review instructions"
+                onChange={(event) => setInstructions(event.target.value)}
+              />
+
+              <div className="plan-diff-ai-review-dialog-main-actions">
+                <button
+                  className="plan-diff-ai-review-dialog-plus"
+                  type="button"
+                  aria-label="Add context"
+                  aria-haspopup="dialog"
+                  aria-expanded={Boolean(addContextRect)}
+                  onClick={(event) => {
+                    setOpenMenu(null);
+                    if (addContextRect) {
+                      setAddContextRect(null);
+                      return;
+                    }
+                    setAddContextRect(event.currentTarget.getBoundingClientRect());
+                  }}
+                >
+                  <Icon name="general/add" size={16} />
+                </button>
+                <span className="plan-diff-ai-review-dialog-main-actions-right">
+                  <button
+                    type="button"
+                    className="plan-diff-ai-review-dialog-mic"
+                    aria-label="Dictate"
+                    title="Dictate"
+                  >
+                    <PlanDiffMicIcon />
+                  </button>
+                  <button
+                    type="button"
+                    className="plan-diff-ai-review-dialog-send"
+                    aria-label="Start review"
+                    title="Start review"
+                    onClick={startReview}
+                  >
+                    <Icon name="general/up" size={16} className="plan-diff-ai-review-dialog-send-icon" />
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <div className="plan-diff-ai-review-dialog-footer">
+              {[
+                { menu: 'model', options: AI_REVIEW_MODEL_OPTIONS, value: modelId, onSelect: setModelId, label: 'Model' },
+                { menu: 'effort', options: AI_REVIEW_EFFORT_OPTIONS, value: effortId, onSelect: setEffortId, label: 'Effort' },
+                { menu: 'edit-mode', options: AI_REVIEW_EDIT_MODE_OPTIONS, value: editModeId, onSelect: setEditModeId, label: 'Edit mode' },
+              ].map(({ menu, options, value, onSelect, label }) => (
+                <span className="plan-diff-ai-review-dropdown" key={menu}>
+                  <button
+                    type="button"
+                    className={`plan-diff-ai-review-dialog-picker${openMenu === menu ? ' is-open' : ''}`}
+                    aria-label={label}
+                    aria-haspopup="menu"
+                    aria-expanded={openMenu === menu}
+                    onClick={() => toggleMenu(menu)}
+                  >
+                    <span>{(options.find((option) => option.id === value) ?? options[0]).label}</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  {renderMenu(menu, options.map((option) => (
+                    <PopupCell
+                      key={option.id}
+                      selected={option.id === value}
+                      onClick={() => { onSelect(option.id); setOpenMenu(null); }}
+                    >
+                      {option.label}
+                    </PopupCell>
+                  )))}
+                </span>
+              ))}
+            </div>
+          </div>
+          {addContextRect && (
+            <AiChatAddContextPopup
+              triggerRect={addContextRect}
+              onDismiss={() => setAddContextRect(null)}
+              onSelectAttachment={addAttachment}
+            />
+          )}
+        </div>,
+    document.body,
+  );
+}
+
+export function PlanDiffNewReviewButton({
+  triggerClassName = '',
+  ...dialogProps
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   return (
     <div className="plan-diff-new-review">
       <span className="plan-diff-new-review-trigger">
         <button
-          className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${isOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
+          className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${dialogOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
           type="button"
           title="AI Review"
           aria-label="AI Review"
           aria-haspopup="dialog"
-          aria-expanded={isOpen}
-          onClick={togglePopup}
+          aria-expanded={dialogOpen}
+          onClick={() => setDialogOpen((prev) => !prev)}
         >
           <span className="plan-diff-ai-review-button-content">
             <span className="plan-diff-ai-review-button-icon">
@@ -1101,189 +1314,11 @@ export function PlanDiffNewReviewButton({
           </span>
         </button>
       </span>
-      {dialogOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          className="theme-dark plan-diff-ai-review-dialog-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closePopup();
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={isCommitLaunch ? 'Start AI Review for commit changes' : 'Start AI Review'}
-            data-launch-source={launchSource}
-            className={`dialog plan-diff-ai-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
-          >
-            <div className="plan-diff-ai-review-dialog-content">
-              <div className="plan-diff-ai-review-dialog-mode-row">
-                <span className="plan-diff-ai-review-dialog-mode">
-                  <Icon name="codeInsight/intentionBulb" size={16} />
-                  Explain code
-                </span>
-                <span className="plan-diff-ai-review-dialog-separator">·</span>
-                <span className="plan-diff-ai-review-dialog-mode">
-                  <PlanDiffRefactorIcon />
-                  Refactor code
-                </span>
-                <span className="plan-diff-ai-review-dialog-separator">·</span>
-                <span className="plan-diff-ai-review-dialog-mode is-active">
-                  <Icon name="general/show" size={16} />
-                  Review code
-                </span>
-              </div>
-
-              <div className="plan-diff-ai-review-dialog-session-row">
-                <button type="button" className="plan-diff-ai-review-dialog-session-button" onClick={() => toggleMenu('agent')}>
-                  <PlanDiffReviewAgentIcon icon={selectedAgent.icon} />
-                  <span>{selectedAgent.label}</span>
-                  <Icon name="general/chevronDown" size={16} />
-                </button>
-                {renderAgentMenu()}
-                <button type="button" className="plan-diff-ai-review-dialog-session-button" onClick={() => toggleMenu('session')}>
-                  <span>Existing Session</span>
-                  <Icon name="general/chevronDown" size={16} />
-                </button>
-                {renderMenu('session', AI_REVIEW_EXISTING_SESSIONS.map((item) => (
-                  <PopupCell
-                    key={item.id}
-                    shortcut={item.time}
-                    selected={item.id === selectedSessionId}
-                    onClick={() => { setSelectedSessionId(item.id); setOpenMenu(null); }}
-                  >
-                    {item.label}
-                  </PopupCell>
-                )))}
-                <button
-                  type="button"
-                  className="plan-diff-ai-review-dialog-pin"
-                  aria-label="Pin"
-                  title="Pin"
-                >
-                  <Icon name="general/pin" size={16} className="plan-diff-ai-review-dialog-pin-icon" />
-                </button>
-              </div>
-
-              <div className="plan-diff-ai-review-dialog-main">
-                <div className="plan-diff-ai-review-dialog-composer-header">
-                  <div className="ai-chat-attachments plan-diff-ai-review-dialog-attachments">
-                    {pinnedSourceAttachments.map((attachment) => (
-                      <span
-                        className="ai-chat-attachment-chip plan-diff-ai-review-source-attachment"
-                        key={attachment.id}
-                        title={attachment.comments?.map((comment) => (
-                          typeof comment === 'string' ? comment : comment?.text
-                        )).filter(Boolean).join('\n') || attachment.meta || attachment.label}
-                      >
-                        <Icon name={attachment.icon || contextIcon} size={16} className="ai-chat-attachment-icon" />
-                        <span className="ai-chat-attachment-name">{attachment.label}</span>
-                        {attachment.commentCount > 0 && (
-                          <span className="ai-chat-attachment-comment-count" aria-label={`${attachment.commentCount} comments`}>
-                            <Icon name="general/balloon" size={14} />
-                            {attachment.commentCount}
-                          </span>
-                        )}
-                        {attachment.commentCount > 0 && attachment.comments?.length > 0 && (
-                          <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                            <PlanDiffReviewAttachmentHoverCard comments={attachment.comments} />
-                          </span>
-                        )}
-                      </span>
-                    ))}
-                    {attachments.map((attachmentId) => {
-                      const attachment = attachmentOptions.find((item) => item.id === attachmentId);
-                      if (!attachment) return null;
-                      return (
-                        <span className="ai-chat-attachment-chip has-remove-action" key={attachment.id}>
-                          <Icon name={attachment.icon} size={16} className="ai-chat-attachment-icon" />
-                          <span className="ai-chat-attachment-name">{attachment.label}</span>
-                          <button
-                            type="button"
-                            className="ai-chat-attachment-close-button"
-                            aria-label={`Remove ${attachment.label}`}
-                            onClick={() => removeAttachment(attachment.id)}
-                          >
-                            <Icon name="windows/closeSmall" size={16} />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                  <span className="plan-diff-ai-review-dialog-context-side" aria-hidden="true">
-                    <Icon name="general/listFiles" size={16} />
-                  </span>
-                </div>
-
-                <textarea
-                  autoFocus
-                  rows={1}
-                  value={instructions}
-                  placeholder="What should the agent do?"
-                  aria-label="Review instructions"
-                  onChange={(event) => setInstructions(event.target.value)}
-                />
-
-                <div className="plan-diff-ai-review-dialog-main-actions">
-                  <span className="plan-diff-ai-review-dropdown">
-                    <button
-                      className="plan-diff-ai-review-dialog-plus"
-                      type="button"
-                      aria-label="Add context"
-                      onClick={() => toggleMenu('attach')}
-                    >
-                      <Icon name="general/add" size={24} />
-                    </button>
-                    {renderMenu('attach', availableAttachmentOptions.length > 0
-                      ? availableAttachmentOptions.map((option) => (
-                        <PopupCell
-                          key={option.id}
-                          type="multiline"
-                          icon={option.icon}
-                          hint={option.meta}
-                          onClick={() => addAttachment(option.id)}
-                        >
-                          {option.label}
-                        </PopupCell>
-                      ))
-                      : <div className="plan-diff-ai-review-attachments-empty">All available context added</div>)}
-                  </span>
-                  <button
-                    type="button"
-                    className="plan-diff-ai-review-dialog-send"
-                    aria-label="Start review"
-                    title="Start review"
-                    onClick={startReview}
-                  >
-                    <svg className="icon plan-diff-ai-review-dialog-send-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path d="M9.5 8H3.5L2.5 14.5L14.5 8L2.5 1.5L3.192 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="plan-diff-ai-review-session-list" role="listbox" aria-label="Existing sessions">
-                {AI_REVIEW_EXISTING_SESSIONS.map((session) => (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={session.id === selectedSessionId}
-                    className={`plan-diff-ai-review-session-item${session.id === selectedSessionId ? ' is-selected' : ''}`}
-                    key={session.id}
-                    onClick={() => setSelectedSessionId(session.id)}
-                  >
-                    <span>{session.label}</span>
-                    <span className="plan-diff-ai-review-session-time">{session.time}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="plan-diff-ai-review-session-hint">
-                {selectedSessionId ? 'The selected session will be included as context.' : 'Send to start AI Review in a new chat.'}
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      <AiReviewComposerDialog
+        {...dialogProps}
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+      />
     </div>
   );
 }
@@ -5028,6 +5063,9 @@ export function PlanDiffInline({ diffData }) {
 
 export function PlanDiffEditorArea({
   diffData,
+  // Attachments exactly as the chat composer renders them, so the AI Review popup opens with the
+  // same chips (same notes, selections and hover cards) instead of a locally rebuilt one.
+  composerAttachments = null,
   viewerData = null,
   initialDiffComments = {},
   documentDiffComments = {},
@@ -5113,7 +5151,7 @@ export function PlanDiffEditorArea({
     appendReviewComments(session?.comments);
   });
   const reviewComments = Object.values(reviewDiffComments).flat();
-  const reviewSourceAttachments = [{
+  const localReviewSourceAttachments = [{
     id: `diff-${toolbarFileLabel}`,
     label: `Diff ${toolbarFileLabel}`,
     meta: viewingScope.meta,
@@ -5125,6 +5163,18 @@ export function PlanDiffEditorArea({
     sourceTabId: reviewSourceTabId,
     sourceLabel: toolbarFileLabel,
   }];
+  // Prefer the chat composer's own attachment objects when they cover this diff: they carry the
+  // selections, notes and reply threads the composer chip hovers with.
+  const composerReviewAttachments = Array.isArray(composerAttachments)
+    ? composerAttachments.filter((attachment) => (
+      attachment?.diffTabId === reviewSourceTabId
+      || attachment?.sourceTabId === reviewSourceTabId
+      || attachment?.sourceLabel === toolbarFileLabel
+    ))
+    : [];
+  const reviewSourceAttachments = composerReviewAttachments.length > 0
+    ? composerReviewAttachments
+    : localReviewSourceAttachments;
 
   useEffect(() => {
     if (!toolbarRef.current) {

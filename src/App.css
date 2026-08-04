@@ -22,6 +22,1809 @@ body {
   --motion-duration-slow: 0.42s;
 }
 
+/* The prototype's page sets `font-family: Inter; font-size: 13px` on <body> (index.css:8-15)
+   and every ported surface inherits it. Our app has no such global rule and these surfaces are
+   portalled to <body>, so the inherited part of the typography is restored here — scoped to the
+   ported roots instead of changing the app's global font. */
+.aiux550f4-final-final-anchored-popup,
+.aiux550f4-final-final-preset-overlay,
+.aiux550f4-final-final-preset-section-tooltip,
+.aiux550f4-final-final-preset-applied-notice {
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Ported from AIUX-550 final-4 (Final4.css:9523-9650) ─────────────────── */
+.aiux550f4-final-final-toolbar-session-control {
+  position: relative;
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* Common hover layer: hovering anywhere over the control (either segment, or
+   while the menu is open) lights one rounded rect spanning the whole control.
+   Sits behind the two segments; the segment layer stacks on top for the part
+   under the cursor. */
+.aiux550f4-final-final-toolbar-session-control::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 4px;
+  right: 0;
+  border-radius: 6px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aiux550f4-final-final-toolbar-session-control:hover::before,
+.aiux550f4-final-final-toolbar-session-control.open::before {
+  background: rgb(255 255 255 / 5%);
+}
+
+.aiux550f4-final-final-toolbar-session-main,
+.aiux550f4-final-final-toolbar-session-chevron {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: default;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+/* Split-trigger hover: full 40px hit band with the highlight inset to 30px tall
+   (top/bottom 5px). The two segments nearly meet in the middle (main right:1,
+   preset left:2) so they read as one control. Matches the JetBrains toolbar
+   dropdown treatment — see AIUX-542 installed picker. */
+.aiux550f4-final-final-toolbar-session-main::before,
+.aiux550f4-final-final-toolbar-session-chevron::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  border-radius: 6px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.aiux550f4-final-final-toolbar-session-main::before {
+  left: 4px;
+  right: 1px;
+}
+
+.aiux550f4-final-final-toolbar-session-chevron::before {
+  left: 0;
+  right: 2px;
+}
+
+.aiux550f4-final-final-toolbar-session-main > *,
+.aiux550f4-final-final-toolbar-session-chevron > * {
+  position: relative;
+  z-index: 1;
+}
+
+.aiux550f4-final-final-toolbar-session-main {
+  gap: 6px;
+  padding: 0 8px;
+}
+
+.aiux550f4-final-final-toolbar-session-chevron {
+  width: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+}
+
+.aiux550f4-final-final-toolbar-session-main:hover::before,
+.aiux550f4-final-final-toolbar-session-main:focus-visible::before,
+.aiux550f4-final-final-toolbar-session-chevron:hover::before,
+.aiux550f4-final-final-toolbar-session-chevron:focus-visible::before,
+.aiux550f4-final-final-toolbar-session-control.open .aiux550f4-final-final-toolbar-session-chevron::before {
+  background: rgb(255 255 255 / 5%);
+}
+
+.aiux550f4-final-final-toolbar-session-main:focus-visible,
+.aiux550f4-final-final-toolbar-session-chevron:focus-visible {
+  outline: none;
+}
+
+.aiux550f4-final-final-toolbar-session-divider {
+  width: 1px;
+  height: 20px;
+  flex: 0 0 1px;
+  background: var(--control-border, #40434a);
+}
+
+.aiux550f4-final-final-toolbar-session-main .aiux550f4-final-final-agent-button-icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
+.aiux550f4-final-final-toolbar-session-chevron > .icon {
+  width: 20px;
+  height: 20px;
+  color: var(--icon-secondary, #ced0d6);
+}
+
+.aiux550f4-final-final-toolbar-session-preset > img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  transform: translateX(-2px);
+}
+
+/* The chevron renders the preset glyph as an inline <svg>, not the prototype's <img>. */
+.aiux550f4-final-final-toolbar-session-preset > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  transform: translateX(-2px);
+}
+
+/* ── Ported from AIUX-550 final-4 (Final4.css:9460-9522, 9778-10180) ─────── */
+.aiux550f4-final-final-select,
+.aiux550f4-final-final-agent-picker {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.aiux550f4-final-final-select-button,
+.aiux550f4-final-final-agent-button {
+  display: inline-flex;
+  height: 26px;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-default);
+  cursor: default;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 0 2px 0 4px;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-select-button:hover,
+.aiux550f4-final-final-select-button:focus-visible,
+.aiux550f4-final-final-select-button.open,
+.aiux550f4-final-final-agent-button:hover,
+.aiux550f4-final-final-agent-button:focus-visible,
+.aiux550f4-final-final-agent-button.open {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+.aiux550f4-final-final-select-button > span,
+.aiux550f4-final-final-agent-button > span:not(.aiux550f4-final-final-agent-button-icon) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Final4.css:9651 — the trailing chevron in select buttons. */
+.aiux550f4-final-final-select-button > .icon:last-child,
+.aiux550f4-final-final-agent-button > .icon:last-child {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--text-muted, #7f8289);
+}
+
+.aiux550f4-final-final-agent-button-label {
+  flex: 0 1 auto;
+}
+
+.aiux550f4-final-final-agent-terminal-hint,
+.aiux550f4-final-final-agent-button > .aiux550f4-final-final-agent-terminal-hint {
+  flex: 0 0 auto;
+  color: #7f8289;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  overflow: visible;
+}
+
+.aiux550f4-final-final-toolbar-session-launcher {
+  height: 40px;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: 8px;
+  margin-right: 10px;
+}
+
+
+.aiux550f4-final-final-preset-menu-popup {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.aiux550f4-final-final-preset-menu-subtitle {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px 6px;
+  color: var(--text-secondary, #6f737a);
+  font: 600 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-menu-subtitle.with-separator {
+  margin-top: 4px;
+  border-top: 1px solid #393b40;
+  padding-top: 8px;
+}
+
+.aiux550f4-final-final-preset-menu-popup > .aiux550f4-final-final-agent-recommended {
+  width: auto;
+  min-height: 93px;
+  margin: 0 8px;
+  padding: 10px 36px;
+  color: #9fa2a8;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup {
+  padding: 8px 0;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup > .aiux550f4-final-final-agent-recommended {
+  min-height: 93px;
+  margin: 0 8px;
+  padding: 10px 8px;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup
+  .aiux550f4-final-final-agent-recommended-title {
+  grid-template-columns: 20px minmax(0, 1fr);
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup
+  > .aiux550f4-final-final-agent-menu-section-label {
+  padding: 4px 16px;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup
+  > .aiux550f4-final-final-preset-menu-divider {
+  margin: 4px 10px;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup
+  > button:last-child {
+  min-height: 38px;
+  padding: 8px;
+}
+
+.aiux550f4-final-final-preset-menu-popup > button {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.aiux550f4-final-final-preset-menu-popup > .aiux550f4-final-final-preset-menu-item {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiux550f4-final-final-toolbar-preset-menu-popup > button {
+  width: auto;
+  margin-inline: 8px;
+  padding-inline: 8px;
+}
+
+.aiux550f4-final-final-preset-menu-item > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-menu-item-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux550f4-final-final-preset-menu-terminal-hint {
+  color: #7f8289;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-menu-divider {
+  flex: 0 0 1px;
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--container-popup-border, #33353b);
+}
+
+.aiux550f4-final-final-preset-applied-notice {
+  position: absolute;
+  z-index: 21000;
+  right: 0;
+  bottom: calc(100% + 8px);
+  box-sizing: border-box;
+  border: 1px solid var(--container-popup-border, #33353b);
+  border-radius: 6px;
+  background: var(--container-popup-bg, #26282c);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 32%);
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 8px 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: aiux550f4-final-preset-applied-notice 3s ease both;
+}
+
+.aiux550f4-final-final-preset-notice-center {
+  position: absolute;
+  z-index: 21000;
+  bottom: calc(100% + 56px);
+  left: 50%;
+  display: block;
+  width: max-content;
+  height: auto;
+  transform: translateX(-50%);
+}
+
+.aiux550f4-final-terminal-surface {
+  position: relative;
+}
+
+.aiux550f4-final-final-preset-notice-center.terminal {
+  top: 38%;
+  bottom: auto;
+}
+
+.aiux550f4-final-final-preset-notice-center .aiux550f4-final-final-preset-applied-notice {
+  position: relative;
+  right: auto;
+  bottom: auto;
+}
+
+@keyframes aiux550f4-final-preset-applied-notice {
+  0% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  8%,
+  86% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+.aiux550f4-final-final-preset-menu-popup > button:hover,
+.aiux550f4-final-final-preset-menu-popup > button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+.aiux550f4-final-final-anchored-popup {
+  position: fixed;
+  z-index: 22000;
+  box-sizing: border-box;
+  border: 0.5px solid var(--popup-border, #33353b);
+  border-radius: 8px;
+  background: var(--popup-bg, #26282c);
+  box-shadow: 0 var(--shadow-popup-y, 8px) var(--shadow-popup-blur, 32px) var(--shadow-popup, rgb(0 0 0 / 40%));
+  color: var(--text-default, #d1d3d9);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.aiux550f4-final-final-select-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.aiux550f4-final-final-select-menu > button {
+  display: grid;
+  width: 100%;
+  min-height: 30px;
+  grid-template-columns: 20px max-content 16px;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: default;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.aiux550f4-final-final-select-menu.aiux550f4-final-final-preset-save-menu > button {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Preset "+" popup — Figma 9929-208448: 8px popup padding, 38px rows, 16px content inset. */
+.aiux550f4-final-final-select-menu.aiux550f4-final-final-preset-add-menu {
+  padding: 8px;
+}
+
+.aiux550f4-final-final-select-menu.aiux550f4-final-final-preset-add-menu > button {
+  min-height: 38px;
+  padding: 8px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.aiux550f4-final-final-select-menu > button:hover,
+.aiux550f4-final-final-select-menu > button:focus-visible,
+.aiux550f4-final-final-select-menu > button.selected {
+  background: var(--popup-cell-bg-hover, #34363b);
+  outline: none;
+}
+
+.aiux550f4-final-final-select-menu > button > span:nth-child(2) {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* Separator above a select popup's trailing action (e.g. "Add Agent..."). */
+.aiux550f4-final-final-select-menu-divider {
+  flex: 0 0 1px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--container-popup-border, #33353b);
+}
+
+.aiux550f4-final-final-menu-option-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-secondary, #ced0d6);
+}
+
+.aiux550f4-final-final-menu-option-icon:empty {
+  visibility: hidden;
+}
+
+.aiux550f4-final-final-menu-option-icon svg,
+.aiux550f4-final-final-menu-option-icon .icon,
+.aiux550f4-final-final-menu-option-icon img,
+.aiux550f4-final-final-select-button > svg,
+.aiux550f4-final-final-select-button > .icon:first-child {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.aiux550f4-final-final-agent-button-icon,
+.aiux550f4-final-final-agent-menu-icon {
+  position: relative;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux550f4-final-final-agent-button-icon {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+}
+
+.aiux550f4-final-final-agent-button-icon > svg,
+.aiux550f4-final-final-agent-menu-icon > svg,
+.aiux550f4-final-final-agent-button-icon > .icon,
+.aiux550f4-final-final-agent-menu-icon > .icon,
+.aiux550f4-final-final-agent-button-icon > img,
+.aiux550f4-final-final-agent-menu-icon > img {
+  width: 100%;
+  height: 100%;
+}
+
+.aiux550f4-final-final-agent-cloud {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--popup-bg, #26282c);
+  color: #6b9bfa;
+}
+
+.aiux550f4-final-final-agent-cloud .aiux550f4-base-cloud-marker {
+  width: 11px;
+  height: 11px;
+}
+
+.aiux550f4-final-final-agent-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.aiux550f4-final-final-agent-menu-section-label {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  box-sizing: border-box;
+  color: #6f737a;
+  font: 600 12px/16px Inter, system-ui, sans-serif;
+  padding: 4px 16px;
+}
+
+.aiux550f4-final-final-agent-menu-section-label.with-separator {
+  margin: 4px 10px 0;
+  border-top: 1px solid #393b40;
+  padding: 8px 6px 4px;
+}
+
+.aiux550f4-final-final-agent-recommended {
+  display: flex;
+  min-height: 93px;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  margin: 0 8px;
+  padding: 10px 36px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #9fa2a8;
+  cursor: default;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.aiux550f4-final-final-agent-recommended:hover,
+.aiux550f4-final-final-agent-recommended:focus-visible,
+.aiux550f4-final-final-agent-recommended.selected {
+  background: var(--selection-bg-active-muted, #233558);
+  outline: none;
+}
+
+.aiux550f4-final-final-agent-recommended-title {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  color: #dfe1e5;
+  margin-left: -28px;
+  margin-right: -28px;
+}
+
+.aiux550f4-final-final-agent-recommended-title svg {
+  width: 20px;
+  height: 20px;
+}
+
+.aiux550f4-final-final-agent-recommended-title strong {
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-agent-recommended-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 28px;
+}
+
+.aiux550f4-final-final-agent-recommended-link {
+  color: #6b9bfa;
+  text-decoration: none;
+}
+
+/* ── Manage Presets dialog (Final4.css:10270-10947) ────────────────────── */
+.aiux550f4-final-final-preset-overlay {
+  position: fixed;
+  z-index: 21000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: rgb(0 0 0 / 12%);
+  padding: 12px;
+}
+
+/* Figma 9882-205548: a macOS dialog — header, sidebar + editor body, footer. */
+.aiux550f4-final-final-preset-dialog {
+  display: flex;
+  width: min(883px, calc(100vw - 24px));
+  height: min(565px, calc(100vh - 24px));
+  max-height: calc(100vh - 24px);
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 0.5px solid var(--popup-border, #4c4f56);
+  border-radius: 8px;
+  background: var(--dialog-bg, #191a1c);
+  box-shadow: 0 var(--shadow-popup-y, 8px) var(--shadow-popup-blur, 32px) var(--shadow-popup, rgb(0 0 0 / 40%));
+  color: var(--text-default, #d1d3d9);
+  overflow: hidden;
+}
+
+.aiux550f4-final-final-preset-dialog-header {
+  position: relative;
+  display: flex;
+  height: 31px;
+  min-height: 31px;
+  align-items: center;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--dialog-separator, #26282c);
+  padding: 0 9px;
+}
+
+.aiux550f4-final-final-preset-dialog-header h2 {
+  position: absolute;
+  right: 0;
+  left: 0;
+  color: var(--text-default, #d1d3d9);
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+  margin: 0;
+  pointer-events: none;
+  text-align: center;
+}
+
+.aiux550f4-final-final-preset-dialog-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 12px 14px;
+}
+
+.aiux550f4-final-final-preset-sidebar {
+  display: flex;
+  width: 261px;
+  min-width: 261px;
+  flex: 0 0 261px;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--dialog-separator, #26282c);
+  /* Figma 9882-205548 insets the rows 8px from the sidebar edges, so the sidebar itself has no padding. */
+  padding-right: 0;
+}
+
+.aiux550f4-final-final-preset-list-toolbar {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 4px 7px;
+}
+
+.aiux550f4-final-final-preset-list-toolbar > button {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--icon-secondary, #ced0d6);
+  cursor: pointer;
+  padding: 5px;
+}
+
+.aiux550f4-final-final-preset-list-toolbar > button:hover,
+.aiux550f4-final-final-preset-list-toolbar > button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-list-toolbar > button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.aiux550f4-final-final-preset-list {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.aiux550f4-final-final-preset-list > .aiux550f4-final-final-preset-empty-add {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  min-height: 16px;
+  align-self: center;
+  align-items: center;
+  gap: 4px;
+  margin: auto 0;
+  padding: 0 0 200px;
+  color: var(--text-secondary, #73767c);
+  grid-template-columns: none;
+}
+
+.aiux550f4-final-final-preset-list > .aiux550f4-final-final-preset-empty-add:hover,
+.aiux550f4-final-final-preset-list > .aiux550f4-final-final-preset-empty-add:focus-visible {
+  background: transparent;
+}
+
+.aiux550f4-final-final-preset-empty-add > span:first-child {
+  color: var(--text-link, #71a1fe);
+}
+
+.aiux550f4-final-final-preset-section-label {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  color: var(--text-secondary, #73767c);
+  font: 600 12px/16px Inter, system-ui, sans-serif;
+  padding: 3px 16px;
+}
+
+.aiux550f4-final-final-preset-section-help {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary, #73767c);
+  cursor: help;
+  font: 600 10px/12px Inter, system-ui, sans-serif;
+  padding: 0;
+}
+
+.aiux550f4-final-final-preset-section-help:hover,
+.aiux550f4-final-final-preset-section-help:focus-visible {
+  color: var(--text-default, #d1d3d9);
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-section-tooltip {
+  position: fixed;
+  z-index: 22000;
+  box-sizing: border-box;
+  border: 1px solid var(--popup-border, #40434a);
+  border-radius: 4px;
+  background: var(--popup-bg-inline, #33353b);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
+  color: var(--text-default, #d1d3d9);
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  padding: 7px 9px;
+  pointer-events: none;
+}
+
+.aiux550f4-final-final-preset-section-label:not(:first-child) {
+  margin-top: 6px;
+}
+
+.aiux550f4-final-final-preset-group-divider {
+  flex: 0 0 1px;
+  margin: 2px 0;
+  border-top: 1px solid #393b40;
+}
+
+/* 38px rows whose selection layer is inset 8px from the sidebar edges (Figma 9882-205548). */
+.aiux550f4-final-final-preset-list > button {
+  display: grid;
+  width: calc(100% - 16px);
+  height: 38px;
+  min-height: 38px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  margin: 0 8px;
+  padding: 9px 8px;
+  text-align: left;
+}
+
+.aiux550f4-final-final-preset-list-lock,
+.aiux550f4-final-final-preset-list-check {
+  width: 16px;
+  height: 16px;
+  color: var(--icon-secondary, #ced0d6);
+}
+
+.aiux550f4-final-final-preset-list > button:hover,
+.aiux550f4-final-final-preset-list > button:focus-visible,
+.aiux550f4-final-final-preset-list > button.selected {
+  background: var(--selection-bg-active-muted, #233558);
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-list-icon {
+  position: relative;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux550f4-final-final-preset-list-icon .agent-logo,
+.aiux550f4-final-final-preset-list-icon img {
+  width: 20px;
+  height: 20px;
+}
+
+.aiux550f4-final-final-preset-list-icon .aiux550f4-final-final-agent-cloud {
+  right: -1px;
+  bottom: -1px;
+}
+
+.aiux550f4-final-final-preset-list-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-list-label > .aiux550f4-final-final-preset-list-lock {
+  flex: 0 0 auto;
+}
+
+.aiux550f4-final-final-preset-list-label > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiux550f4-final-final-preset-list-label > span + span {
+  color: var(--text-secondary, #73767c);
+}
+
+.aiux550f4-final-final-preset-default-help {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  box-sizing: border-box;
+  color: var(--text-secondary, #73767c);
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  margin: 0;
+  padding: 10px 0;
+}
+
+.aiux550f4-final-final-recommended-preset-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 30px 0 0 28px;
+  color: var(--text-default, #d1d3d9);
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-recommended-preset-details p {
+  margin: 0;
+}
+
+.aiux550f4-final-final-recommended-preset-details a {
+  color: var(--text-link, #6b9bfa);
+  text-decoration: none;
+}
+
+.aiux550f4-final-final-recommended-preset-details .muted {
+  color: var(--text-secondary, #73767c);
+}
+
+.aiux550f4-final-final-preset-default-help button {
+  border: 0;
+  background: transparent;
+  color: var(--text-link, #6b9bfa);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.aiux550f4-final-final-preset-default-help button:hover,
+.aiux550f4-final-final-preset-default-help button:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.aiux550f4-final-final-preset-empty-main {
+  align-self: center;
+  color: var(--text-secondary, #73767c);
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  margin: auto;
+}
+
+.aiux550f4-final-final-preset-main-fields {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aiux550f4-final-final-preset-name {
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 41px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-name > span,
+.aiux550f4-final-final-preset-launch-row > span:first-child,
+.aiux550f4-final-final-preset-labelled-row > span:first-child,
+.aiux550f4-final-final-preset-agent-row-label,
+.aiux550f4-final-final-preset-parameters > span {
+  color: var(--text-muted, #9fa2a8);
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-name-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.aiux550f4-final-final-preset-name-control input {
+  flex: 1 1 auto;
+}
+
+.aiux550f4-final-final-reset-default {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #6b9bfa;
+  cursor: pointer;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-name .aiux550f4-final-final-reset-default {
+  color: #6b9bfa;
+}
+
+.aiux550f4-final-final-reset-default:hover,
+.aiux550f4-final-final-reset-default:focus-visible {
+  color: #8bb3ff;
+  text-decoration: underline;
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-launch-row,
+.aiux550f4-final-final-preset-labelled-row {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-launch-row > span:first-child {
+  min-width: 106px;
+}
+
+.aiux550f4-final-final-preset-labelled-row > span:first-child {
+  min-width: 41px;
+}
+
+/* "Agent: <select> in: [Chat | Terminal]" on one row (Figma 9882-205548). */
+.aiux550f4-final-final-preset-agent-row {
+  display: flex;
+  min-height: 40px;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-agent-row > .aiux550f4-final-final-preset-labelled-row {
+  min-width: 0;
+  flex: 0 1 359px;
+}
+
+.aiux550f4-final-final-preset-segmented {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border, #40434a);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.aiux550f4-final-final-preset-segmented > button {
+  display: inline-flex;
+  height: 26px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-left: 1px solid transparent;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 5px 10px;
+}
+
+.aiux550f4-final-final-preset-segmented > button + button {
+  border-left-color: var(--control-border, #40434a);
+}
+
+.aiux550f4-final-final-preset-segmented > button:hover,
+.aiux550f4-final-final-preset-segmented > button:focus-visible,
+.aiux550f4-final-final-preset-segmented > button.selected {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+/* Model / Mode / Effort stack in a 293px column (Figma 9882-205548). */
+.aiux550f4-final-final-preset-parameters {
+  display: grid;
+  width: 293px;
+  max-width: 100%;
+  min-width: 0;
+  grid-auto-rows: 40px;
+  grid-template-columns: 41px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 6px;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-agent-row .aiux550f4-final-final-select,
+.aiux550f4-final-final-preset-parameters .aiux550f4-final-final-select {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.aiux550f4-final-final-preset-agent-row .aiux550f4-final-final-select-button,
+.aiux550f4-final-final-preset-parameters .aiux550f4-final-final-select-button {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  max-width: none;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border, #40434a);
+  border-radius: 4px;
+  background: transparent;
+  gap: 6px;
+  overflow: hidden;
+  padding: 5px 6px 5px 9px;
+}
+
+.aiux550f4-final-final-preset-agent-row .aiux550f4-final-final-select-button > span,
+.aiux550f4-final-final-preset-parameters .aiux550f4-final-final-select-button > span {
+  max-width: none;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.aiux550f4-final-final-preset-auto-update-row {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-auto-update-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.aiux550f4-final-final-preset-auto-update-label > span:first-child {
+  color: var(--text-default, #d1d3d9);
+}
+
+.aiux550f4-final-final-preset-auto-update-label > span:last-child {
+  color: var(--text-muted, #9fa2a8);
+  font-size: 12px;
+}
+
+.aiux550f4-final-final-preset-update-behavior {
+  flex: 0 0 auto;
+  color: var(--text-muted, #9fa2a8);
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-final-preset-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-field textarea,
+.aiux550f4-final-final-preset-field input,
+.aiux550f4-final-final-preset-name input {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border, #40434a);
+  border-radius: 4px;
+  outline: none;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 6px 9px;
+}
+
+.aiux550f4-final-final-preset-field textarea:focus,
+.aiux550f4-final-final-preset-field input:focus,
+.aiux550f4-final-final-preset-name input:focus {
+  border-color: var(--control-focus-border-brand, #3574f0);
+}
+
+.aiux550f4-final-final-preset-field textarea {
+  height: 88px;
+  min-height: 88px;
+  resize: none;
+}
+
+/* Collapsible "Advanced" group: chevron + title + a rule filling the rest of the row. */
+.aiux550f4-final-final-preset-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.aiux550f4-final-final-preset-group-header {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.aiux550f4-final-final-preset-group-header > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 0;
+}
+
+.aiux550f4-final-final-preset-group-header > button:focus-visible {
+  outline: 1px solid var(--control-focus-border-brand, #3574f0);
+  outline-offset: 2px;
+}
+
+.aiux550f4-final-final-preset-group-rule {
+  flex: 1 1 auto;
+  border-top: 1px solid var(--dialog-separator, #26282c);
+}
+
+.aiux550f4-final-final-preset-group > .aiux550f4-final-final-preset-field {
+  gap: 8px;
+  padding-left: 20px;
+}
+
+.aiux550f4-final-final-preset-field-hint {
+  color: var(--text-secondary, #73767c);
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-final-preset-actions {
+  display: flex;
+  height: 57px;
+  min-height: 57px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--dialog-separator, #26282c);
+  padding: 0 20px;
+}
+
+.aiux550f4-final-final-preset-actions > button {
+  min-width: 72px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--control-border, #40434a);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  padding: 5px 12px;
+}
+
+.aiux550f4-final-final-preset-actions > button:hover,
+.aiux550f4-final-final-preset-actions > button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
+}
+
+.aiux550f4-final-final-preset-actions > button.primary {
+  border-color: var(--control-brand-bg, #3871e1);
+  background: var(--control-brand-bg, #3871e1);
+  color: var(--text-over-accent, #fff);
+}
+
+.aiux550f4-final-final-preset-actions > button:disabled {
+  opacity: 0.5;
+}
+
+.aiux550f4-final-final-preset-actions > .aiux550f4-final-final-preset-help-button {
+  display: inline-flex;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--icon-secondary, #ced0d6);
+  padding: 0;
+}
+
+/* ── Agents catalogue + traffic lights (Final4.css:436-465, 8115-8542) ─── */
+.aiux550f4-base-traffic {
+  display: flex;
+  width: 52px;
+  flex: 0 0 52px;
+  gap: 8px;
+}
+
+.aiux550f4-base-traffic span,
+.aiux550f4-base-traffic button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  cursor: default;
+}
+
+.aiux550f4-base-traffic .red {
+  background: #ff5f57;
+}
+
+.aiux550f4-base-traffic .yellow {
+  background: #febc2e;
+}
+
+.aiux550f4-base-traffic .green {
+  background: #28c840;
+}
+
+
+.aiux550f4-final-agent-catalogue-host .editor-embedded-pane {
+  height: 100%;
+  padding: 0;
+  background: #191a1c;
+  overflow: auto;
+}
+
+/* The catalogue is mounted as the editor's top bar, so it has to take over the whole
+   editor area and hide the code pane underneath — same treatment as the chat tab host. */
+.editor-top-bar:has(.aiux550f4-final-agent-catalogue-host) {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.editor:has(.aiux550f4-final-agent-catalogue-host) .editor-top-bar {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 0;
+}
+
+.editor:has(.aiux550f4-final-agent-catalogue-host) .editor-body {
+  display: none;
+}
+
+/* Block, not flex: the catalogue grows past the viewport and the host is what scrolls
+   (same role the prototype's .editor-embedded-pane plays). */
+.aiux550f4-final-agent-catalogue-host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* `flex: 1 0 0` sizes the list to the free space and lets long content spill over the
+   footer; inside a scrolling host it has to grow with the content instead. */
+.aiux550f4-final-agent-catalogue-host .aiux550f4-final-agent-catalogue-body {
+  flex: 1 0 auto;
+}
+
+.aiux550f4-final-agent-catalogue-editor {
+  display: flex;
+  min-height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  background: #191a1c;
+  color: #dfe1e5;
+  font-family: Inter, system-ui, sans-serif;
+  /* The catalogue renders both as a full editor tab and inside a split editor
+     pane. Media queries only see the viewport, which stays wide in a split, so
+     the layout below sizes itself off this element's own width instead. */
+  container-type: inline-size;
+}
+
+.aiux550f4-final-agent-catalogue-body,
+.aiux550f4-final-agent-catalogue-footer {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.aiux550f4-final-agent-catalogue-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 0 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.aiux550f4-final-agent-catalogue-search {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 1px 6px;
+  border: 1px solid #4e5157;
+  border-radius: 4px;
+  background: #1e1f22;
+  color: #6f737a;
+}
+
+.aiux550f4-final-agent-catalogue-search > svg {
+  flex: none;
+}
+
+.aiux550f4-final-agent-catalogue-search input {
+  min-width: 0;
+  flex: 1 0 0;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: #dfe1e5;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  outline: none;
+}
+
+.aiux550f4-final-agent-catalogue-search input::placeholder {
+  color: #6f737a;
+}
+
+.aiux550f4-final-agent-catalogue-search-clear {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #6f737a;
+  cursor: pointer;
+}
+
+.aiux550f4-final-agent-catalogue-search-clear:hover {
+  background: #303235;
+  color: #d1d3d9;
+}
+
+.aiux550f4-final-agent-catalogue-sections {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.aiux550f4-final-agent-catalogue-section {
+  min-width: 0;
+}
+
+.aiux550f4-final-agent-catalogue-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 6px 0;
+  color: #d1d3d9;
+}
+
+.aiux550f4-final-agent-catalogue-section-header h3 {
+  margin: 0;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-agent-catalogue-section-rule {
+  min-width: 0;
+  height: 1px;
+  flex: 1 0 0;
+  background: #26282c;
+}
+
+.aiux550f4-final-agent-catalogue-update-all {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-link, #6b9bfa);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-agent-catalogue-update-all:hover,
+.aiux550f4-final-agent-catalogue-update-all:focus-visible {
+  color: #8bb4ff;
+  text-decoration: underline;
+  outline: none;
+}
+
+.aiux550f4-final-agent-catalogue-grid {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 30px;
+  align-content: start;
+}
+
+.aiux550f4-final-agent-catalogue-section.installed .aiux550f4-final-agent-catalogue-grid {
+  gap: 16px;
+}
+
+.aiux550f4-final-agent-catalogue-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 6px;
+  background: #26282c;
+}
+
+.aiux550f4-final-agent-catalogue-card-content {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.aiux550f4-final-agent-catalogue-card-content > svg,
+.aiux550f4-final-agent-catalogue-card-content > img,
+.aiux550f4-final-agent-catalogue-card-content > .aiux550f4-final-agent-catalogue-custom-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 5px;
+  font-size: 8px;
+}
+
+.aiux550f4-final-agent-catalogue-card-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.aiux550f4-final-agent-catalogue-card-copy strong,
+.aiux550f4-final-agent-catalogue-card-copy span {
+  overflow: hidden;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-agent-catalogue-card-copy strong {
+  color: #d1d3d9;
+}
+
+.aiux550f4-final-agent-catalogue-card-copy span {
+  color: #6f737a;
+}
+
+.aiux550f4-final-agent-catalogue-card-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.aiux550f4-final-agent-catalogue-card-update {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 3px 4px 3px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-link, #71a1fe);
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-agent-catalogue-card-update:hover {
+  background: #303235;
+}
+
+.aiux550f4-final-agent-catalogue-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.aiux550f4-final-agent-catalogue-row > svg,
+.aiux550f4-final-agent-catalogue-row > img,
+.aiux550f4-final-agent-catalogue-custom-icon {
+  width: 32px;
+  height: 32px;
+  justify-self: center;
+}
+
+.aiux550f4-final-agent-catalogue-custom-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #30333a;
+  color: #d1d3d9;
+  font: 700 10px/1 Inter, system-ui, sans-serif;
+  letter-spacing: 0;
+}
+
+.aiux550f4-final-agent-catalogue-custom-icon.amp,
+.aiux550f4-final-agent-catalogue-custom-icon.copilot,
+.aiux550f4-final-agent-catalogue-custom-icon.agoragentic {
+  border-radius: 50%;
+}
+
+.aiux550f4-final-agent-catalogue-custom-icon.cursor,
+.aiux550f4-final-agent-catalogue-custom-icon.devin {
+  background: #e5e8ef;
+  color: #2b2d30;
+}
+
+.aiux550f4-final-agent-catalogue-custom-icon.auggie,
+.aiux550f4-final-agent-catalogue-custom-icon.codebuddy,
+.aiux550f4-final-agent-catalogue-custom-icon.cortex {
+  background: #252b33;
+  color: #e8edf7;
+}
+
+/* Same badge outside the catalogue (agent picker, preset list, selects), scaled to the icon slot.
+   Declared after the 32px rule above so plain class specificity is enough to win. */
+.aiux550f4-final-agent-inline-badge {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 5px;
+  font-size: 7px;
+}
+
+.aiux550f4-final-agent-inline-badge.small {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 6px;
+}
+
+.aiux550f4-final-agent-catalogue-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aiux550f4-final-agent-catalogue-name-line {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  color: #dfe1e5;
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-agent-catalogue-name-line strong,
+.aiux550f4-final-agent-catalogue-name-line span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-agent-catalogue-name-line span,
+.aiux550f4-final-agent-catalogue-name-line em {
+  color: #6f737a;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.aiux550f4-final-agent-catalogue-copy p {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  color: #dfe1e5;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550f4-final-agent-catalogue-author {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #6f737a;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-agent-catalogue-action {
+  display: inline-flex;
+  min-width: 48px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 6px 12px;
+  border: 1px solid #4e8052;
+  border-radius: 4px;
+  background: transparent;
+  color: #5fad65;
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.aiux550f4-final-agent-catalogue-action:hover {
+  background: rgb(95 173 101 / 12%);
+}
+
+/* Takes the place of the Install button while the agent downloads. */
+.aiux550f4-final-agent-catalogue-install-progress {
+  display: flex;
+  width: 120px;
+  flex-direction: column;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 6px 0;
+  min-height: 30px;
+}
+
+.aiux550f4-final-agent-catalogue-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 4px 0 0;
+}
+
+.aiux550f4-final-agent-catalogue-footer a {
+  padding: 6px 0;
+  color: #6f737a;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.aiux550f4-final-agent-catalogue-footer a:hover {
+  color: #d1d3d9;
+}
+
+/* The catalogue opens both as a full editor tab and in a split pane, so every
+   breakpoint below keys off .aiux550f4-final-agent-catalogue-editor's own width
+   rather than the viewport (which stays wide while a split pane is narrow). */
+@container (width <= 720px) {
+  .aiux550f4-final-agent-catalogue-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .aiux550f4-final-agent-catalogue-section.installed .aiux550f4-final-agent-catalogue-grid {
+    gap: 8px;
+  }
+}
+
+@container (width <= 420px) {
+  /* Not enough room for text beside the ~100px Install button, so let it drop
+     under the copy instead of squeezing the name to an ellipsis. */
+  .aiux550f4-final-agent-catalogue-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .aiux550f4-final-agent-catalogue-action,
+  .aiux550f4-final-agent-catalogue-install-progress {
+    grid-column: 2;
+    justify-self: start;
+    margin: 0;
+  }
+
+  /* Same for the installed card: the version-bump link wraps to its own line. */
+  .aiux550f4-final-agent-catalogue-card {
+    flex-wrap: wrap;
+  }
+}
+
 .main-toolbar-new-chat-picker {
   display: inline-flex;
   align-items: center;
@@ -4534,6 +6337,10 @@ body {
   line-height: 16px;
 }
 
+/* ── AI Review popup — Figma 501:57949 "Popup / Find in Files" ─────────────
+   Header pickers (agent / session / location) + a focused composer island +
+   the model/effort/edit-mode row. Tokens straight from the frame:
+   650px wide, 8px radius, #26282C on a #33353B hairline, 13/16 Inter 500. */
 .plan-diff-ai-review-dialog-backdrop {
   position: fixed;
   z-index: 12000;
@@ -4546,343 +6353,297 @@ body {
   background: rgba(0, 0, 0, 0.64);
 }
 
-.plan-diff-ai-review-dialog.dialog {
+.plan-diff-ai-review-dialog {
   position: relative;
   display: flex;
-  width: min(920px, calc(100vw - 48px));
-  height: min(560px, calc(100vh - 48px));
+  width: min(650px, calc(100vw - 48px));
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
-  overflow: hidden;
   box-sizing: border-box;
-  border: 1px solid #565a62;
-  border-radius: 12px;
-  background: #24272b;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.52), 0 0 0 1px rgba(0, 0, 0, 0.36);
-  color: #ced0d6;
-}
-
-/* Keep the Commit composer at the same compact, interface-sized dimensions as
-   the diff launcher instead of stretching it across the entire viewport. */
-.plan-diff-ai-review-dialog.is-commit-launch.commit-ai-review-popup {
-  width: min(920px, calc(100vw - 48px));
-  height: min(560px, calc(100vh - 48px));
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
-}
-
-.plan-diff-ai-review-dialog .dialog-header {
-  min-height: 38px;
-  box-sizing: border-box;
-  padding-right: 42px;
-}
-
-.plan-diff-ai-review-dialog .dialog-header-title {
+  flex-direction: column;
+  overflow: visible;
+  border: 1px solid var(--container-popup-border, #33353b);
+  border-radius: 8px;
+  background: var(--container-popup-bg, #26282c);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   color: var(--text-default, #d1d3d9);
-  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
 }
 
-.plan-diff-ai-review-dialog .dialog-content {
+.plan-diff-ai-review-dialog-header {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.plan-diff-ai-review-dialog-close {
-  position: absolute;
-  z-index: 5;
-  top: 6px;
-  right: 8px;
-}
-
-.plan-diff-ai-review-dialog-content {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
-}
-
-.plan-diff-ai-review-dialog-mode-row {
-  display: flex;
-  min-height: 40px;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 10px;
-  padding: 0 22px;
+  justify-content: space-between;
+  gap: 8px;
   box-sizing: border-box;
-  color: #7f838c;
+  padding: 4px 10px 4px 10px;
+  border-radius: 8px 8px 0 0;
 }
 
-.plan-diff-ai-review-dialog-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #7f838c;
-  font: 500 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.plan-diff-ai-review-dialog-mode.is-active {
-  color: #7f838c;
-}
-
-.plan-diff-ai-review-dialog-mode > .icon,
-.plan-diff-ai-review-dialog-mode > svg {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
-  color: #b9bec7;
-}
-
-.plan-diff-ai-review-dialog-mode:first-child > .icon {
-  color: #f6c453;
-}
-
-.plan-diff-ai-review-dialog-separator {
-  color: #696d75;
-  font: 500 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.plan-diff-ai-review-dialog-session-row {
-  position: relative;
+.plan-diff-ai-review-dialog-pickers {
   display: flex;
-  min-height: 54px;
+  min-width: 0;
   align-items: center;
-  gap: 18px;
-  padding: 0 22px;
-  box-sizing: border-box;
-  border-bottom: 1px solid #33373d;
+  gap: 12px;
 }
 
-.plan-diff-ai-review-dialog-session-button {
+/* Header and footer share one picker shape: text + chevron, hover-only background. */
+.plan-diff-ai-review-dialog-picker {
   all: unset;
-  display: flex;
+  display: inline-flex;
+  box-sizing: border-box;
   align-items: center;
-  gap: 6px;
-  color: #d7d9df;
+  gap: 4px;
+  padding: 3px 4px 3px 6px;
+  border-radius: 3px;
+  color: var(--text-muted, #9fa2a8);
   cursor: pointer;
-  font: 500 16px/22px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
 }
 
-.plan-diff-ai-review-dialog-session-button > .icon,
-.plan-diff-ai-review-dialog-session-button > svg {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 18px;
+.plan-diff-ai-review-dialog-picker:hover,
+.plan-diff-ai-review-dialog-picker:focus-visible,
+.plan-diff-ai-review-dialog-picker.is-open {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
 }
 
-.plan-diff-ai-review-dialog-session-button .ai-chat-agent-icon,
-.plan-diff-ai-review-dialog-session-button .ai-chat-codex-mark {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+.plan-diff-ai-review-dialog-picker > .icon,
+.plan-diff-ai-review-dialog-picker > svg,
+.plan-diff-ai-review-dialog-picker > img {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.plan-diff-ai-review-dialog-picker .ai-chat-agent-icon,
+.plan-diff-ai-review-dialog-picker .ai-chat-agent-mark,
+.plan-diff-ai-review-dialog-picker .ai-chat-codex-mark {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .plan-diff-ai-review-dialog-pin {
   all: unset;
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
-  color: #c7ccd5;
+  border-radius: 4px;
+  color: var(--icon-muted, #b4b8bf);
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-pin-icon {
-  width: 18px;
-  height: 18px;
+.plan-diff-ai-review-dialog-pin:hover,
+.plan-diff-ai-review-dialog-pin:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: none;
 }
 
+.plan-diff-ai-review-dialog-pin-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The composer island: 2px brand border, the input on top and the +/mic/send row pinned
+   to the bottom (Figma keeps it 153px tall). */
 .plan-diff-ai-review-dialog-main {
   position: relative;
   display: flex;
-  min-height: 0;
+  min-height: 153px;
+  box-sizing: border-box;
   flex: 1 1 auto;
   flex-direction: column;
-  margin: 10px 16px 8px;
-  padding: 14px 16px 12px;
-  box-sizing: border-box;
-  border: 2px solid #3574e8;
-  border-radius: 8px;
-  background: #191b1f;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0 10px;
+  padding: 3px 6px;
+  border: 2px solid var(--control-focus-border-brand, #3871e1);
+  border-radius: 6px;
 }
 
 .plan-diff-ai-review-dialog-composer-header {
   display: flex;
-  align-items: center;
+  /* The commit launcher pins a dozen files here: the chips must push the input down
+     instead of being squeezed and overlapping it. */
+  flex: 0 0 auto;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  min-height: 24px;
+  gap: 8px;
 }
 
-.plan-diff-ai-review-dialog-context-label {
-  display: inline-flex;
+.plan-diff-ai-review-dialog-composer-header:empty {
+  display: none;
+}
+
+/* The popup's own background is #26282C, the same colour the chip fill uses in the chat, so a chip
+   would read as unstyled text here. Inside the popup chips sit on the inline-surface token. */
+.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip {
+  background: var(--container-popup-bg-inline, #33353b);
+}
+
+.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:hover,
+.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:focus-visible {
+  background: #45484f;
+}
+
+.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:active {
+  background: #4f525a;
+}
+
+.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  color: #d7d9df;
-  font: 600 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 4px;
+  padding: 3px 0 0;
+  /* The shared .ai-chat-attachments rule caps the strip at 67px and lets the rest spill out
+     (z-index 20), which painted chips over the input. Here the strip is never clipped: the
+     overflow is collapsed behind "Show all +N", the same contract as the chat composer. */
+  max-height: none;
+  overflow: visible;
 }
 
-.plan-diff-ai-review-dialog-context-label > .icon {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments.is-expanded {
+  max-height: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.plan-diff-ai-review-dialog-context-meta {
-  color: #7f838c;
-  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments:empty {
+  display: none;
 }
 
+/* Figma 501:57949 keeps this button in the first row of the input, flush right and centred on
+   the caret line — so it is pinned to the top-right corner instead of sitting in its own row. */
 .plan-diff-ai-review-dialog-context-side {
+  position: absolute;
+  z-index: 1;
+  /* 3px = the input's own top padding, so the 22px button centres on the first 16px text line. */
+  top: 3px;
+  right: 0;
   display: inline-flex;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 22px;
+  flex: 0 0 26px;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
-  color: #c7ccd5;
+  color: var(--icon-muted, #b4b8bf);
 }
 
 .plan-diff-ai-review-dialog-context-side > .icon,
 .plan-diff-ai-review-dialog-context-side > svg {
-  width: 18px;
-  height: 18px;
-}
-
-.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments {
-  min-width: 0;
-  flex: 1 1 auto;
-  margin: 0;
-  padding: 0;
-  max-height: none;
-}
-
-.plan-diff-ai-review-source-attachment {
-  max-width: 260px;
-}
-
-.plan-diff-ai-review-source-attachment > .ai-chat-attachment-comment-preview {
-  top: calc(100% + 6px);
-  bottom: auto;
+  width: 16px;
+  height: 16px;
 }
 
 .plan-diff-ai-review-dialog-main > textarea {
-  width: 100%;
-  min-height: 0;
+  all: unset;
+  display: block;
+  min-height: 72px;
+  box-sizing: border-box;
   flex: 1 1 auto;
-  margin: 20px 0 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
+  padding: 3px 30px 6px 0;
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/16px Inter, system-ui, sans-serif;
   resize: none;
-  background: transparent;
-  color: #d7d9df;
-  font: 500 16px/24px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: pre-wrap;
 }
 
 .plan-diff-ai-review-dialog-main > textarea::placeholder {
-  color: #7f838c;
+  color: var(--text-secondary, #73767c);
 }
 
+/* Chat / Input Toolbar Island */
 .plan-diff-ai-review-dialog-main-actions {
   display: flex;
+  height: 30px;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
+}
+
+.plan-diff-ai-review-dialog-main-actions-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .plan-diff-ai-review-dialog-plus,
-.plan-diff-ai-review-dialog-send {
+.plan-diff-ai-review-dialog-mic {
   all: unset;
   display: inline-flex;
-  width: 36px;
-  height: 36px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
   align-items: center;
   justify-content: center;
-  color: #c7ccd5;
-  cursor: pointer;
-}
-
-.plan-diff-ai-review-dialog-send {
-  color: #565b65;
-}
-
-.plan-diff-ai-review-dialog-send:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.plan-diff-ai-review-dialog-send:not(:disabled) {
-  color: #b9bec7;
-}
-
-.plan-diff-ai-review-dialog-send:not(:disabled):hover,
-.plan-diff-ai-review-dialog-send:not(:disabled):focus-visible {
-  color: #548af7;
-}
-
-.plan-diff-ai-review-dialog-plus > .icon,
-.plan-diff-ai-review-dialog-send-icon {
-  width: 22px;
-  height: 22px;
-}
-
-.plan-diff-ai-review-session-list {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  gap: 0;
-  max-height: 112px;
-  padding: 8px 22px 4px;
-  box-sizing: border-box;
-  overflow-y: auto;
-  border-top: 1px solid #33373d;
-}
-
-.plan-diff-ai-review-session-item {
-  all: unset;
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
   border-radius: 4px;
-  color: #d1d3d9;
+  color: var(--icon-muted, #b4b8bf);
   cursor: pointer;
-  font: 500 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.plan-diff-ai-review-session-item:hover,
-.plan-diff-ai-review-session-item:focus-visible,
-.plan-diff-ai-review-session-item.is-selected {
-  background: #30333a;
+.plan-diff-ai-review-dialog-plus:hover,
+.plan-diff-ai-review-dialog-plus:focus-visible,
+.plan-diff-ai-review-dialog-mic:hover,
+.plan-diff-ai-review-dialog-mic:focus-visible {
+  background: rgb(255 255 255 / 8%);
   outline: none;
 }
 
-.plan-diff-ai-review-session-time {
-  margin-left: 2px;
-  color: #777b84;
-  font-size: 12px;
+.plan-diff-ai-review-dialog-send {
+  all: unset;
+  display: inline-flex;
+  width: 32px;
+  height: 22px;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--background-bg-main-window, #282828);
+  color: var(--icon-disabled, #5f6269);
+  cursor: pointer;
 }
 
-.plan-diff-ai-review-session-hint {
+.plan-diff-ai-review-dialog-send:hover,
+.plan-diff-ai-review-dialog-send:focus-visible {
+  color: var(--icon-muted, #b4b8bf);
+  outline: none;
+}
+
+.plan-diff-ai-review-dialog-plus > .icon,
+.plan-diff-ai-review-dialog-mic > .icon,
+.plan-diff-ai-review-dialog-send-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.plan-diff-ai-review-dialog-footer {
+  display: flex;
   flex: 0 0 auto;
-  min-height: 28px;
+  align-items: center;
+  gap: 0;
   box-sizing: border-box;
-  padding: 2px 22px 8px;
-  color: #777b84;
-  font: 500 12px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 4px 8px 6px;
 }
 
-.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-agent,
-.plan-diff-ai-review-dialog-composer .plan-diff-ai-review-submenu-attach,
-.plan-diff-ai-review-dialog-main .plan-diff-ai-review-submenu-attach {
-  top: auto;
-  bottom: calc(100% + 4px);
+.plan-diff-ai-review-dialog-footer .plan-diff-ai-review-dropdown + .plan-diff-ai-review-dropdown {
+  margin-left: 4px;
+}
+
+/* Every picker in the popup drops its menu below the trigger. The submenu wrapper is a
+   zero-size anchor (the kit Popup lays itself out inside it), so a `bottom`-based flip
+   would not actually move the menu above the button — it would only shift the anchor. */
+.plan-diff-ai-review-dialog .plan-diff-ai-review-submenu {
+  top: calc(100% + 4px);
+  bottom: auto;
 }
 
 .plan-diff-new-review-check {
@@ -11308,6 +13069,353 @@ button.aiux543-answer-change-card:focus-visible {
   align-items: center;
   gap: 3px;
   padding: 5px 4px;
+}
+
+/* Fresh chats open as a focused start surface in the editor. The agent shown
+   in the global New Chat action is carried into this picker by default. */
+.aiux543-conversation.is-new-session .aiux543-conversation-scroll {
+  display: none;
+}
+
+.aiux543-composer-sticky.is-new-session {
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: center;
+  padding: clamp(28px, 8vh, 88px) 24px;
+  background: #191a1c;
+  box-shadow: none;
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer,
+.aiux543-composer-sticky.is-new-session .aiux543-editor-footer,
+.aiux543-new-session-agent-picker {
+  width: min(820px, 100%);
+}
+
+.aiux543-new-session-agent-picker {
+  position: relative;
+  z-index: 40;
+  align-self: center;
+  margin-bottom: 12px;
+}
+
+.aiux543-new-session-agent-trigger {
+  all: unset;
+  display: inline-flex;
+  min-height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 7px;
+  padding: 0 7px;
+  border-radius: 6px;
+  color: #d1d3d9;
+  cursor: pointer;
+  font: 600 15px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-new-session-agent-trigger:hover,
+.aiux543-new-session-agent-trigger.is-open,
+.aiux543-new-session-agent-trigger:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.aiux543-new-session-agent-trigger:focus-visible {
+  outline: 2px solid #3574f0;
+  outline-offset: 1px;
+}
+
+.aiux543-new-session-agent-trigger > .icon,
+.aiux543-new-session-agent-trigger > svg,
+.aiux543-new-session-agent-trigger > img {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.aiux543-new-session-agent-trigger > .icon:last-child,
+.aiux543-new-session-agent-trigger > svg:last-child {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+  color: #8b8e96;
+}
+
+.aiux543-new-session-agent-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  width: 286px;
+  max-width: min(286px, calc(100vw - 32px));
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid #3d4047;
+  border-radius: 8px;
+  background: #2b2d30;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.46);
+}
+
+.aiux543-new-session-agent-menu-label {
+  padding: 4px 8px 3px;
+  color: #8b8e96;
+  font: 600 11px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-new-session-agent-option {
+  all: unset;
+  display: flex;
+  min-height: 44px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  color: #dfe1e5;
+  cursor: pointer;
+}
+
+.aiux543-new-session-agent-option:hover,
+.aiux543-new-session-agent-option:focus-visible,
+.aiux543-new-session-agent-option.is-selected {
+  background: #34363b;
+}
+
+.aiux543-new-session-agent-option:focus-visible {
+  outline: 1px solid #3574f0;
+  outline-offset: -1px;
+}
+
+.aiux543-new-session-agent-option-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux543-new-session-agent-option-icon .icon,
+.aiux543-new-session-agent-option-icon svg,
+.aiux543-new-session-agent-option-icon img {
+  width: 18px;
+  height: 18px;
+}
+
+.aiux543-new-session-agent-option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.aiux543-new-session-agent-option-copy strong {
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-new-session-agent-option-copy small {
+  overflow: hidden;
+  color: #8b8e96;
+  font: 500 11px/15px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-new-session-agent-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #34363b;
+  color: #aeb1b8;
+  font: 500 10px/15px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.aiux543-new-session-agent-option > .icon:last-child,
+.aiux543-new-session-agent-option > svg:last-child {
+  flex: 0 0 16px;
+  color: #a8abb3;
+}
+
+.aiux543-new-session-agent-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: #3d4047;
+}
+
+.aiux543-new-session-agent-action {
+  all: unset;
+  display: flex;
+  min-height: 30px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: #d1d3d9;
+  cursor: pointer;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-new-session-agent-action:hover,
+.aiux543-new-session-agent-action:focus-visible {
+  background: #34363b;
+  outline: none;
+}
+
+.aiux543-new-session-agent-action > .icon,
+.aiux543-new-session-agent-action > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: #a8abb3;
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer {
+  min-height: clamp(156px, 23vh, 220px);
+  max-height: min(420px, 45vh);
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer.is-expanded {
+  min-height: min(578px, 62vh);
+  max-height: min(578px, 62vh);
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-input-row {
+  min-height: 92px;
+  flex: 1 1 auto;
+  padding: 12px 14px 8px;
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-input {
+  min-height: 76px;
+}
+
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer.is-expanded .aiux543-chat-input-row,
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer.is-expanded .aiux543-chat-input {
+  min-height: 280px;
+}
+
+.aiux543-new-session-expand {
+  all: unset;
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: #8b8e96;
+  cursor: pointer;
+}
+
+.aiux543-new-session-expand:hover,
+.aiux543-new-session-expand:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #b9bbc2;
+  outline: none;
+}
+
+.aiux543-new-session-settings {
+  justify-content: flex-start;
+  padding-top: 3px;
+}
+
+.aiux543-new-session-settings .aiux543-editor-footer-left {
+  gap: 3px;
+}
+
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button {
+  all: unset;
+  display: inline-flex;
+  min-height: 26px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: #8b8e96;
+  cursor: pointer;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button:hover,
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button:focus-visible,
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button.is-open {
+  background: rgba(255, 255, 255, 0.08);
+  color: #b9bbc2;
+}
+
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button:focus-visible {
+  outline: 1px solid #3574f0;
+}
+
+.aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.aiux543-new-session-setting-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.aiux543-new-session-setting-menu {
+  position: absolute;
+  z-index: 80;
+  bottom: calc(100% + 5px);
+  left: 0;
+  display: flex;
+  min-width: 176px;
+  box-sizing: border-box;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid #3d4047;
+  border-radius: 8px;
+  background: #2b2d30;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.46);
+}
+
+.aiux543-new-session-setting-menu > button {
+  all: unset;
+  display: flex;
+  min-height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #d1d3d9;
+  cursor: pointer;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.aiux543-new-session-setting-menu > button:hover,
+.aiux543-new-session-setting-menu > button:focus-visible,
+.aiux543-new-session-setting-menu > button.is-selected {
+  background: #2a4371;
+  outline: none;
+}
+
+.aiux543-new-session-setting-menu > button > .icon,
+.aiux543-new-session-setting-menu > button > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: #7aa2f7;
+}
+
+@media (max-height: 700px) {
+  .aiux543-composer-sticky.is-new-session {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
 }
 
 
