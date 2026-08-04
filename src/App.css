@@ -3153,6 +3153,18 @@ body {
   font-weight: 500;
 }
 
+/* Separator + "Create New Chat" at the bottom of the chat targets, mirroring the comment
+   component's target picker. */
+.editor-selection-toolbar-submenu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--editor-selection-toolbar-separator-bg, #3D4047);
+}
+
+.editor-selection-toolbar-chat-target.is-create-chat .editor-selection-toolbar-chat-target-icon {
+  color: #B4B8BF;
+}
+
 .editor-selection-toolbar-menu-item:hover,
 .editor-selection-toolbar-menu-item:focus-visible {
   background: var(--editor-selection-toolbar-hover-bg);
@@ -13097,6 +13109,15 @@ button.aiux543-answer-change-card:focus-visible {
   z-index: 40;
   align-self: center;
   margin-bottom: 12px;
+}
+
+/* The agent picker above the composer sits at z-index 40, so an attachment hover card (z-index 100
+   inside the composer's own stacking context at z-index 2) painted underneath it in the new-session
+   empty state. Lift the composer only while a chip is hovered, so the picker's dropdown — which
+   opens over the composer — keeps stacking above it the rest of the time. */
+.aiux543-chat-composer:has(.ai-chat-attachment-chip:hover),
+.aiux543-chat-composer:has(.ai-chat-attachment-chip:focus-within) {
+  z-index: 41;
 }
 
 .aiux543-new-session-agent-trigger {

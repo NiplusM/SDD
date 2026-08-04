@@ -14,6 +14,9 @@ const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'more', kind: 'icon', iconName: 'general/moreVertical_dark', ariaLabel: 'More actions' },
 ];
 
+// Picking this target quotes into a chat that does not exist yet — the host creates it.
+export const NEW_CHAT_TARGET_ID = 'new-chat';
+
 const CHAT_SELECTION_TOOLBAR_ITEMS = [
   { id: 'selection-action', kind: 'selectionAction' },
 ];
@@ -250,6 +253,18 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
                                   <span className="editor-selection-toolbar-chat-target-title">{chat.title}</span>
                                 </button>
                               ))}
+                              <div className="editor-selection-toolbar-submenu-separator" aria-hidden="true" />
+                              <button
+                                type="button"
+                                className="editor-selection-toolbar-chat-target is-create-chat"
+                                role="menuitem"
+                                onMouseDown={(event) => handleTargetChatMouseDown(event, action.id, NEW_CHAT_TARGET_ID)}
+                              >
+                                <span className="editor-selection-toolbar-chat-target-icon" aria-hidden="true">
+                                  <Icon name="general/add" size={16} />
+                                </span>
+                                <span className="editor-selection-toolbar-chat-target-title">Create New Chat</span>
+                              </button>
                             </div>
                           )}
                         </div>

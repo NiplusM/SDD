@@ -80,7 +80,7 @@ import {
   defaultRightPanelContent,
   defaultBottomPanelContent,
 } from '@jetbrains/int-ui-kit';
-import { EditorSelectionToolbar } from './EditorSelectionToolbar.jsx';
+import { EditorSelectionToolbar, NEW_CHAT_TARGET_ID } from './EditorSelectionToolbar.jsx';
 import { FinalAnchoredPopup, FinalChoiceIcon } from './FinalPresetParts.jsx';
 import { FinalPresetDialog } from './FinalPresetDialog.jsx';
 import { AgentsCatalogueEditor } from './AgentsCatalogueEditor.jsx';
@@ -8571,6 +8571,18 @@ function SpecSelectionToolbar({ position, onAction, chatTargets = [], onMenuOpen
                                   <span className="editor-selection-toolbar-chat-target-title">{chat.title}</span>
                                 </button>
                               ))}
+                              <div className="editor-selection-toolbar-submenu-separator" aria-hidden="true" />
+                              <button
+                                type="button"
+                                className="editor-selection-toolbar-chat-target is-create-chat"
+                                role="menuitem"
+                                onMouseDown={(event) => handleTargetChatMouseDown(event, action.id, NEW_CHAT_TARGET_ID)}
+                              >
+                                <span className="editor-selection-toolbar-chat-target-icon" aria-hidden="true">
+                                  <Icon name="general/add" size={16} />
+                                </span>
+                                <span className="editor-selection-toolbar-chat-target-title">Create New Chat</span>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -23685,12 +23697,17 @@ export default function App() {
       });
     }
 
-    const boundChatId = typeof chatId === 'string' && chatId.trim().length > 0
-      ? chatId.trim()
-      : ensureSpecStatusChat(activeSpecTopBarStatus, {
-          select: false,
-          sourceTabId,
-        });
+    const requestedChatId = typeof chatId === 'string' ? chatId.trim() : '';
+    // "Create New Chat" in the target submenu.
+    const createsNewChat = requestedChatId === NEW_CHAT_TARGET_ID;
+    const boundChatId = createsNewChat
+      ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude' }).id
+      : requestedChatId.length > 0
+        ? requestedChatId
+        : ensureSpecStatusChat(activeSpecTopBarStatus, {
+            select: false,
+            sourceTabId,
+          });
 
     return addSelectionContextToChat({
       chatId: boundChatId,
@@ -23703,6 +23720,7 @@ export default function App() {
       sourceRowKey: rowKey,
       sourceRowIndex: rowIndex,
       lineLabel,
+      openChat: !createsNewChat,
     });
   }, [
     activeEditorTabMeta?.icon,
@@ -23712,6 +23730,7 @@ export default function App() {
     activeTabId,
     addSelectionContextToChat,
     askSelectionInSideChat,
+    createEmptyAiChatSession,
     currentAgentTaskLabel,
     ensureSpecStatusChat,
     visibleEditorStateTabId,
@@ -23868,7 +23887,11 @@ export default function App() {
         : '';
       if (!selectedText) return;
 
-      const targetChatId = targetContextChatId || selectedAiChatId;
+      // "Create New Chat" in the target submenu: the chat is made here and the quote lands in it.
+      const createsNewChat = targetContextChatId === NEW_CHAT_TARGET_ID;
+      const targetChatId = createsNewChat
+        ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude' }).id
+        : targetContextChatId || selectedAiChatId;
       const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
         ? toolbarState.sourceLabel.trim()
         : (activeTab?.label ?? 'Selected context');
@@ -23893,6 +23916,9 @@ export default function App() {
         chipIcon: activeTab?.icon ?? 'fileTypes/text',
         rowIds,
         lineLabel,
+        // Creating the session already opened its tab; opening it again from here would run
+        // against not-yet-flushed state and mislabel the tab.
+        openChat: !createsNewChat,
       });
       if (didAddSelectionContext) clearDocumentTextSelection();
       return;
@@ -23993,6 +24019,7 @@ export default function App() {
     isPlainFileOverlayTab,
     addSelectionContextToChat,
     askSelectionInSideChat,
+    createEmptyAiChatSession,
     selectedAiChatId,
   ]);
   const activePlanDiffTarget = isDiffTab
