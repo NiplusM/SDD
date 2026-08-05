@@ -1,21 +1,17 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Loader, ToolWindow } from '@jetbrains/int-ui-kit';
-import { AiChatCodexIcon } from './AiChatListParts.jsx';
+import { AiChatAgentIcon, AiChatCodexIcon } from './AiChatListParts.jsx';
 
-// Round severity status icon for the AI Review folder: red "!" (critical),
-// yellow "!" (warning), blue "i" (info).
+// Severity status icon from the shared JetBrains icon registry.
 function AiNotesSeverityIcon({ severity }) {
   const s = String(severity || '').toLowerCase();
-  const fill = s === 'critical' ? '#DB5C5C' : s === 'warning' ? '#F2C55C' : '#548AF7';
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="icon aiux550-ainotes-sev-icon" aria-hidden="true">
-      <circle cx="8" cy="8" r="7" fill={fill} />
-      {s === 'info'
-        ? <path d="M8 6.9v4M8 5.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
-        : <path d="M8 4.4v4.2M8 11.2h.01" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />}
-    </svg>
-  );
+  const iconName = s === 'critical'
+    ? 'status/error'
+    : s === 'warning'
+      ? 'status/warning'
+      : 'status/info';
+  return <Icon name={iconName} size={16} className="aiux550-ainotes-sev-icon" />;
 }
 
 const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
@@ -554,7 +550,13 @@ function Aiux550HistoryList({
     // Only an explicit /review run gets an "AI Review" folder in history. A plain
     // "send comment to agent" run keeps its result in the chat + the diff/chip.
     if (run?.kind !== 'review' || !run?.notes?.length) return node;
-    const aiNotesSection = { id: 'ai-notes', label: 'AI Review', notes: run.notes, status: run.status };
+    const aiNotesSection = {
+      id: 'ai-notes',
+      label: 'AI Review',
+      notes: run.notes,
+      status: run.status,
+      agentIcon: run.agentIcon || node.agent || 'codex',
+    };
     return { ...node, children: [aiNotesSection, ...(node.children ?? [])] };
   };
 
@@ -1027,7 +1029,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 // Non-expandable summary row: review icon + label + "Open" badge.
                 <span className="aiux543-chat-tree-section-toggle aiux550-ainotes-summary">
                   <span className="aiux543-chat-tree-chevron-spacer" aria-hidden="true" />
-                  <Aiux550HistoryChildSectionIcon sectionId={section.id} />
+                  <Aiux550HistoryChildSectionIcon sectionId={section.id} agentIcon={section.agentIcon} />
                   <span className="aiux550-ainotes-summary-label">
                     <span>{section.label}</span>
                     {isAiNotesDone ? (
@@ -1133,9 +1135,9 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
   );
 }
 
-function Aiux550HistoryChildSectionIcon({ sectionId }) {
+function Aiux550HistoryChildSectionIcon({ sectionId, agentIcon = 'codex' }) {
   if (sectionId === 'ai-notes') {
-    return <Icon name="general/balloon" size={16} className="icon aiux543-chat-tree-icon" />;
+    return <AiChatAgentIcon icon={agentIcon} title="AI Review" />;
   }
 
   if (sectionId === 'changes') {

@@ -42,6 +42,7 @@ import {
   truncateMiddleText,
 } from './aiChatAttachmentParts.jsx';
 import { ChatsHistoryToolWindow, AiNotesSeverityIcon } from './ChatsHistory.jsx';
+import { ComposerFollowUpQueue } from './ComposerFollowUpQueue.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { textLooksLikeQuestion, countCommentThreadMessages } from './commentCounts.js';
 import {
@@ -239,8 +240,12 @@ function FinalToolbarSessionControl({
     ?? items[0]
     ?? FINAL_DIRECT_AGENT_OPTIONS[2];
   const recommendedItem = items.find((item) => item.recommended);
-  // Base agents + custom presets shown together (agents first per getFinalAgentItems order).
-  const sessionItems = items.filter((item) => !item.recommended);
+  // Built-in locked presets sit directly below the recommendation; editable
+  // agent presets and user presets keep their existing relative order.
+  const sessionItems = [
+    ...items.filter((item) => !item.recommended && item.lockedPreset),
+    ...items.filter((item) => !item.recommended && !item.lockedPreset),
+  ];
   const selectedItemLabel = selectedItem.buttonLabel ?? selectedItem.label;
 
   return (
@@ -846,6 +851,26 @@ const COMMIT_CHANGE_FILES = COMMIT_CHAT_GROUPS.flatMap((group) => (
 const COMMIT_SEVERITY_ORDER = ['critical', 'warning', 'info'];
 const COMMIT_SEVERITY_LABEL = { critical: 'Critical', warning: 'Warning', info: 'Info' };
 
+function reviewSeverityPriority(severity = '') {
+  const index = COMMIT_SEVERITY_ORDER.indexOf(String(severity || '').trim().toLowerCase());
+  return index === -1 ? COMMIT_SEVERITY_ORDER.length : index;
+}
+
+function highestReviewSeverityFromTotals(totals = {}) {
+  return COMMIT_SEVERITY_ORDER.find((severity) => (totals?.[severity] ?? 0) > 0) ?? 'info';
+}
+
+function sortReviewFilesBySeverity(files = []) {
+  return (Array.isArray(files) ? files : [])
+    .map((file, index) => ({ file, index }))
+    .sort((left, right) => (
+      reviewSeverityPriority(highestReviewSeverityFromTotals(left.file?.severityTotals ?? left.file?.severityCounts))
+      - reviewSeverityPriority(highestReviewSeverityFromTotals(right.file?.severityTotals ?? right.file?.severityCounts))
+      || left.index - right.index
+    ))
+    .map(({ file }) => file);
+}
+
 function commitFilesPluralized(n, noun) {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
@@ -948,7 +973,12 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
 
 // Custom Commit tool window. Keeps the commit chrome, a grouped/collapsible file
 // tree with checkboxes, and the bottom panel (amend + summary + Commit).
-function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
+function CommitToolWindow({
+  ctx,
+  onOpenFile = null,
+  onStartReview = null,
+  onReviewContextChange = null,
+}) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
   const [amend, setAmend] = useState(false);
@@ -966,6 +996,27 @@ function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
     const changeLabel = changeCount === 1 ? 'change' : 'changes';
     return `${selectedFiles.length} ${fileLabel} · ${changeCount} ${changeLabel}`;
   }, [checkedIds]);
+  const reviewSourceAttachments = useMemo(() => (
+    COMMIT_CHANGE_FILES
+      .filter((file) => checkedIds.has(file.id))
+      .map((file) => ({
+        id: `commit-review-${file.id}`,
+        label: file.label,
+        icon: file.icon,
+        path: `${file.path}/${file.label}`,
+        sourcePath: `${file.path}/${file.label}`,
+        sourceLabel: file.label,
+        commitGroupLabel: file.groupLabel,
+        commitStatus: file.status,
+      }))
+  ), [checkedIds]);
+  useEffect(() => {
+    onReviewContextChange?.({
+      focused: ctx.focusedPanel === 'left',
+      attachments: reviewSourceAttachments,
+    });
+    return () => onReviewContextChange?.(null);
+  }, [ctx.focusedPanel, onReviewContextChange, reviewSourceAttachments]);
   const toggleGroup = (id) => setCollapsedGroups((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -1006,9 +1057,8 @@ function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
           <IconButton icon="vcs/revert" tooltip="Rollback" />
           <IconButton icon="vcs/patch" tooltip="Create Patch" />
           <span className="commit-toolbar-separator" aria-hidden="true" />
-          {/* Same AI Review entry point as the chat-generated diff's top bar. No
-              sourceAttachments: the popup opens with a single "Changes" chip summarising the
-              checked files instead of pulling in every file of the commit. */}
+          {/* Same AI Review entry point as the chat-generated diff's top bar. The
+              checked commit files become the popup's initial context attachments. */}
           <span className="commit-ai-review-entry">
             <PlanDiffNewReviewButton
               currentScopeLabel="Local changes"
@@ -1016,6 +1066,7 @@ function CommitToolWindow({ ctx, onOpenFile = null, onStartReview = null }) {
               contextLabel="Changes"
               contextMeta={reviewContextMeta}
               contextIcon="general/listFiles"
+              sourceAttachments={reviewSourceAttachments}
               onStartReview={onStartReview}
               launchSource="commit"
               triggerClassName="commit-ai-review-trigger"
@@ -12655,6 +12706,7 @@ function ChatToolWindow({
 }) {
   const [selectedChatId, setSelectedChatId] = useState(controlledSelectedChatId);
   const [composerText, setComposerText] = useState('');
+  const [composerInputPlacement, setComposerInputPlacement] = useState('before');
   const [localSentChatMessages, setLocalSentChatMessages] = useState([]);
   const [optimisticSentMessagesByChatId, setOptimisticSentMessagesByChatId] = useState({});
   const currentChatId = controlledSelectedChatId ?? selectedChatId;
@@ -12681,6 +12733,7 @@ function ChatToolWindow({
   const chatTitleChevronRef = useRef(null);
   const chatListPopupRef = useRef(null);
   const composerTextareaRef = useRef(null);
+  const previousComposerAttachmentStateRef = useRef({ chatId: null, count: 0 });
   const commentResponseTimersRef = useRef({});
   const selectedChat = chatScenarios[currentChatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
   const latestSddCommentEntries = useMemo(
@@ -12775,6 +12828,21 @@ function ChatToolWindow({
   ));
   const hasSelectionContextAttachment = visibleComposerAttachments.some((attachment) => attachment?.isSelectionContext);
   const canSendMessage = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
+
+  useEffect(() => {
+    const previous = previousComposerAttachmentStateRef.current;
+    const nextCount = visibleComposerAttachments.length;
+    const chatChanged = previous.chatId !== currentChatId;
+
+    if (nextCount === 0) {
+      setComposerInputPlacement('before');
+    } else if (chatChanged || nextCount > previous.count) {
+      setComposerInputPlacement(composerText.length === 0 ? 'after' : 'before');
+      requestAnimationFrame(() => composerTextareaRef.current?.focus({ preventScroll: true }));
+    }
+
+    previousComposerAttachmentStateRef.current = { chatId: currentChatId, count: nextCount };
+  }, [currentChatId, visibleComposerAttachments.length]);
 
   useEffect(() => {
     if (!expandedAttachmentSourceId) return;
@@ -13329,41 +13397,49 @@ function ChatToolWindow({
         </div>
 
         <div className="ai-chat-composer">
-          <AiChatAttachmentStrip
-            attachments={visibleComposerAttachments}
-            collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
-            expanded={composerAttachmentsExpanded}
-            onExpandedChange={setComposerAttachmentsExpanded}
-            expandedSourceId={expandedAttachmentSourceId}
-            onExpandedSourceIdChange={setExpandedAttachmentSourceId}
-            getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
-            onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
-            onContextMenu={handleComposerAttachmentContextMenu}
-            onSourceOpen={(event, attachment, source) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
-            onRemove={(attachment) => {
-              setDismissedComposerAttachmentIdsByChatId((prev) => ({
-                ...prev,
-                [currentChatId]: {
-                  ...dismissedAttachmentIds,
-                  [attachment.id]: true,
-                },
-              }));
-              onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
+          <div
+            className={`ai-chat-inline-input-content${composerInputPlacement === 'after' && visibleComposerAttachments.length > 0 ? ' is-input-after-attachments' : ''}`}
+            onClick={(event) => {
+              if (!event.target.closest('button')) composerTextareaRef.current?.focus();
             }}
-          />
+          >
 	          <textarea
               ref={composerTextareaRef}
 	            rows={1}
-	            placeholder={composerPlaceholder}
-            aria-label="Task prompt"
-            value={composerText}
-            onChange={(event) => setComposerText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey) return;
-              event.preventDefault();
-              handleSendMessage();
-            }}
-          />
+	            placeholder={visibleComposerAttachments.length > 0 ? '' : composerPlaceholder}
+              aria-label="Task prompt"
+              value={composerText}
+              onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.shiftKey) return;
+                event.preventDefault();
+                handleSendMessage();
+              }}
+            />
+            <AiChatAttachmentStrip
+              attachments={visibleComposerAttachments}
+              collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+              expanded={composerAttachmentsExpanded}
+              onExpandedChange={setComposerAttachmentsExpanded}
+              expandedSourceId={expandedAttachmentSourceId}
+              onExpandedSourceIdChange={setExpandedAttachmentSourceId}
+              getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+              onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
+              onContextMenu={handleComposerAttachmentContextMenu}
+              onSourceOpen={(event, attachment, source) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
+              onRemove={(attachment) => {
+                setDismissedComposerAttachmentIdsByChatId((prev) => ({
+                  ...prev,
+                  [currentChatId]: {
+                    ...dismissedAttachmentIds,
+                    [attachment.id]: true,
+                  },
+                }));
+                onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
+              }}
+              className="is-inline-composer-attachments"
+            />
+          </div>
 	          <div className="ai-chat-composer-toolbar">
 	            <div className="ai-chat-composer-left">
 	              <button
@@ -14052,29 +14128,15 @@ const ChatListPopup = forwardRef(function ChatListPopup({
 });
 
 function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null }) {
-  const [isContextExpanded, setIsContextExpanded] = useState(false);
-  const attachmentCount = attachments.length;
   const hasMessageText = typeof children === 'string'
     ? children.trim().length > 0
     : Boolean(children);
 
   return (
     <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
-      {hasMessageText && <p>{children}</p>}
-      {attachmentCount > 0 && (
-        <div className="ai-chat-sent-context">
-          <button
-            className="ai-chat-sent-context-toggle"
-            type="button"
-            aria-expanded={isContextExpanded}
-            onClick={() => setIsContextExpanded((prev) => !prev)}
-          >
-            <span>{`Attachments ${attachmentCount}`}</span>
-            <Icon name="general/chevronDown" size={16} className={isContextExpanded ? 'is-expanded' : ''} />
-          </button>
-          {isContextExpanded && (
-            <div className="ai-chat-sent-context-attachments">
-              {attachments.map((attachment) => {
+      <div className="ai-chat-user-card-content">
+        {hasMessageText && <span className="ai-chat-user-card-text">{children}</span>}
+        {attachments.map((attachment) => {
                 const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
                 const sourcePreviewItems = getAiChatAttachmentSourcePreviewItems(attachment);
                 const visibleCommentPreviewItems = commentPreviewItems.slice(0, 3);
@@ -14132,11 +14194,8 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                     ) : null}
                   </span>
                 );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+        })}
+      </div>
       <button className="ai-chat-card-menu" type="button" aria-label="Message actions">
         <span />
         <span />
@@ -14326,6 +14385,8 @@ const AGENT_REVIEW_FINDINGS = [
     rowId: 'plan-code-3-added-3',
     lineLabel: 'Line 17',
     severity: 'Critical',
+    groupId: 'state-lifecycle',
+    groupLabel: 'State & lifecycle',
     fixLabel: 'Extract a provider',
   },
   {
@@ -14335,6 +14396,8 @@ const AGENT_REVIEW_FINDINGS = [
     rowId: 'plan-code-3-removed-3',
     lineLabel: 'Line 15',
     severity: 'Warning',
+    groupId: 'shared-configuration',
+    groupLabel: 'Shared configuration',
     fixLabel: 'Extract constant',
   },
   // Then the surrounding files.
@@ -14345,6 +14408,8 @@ const AGENT_REVIEW_FINDINGS = [
     rowId: 'plain-line-20',
     lineLabel: 'Line 20',
     severity: 'Critical',
+    groupId: 'input-validation',
+    groupLabel: 'Input validation',
     fixLabel: 'Add null check',
   },
   {
@@ -14354,6 +14419,8 @@ const AGENT_REVIEW_FINDINGS = [
     rowId: 'plain-line-26',
     lineLabel: 'Line 26',
     severity: 'Info',
+    groupId: 'state-lifecycle',
+    groupLabel: 'State & lifecycle',
     fixLabel: 'Return defensive copy',
   },
 ];
@@ -14563,84 +14630,191 @@ function buildReviewDiffFiles(findings = [], tabContents = {}) {
 }
 
 const REVIEW_GROUP_MODES = [
+  { id: 'agent', label: 'Agent groups' },
   { id: 'file', label: 'By file' },
   { id: 'severity', label: 'By severity' },
   { id: 'status', label: 'By status' },
 ];
 
-// Group the overview's stacked files into sections. Severity grouping mirrors
-// the popup: a file appears under EVERY severity it has, and each section only
-// shows that severity's comments (section.severity is fed to the per-file diff
-// as a severity filter). Status grouping splits Open vs Resolved the same way.
-// File/status/severity grouping is shared by both review layouts, so every
-// visible list gets the same group header semantics.
-function groupReviewFilesForStack(files = [], mode = 'file', severityFilter = 'all') {
-  const list = Array.isArray(files) ? files : [];
+// Review comment filtering / counting / grouping. Module-level and pure so BOTH
+// review surfaces share one implementation: the full overview
+// (`ReviewDiffOverview`) and the compact review summary in chat
+// (`ReviewSummaryMessage`). These used to live inside the overview component,
+// which is why the chat preview grew its own divergent copies.
+function matchesReviewCommentFilter(comment, filter) {
+  if (!getStoredCommentText(comment).trim()) return false;
+  const groupId = filter && typeof filter === 'object' && !Array.isArray(filter)
+    ? String(filter.groupId || '').trim()
+    : '';
+  if (groupId && String(comment?.groupId || '').trim() !== groupId) return false;
+  const severityFilter = filter && typeof filter === 'object' && !Array.isArray(filter)
+    ? filter.severities
+    : filter;
+  const resolved = Boolean(comment?.resolved);
+  const filterValues = normalizeReviewSeverityFilter(severityFilter);
+  if (resolved) {
+    if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID)) return true;
+    const sev = String(comment?.severity || '').toLowerCase();
+    return filterValues.includes(sev);
+  }
+  if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID) && filterValues.length === 1) return false;
+  const sev = String(comment?.severity || '').toLowerCase();
+  return filterValues.includes(sev);
+}
+
+function getReviewCommentStatus(comment) {
+  if (comment?.resolved) return 'resolved';
+  if (typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0) return 'replied';
+  return 'open';
+}
+
+function matchesReviewCommentStatusFilter(comment, filter, status = 'all') {
+  if (!matchesReviewCommentFilter(comment, filter)) return false;
+  if (status === 'unresolved') return getReviewCommentStatus(comment) !== 'resolved';
+  return status === 'all' || getReviewCommentStatus(comment) === status;
+}
+
+function countReviewCommentsForFilter(fileList, filter) {
+  return fileList.reduce((sum, file) => sum
+    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat()
+      .filter((comment) => matchesReviewCommentFilter(comment, filter)).length, 0);
+}
+
+function countReviewCommentsForStatusFilter(fileList, filter, status = 'all') {
+  return fileList.reduce((sum, file) => sum
+    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat()
+      .filter((comment) => matchesReviewCommentStatusFilter(comment, filter, status)).length, 0);
+}
+
+// Flag the comments an action is about to touch as pending, so the spinner
+// previews exactly that set. `status` narrows the same way a category header
+// does. Returns the next comments state, or null when nothing matched.
+function buildPendingReviewComments(file, filter, pending = true, status = 'all') {
+  let changed = false;
+  const next = {};
+  Object.entries(normalizeStoredDiffCommentsState(file?.comments)).forEach(([rowId, list]) => {
+    next[rowId] = list.map((comment) => {
+      if (!matchesReviewCommentStatusFilter(comment, filter, status) || comment?.resolved) return comment;
+      changed = true;
+      const base = (comment && typeof comment === 'object') ? comment : { text: comment };
+      return { ...base, text: getStoredCommentText(comment), pending };
+    });
+  });
+  return changed ? next : null;
+}
+
+// Build the review's comment categories. Every category carries the `filter` and
+// `statusFilter` that define it, so a bulk action on its header stays inside the
+// category. Counts come from the live `file.comments`, never from precomputed
+// totals (those go stale as comments are applied/dismissed).
+// Severity grouping mirrors the popup: a file appears under EVERY severity it
+// has, and each category only shows that severity's comments.
+function buildReviewCommentCategories({
+  files = [],
+  severityFilter = 'all',
+  groupMode = 'severity',
+} = {}) {
+  const orderedFiles = sortReviewFilesBySeverity(files);
   const selectedFilters = normalizeReviewSeverityFilter(severityFilter);
   const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => selectedFilters.includes(sev));
   const includesResolved = selectedFilters.includes(REVIEW_RESOLVED_FILTER_ID);
-  const countFindingsForSeverities = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS, { openOnly = false } = {}) => (
-    bucket.reduce((sum, file) => (
-      sum + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => {
-        if (!getStoredCommentText(comment).trim()) return false;
-        if (openOnly && comment?.resolved) return false;
-        const sev = String(comment?.severity || '').toLowerCase();
-        return severities.includes(sev);
-      }).length
-    ), 0)
-  );
-  const countOpenFindings = (bucket, severities = REVIEW_SEVERITY_FILTER_IDS) => (
-    countFindingsForSeverities(bucket, severities, { openOnly: true })
-  );
-  const countResolvedFindings = (bucket) => (
-    bucket.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0)
-  );
-  // The 'resolved' filter reveals handled comments across every section, so
-  // each section pins its own filter (severity | 'all' | 'resolved') and the
-  // per-file diff renders exactly that set regardless of the global filter.
-  if (mode === 'severity') {
-    if (selectedOpenSeverities.length === 0 && includesResolved) {
-      const resolvedOnly = list.filter((file) => (file.resolvedCount ?? 0) > 0);
-      return resolvedOnly.length > 0
-        ? [{ id: 'sev-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolvedOnly, count: countResolvedFindings(resolvedOnly) }]
-        : [];
-    }
-    const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
-    const sections = [];
-    order.forEach(([sev, label]) => {
-      if (!selectedFilters.includes(sev)) return;
-      const bucket = list.filter((file) => countFindingsForSeverities([file], [sev]) > 0);
-      if (bucket.length > 0) {
-        sections.push({ id: `sev-${sev}`, tone: sev, label, severity: [sev], severityIcon: sev, files: bucket, count: countFindingsForSeverities(bucket, [sev]) });
-      }
+  const filesForFilter = (filter) => orderedFiles.filter((file) => countReviewCommentsForFilter([file], filter) > 0);
+  const filesForStatusFilter = (filter, status) => orderedFiles.filter((file) => countReviewCommentsForStatusFilter([file], filter, status) > 0);
+  const counts = { critical: 0, warning: 0, info: 0, resolved: 0 };
+  files.forEach((file) => Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().forEach((comment) => {
+    if (!getStoredCommentText(comment).trim()) return;
+    if (comment?.resolved) { counts.resolved += 1; return; }
+    const sev = String(comment?.severity || '').toLowerCase();
+    if (sev in counts) counts[sev] += 1;
+  }));
+  const selectedOpenTotal = countReviewCommentsForStatusFilter(files, selectedOpenSeverities, 'open');
+  const selectedRepliedTotal = countReviewCommentsForStatusFilter(files, selectedOpenSeverities, 'replied');
+  if (groupMode === 'agent') {
+    const groups = [];
+    const byGroup = new Map();
+    orderedFiles.forEach((file) => {
+      Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().forEach((comment) => {
+        if (!matchesReviewCommentFilter(comment, severityFilter)) return;
+        if (comment?.resolved && !includesResolved) return;
+        const groupId = String(comment?.groupId || 'other').trim() || 'other';
+        const groupLabel = String(comment?.groupLabel || 'Other findings').trim() || 'Other findings';
+        if (!byGroup.has(groupId)) {
+          const group = { groupId, groupLabel, severities: [], files: [] };
+          byGroup.set(groupId, group);
+          groups.push(group);
+        }
+        const group = byGroup.get(groupId);
+        const severity = String(comment?.severity || 'info').toLowerCase();
+        if (!group.severities.includes(severity)) group.severities.push(severity);
+        if (!group.files.includes(file)) group.files.push(file);
+      });
     });
-    if (includesResolved) {
-      const resolvedOnly = list.filter((file) => (file.resolvedCount ?? 0) > 0);
-      if (resolvedOnly.length > 0) {
-        sections.push({ id: 'sev-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolvedOnly, count: countResolvedFindings(resolvedOnly) });
-      }
-    }
-    return sections;
+    return groups.map((group) => {
+      const filter = { groupId: group.groupId, severities: selectedFilters };
+      const tone = [...group.severities].sort((left, right) => (
+        reviewSeverityPriority(left) - reviewSeverityPriority(right)
+      ))[0] || 'info';
+      return {
+        key: `agent-${group.groupId}`,
+        label: group.groupLabel,
+        filter,
+        statusFilter: includesResolved ? 'all' : 'unresolved',
+        tone,
+        files: group.files,
+        showFile: true,
+        count: countReviewCommentsForStatusFilter(group.files, filter, includesResolved ? 'all' : 'unresolved'),
+      };
+    }).filter((group) => group.count > 0);
   }
-  if (mode === 'status') {
-    const open = list.filter((file) => selectedOpenSeverities.some((sev) => (file.severityTotals?.[sev] ?? 0) > 0));
-    const resolved = list.filter((file) => (file.resolvedCount ?? 0) > 0);
-    const sections = [];
-    if (open.length > 0) sections.push({ id: 'status-open', tone: 'open', label: 'Open', severity: selectedOpenSeverities, files: open, count: countOpenFindings(open, selectedOpenSeverities) });
-    if (resolved.length > 0) sections.push({ id: 'status-resolved', tone: 'resolved', label: 'Resolved', severity: [REVIEW_RESOLVED_FILTER_ID], files: resolved, count: countResolvedFindings(resolved) });
-    return sections;
+  if (groupMode === 'file') {
+    // One heading per file; comments underneath show just the line.
+    return orderedFiles
+      .map((file) => ({ file, count: countReviewCommentsForFilter([file], severityFilter) }))
+      .filter((entry) => entry.count > 0)
+      .map(({ file, count }) => ({
+        key: `file-${file.tabId}`, label: file.name, tone: 'file',
+        icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
+        filter: severityFilter, files: [file], showFile: false, count,
+      }));
   }
-  return list
-    .map((file) => ({
-      id: `file-${file.tabId}`,
-      tone: 'file',
-      label: file.name,
-      icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
-      severity: selectedFilters,
-      files: [file],
-      count: countFindingsForSeverities([file], selectedOpenSeverities) + (includesResolved ? countResolvedFindings([file]) : 0),
-    }))
-    .filter((section) => section.count > 0);
+  if (groupMode === 'status') {
+    return [
+      selectedOpenSeverities.length > 0 && selectedOpenTotal > 0 ? { key: 'open', label: 'Open', filter: selectedOpenSeverities, statusFilter: 'open', tone: 'open', files: filesForStatusFilter(selectedOpenSeverities, 'open'), showFile: true, count: selectedOpenTotal } : null,
+      selectedOpenSeverities.length > 0 && selectedRepliedTotal > 0 ? { key: 'replied', label: 'Replied', filter: selectedOpenSeverities, statusFilter: 'replied', tone: 'replied', files: filesForStatusFilter(selectedOpenSeverities, 'replied'), showFile: true, count: selectedRepliedTotal } : null,
+      counts.resolved > 0 ? { key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], statusFilter: 'resolved', tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved } : null,
+    ].filter(Boolean);
+  }
+  // severity
+  if (selectedOpenSeverities.length === 0 && includesResolved) {
+    return counts.resolved > 0
+      ? [{ key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved }]
+      : [];
+  }
+  const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
+  const severityCategories = order
+    .filter(([sev]) => selectedFilters.includes(sev) && counts[sev] > 0)
+    .map(([sev, label]) => ({
+      key: sev,
+      label,
+      filter: [sev],
+      tone: sev,
+      severityIcon: sev,
+      files: filesForFilter(sev),
+      showFile: true,
+      count: counts[sev],
+    }));
+  if (includesResolved && counts.resolved > 0) {
+    severityCategories.push({
+      key: 'resolved',
+      label: 'Resolved',
+      filter: [REVIEW_RESOLVED_FILTER_ID],
+      tone: 'resolved',
+      files: filesForFilter(REVIEW_RESOLVED_FILTER_ID),
+      showFile: true,
+      count: counts.resolved,
+    });
+  }
+  return severityCategories;
 }
 
 // Severity grouping for the review popup: unlike the Commit window's
@@ -14739,7 +14913,7 @@ function formatReviewOverviewSummary(files = [], { compact = false } = {}) {
 function ReviewFilesPopup({ files = [], triggerRect = null, onDismiss = null, onOpenFileTab = null, groupMode = null, onGroupModeChange = null }) {
   // Group mode is controlled only for explicit callers; the review file-stepper
   // deliberately leaves it local so the popup is just navigation.
-  const [localGroupMode, setLocalGroupMode] = useState('file');
+  const [localGroupMode, setLocalGroupMode] = useState('severity');
   const fileGroupMode = groupMode ?? localGroupMode;
   const setFileGroupMode = (mode) => { onGroupModeChange ? onGroupModeChange(mode) : setLocalGroupMode(mode); };
   // Holds group ids the user has FLIPPED from their default collapse state.
@@ -14747,7 +14921,7 @@ function ReviewFilesPopup({ files = [], triggerRect = null, onDismiss = null, on
   const [filesFilterOpen, setFilesFilterOpen] = useState(false);
   const fileGroupModes = REVIEW_GROUP_MODES;
   const summary = formatReviewOverviewSummary(files);
-  const commitLikeFiles = files.map((file) => {
+  const commitLikeFiles = sortReviewFilesBySeverity(files).map((file) => {
     const strippedLabel = file.name.replace(/^diff\s+/iu, '').trim();
     const commitMatch = COMMIT_CHANGE_FILES.find((entry) => entry.label === strippedLabel);
     return {
@@ -15051,6 +15225,7 @@ function ReviewDiffToolbarNav({
   view = 'inline',
   onViewChange = null,
   chatTitle = '',
+  agentIcon = 'codex',
   onComplete = null,
   onCancel = null,
 }) {
@@ -15088,7 +15263,7 @@ function ReviewDiffToolbarNav({
   return (
     <span className="aiux-review-diffnav" ref={rootRef}>
       <span className="aiux-review-diffnav-context">
-        <AiChatClaudeIcon />
+        <AiChatAgentIcon icon={agentIcon} title="AI Review" />
         <span className="aiux-review-diffnav-chat-name">{chatTitle || 'AI Review'}</span>
         <span className="aiux-review-diffnav-summary">{reviewSummary}</span>
         <span className={`aiux550-review-done-badge aiux-review-overview-status${reviewAllResolved ? ' is-done' : ''}`}>
@@ -15159,30 +15334,127 @@ function ReviewDiffToolbarNav({
         onOpenFileTab={(tabId) => { setPopupRect(null); onOpenFileTab?.(tabId); }}
       />
       {(onComplete || onCancel) && <span className="aiux-review-diffnav-sep" aria-hidden="true" />}
+      {onCancel && (
+        <Button
+          type="secondary"
+          size="slim"
+          onClick={() => onCancel()}
+        >
+          Cancel
+        </Button>
+      )}
       {onComplete && (
-        <button
-          type="button"
-          className="aiux-review-overview-btn is-primary aiux-review-diffnav-complete"
+        <Button
+          type="primary"
+          size="slim"
           onClick={() => onComplete()}
         >
           Complete review
-        </button>
-      )}
-      {onCancel && (
-        <IconButton
-          icon="general/close"
-          tooltip="Dismiss all and close review"
-          className="aiux-review-overview-close"
-          onClick={() => onCancel()}
-        />
+        </Button>
       )}
     </span>
   );
 }
 
+// Shared file-card shell for the full AI Review tab and the compact review
+// summary in chat. Both surfaces should describe a reviewed file with the same
+// icon, title, summary, border, and content container.
+const ReviewFileCard = forwardRef(function ReviewFileCard({
+  fileName = 'File',
+  isDiff = false,
+  summary = '',
+  onOpen = null,
+  openTitle = 'Open full diff',
+  actions = null,
+  className = '',
+  children = null,
+  ...sectionProps
+}, ref) {
+  return (
+    <section
+      {...sectionProps}
+      ref={ref}
+      className={`aiux-review-overview-file${className ? ` ${className}` : ''}`}
+    >
+      <div className="aiux-review-overview-file-head">
+        <button
+          type="button"
+          className="aiux-review-overview-file-open"
+          onClick={onOpen ?? undefined}
+          title={openTitle}
+        >
+          <Icon
+            name={isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName)}
+            size={16}
+            className="aiux-review-overview-file-icon"
+          />
+          <span className="aiux-review-overview-file-name">{fileName}</span>
+          {summary ? <span className="aiux-review-overview-file-summary">{summary}</span> : null}
+        </button>
+        {actions ? <div className="aiux-review-overview-file-actions">{actions}</div> : null}
+      </div>
+      <div className="aiux-review-overview-file-body">{children}</div>
+    </section>
+  );
+});
+
+function ReviewCommentGroupHeader({
+  group,
+  className = '',
+  fallbackFilter = REVIEW_SEVERITY_FILTER_IDS,
+  disabled = false,
+  onApply = null,
+  onDismiss = null,
+}) {
+  const filter = group?.filter ?? group?.severity ?? fallbackFilter;
+  const filterValues = normalizeReviewSeverityFilter(filter);
+  const isResolvedOnly = filterValues.length === 1 && filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
+
+  return (
+    <div className={`aiux-review-panel-cat-head aiux-review-comment-group-header${className ? ` ${className}` : ''} is-${group?.tone || 'info'}`}>
+      <span className="aiux-review-panel-cat-heading">
+        {group?.severityIcon ? (
+          <AiNotesSeverityIcon severity={group.severityIcon} />
+        ) : group?.icon ? (
+          <Icon name={group.icon} size={16} className="aiux-review-panel-cat-icon" />
+        ) : (
+          <span className="aiux-review-panel-cat-dot" aria-hidden="true" />
+        )}
+        <span className="aiux-review-panel-cat-label text-ui-default-semibold">{group?.label}</span>
+        <Badge
+          className="aiux-review-panel-cat-count"
+          text={String(group?.count ?? 0)}
+          color="gray-secondary"
+          title={`${group?.count ?? 0} finding${group?.count === 1 ? '' : 's'}`}
+        />
+      </span>
+      {!isResolvedOnly && (group?.files?.length ?? 0) > 0 && (onApply || onDismiss) && (
+        <span className="aiux-review-panel-cat-actions" role="group" aria-label={`${group?.label || 'Review'} actions`}>
+          <Button
+            type="secondary"
+            size="slim"
+            disabled={disabled}
+            onClick={() => onDismiss?.(filter)}
+          >
+            Dismiss all
+          </Button>
+          <Button
+            type="secondary"
+            size="slim"
+            disabled={disabled}
+            onClick={() => onApply?.(filter)}
+          >
+            Apply all
+          </Button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The aggregated overview. Rendered via editorTopBar and portaled into the
 // active editor's body (same host the single-file diff overlay uses).
-function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'file', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
+function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'codex', onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'severity', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
   const anchorRef = useRef(null);
   const scrollRef = useRef(null);
   const sectionRefs = useRef([]);
@@ -15190,7 +15462,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   // Two-state layout toggle (lifted to App so single-file view can share it):
   // 'inline' (comments in the diff) | 'panel' (code left, comments right).
   const setView = onViewChange || (() => {});
-  const isPanel = view === 'panel';
+  const isTimeline = view === 'timeline';
+  const isPanel = view === 'split';
   // Per-card Split/Unified override (keyed by file tab) for the inline diff.
   const [cardViews, setCardViews] = useState({});
   const [panelExpandedRowIdsByTabId, setPanelExpandedRowIdsByTabId] = useState({});
@@ -15211,147 +15484,51 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   const isReviewProcessing = processingReviewActionCount > 0;
   // Both layouts use the same grouping model; panel mode only moves comment
   // cards to the right, it does not change the list structure.
-  const groupedSections = groupReviewFilesForStack(files, groupMode, severityFilter);
-  const orderedFiles = groupedSections.flatMap((section) => section.files);
+  const severityOrderedFiles = sortReviewFilesBySeverity(files);
+  const selectedReviewFilters = normalizeReviewSeverityFilter(severityFilter);
+  const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS
+    .filter((severity) => selectedReviewFilters.includes(severity));
+  const orderedFiles = severityOrderedFiles.filter((file) => (
+    selectedOpenSeverities.some((severity) => (file.severityTotals?.[severity] ?? 0) > 0)
+    || (selectedReviewFilters.includes(REVIEW_RESOLVED_FILTER_ID) && (file.resolvedCount ?? 0) > 0)
+  ));
   const total = orderedFiles.length;
   const hasDiffFiles = orderedFiles.some((file) => !file.isPlain);
-  const overallSummary = formatReviewOverviewSummary(files, { compact: true });
-  const matchesReviewCommentFilter = (comment, filter) => {
-    if (!getStoredCommentText(comment).trim()) return false;
-    const resolved = Boolean(comment?.resolved);
-    const filterValues = normalizeReviewSeverityFilter(filter);
-    if (resolved) {
-      if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID)) return true;
-      const sev = String(comment?.severity || '').toLowerCase();
-      return filterValues.includes(sev);
-    }
-    if (filterValues.includes(REVIEW_RESOLVED_FILTER_ID) && filterValues.length === 1) return false;
-    const sev = String(comment?.severity || '').toLowerCase();
-    return filterValues.includes(sev);
-  };
-  const getReviewCommentStatus = (comment) => {
-    if (comment?.resolved) return 'resolved';
-    if (typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0) return 'replied';
-    return 'open';
-  };
-  const matchesReviewCommentStatusFilter = (comment, filter, status = 'all') => {
-    if (!matchesReviewCommentFilter(comment, filter)) return false;
-    return status === 'all' || getReviewCommentStatus(comment) === status;
-  };
-  const countReviewCommentsForFilter = (fileList, filter) => fileList.reduce((sum, file) => sum
-    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentFilter(comment, filter)).length, 0);
-  const countReviewCommentsForStatusFilter = (fileList, filter, status = 'all') => fileList.reduce((sum, file) => sum
-    + Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().filter((comment) => matchesReviewCommentStatusFilter(comment, filter, status)).length, 0);
-  const markReviewFileCommentsPending = useCallback((tabId, filter, pending = true) => {
+  const overallSummary = reviewSummary
+    ? [
+        `${reviewSummary.fileCount ?? files.length} file${(reviewSummary.fileCount ?? files.length) === 1 ? '' : 's'}`,
+        `${reviewSummary.commentCount ?? 0} comment${(reviewSummary.commentCount ?? 0) === 1 ? '' : 's'}`,
+        reviewSummary.severitySummary,
+      ].filter(Boolean).join(' · ')
+    : formatReviewOverviewSummary(files, { compact: true });
+  const reviewContextTitle = String(reviewSummary?.featureTitle || chatTitle || 'AI Review').trim();
+  const reviewSummaryDescription = reviewSummary
+    ? buildReviewSummaryDescription(reviewSummary)
+    : `AI Review checked ${files.length} file${files.length === 1 ? '' : 's'} and found ${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0)} concrete issue${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0) === 1 ? '' : 's'}. Review the findings below before completing the review.`;
+  const markReviewFileCommentsPending = useCallback((tabId, filter, pending = true, status = 'all') => {
     if (!tabId || !onFileCommentsChange) return;
     const file = files.find((candidate) => candidate.tabId === tabId);
     if (!file) return;
-    let changed = false;
-    const next = {};
-    Object.entries(normalizeStoredDiffCommentsState(file.comments)).forEach(([rowId, list]) => {
-      next[rowId] = list.map((comment) => {
-        if (!matchesReviewCommentFilter(comment, filter) || comment?.resolved) return comment;
-        changed = true;
-        const base = (comment && typeof comment === 'object') ? comment : { text: comment };
-        return { ...base, text: getStoredCommentText(comment), pending };
-      });
-    });
-    if (changed) onFileCommentsChange(tabId, next);
-  }, [files, matchesReviewCommentFilter, onFileCommentsChange]);
-  const runReviewFileAction = useCallback((tabId, filter, action = 'applied') => {
-    if (!tabId || isReviewProcessing) return;
-    markReviewFileCommentsPending(tabId, filter, true);
-    beginReviewProcessing();
-    window.setTimeout(() => {
-      if (action === 'dismissed') onDismissFile?.(tabId, filter);
-      else onApplyFile?.(tabId, filter);
-      endReviewProcessing();
-    }, REVIEW_ACTION_DELAY_MS);
-  }, [beginReviewProcessing, endReviewProcessing, isReviewProcessing, markReviewFileCommentsPending, onApplyFile, onDismissFile]);
-  const runReviewFilesAction = useCallback((targetFiles, filter, action = 'applied') => {
+    const next = buildPendingReviewComments(file, filter, pending, status);
+    if (next) onFileCommentsChange(tabId, next);
+  }, [files, onFileCommentsChange]);
+  const runReviewFilesAction = useCallback((targetFiles, filter, action = 'applied', status = 'all') => {
     const list = (Array.isArray(targetFiles) ? targetFiles : []).filter((file) => file?.tabId);
     if (list.length === 0 || isReviewProcessing) return;
-    list.forEach((file) => markReviewFileCommentsPending(file.tabId, filter, true));
+    list.forEach((file) => markReviewFileCommentsPending(file.tabId, filter, true, status));
     beginReviewProcessing();
     window.setTimeout(() => {
       list.forEach((file) => {
-        if (action === 'dismissed') onDismissFile?.(file.tabId, filter);
-        else onApplyFile?.(file.tabId, filter);
+        if (action === 'dismissed') onDismissFile?.(file.tabId, filter, status);
+        else onApplyFile?.(file.tabId, filter, status);
       });
       endReviewProcessing();
     }, REVIEW_ACTION_DELAY_MS);
   }, [beginReviewProcessing, endReviewProcessing, isReviewProcessing, markReviewFileCommentsPending, onApplyFile, onDismissFile]);
   // Groups for the shared comments column — every group gets a header, driven by
-  // the SAME Group control as the rest of the review.
-  const commentCategories = (() => {
-    const selectedFilters = normalizeReviewSeverityFilter(severityFilter);
-    const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => selectedFilters.includes(sev));
-    const includesResolved = selectedFilters.includes(REVIEW_RESOLVED_FILTER_ID);
-    const countFor = countReviewCommentsForFilter;
-    const countForStatus = countReviewCommentsForStatusFilter;
-    const filesForFilter = (filter) => files.filter((file) => countFor([file], filter) > 0);
-    const filesForStatusFilter = (filter, status) => files.filter((file) => countForStatus([file], filter, status) > 0);
-    const counts = { critical: 0, warning: 0, info: 0, resolved: 0 };
-    files.forEach((file) => Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().forEach((comment) => {
-      if (!getStoredCommentText(comment).trim()) return;
-      if (comment?.resolved) { counts.resolved += 1; return; }
-      const sev = String(comment?.severity || '').toLowerCase();
-      if (sev in counts) counts[sev] += 1;
-    }));
-    const selectedOpenTotal = countForStatus(files, selectedOpenSeverities, 'open');
-    const selectedRepliedTotal = countForStatus(files, selectedOpenSeverities, 'replied');
-    if (groupMode === 'file') {
-      // One heading per file; comments underneath show just the line.
-      return files
-        .map((file) => ({ file, count: countFor([file], severityFilter) }))
-        .filter((entry) => entry.count > 0)
-        .map(({ file, count }) => ({
-          key: `file-${file.tabId}`, label: file.name, tone: 'file',
-          icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
-          filter: severityFilter, files: [file], showFile: false, count,
-        }));
-    }
-    if (groupMode === 'status') {
-      const openFiles = filesForStatusFilter(selectedOpenSeverities, 'open');
-      const repliedFiles = filesForStatusFilter(selectedOpenSeverities, 'replied');
-      const resolvedFiles = filesForFilter('resolved');
-      return [
-        selectedOpenSeverities.length > 0 && selectedOpenTotal > 0 ? { key: 'open', label: 'Open', filter: selectedOpenSeverities, statusFilter: 'open', tone: 'open', files: openFiles, showFile: true, count: selectedOpenTotal } : null,
-        selectedOpenSeverities.length > 0 && selectedRepliedTotal > 0 ? { key: 'replied', label: 'Replied', filter: selectedOpenSeverities, statusFilter: 'replied', tone: 'replied', files: repliedFiles, showFile: true, count: selectedRepliedTotal } : null,
-        counts.resolved > 0 ? { key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], statusFilter: 'resolved', tone: 'resolved', files: resolvedFiles, showFile: true, count: counts.resolved } : null,
-      ].filter(Boolean);
-    }
-    // severity
-    if (selectedOpenSeverities.length === 0 && includesResolved) {
-      const resolvedFiles = filesForFilter('resolved');
-      return counts.resolved > 0 ? [{ key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], tone: 'resolved', files: resolvedFiles, showFile: true, count: counts.resolved }] : [];
-    }
-    const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
-    const severityCategories = order
-      .filter(([sev]) => selectedFilters.includes(sev) && counts[sev] > 0)
-      .map(([sev, label]) => ({
-        key: sev,
-        label,
-        filter: [sev],
-        tone: sev,
-        severityIcon: sev,
-        files: filesForFilter(sev),
-        showFile: true,
-        count: counts[sev],
-      }));
-    if (includesResolved && counts.resolved > 0) {
-      severityCategories.push({
-        key: 'resolved',
-        label: 'Resolved',
-        filter: [REVIEW_RESOLVED_FILTER_ID],
-        tone: 'resolved',
-        files: filesForFilter(REVIEW_RESOLVED_FILTER_ID),
-        showFile: true,
-        count: counts.resolved,
-      });
-    }
-    return severityCategories;
-  })();
+  // the SAME Group control as the rest of the review, and built by the same
+  // module-level helper the chat preview uses.
+  const commentCategories = buildReviewCommentCategories({ files, severityFilter, groupMode });
   // Scroll the left code column to a comment's target row(s) without opening the inline thread.
   // Scoped to the comment's own file so identical row ids across files don't collide.
   const navigateToComment = (tabId, rowId, details = null) => {
@@ -15372,7 +15549,20 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     if (fileIndex >= 0) setActiveIndex(fileIndex);
 
     const left = scrollRef.current?.querySelector('.aiux-review-panel-left');
-    if (!left) return;
+    if (!left) {
+      onOpenFileTab?.(tabId);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const scrollTargetRowId = highlightedRowIds[0] ?? rowId;
+          if (!scrollTargetRowId) return;
+          const rowSelector = `[data-demo-id="diff-row-${scrollTargetRowId}"]`;
+          const visibleRow = Array.from(document.querySelectorAll(rowSelector))
+            .find((row) => row instanceof HTMLElement && row.offsetParent !== null);
+          visibleRow?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      });
+      return;
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const fileEl = left.querySelector(`[data-review-file="${tabId}"]`);
@@ -15420,44 +15610,50 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
     sectionRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const renderReviewGroupHeader = (group, { className = '', onApply = null, onDismiss = null } = {}) => {
-    const filter = group.filter ?? group.severity ?? severityFilter;
-    const filterValues = normalizeReviewSeverityFilter(filter);
-    const isResolvedOnly = filterValues.length === 1 && filterValues.includes(REVIEW_RESOLVED_FILTER_ID);
-
     return (
-      <div className={`aiux-review-panel-cat-head${className ? ` ${className}` : ''} is-${group.tone}`}>
-        {group.severityIcon ? (
-          <AiNotesSeverityIcon severity={group.severityIcon} />
-        ) : group.icon ? (
-          <Icon name={group.icon} size={16} className="aiux-review-panel-cat-icon" />
-        ) : (
-          <span className="aiux-review-panel-cat-dot" aria-hidden="true" />
-        )}
-        <span className="aiux-review-panel-cat-label aiux-review-overview-group-title">{group.label}</span>
-        <span className="aiux-review-panel-cat-count aiux-review-overview-group-count">{group.count}</span>
-        {!isResolvedOnly && (group.files?.length ?? 0) > 0 && (
-          <span className="aiux-review-panel-cat-actions">
-            <button
-              type="button"
-              className="aiux-review-panel-cat-resolve"
-              disabled={isReviewProcessing}
-              onClick={() => onApply?.(filter)}
-            >
-              Apply all
-            </button>
-            <button
-              type="button"
-              className="aiux-review-panel-cat-resolve is-dismiss"
-              disabled={isReviewProcessing}
-              onClick={() => onDismiss?.(filter)}
-            >
-              Dismiss all
-            </button>
-          </span>
-        )}
-      </div>
+      <ReviewCommentGroupHeader
+        group={group}
+        className={className}
+        fallbackFilter={severityFilter}
+        disabled={isReviewProcessing}
+        onApply={onApply}
+        onDismiss={onDismiss}
+      />
     );
   };
+  const renderReviewCommentGroups = (commentsOnly = false) => (
+    <div className={`aiux-review-panel-right${commentsOnly ? ' is-comments-only' : ''}`}>
+      {commentCategories.map((cat) => (
+        <div className={`aiux-review-panel-cat has-review-group-header is-${cat.tone}`} key={cat.key}>
+          {renderReviewGroupHeader(cat, {
+            onApply: (filter) => runReviewFilesAction(cat.files, filter, 'applied', cat.statusFilter ?? 'all'),
+            onDismiss: (filter) => runReviewFilesAction(cat.files, filter, 'dismissed', cat.statusFilter ?? 'all'),
+          })}
+          {cat.files.map((file) => (
+            <PlanDiffOverlay
+              key={`comments-${cat.key}-${file.tabId}`}
+              diffData={file.diffData}
+              initialDiffComments={file.comments}
+              singleLineNumbers={file.isPlain}
+              showGutterComments
+              commentContextLabel="AI Review"
+              commentContextIcon={agentIcon}
+              severityFilter={cat.filter?.severities ?? cat.filter}
+              resolveKeepsComment
+              viewMode="comments"
+              commentIndexFileLabel={file.name}
+              showCommentIndexFileLabel={cat.showFile}
+              commentIndexGroupId={cat.filter?.groupId ?? ''}
+              commentIndexStatusFilter={cat.statusFilter ?? 'all'}
+              onReviewProcessingChange={trackReviewProcessing}
+              onCommentNavigate={(rowId, details) => navigateToComment(file.tabId, rowId, details)}
+              onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
   const overview = (
     <div className="aiux-review-overview">
       <div className="aiux-review-overview-toolbar">
@@ -15470,8 +15666,8 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             disabled={!onOpenChat}
             title="Open chat"
           >
-            <AiChatClaudeIcon />
-            <span className="aiux-review-overview-chat-name">{chatTitle || 'AI Review'}</span>
+            <AiChatAgentIcon icon={agentIcon} title="AI Review" />
+            <span className="aiux-review-overview-chat-name">{reviewContextTitle}</span>
           </button>
           <span className="aiux-review-overview-sep" aria-hidden="true">·</span>
           <span className="aiux-review-overview-summary-total">{overallSummary}</span>
@@ -15480,226 +15676,115 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
             {reviewAllResolved ? 'All resolved' : 'Open'}
           </span>
         </div>
-        <div className="aiux-review-overview-nav">
-          <button
-            type="button"
-            className="aiux-review-overview-navbtn"
-            aria-label="Previous file"
-            disabled={activeIndex <= 0}
-            onClick={() => scrollToIndex(activeIndex - 1)}
-          >
-            <Icon name="general/chevronRight" size={16} className="aiux-review-overview-navicon is-prev" />
-          </button>
-          <button
-            type="button"
-            className="aiux-review-overview-count-link"
-            aria-haspopup="dialog"
-            aria-expanded={Boolean(filesPopupRect)}
-            onClick={(event) => {
-              if (filesPopupRect) { setFilesPopupRect(null); return; }
-              setFilesPopupRect(event.currentTarget.getBoundingClientRect());
-            }}
-          >
-            {total > 0 ? `${activeIndex + 1} out of ${total} file${total === 1 ? '' : 's'}` : 'No files'}
-          </button>
-          <button
-            type="button"
-            className="aiux-review-overview-navbtn"
-            aria-label="Next file"
-            disabled={activeIndex >= total - 1}
-            onClick={() => scrollToIndex(activeIndex + 1)}
-          >
-            <Icon name="general/chevronRight" size={16} className="aiux-review-overview-navicon" />
-          </button>
-        </div>
         </div>
         <div className="aiux-review-overview-actions">
-          {hasDiffFiles && (
-            <SegmentedControl
-              className="aiux-review-overview-viewtoggle"
-              value={view}
-              onChange={setView}
-              options={[
-                { value: 'inline', label: <Icon name="general/editorOnly" size={16} /> },
-                { value: 'panel', label: <Icon name="general/balloon" size={16} /> },
-              ]}
-            />
-          )}
+          <SegmentedControl
+            className="aiux-review-overview-viewtoggle"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'timeline', label: <Icon name="general/listFiles" size={16} /> },
+              { value: 'split', label: <Icon name="general/balloon" size={16} /> },
+              { value: 'editor', label: <Icon name="general/editorOnly" size={16} /> },
+            ]}
+          />
           <ReviewGroupBy value={groupMode} onChange={onGroupModeChange} />
           <ReviewSeverityFilter
             value={severityFilter}
             onChange={onSeverityFilterChange}
             resolvedCount={resolvedCount}
           />
-          <button
-            type="button"
-            className="aiux-review-overview-btn is-primary"
+          <Button
+            type="secondary"
+            size="slim"
+            disabled={isReviewProcessing}
+            onClick={() => onCancel?.()}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="primary"
+            size="slim"
             disabled={isReviewProcessing}
             onClick={() => onComplete?.()}
           >
             Complete review
-          </button>
-          <IconButton
-            icon="general/close"
-            tooltip="Dismiss all and close review"
-            className="aiux-review-overview-close"
-            onClick={() => onCancel?.()}
-          />
+          </Button>
         </div>
       </div>
-      <div className={`aiux-review-overview-scroll${isPanel ? ' is-panel' : ''}`} ref={scrollRef}>
-        <div
-          className={isPanel ? 'aiux-review-panel-left' : 'aiux-review-overview-stack'}
-        >
-        {(() => {
-          let fileIndex = -1;
-          return groupedSections.map((section) => (
-            <div className="aiux-review-overview-group" key={section.id}>
-              {section.label && groupMode !== 'file' && !isPanel && (
-                renderReviewGroupHeader(section, {
-                  className: 'aiux-review-overview-group-head',
-                  onApply: (filter) => runReviewFilesAction(section.files, filter, 'applied'),
-                  onDismiss: (filter) => runReviewFilesAction(section.files, filter, 'dismissed'),
-                })
-              )}
-              {section.files.map((file) => {
-                fileIndex += 1;
-                const index = fileIndex;
-                const cardViewMode = file.isPlain ? 'unified' : (cardViews[file.tabId] ?? 'unified');
-                const cardFilter = section.severity ?? severityFilter;
-                const isFilteredSliceCard = groupMode !== 'file' && Boolean(section.label);
-                const sliceFindingCount = countReviewCommentsForFilter([file], cardFilter);
-                const sliceNoun = sliceFindingCount === 1 ? 'finding' : 'findings';
-                const sectionSeverity = Array.isArray(section.severity) && section.severity.length === 1
-                  ? section.severity[0]
-                  : null;
-                const sectionSummary = isFilteredSliceCard
-                  ? `${sliceFindingCount} ${sliceNoun}`
-                  : sectionSeverity === REVIEW_RESOLVED_FILTER_ID
-                  ? `${file.resolvedCount ?? 0} resolved`
-                  : sectionSeverity
-                    ? `${file.severityTotals?.[sectionSeverity] ?? 0} ${sectionSeverity}`
-                    : file.summary;
-                return (
-                  <section
-                    className="aiux-review-overview-file"
-                    key={`${section.id}-${file.tabId}`}
-                    data-review-file={file.tabId}
-                    ref={(el) => { sectionRefs.current[index] = el; }}
-                  >
-                    <div className="aiux-review-overview-file-head">
-                      <button
-                        type="button"
-                        className="aiux-review-overview-file-open"
-                        onClick={() => onOpenFileTab?.(file.tabId)}
-                        title="Open full diff"
-                      >
-                        <Icon
-                          name={file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name)}
-                          size={16}
-                          className="aiux-review-overview-file-icon"
-                        />
-                        <span className="aiux-review-overview-file-name">{file.name}</span>
-                        {sectionSummary ? <span className="aiux-review-overview-file-summary">{sectionSummary}</span> : null}
-                      </button>
-                      <div className="aiux-review-overview-file-actions">
-                        {!file.isPlain && (
-                          <SegmentedControl
-                            className="aiux-review-overview-viewtoggle aiux-review-overview-viewtoggle-text"
-                            value={cardViewMode}
-                            onChange={(next) => setCardViews((prev) => ({ ...prev, [file.tabId]: next }))}
-                            options={[
-                              { value: 'split', label: 'Split' },
-                              { value: 'unified', label: 'Unified' },
-                            ]}
-                          />
-                        )}
-                        <span className="aiux-review-overview-file-bulk-actions">
-                          <button
-                            type="button"
-                            className="aiux-review-overview-file-resolve"
-                            disabled={isReviewProcessing}
-                            onClick={() => runReviewFileAction(file.tabId, cardFilter, 'applied')}
-                          >
-                            Apply all
-                          </button>
-                          <button
-                            type="button"
-                            className="aiux-review-overview-file-resolve is-dismiss"
-                            disabled={isReviewProcessing}
-                            onClick={() => runReviewFileAction(file.tabId, cardFilter, 'dismissed')}
-                          >
-                            Dismiss all
-                          </button>
-                        </span>
-                      </div>
-                    </div>
-                    <div className="aiux-review-overview-file-body">
-                      <PlanDiffOverlay
-                        diffData={file.diffData}
-                        initialDiffComments={file.comments}
-                        singleLineNumbers={file.isPlain}
-                        showGutterComments
-                        commentContextLabel="AI Review"
-                        commentContextIcon="claude"
-                        severityFilter={cardFilter}
-                        resolveKeepsComment
-                        allowInlineCommentCompose={false}
-                        viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
-                        inlineCommentRowIdOnly={isPanel}
-                        expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
-                        highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
-                        onReviewProcessingChange={trackReviewProcessing}
-                        onInlineCommentExpand={(rowId) => {
-                          if (!isPanel) return;
-                          setPanelExpandedRowIdsByTabId((prev) => ({
-                            ...prev,
-                            [file.tabId]: rowId,
-                          }));
-                        }}
-                        onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
-                      />
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          ));
-        })()}
+      {isTimeline ? (
+        <div className="aiux-review-overview-scroll is-comments-only" ref={scrollRef}>
+          <div className="aiux-review-comments-only-content">
+            <section className="aiux-review-overview-intro" aria-label="AI Review summary">
+              <div className="aiux-review-overview-intro-inner">
+                <h2>Review complete: {reviewContextTitle}</h2>
+                <p>{reviewSummaryDescription}</p>
+              </div>
+            </section>
+            {renderReviewCommentGroups(true)}
+          </div>
         </div>
-        {isPanel && (
-          <div className="aiux-review-panel-right">
-            {commentCategories.map((cat) => (
-              <div className={`aiux-review-panel-cat is-${cat.tone}`} key={cat.key}>
-                {renderReviewGroupHeader(cat, {
-                  onApply: (filter) => runReviewFilesAction(cat.files, filter, 'applied'),
-                  onDismiss: (filter) => runReviewFilesAction(cat.files, filter, 'dismissed'),
-                })}
-                {cat.files.map((file) => (
+      ) : (
+        <div className={`aiux-review-overview-scroll${isPanel ? ' is-panel' : ''}`} ref={scrollRef}>
+          <div className={isPanel ? 'aiux-review-panel-left' : 'aiux-review-overview-stack'}>
+            <section className="aiux-review-overview-intro" aria-label="AI Review summary">
+              <div className="aiux-review-overview-intro-inner">
+                <h2>Review complete: {reviewContextTitle}</h2>
+                <p>{reviewSummaryDescription}</p>
+              </div>
+            </section>
+            {orderedFiles.map((file, index) => {
+              const cardViewMode = file.isPlain ? 'unified' : (cardViews[file.tabId] ?? 'unified');
+              const findingCount = countReviewCommentsForFilter([file], severityFilter);
+              return (
+                <ReviewFileCard
+                  key={file.tabId}
+                  fileName={file.name}
+                  isDiff={file.isDiff}
+                  summary={`${findingCount} finding${findingCount === 1 ? '' : 's'}`}
+                  onOpen={() => onOpenFileTab?.(file.tabId)}
+                  data-review-file={file.tabId}
+                  ref={(el) => { sectionRefs.current[index] = el; }}
+                  actions={!file.isPlain ? (
+                    <SegmentedControl
+                      className="aiux-review-overview-viewtoggle aiux-review-overview-viewtoggle-text"
+                      value={cardViewMode}
+                      onChange={(next) => setCardViews((prev) => ({ ...prev, [file.tabId]: next }))}
+                      options={[
+                        { value: 'split', label: 'Split' },
+                        { value: 'unified', label: 'Unified' },
+                      ]}
+                    />
+                  ) : null}
+                >
                   <PlanDiffOverlay
-                    key={`comments-${cat.key}-${file.tabId}`}
                     diffData={file.diffData}
                     initialDiffComments={file.comments}
                     singleLineNumbers={file.isPlain}
                     showGutterComments
                     commentContextLabel="AI Review"
-                    commentContextIcon="claude"
-                    severityFilter={cat.filter}
+                    commentContextIcon={agentIcon}
+                    severityFilter={severityFilter}
                     resolveKeepsComment
-                    viewMode="comments"
-                    commentIndexFileLabel={file.name}
-                    showCommentIndexFileLabel={cat.showFile}
-                    commentIndexStatusFilter={cat.statusFilter ?? 'all'}
+                    allowInlineCommentCompose={false}
+                    viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
+                    inlineCommentRowIdOnly={isPanel}
+                    expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
+                    highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
                     onReviewProcessingChange={trackReviewProcessing}
-                    onCommentNavigate={(rowId, details) => navigateToComment(file.tabId, rowId, details)}
+                    onInlineCommentExpand={(rowId) => {
+                      if (!isPanel) return;
+                      setPanelExpandedRowIdsByTabId((prev) => ({ ...prev, [file.tabId]: rowId }));
+                    }}
                     onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
                   />
-                ))}
-              </div>
-            ))}
+                </ReviewFileCard>
+              );
+            })}
           </div>
-        )}
-      </div>
+          {isPanel && renderReviewCommentGroups(false)}
+        </div>
+      )}
     </div>
   );
 
@@ -15719,10 +15804,9 @@ function ReviewDiffOverview({ files = [], onOpenFileTab = null, onCancel = null,
   );
 }
 
-function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
+function AgentRunLoadingPlan({ notes = [], kind = null, agentIcon = 'codex', onOpenTarget = null }) {
   const items = Array.isArray(notes) ? notes : [];
   const isReview = kind === 'review';
-  const [expanded, setExpanded] = useState(true);
 
   const displayItems = items.length > 0
     ? items
@@ -15759,6 +15843,7 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
       text: fileName,
       icon: group.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(fileName),
       state,
+      statusLabel: state === 'active' ? 'Processing…' : 'Queued…',
       openTarget: group.openTarget,
     };
   }).filter((item) => item.state !== 'done')
@@ -15770,54 +15855,24 @@ function AgentRunLoadingPlan({ notes = [], kind = null, onOpenTarget = null }) {
     });
 
   return (
-    <div className="aiux550-loading-plan-shell">
-      <section className={`aiux550-loading-plan aiux550-review-file-queue${expanded ? ' is-expanded' : ''}`} aria-label={isReview ? 'AI Review files' : 'AI run files'}>
-        <button
-          type="button"
-          className="aiux550-loading-plan-header"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          <span className="aiux550-loading-plan-title-badge">
-            <span className="aiux550-loading-plan-title">Review</span>
-            <span className="aiux550-loading-plan-title-count">{fileQueueItems.length}</span>
-          </span>
-          <Icon name="general/chevronRight" size={16} className={`aiux550-loading-plan-chevron${expanded ? ' is-expanded' : ''}`} />
-        </button>
-        {expanded && (
-          <div className="aiux550-loading-plan-list">
-            {fileQueueItems.map((item) => {
-              return (
-                <button
-                  type="button"
-                  className={`aiux550-loading-plan-row ${item.state} is-file`}
-                  key={item.id}
-                  onClick={() => item.openTarget && onOpenTarget?.(item.openTarget)}
-                >
-                  <span className="aiux550-loading-plan-marker">
-                    <Icon name={item.icon} size={16} />
-                  </span>
-                  <span className="aiux550-loading-plan-note">
-                    <span className="aiux550-loading-plan-text">{item.text}</span>
-                  </span>
-                  <span className="aiux550-loading-plan-row-action">
-                    {item.state === 'active' ? 'Processing…' : 'Queued'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </div>
+    <ComposerFollowUpQueue
+      items={fileQueueItems}
+      title={isReview ? (
+        <span className="ij-air-review-queue-title">
+          <AiChatAgentIcon icon={agentIcon} title="AI Review" />
+          <span>AI Review</span>
+        </span>
+      ) : 'Queue'}
+      ariaLabel={isReview ? 'AI Review files' : 'AI run files'}
+      className="ij-air-review-queue"
+      onItemClick={(item) => onOpenTarget?.(item.openTarget)}
+    />
   );
 }
 
-const REVIEW_SUMMARY_SEVERITY_ORDER = { critical: 3, warning: 2, info: 1 };
-
 function normalizeReviewSummarySeverity(severity = '') {
   const normalized = String(severity || '').trim().toLowerCase();
-  return normalized in REVIEW_SUMMARY_SEVERITY_ORDER ? normalized : 'info';
+  return COMMIT_SEVERITY_ORDER.includes(normalized) ? normalized : 'info';
 }
 
 function formatReviewSummaryFileName(sourceLabel = '') {
@@ -15837,112 +15892,303 @@ function buildReviewSummaryFiles(summary = null) {
         fileName: formatReviewSummaryFileName(sourceLabel),
         isDiff: /^diff\s+/iu.test(sourceLabel),
         severity,
+        severityCounts: { critical: 0, warning: 0, info: 0 },
         findings: [],
       });
     }
 
     const group = byFile.get(sourceLabel);
-    if (REVIEW_SUMMARY_SEVERITY_ORDER[severity] > REVIEW_SUMMARY_SEVERITY_ORDER[group.severity]) {
+    if (reviewSeverityPriority(severity) < reviewSeverityPriority(group.severity)) {
       group.severity = severity;
     }
+    group.severityCounts[severity] += 1;
     group.findings.push({
       text: String(finding?.text || '').trim(),
       lineLabel: normalizeAgentRunLineLabel(finding?.lineLabel),
       severity,
+      suggestedFix: String(finding?.suggestedFix || finding?.fixLabel || '').trim(),
     });
   });
 
-  return Array.from(byFile.values()).sort((a, b) => (
-    REVIEW_SUMMARY_SEVERITY_ORDER[b.severity] - REVIEW_SUMMARY_SEVERITY_ORDER[a.severity]
-    || a.fileName.localeCompare(b.fileName)
-  ));
+  return Array.from(byFile.values())
+    .map((file) => ({
+      ...file,
+      findings: file.findings
+        .map((finding, index) => ({ finding, index }))
+        .sort((left, right) => (
+          reviewSeverityPriority(left.finding.severity) - reviewSeverityPriority(right.finding.severity)
+          || left.index - right.index
+        ))
+        .map(({ finding }) => finding),
+    }))
+    .sort((a, b) => (
+      reviewSeverityPriority(a.severity) - reviewSeverityPriority(b.severity)
+      || a.fileName.localeCompare(b.fileName)
+    ));
 }
 
-function ReviewSummaryMessage({ summary = null, onAccept = null, onReject = null, onOpenReview = null }) {
+function buildReviewSummaryDescription(summary = null) {
   const fileCount = Number.isFinite(summary?.fileCount) ? summary.fileCount : 0;
   const commentCount = Number.isFinite(summary?.commentCount) ? summary.commentCount : 0;
   const severitySummary = typeof summary?.severitySummary === 'string' ? summary.severitySummary : '';
+  const featureTitle = typeof summary?.featureTitle === 'string' && summary.featureTitle.trim()
+    ? summary.featureTitle.trim()
+    : 'Current changes';
   const summaryFiles = buildReviewSummaryFiles(summary);
   const criticalCount = summaryFiles.filter((file) => file.severity === 'critical').length;
   const warningCount = summaryFiles.filter((file) => file.severity === 'warning').length;
-  const brief = commentCount > 0
-    ? `The review found ${commentCount} concrete issue${commentCount === 1 ? '' : 's'} across ${fileCount || 1} file${fileCount === 1 ? '' : 's'}${severitySummary ? ` (${severitySummary})` : ''}. ${criticalCount > 0 ? `${criticalCount} file${criticalCount === 1 ? '' : 's'} contain critical lifecycle or validation risks` : 'No critical files were found'}${warningCount > 0 ? `, and ${warningCount} file${warningCount === 1 ? '' : 's'} need cleanup before applying` : ''}.`
-    : 'No blocking review comments were found.';
+
+  return commentCount > 0
+    ? `Codex reviewed “${featureTitle}” across ${fileCount || 1} file${fileCount === 1 ? '' : 's'}, focusing on lifecycle behavior, validation, shared configuration, and mutable model state. It found ${commentCount} concrete issue${commentCount === 1 ? '' : 's'}${severitySummary ? ` (${severitySummary})` : ''}. ${criticalCount > 0 ? `${criticalCount} file${criticalCount === 1 ? '' : 's'} contain critical lifecycle or validation risks that should be addressed first` : 'No critical risks were found'}${warningCount > 0 ? `; ${warningCount} additional file${warningCount === 1 ? '' : 's'} need cleanup before the changes are applied` : ''}.`
+    : `Codex reviewed “${featureTitle}” and found no blocking review comments.`;
+}
+
+function ReviewSummaryMessage({
+  summary = null,
+  agentIcon = 'codex',
+  reviewFiles = [],
+  onOpenReview = null,
+  onFileCommentsChange = null,
+  onApplyFile = null,
+  onDismissFile = null,
+  className = '',
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [processingActionCount, setProcessingActionCount] = useState(0);
+  const cardRef = useRef(null);
+  const featureTitle = typeof summary?.featureTitle === 'string' && summary.featureTitle.trim()
+    ? summary.featureTitle.trim()
+    : 'Current changes';
+  const reviewAgentIcon = typeof summary?.agentIcon === 'string' && summary.agentIcon.trim()
+    ? summary.agentIcon.trim()
+    : agentIcon;
+  // Same categories as the full review, built by the same helper. The preview has
+  // no severity-filter control — the categories ARE the severity breakdown, and
+  // each one carries its own bulk actions.
+  const categories = buildReviewCommentCategories({
+    files: reviewFiles,
+    severityFilter: REVIEW_SEVERITY_FILTER_IDS,
+    groupMode: 'severity',
+  });
+  const isReviewProcessing = processingActionCount > 0;
+  const brief = buildReviewSummaryDescription(summary);
+  const previewFileCount = reviewFiles.filter((file) => (
+    (file.openCount ?? file.commentCount ?? 0) > 0
+  )).length;
+  // Derived exactly like the full review's badge (see ReviewDiffOverview), rather
+  // than hardcoded to "Open".
+  const previewResolvedCount = reviewFiles.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
+  const previewOpenCount = reviewFiles.reduce((sum, file) => sum + (file.openCount ?? file.commentCount ?? 0), 0);
+  const previewAllResolved = (previewOpenCount + previewResolvedCount) > 0 && previewOpenCount === 0;
+  const trackReviewProcessing = useCallback((isProcessing) => {
+    setProcessingActionCount((count) => Math.max(0, count + (isProcessing ? 1 : -1)));
+  }, []);
+  const runPreviewGroupAction = useCallback((group, filter, action) => {
+    if (isReviewProcessing) return;
+    const files = Array.isArray(group?.files) ? group.files : [];
+    if (files.length === 0) return;
+    const status = group?.statusFilter ?? 'all';
+    files.forEach((file) => {
+      const next = buildPendingReviewComments(file, filter, true, status);
+      if (next) onFileCommentsChange?.(file.tabId, next);
+    });
+    setProcessingActionCount((count) => count + 1);
+    window.setTimeout(() => {
+      files.forEach((file) => {
+        if (action === 'dismissed') onDismissFile?.(file.tabId, filter, status);
+        else onApplyFile?.(file.tabId, filter, status);
+      });
+      setProcessingActionCount((count) => Math.max(0, count - 1));
+    }, REVIEW_ACTION_DELAY_MS);
+  }, [isReviewProcessing, onApplyFile, onDismissFile, onFileCommentsChange]);
+  const toggleExpanded = () => {
+    setExpanded((value) => {
+      const nextValue = !value;
+      if (nextValue) {
+        requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+      }
+      return nextValue;
+    });
+  };
 
   return (
-    <article className="aiux550-review-summary-message">
-      <div className="aiux550-review-summary-message-head">
-        <span>Accept this review?</span>
-        <span className="aiux550-review-done-badge aiux550-review-summary-status">
-          <span className="aiux550-review-done-dot" aria-hidden="true" />
-          Open
-        </span>
-        <button
-          type="button"
-          className="aiux550-review-summary-open"
-          aria-label="Open full review"
-          title="Open full review"
-          onClick={onOpenReview ?? undefined}
-        >
-          <Icon name="general/openNewTab" size={16} />
-          <span>Open review</span>
-        </button>
-      </div>
-      <div className="aiux550-review-summary-body">
-        <h3>AI Review summary: {fileCount || 1} file{fileCount === 1 ? '' : 's'} checked</h3>
-        <h4>Brief summary</h4>
-        <p>{brief}</p>
-        {summaryFiles.length > 0 && (
-          <div className="aiux550-review-summary-files" aria-label="Reviewed files and issues">
-            {summaryFiles.map((file) => (
-              <section className="aiux550-review-summary-file" key={file.sourceLabel}>
-                <div className="aiux550-review-summary-file-head">
-                  <Icon name={file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.fileName)} size={16} />
-                  <span className="aiux550-review-summary-file-name">{file.fileName}</span>
-                  {file.isDiff && <span className="aiux550-review-summary-file-kind">Diff</span>}
+      <article ref={cardRef} className={`aiux550-review-summary-message${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
+        <div className="aiux550-review-summary-message-head">
+          <span className="aiux550-review-summary-message-title text-ui-default">
+            <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" />
+            <span>AI Review</span>
+          </span>
+          <span className="aiux550-review-summary-message-actions">
+            <Badge
+              className="aiux550-review-summary-status"
+              text={previewAllResolved ? 'All resolved' : 'Open'}
+              color="green-secondary"
+            />
+            {onOpenReview ? (
+              <IconButton
+                icon="general/openInToolWindow"
+                tooltip="Open full review"
+                onClick={onOpenReview}
+              />
+            ) : null}
+          </span>
+        </div>
+        <div className={`aiux550-review-summary-content${expanded ? ' is-expanded' : ''}`}>
+          <div className="aiux550-review-summary-body">
+            <h3 className="text-ui-h2">Review complete: {featureTitle}</h3>
+            <p className="text-ui-paragraph">{brief}</p>
+            {categories.length > 0 && (
+              <>
+                <div className="aiux550-review-summary-findings-head">
+                  <h4 className="text-ui-default-semibold">Findings</h4>
+                  <span className="text-ui-small">{previewOpenCount} across {previewFileCount} file{previewFileCount === 1 ? '' : 's'}</span>
                 </div>
-                <div className="aiux550-review-summary-comment-list">
-                  {file.findings.map((finding, index) => (
-                    <article className="aiux550-review-summary-comment spec-done-comment-popup-item is-agent-authored" key={`${file.sourceLabel}-${index}`}>
-                      <div className="spec-done-comment-popup-item-body">
-                        <div className="spec-done-comment-agent-reply">
-                          <div className="spec-done-comment-agent-reply-thread">
-                            <div className="spec-done-comment-agent-reply-head">
-                              <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
-                                <AiChatAgentIcon icon="claude" />
-                              </span>
-                              <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
-                              <span className={`spec-done-status-severity is-${finding.severity}`}>{finding.severity}</span>
-                            </div>
-                            <p className="spec-done-comment-agent-reply-text">{finding.text}</p>
-                            {finding.lineLabel && (
-                              <span className="spec-done-comment-agent-reply-line text-ui-small">{finding.lineLabel}</span>
-                            )}
-                          </div>
+                <div className="aiux550-review-summary-groups" aria-label="Finding severities">
+                  {categories.map((category) => (
+                      <div className={`aiux550-review-summary-group aiux-review-panel-cat is-${category.tone}`} key={category.key}>
+                        <ReviewCommentGroupHeader
+                          group={category}
+                          disabled={isReviewProcessing}
+                          onApply={(filter) => runPreviewGroupAction(category, filter, 'applied')}
+                          onDismiss={(filter) => runPreviewGroupAction(category, filter, 'dismissed')}
+                        />
+                        <div className="aiux550-review-summary-group-comments">
+                          {category.files.map((file) => (
+                            <PlanDiffOverlay
+                              key={file.tabId}
+                              diffData={file.diffData}
+                              initialDiffComments={file.comments}
+                              singleLineNumbers={file.isPlain}
+                              showGutterComments
+                              commentContextLabel="AI Review"
+                              commentContextIcon={reviewAgentIcon}
+                              severityFilter={category.filter}
+                              resolveKeepsComment
+                              allowInlineCommentCompose={false}
+                              viewMode="comments"
+                              commentIndexFileLabel={file.name}
+                              showCommentIndexFileLabel
+                              commentIndexStatusFilter={category.statusFilter ?? 'all'}
+                              onCommentNavigate={() => onOpenReview?.()}
+                              onReviewProcessingChange={trackReviewProcessing}
+                              onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
+                            />
+                          ))}
                         </div>
                       </div>
-                    </article>
                   ))}
                 </div>
-              </section>
-            ))}
+              </>
+            )}
           </div>
-        )}
-        <p className="aiux550-review-summary-decision-copy">Accept to apply all suggested changes, or reject this review.</p>
-      </div>
-      <div className="aiux550-review-summary-choices">
-        <button type="button" className="aiux550-review-summary-choice is-accept" onClick={onAccept ?? undefined}>
-          <Icon name="general/checkmark" size={16} />
-          <span>Yes, apply all review changes</span>
-          <span className="aiux550-review-summary-key">⌘1</span>
-        </button>
-        <button type="button" className="aiux550-review-summary-choice" onClick={onReject ?? undefined}>
-          <span className="aiux550-review-summary-reject-icon" aria-hidden="true" />
-          <span>No, reject this review</span>
-          <span className="aiux550-review-summary-key">⌘2</span>
-        </button>
-      </div>
-    </article>
+        </div>
+        <Button
+          type="secondary"
+          size="slim"
+          className={`aiux550-review-summary-expand${expanded ? ' is-expanded' : ''}`}
+          aria-expanded={expanded}
+          onClick={toggleExpanded}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </Button>
+      </article>
+  );
+}
+
+function ReviewDecisionComposer({ onAccept = null, onRevise = null, onSkip = null }) {
+  const [selectedDecision, setSelectedDecision] = useState('accept');
+  const [revisionInstructions, setRevisionInstructions] = useState('');
+  const revisionInputRef = useRef(null);
+
+  const selectRevision = () => {
+    setSelectedDecision('revise');
+    requestAnimationFrame(() => revisionInputRef.current?.focus());
+  };
+  const submitDecision = () => {
+    if (selectedDecision === 'accept') onAccept?.();
+    if (selectedDecision === 'revise') onRevise?.(revisionInstructions.trim());
+  };
+  const handleKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onSkip?.();
+      return;
+    }
+    if (event.key === 'ArrowUp' && event.target !== revisionInputRef.current) {
+      event.preventDefault();
+      setSelectedDecision('accept');
+      return;
+    }
+    if (event.key === 'ArrowDown' && event.target !== revisionInputRef.current) {
+      event.preventDefault();
+      selectRevision();
+      return;
+    }
+    if (event.key === 'Enter' && event.target !== revisionInputRef.current) {
+      event.preventDefault();
+      submitDecision();
+    }
+  };
+
+  return (
+    <div className="aiux550-review-decision-composer" onKeyDown={handleKeyDown}>
+      <section className="aiux550-review-summary-decision">
+        <div className="aiux550-review-summary-decision-title">Apply this review?</div>
+        <div className="aiux550-review-summary-choices" role="radiogroup" aria-label="Apply this review?">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={selectedDecision === 'accept'}
+            className={`aiux550-review-summary-choice${selectedDecision === 'accept' ? ' is-selected' : ''}`}
+            onClick={() => setSelectedDecision('accept')}
+            onDoubleClick={onAccept ?? undefined}
+          >
+            <Icon name="general/checkmark" size={16} />
+            <span>Yes</span>
+            {selectedDecision === 'accept' && <span className="aiux550-review-summary-navigation">↑↓</span>}
+          </button>
+          <label
+            className={`aiux550-review-summary-choice aiux550-review-summary-revision${selectedDecision === 'revise' ? ' is-selected' : ''}`}
+            role="radio"
+            aria-checked={selectedDecision === 'revise'}
+            onClick={selectRevision}
+          >
+            <Icon name="general/edit" size={16} />
+            <input
+              ref={revisionInputRef}
+              value={revisionInstructions}
+              aria-label="Tell Codex what to review differently"
+              placeholder={selectedDecision === 'revise' ? '' : 'No, and tell Codex what to review differently'}
+              onFocus={() => setSelectedDecision('revise')}
+              onChange={(event) => setRevisionInstructions(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  submitDecision();
+                }
+              }}
+            />
+            {selectedDecision === 'revise' && <span className="aiux550-review-summary-navigation">↑↓</span>}
+          </label>
+          <div className="aiux550-review-summary-decision-actions">
+            <Button type="secondary" size="slim" onClick={onSkip ?? undefined}>
+              Skip <span className="aiux550-review-summary-button-key">Esc</span>
+            </Button>
+            <Button type="primary" size="slim" onClick={submitDecision}>
+              Select <span className="aiux550-review-summary-button-key">↵</span>
+            </Button>
+          </div>
+        </div>
+      </section>
+      <footer className="aiux550-review-decision-footer">
+        <span className="aiux550-review-decision-footer-left">
+          <span>5.6 Sol <Icon name="general/chevronDown" size={16} /></span>
+          <span>Default <Icon name="general/chevronDown" size={16} /></span>
+          <span>Review mode <Icon name="general/chevronDown" size={16} /></span>
+        </span>
+        <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
+      </footer>
+    </div>
   );
 }
 
@@ -16011,8 +16257,14 @@ function AiChatTabView({
   onStopMessage = null,
   onOpenReviewTarget = null,
   onOpenReviewDiff = null,
+  onAcceptReview = null,
   onApplyReviewAll = null,
   onDismissReviewAll = null,
+  onReviseReview = null,
+  reviewFiles = [],
+  onReviewFileCommentsChange = null,
+  onApplyReviewFile = null,
+  onDismissReviewFile = null,
   chatAnnotations = [],
   scrollTarget = null,
   onEditAnnotation = null,
@@ -16037,6 +16289,7 @@ function AiChatTabView({
   const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
   const [composerText, setComposerText] = useState(initialComposerText);
+  const [composerInputPlacement, setComposerInputPlacement] = useState('before');
   const scenarioAgentId = AI_CHAT_AGENTS.some((agent) => agent.id === scenario?.icon)
     ? scenario.icon
     : 'claude';
@@ -16048,11 +16301,13 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
   const composerRef = useRef(null);
+  const previousComposerAttachmentStateRef = useRef({ chatId: null, count: 0 });
   const scrollRef = useRef(null);
   const agentPickerRef = useRef(null);
   const newSessionSettingsRef = useRef(null);
   const [composerAttachmentsExpanded, setComposerAttachmentsExpanded] = useState(false);
   const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
+  const [resolvedReviewDecisionId, setResolvedReviewDecisionId] = useState(null);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
@@ -16069,6 +16324,12 @@ function AiChatTabView({
     && !scenario?.temporary
     && sentMessages.length === 0
     && conversationTurns.length === 0;
+  const readyReviewMessage = [...sentMessages].reverse().find((message) => (
+    message?.role === 'assistant' && message?.kind === 'review-summary'
+  )) ?? null;
+  const isReviewDecisionReady = Boolean(
+    readyReviewMessage && readyReviewMessage.id !== resolvedReviewDecisionId,
+  );
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const selectedModelLabel = selectedModelOverride ?? selectedAgent.model;
   const newSessionModelOptions = [
@@ -16102,6 +16363,10 @@ function AiChatTabView({
     setIsNewSessionComposerExpanded(false);
     focusComposerAtEnd();
   }, [chatId, focusComposerAtEnd, initialComposerText, initialSessionAccess, initialSessionEffort, initialSessionModel, scenarioAgentId]);
+
+  useEffect(() => {
+    setResolvedReviewDecisionId(null);
+  }, [chatId]);
 
   useEffect(() => {
     if (!isAgentMenuOpen) return undefined;
@@ -16198,6 +16463,21 @@ function AiChatTabView({
   const canSend = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
   const editorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
   const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
+
+  useEffect(() => {
+    const previous = previousComposerAttachmentStateRef.current;
+    const nextCount = editorComposerAttachments.length;
+    const chatChanged = previous.chatId !== chatId;
+
+    if (nextCount === 0) {
+      setComposerInputPlacement('before');
+    } else if (chatChanged || nextCount > previous.count) {
+      setComposerInputPlacement(composerText.length === 0 ? 'after' : 'before');
+      focusComposerAtEnd();
+    }
+
+    previousComposerAttachmentStateRef.current = { chatId, count: nextCount };
+  }, [chatId, editorComposerAttachments.length, focusComposerAtEnd]);
   const handleSend = () => {
     if (!canSend) return;
     onSendMessage?.(chatId, composerText.trim(), composerDiffAttachments);
@@ -16235,7 +16515,7 @@ function AiChatTabView({
   }, [chatId, editorComposerAttachments, onRemoveComposerAttachment]);
 
   return (
-    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}`}>
+    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
       <div ref={scrollRef} className="aiux543-conversation-scroll">
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
@@ -16404,9 +16684,12 @@ function AiChatTabView({
             <ReviewSummaryMessage
               key={message.id}
               summary={message.reviewSummary}
-              onAccept={() => onApplyReviewAll?.(chatId)}
-              onReject={() => onDismissReviewAll?.(chatId)}
+              agentIcon={selectedAgent.id}
+              reviewFiles={reviewFiles}
               onOpenReview={() => onOpenReviewDiff?.(chatId)}
+              onFileCommentsChange={onReviewFileCommentsChange}
+              onApplyFile={onApplyReviewFile}
+              onDismissFile={onDismissReviewFile}
             />
           ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
@@ -16504,13 +16787,15 @@ function AiChatTabView({
             </button>
           </div>
         )}
-        {shouldShowAgentRunPlan && (
+        {!isReviewDecisionReady && shouldShowAgentRunPlan && (
           <AgentRunLoadingPlan
             notes={agentRun?.notes}
             kind={agentRun?.kind}
+            agentIcon={agentRun?.agentIcon ?? selectedAgent.id}
             onOpenTarget={onOpenReviewTarget}
           />
         )}
+        {!isReviewDecisionReady && (
         <div className={`aiux543-chat-composer${isNewSessionComposerExpanded ? ' is-expanded' : ''}`} onClick={() => composerRef.current?.focus()}>
           {isNewSessionState && (
             <button
@@ -16527,26 +16812,7 @@ function AiChatTabView({
               <Icon name={isNewSessionComposerExpanded ? 'inline/collapse' : 'inline/expand'} size={16} />
             </button>
           )}
-          {!isAgentRunProcessing && (
-            <AiChatAttachmentStrip
-              attachments={editorComposerAttachments}
-              collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
-              expanded={composerAttachmentsExpanded}
-              onExpandedChange={setComposerAttachmentsExpanded}
-              getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
-              onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
-              onContextMenu={handleComposerAttachmentContextMenu}
-              onRemove={onRemoveComposerAttachment
-                ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
-                : null}
-              className="aiux543-composer-attachments"
-              chipClassName="aiux543-composer-attachment-chip"
-              removeButtonClassName="aiux543-composer-attachment-remove"
-              removeLabel={(attachment) => `Remove ${attachment.label ?? 'attachment'}`}
-              stopClickPropagation
-            />
-          )}
-          <div className="aiux543-chat-input-row">
+          <div className={`aiux543-chat-input-row ai-chat-inline-input-content${composerInputPlacement === 'after' && editorComposerAttachments.length > 0 ? ' is-input-after-attachments' : ''}`}>
             {isAgentRunProcessing ? (
               <div className="aiux543-chat-input aiux543-chat-input-waiting" aria-live="polite">Waiting…</div>
             ) : (
@@ -16555,7 +16821,7 @@ function AiChatTabView({
                 className="aiux543-chat-input"
                 rows={1}
                 value={composerText}
-                placeholder="Type task, use @mentions or /commands"
+                placeholder={editorComposerAttachments.length > 0 ? '' : 'Type task, use @mentions or /commands'}
                 aria-label="Task prompt"
                 onChange={(event) => setComposerText(event.target.value)}
                 onKeyDown={(event) => {
@@ -16564,6 +16830,25 @@ function AiChatTabView({
                     handleSend();
                   }
                 }}
+              />
+            )}
+            {!isAgentRunProcessing && (
+              <AiChatAttachmentStrip
+                attachments={editorComposerAttachments}
+                collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+                expanded={composerAttachmentsExpanded}
+                onExpandedChange={setComposerAttachmentsExpanded}
+                getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+                onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
+                onContextMenu={handleComposerAttachmentContextMenu}
+                onRemove={onRemoveComposerAttachment
+                  ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
+                  : null}
+                className="aiux543-composer-attachments is-inline-composer-attachments"
+                chipClassName="aiux543-composer-attachment-chip"
+                removeButtonClassName="aiux543-composer-attachment-remove"
+                removeLabel={(attachment) => `Remove ${attachment.label ?? 'attachment'}`}
+                stopClickPropagation
               />
             )}
           </div>
@@ -16614,7 +16899,25 @@ function AiChatTabView({
             </div>
           </div>
         </div>
-        {isNewSessionState ? (
+        )}
+        {isReviewDecisionReady ? (
+          <ReviewDecisionComposer
+            onAccept={() => {
+              setResolvedReviewDecisionId(readyReviewMessage.id);
+              if (onAcceptReview) onAcceptReview(chatId);
+              else {
+                onSendMessage?.(chatId, 'Yes', []);
+                onApplyReviewAll?.(chatId);
+              }
+            }}
+            onRevise={(instructions) => {
+              setResolvedReviewDecisionId(readyReviewMessage.id);
+              if (onReviseReview) onReviseReview(chatId, instructions.trim() || 'Review again.');
+              else onDismissReviewAll?.(chatId);
+            }}
+            onSkip={() => setResolvedReviewDecisionId(readyReviewMessage.id)}
+          />
+        ) : isNewSessionState ? (
           <footer className="aiux543-editor-footer aiux543-new-session-settings" ref={newSessionSettingsRef}>
             <span className="aiux543-editor-footer-left">
               <NewSessionFooterPicker
@@ -17457,6 +17760,7 @@ export default function App() {
   // Chats now open as editor tabs (not a right tool window). openChatInEditorTab
   // is defined later, so route through a ref to avoid a TDZ during render.
   const openChatInEditorTabRef = useRef(null);
+  const startReviewFromPresetRef = useRef(null);
   const openAiToolWindow = useCallback((chatId = null) => {
     const targetId = typeof chatId === 'string' && chatId ? chatId : selectedAiChatId;
     openChatInEditorTabRef.current?.(targetId);
@@ -17581,6 +17885,7 @@ export default function App() {
     initialModel = null,
     initialEffort = null,
     initialAccess = null,
+    reviewFeatureTitle = '',
     temporary = false,
     select = true,
   } = {}) => {
@@ -17609,6 +17914,7 @@ export default function App() {
       initialModel,
       initialEffort,
       initialAccess,
+      reviewFeatureTitle,
       temporary: Boolean(temporary),
       attachmentLabel,
       attachments: Array.isArray(attachments) ? attachments : [],
@@ -17662,6 +17968,9 @@ export default function App() {
   // Installing an agent from the catalogue pushes into FINAL_DIRECT_AGENT_OPTIONS, so subscribe to
   // the install store to re-run the (un-memoized) getFinalAgentItems calls below.
   useAgentInstallState();
+  const finalVisiblePresets = finalPresets.some((preset) => preset.id === FINAL_AI_REVIEW_PRESET.id)
+    ? finalPresets
+    : [FINAL_AI_REVIEW_PRESET, ...finalPresets];
   const finalDefaultAgentItems = getFinalAgentItems(
     [],
     finalDefaultPresetOverrides,
@@ -17671,7 +17980,7 @@ export default function App() {
     FINAL_PRESERVE_DEFAULT_LAUNCH_TARGET,
   );
   const finalToolbarAgentItems = getFinalAgentItems(
-    finalPresets,
+    finalVisiblePresets,
     finalDefaultPresetOverrides,
     finalRemovedDefaultAgentIds,
     FINAL_PRESET_BEHAVIOR_V2,
@@ -17746,6 +18055,9 @@ export default function App() {
       .find((option) => option.id === configuration.modelId)?.label ?? null;
     const effortLabel = getFinalEffortOptions(configuration.agentId)
       .find((option) => option.id === configuration.effortId)?.label ?? null;
+    // AI Review is the one built-in preset whose command must stay visible and
+    // editable in the new chat composer instead of being injected silently.
+    const initialComposerText = configuration.customPrompt === '/review' ? '/review' : '';
 
     const pendingId = finalPendingSessionIdRef.current;
     const pendingSession = pendingId ? aiChatDraftSessionsById[pendingId] : null;
@@ -17761,6 +18073,7 @@ export default function App() {
         [pendingId]: {
           ...prev[pendingId],
           icon: configuration.agentId,
+          initialComposerText,
           initialModel: modelLabel,
           initialEffort: effortLabel,
         },
@@ -17776,6 +18089,7 @@ export default function App() {
       const session = createEmptyAiChatSession({
         icon: configuration.agentId,
         title: 'New Session',
+        initialComposerText,
         initialModel: modelLabel,
         initialEffort: effortLabel,
       });
@@ -17790,6 +18104,14 @@ export default function App() {
         id: `${preset.id}-${Date.now()}`,
         label: preset.label,
       });
+    }
+    if (preset?.id === FINAL_AI_REVIEW_PRESET.id) {
+      const configuration = applyFinalToolbarPreset(preset);
+      startReviewFromPresetRef.current?.({
+        agentIcon: configuration.agentId,
+        attachments: [],
+      });
+      return;
     }
     startFinalSessionFromToolbar(presetId);
   };
@@ -17916,6 +18238,7 @@ export default function App() {
   };
 
   const removeFinalPreset = (preset) => {
+    if (preset?.lockedPreset) return;
     if (preset?.defaultPreset) {
       removeFinalDefaultPreset(preset);
       return;
@@ -17978,6 +18301,7 @@ export default function App() {
 
   // ─── Control+Control opens the AI Review composer anywhere ────────────────
   const [globalReviewDialogOpen, setGlobalReviewDialogOpen] = useState(false);
+  const [commitReviewContext, setCommitReviewContext] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
 
   useEffect(() => {
@@ -18008,7 +18332,7 @@ export default function App() {
       showPresetSectionHelp
       presetBehaviorV2={FINAL_PRESET_BEHAVIOR_V2}
       defaultPresets={finalDefaultAgentItems}
-      presets={finalPresets}
+      presets={finalVisiblePresets}
       open={Boolean(presetDialogDraft) || presetDialogEmpty}
       onAddAgent={createFinalPresetFromAgent}
       onOpenAgentCatalogue={openAgentsCatalogueTab}
@@ -19499,9 +19823,12 @@ export default function App() {
     const scenario = chatId ? getAiChatScenarioById(chatId) : null;
     const listItem = chatId ? getAiChatListItemById(chatId) : null;
     const chatTitle = (scenario?.title || listItem?.title || '').trim();
+    const reviewAgentIcon = scenario?.icon || listItem?.icon || 'codex';
     // "AI Review" + the launching chat as context.
     const label = chatTitle ? `AI Review · ${chatTitle}` : 'AI Review';
     setScreen('ide');
+    setReviewView('timeline');
+    setReviewGroupMode('agent');
     setIdeTabContents((prev) => ({
       ...prev,
       [REVIEW_DIFF_TAB_ID]: {
@@ -19517,7 +19844,9 @@ export default function App() {
       if (existingIndex >= 0) {
         // Refresh the label so it reflects the chat the review was launched from.
         const nextTabs = prevTabs.map((tab, index) => (
-          index === existingIndex ? { ...tab, label, icon: 'general/balloon' } : tab
+          index === existingIndex
+            ? { ...tab, label, icon: <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" /> }
+            : tab
         ));
         requestAnimationFrame(() => setActiveEditorTab(existingIndex));
         return nextTabs;
@@ -19529,7 +19858,7 @@ export default function App() {
         : prevTabs.length;
       const nextTabs = [
         ...prevTabs.slice(0, insertAt),
-        { id: REVIEW_DIFF_TAB_ID, label, icon: 'general/balloon', closable: true },
+        { id: REVIEW_DIFF_TAB_ID, label, icon: <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" />, closable: true },
         ...prevTabs.slice(insertAt),
       ];
       requestAnimationFrame(() => setActiveEditorTab(insertAt));
@@ -19563,16 +19892,20 @@ export default function App() {
 
   // Bulk review actions keep handled findings as dimmed records. Apply and
   // Dismiss share the same filtering but persist distinct resolution kinds.
-  const handleAllReviewFileComments = useCallback((tabId, filter = 'all', action = 'applied') => {
+  // `status` ('all' | 'open' | 'replied') keeps a group-scoped action inside its
+  // own group: "Apply all" on the Open category must not touch Replied comments
+  // that share its severities.
+  const handleAllReviewFileComments = useCallback((tabId, filter = 'all', action = 'applied', status = 'all') => {
     if (!tabId) return;
     const resolvedKind = action === 'dismissed' ? 'dismissed' : 'applied';
-    const normalizedFilter = normalizeReviewSeverityFilter(filter);
     const commentMatchesFilter = (comment) => {
       if (!comment || comment?.resolved) return false;
-      const selectedOpenSeverities = REVIEW_SEVERITY_FILTER_IDS.filter((sev) => normalizedFilter.includes(sev));
-      if (selectedOpenSeverities.length === REVIEW_SEVERITY_FILTER_IDS.length) return true;
-      const sev = typeof comment?.severity === 'string' ? comment.severity.toLowerCase() : '';
-      return selectedOpenSeverities.includes(sev);
+      if (!matchesReviewCommentFilter(comment, filter)) return false;
+      if (status !== 'all' && status !== 'unresolved') {
+        const hasReply = typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0;
+        if (status === 'replied' ? !hasReply : hasReply) return false;
+      }
+      return true;
     };
     const content = ideTabContents[tabId];
     const texts = new Set();
@@ -19686,11 +20019,11 @@ export default function App() {
   const [reviewSeverityFilter, setReviewSeverityFilter] = useState(REVIEW_SEVERITY_FILTER_IDS);
   // Shared group mode for the review: 'file' | 'severity' | 'status'. Sections
   // the overview stack and drives the files popup's grouping everywhere.
-  const [reviewGroupMode, setReviewGroupMode] = useState('file');
+  const [reviewGroupMode, setReviewGroupMode] = useState('agent');
   // Shared review layout: 'inline' (comments in the diff) | 'panel' (code left,
   // comments in a column on the right). Lifted so opening a single file from the
   // overview carries the same toolbar toggle and comment layout.
-  const [reviewView, setReviewView] = useState('panel');
+  const [reviewView, setReviewView] = useState('timeline');
 
   const openChatInEditorTab = useCallback((chatId, metaOverride = null) => {
     if (!chatId) return;
@@ -22948,9 +23281,21 @@ export default function App() {
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const isReviewDiffTab = Boolean(activeTabContent?.reviewDiffOverview);
+  const activeReviewSummary = isReviewDiffTab && activeTabContent?.reviewChatId
+    ? [...(aiChatSentMessagesByChatId[activeTabContent.reviewChatId] ?? [])]
+      .reverse()
+      .find((message) => message?.kind === 'review-summary' && message?.reviewSummary)
+      ?.reviewSummary ?? null
+    : null;
+  const activeReviewAgentIcon = isReviewDiffTab
+    ? activeReviewSummary?.agentIcon
+      || getAiChatScenarioById(activeTabContent?.reviewChatId)?.icon
+      || getAiChatListItemById(activeTabContent?.reviewChatId)?.icon
+      || 'codex'
+    : 'codex';
   const reviewDiffFiles = useMemo(
-    () => (isReviewDiffTab ? buildReviewDiffFiles(AGENT_REVIEW_FINDINGS, ideTabContents) : []),
-    [isReviewDiffTab, ideTabContents],
+    () => buildReviewDiffFiles(AGENT_REVIEW_FINDINGS, ideTabContents),
+    [ideTabContents],
   );
   // Single-file tabs still need to know when they belong to an explicit review
   // run so review comments keep their review-specific resolve behavior.
@@ -24186,7 +24531,7 @@ export default function App() {
         targetChatId: null,
         targetDocumentTabId: null,
         label: 'New Chat',
-        icon: 'junie',
+        icon: 'codex',
         buttonLabel: 'Add to New Chat',
         createdNewChat: true,
       });
@@ -24825,7 +25170,7 @@ export default function App() {
       ? createEmptyAiChatSession({
           diffRequest: activePlanDiffRequest,
           attachmentLabel: activePlanDiffData?.title || `Diff ${activePlanDiffSourceLabel}`,
-          icon: 'junie',
+          icon: 'codex',
           select: false,
         })
       : null;
@@ -26081,6 +26426,11 @@ export default function App() {
           }
         : tab
     )));
+    setAgentRunByChatId((prev) => {
+      const run = prev[chatId];
+      if (run?.kind !== 'review' || run.agentIcon === agentId) return prev;
+      return { ...prev, [chatId]: { ...run, agentIcon: agentId } };
+    });
   }, []);
 
   const aiChatTabCommentResponseTimersRef = useRef({});
@@ -26125,7 +26475,7 @@ export default function App() {
     });
   }, []);
 
-  const handleAiChatTabSend = useCallback((chatId, text, attachments = []) => {
+  const handleAiChatTabSend = useCallback((chatId, text, attachments = [], { forceReview = false } = {}) => {
     if (!chatId) return;
     const messageText = (text ?? '').trim();
     const messageAttachments = (Array.isArray(attachments) ? attachments : [])
@@ -26144,7 +26494,17 @@ export default function App() {
     // including any comments already left in the diff. The explicit /review
     // command still starts the review flow; those comments remain context and
     // must not turn this into the ordinary "reply to attached note" flow.
-    const isReviewCommand = /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
+    const isReviewCommand = forceReview
+      || /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
+    const reviewSession = isReviewCommand ? getAiChatScenarioById(targetChatId) : null;
+    const sessionFeatureTitle = String(reviewSession?.reviewFeatureTitle || '').trim();
+    const sessionTitle = String(reviewSession?.title || '').trim();
+    const attachmentFeatureTitle = String(messageAttachments[0]?.label || '')
+      .replace(/^diff\s+/iu, '')
+      .trim();
+    const reviewFeatureTitle = sessionFeatureTitle
+      || (!['', 'AI Review', 'New Chat'].includes(sessionTitle) ? sessionTitle : '')
+      || (attachmentFeatureTitle ? `Changes in ${attachmentFeatureTitle}` : 'Current changes');
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
     const stamp = Date.now();
@@ -26193,6 +26553,8 @@ export default function App() {
               fixLabel: finding.fixLabel || null,
               sourceLabel: finding.sourceLabel || null,
               lineLabel: finding.lineLabel || null,
+              groupId: finding.groupId || null,
+              groupLabel: finding.groupLabel || null,
             };
             next[finding.tabId] = {
               ...content,
@@ -26214,6 +26576,9 @@ export default function App() {
             sourceLabel: finding.sourceLabel || '',
             lineLabel: finding.lineLabel || '',
             severity: finding.severity || null,
+            groupId: finding.groupId || null,
+            groupLabel: finding.groupLabel || null,
+            fixLabel: finding.fixLabel || '',
             state: 'pending',
             openTarget: {
               diffTabId: finding.tabId ?? null,
@@ -26261,6 +26626,9 @@ export default function App() {
         [targetChatId]: {
           status: 'processing',
           kind: isReviewCommand ? 'review' : undefined,
+          agentIcon: isReviewCommand
+            ? (prev[targetChatId]?.agentIcon ?? getAiChatScenarioById(targetChatId)?.icon ?? 'codex')
+            : prev[targetChatId]?.agentIcon,
           iteration: (prev[targetChatId]?.iteration ?? 0) + 1,
           notes: noteItems,
         },
@@ -26342,6 +26710,8 @@ export default function App() {
                     streaming: false,
                     text: 'AI Review summary',
                     reviewSummary: {
+                      agentIcon: getAiChatScenarioById(targetChatId)?.icon ?? 'codex',
+                      featureTitle: reviewFeatureTitle,
                       fileCount: summaryFileCount,
                       commentCount: reviewNotes.length,
                       severitySummary: summarySeverityText,
@@ -26350,6 +26720,9 @@ export default function App() {
                         sourceLabel: note?.sourceLabel || '',
                         lineLabel: note?.lineLabel || '',
                         severity: note?.severity || '',
+                        groupId: note?.groupId || '',
+                        groupLabel: note?.groupLabel || '',
+                        suggestedFix: note?.fixLabel || '',
                       })),
                     },
                   }
@@ -26393,15 +26766,45 @@ export default function App() {
     handleCommentAttachmentResponseStart,
     resolveCommentAttachmentResponse,
     handleSelectedAiChatSentMessagesChange,
+    getAiChatScenarioById,
   ]);
 
+  const handleAcceptReviewDecision = useCallback((chatId) => {
+    if (!chatId) return;
+    handleAiChatTabSend(chatId, 'Yes', []);
+    applyReviewComments(reviewNoteTextsFor(chatId));
+    finalizeReviewRun(chatId, 'completed');
+    closeReviewDiffTab();
+  }, [agentRunByChatId, applyReviewComments, closeReviewDiffTab, finalizeReviewRun, handleAiChatTabSend]);
+
+  const handleReviseReviewDecision = useCallback((chatId, instructions = '') => {
+    if (!chatId) return;
+    const revision = String(instructions || '').trim();
+    dismissReviewComments(reviewNoteTextsFor(chatId));
+    closeReviewDiffTab();
+    handleAiChatTabSend(
+      chatId,
+      revision ? `No — ${revision}` : 'No — review again.',
+      [],
+      { forceReview: true },
+    );
+  }, [agentRunByChatId, closeReviewDiffTab, dismissReviewComments, handleAiChatTabSend]);
+
   const handleStartReviewFromDialog = useCallback(({
-    agentIcon = 'junie',
+    agentIcon = 'codex',
     attachments = [],
   } = {}) => {
+    const sourceChatId = activeAiChatTabChatId || selectedAiChatId;
+    const sourceScenario = sourceChatId ? getAiChatScenarioById(sourceChatId) : null;
+    const sourceTitle = String(sourceScenario?.reviewFeatureTitle || sourceScenario?.title || '').trim();
+    const attachmentTitle = String(attachments[0]?.label || '').replace(/^diff\s+/iu, '').trim();
+    const reviewFeatureTitle = !['', 'AI Review', 'New Chat'].includes(sourceTitle)
+      ? sourceTitle
+      : (attachmentTitle ? `Changes in ${attachmentTitle}` : 'Current changes');
     const reviewChat = createEmptyAiChatSession({
       title: 'AI Review',
       icon: agentIcon,
+      reviewFeatureTitle,
       emptyState: true,
       showAttachmentsInComposer: false,
       select: false,
@@ -26416,6 +26819,7 @@ export default function App() {
       [reviewChat.id]: {
         status: 'queued',
         kind: 'review',
+        agentIcon,
         iteration: prev[reviewChat.id]?.iteration ?? 0,
         notes: AGENT_REVIEW_FINDINGS.map((finding, index) => ({
           id: `review-${index}`,
@@ -26423,6 +26827,8 @@ export default function App() {
           sourceLabel: finding.sourceLabel || '',
           lineLabel: finding.lineLabel || '',
           severity: finding.severity || null,
+          groupId: finding.groupId || null,
+          groupLabel: finding.groupLabel || null,
           state: 'pending',
           openTarget: {
             diffTabId: finding.tabId ?? null,
@@ -26437,7 +26843,60 @@ export default function App() {
       icon: agentIcon,
       activate: true,
     });
-  }, [createEmptyAiChatSession]);
+  }, [activeAiChatTabChatId, createEmptyAiChatSession, getAiChatScenarioById, selectedAiChatId]);
+  startReviewFromPresetRef.current = handleStartReviewFromDialog;
+
+  const globalAiReviewSourceAttachments = (() => {
+    if (commitReviewContext?.focused && Array.isArray(commitReviewContext.attachments)) {
+      return commitReviewContext.attachments;
+    }
+
+    if ((isDiffTab || isPlainFileOverlayTab) && activePlanDiffData && activeTabId) {
+      const sourceLabel = activePlanDiffData.sourceTabLabel
+        ?? activeEditorTabMeta?.label
+        ?? 'File';
+      const matchingComposerAttachments = aiChatComposerDiffAttachments.filter((attachment) => (
+        attachment?.diffTabId === activeTabId
+        || attachment?.sourceTabId === activePlanDiffSourceTabId
+        || attachment?.sourceLabel === sourceLabel
+      ));
+      if (matchingComposerAttachments.length > 0) return matchingComposerAttachments;
+
+      const diffComments = activePlanDiffCommentsWithPending;
+      return [{
+        id: `review-context-${activeTabId}`,
+        label: isPlainFileOverlayTab
+          ? sourceLabel
+          : (activePlanDiffData.title || `Diff ${sourceLabel}`),
+        icon: isPlainFileOverlayTab
+          ? (activeEditorTabMeta?.icon ?? resolveAgentTaskPlanFileIcon(sourceLabel))
+          : 'vcs/diff',
+        commentCount: Object.values(diffComments).flat().length,
+        diffComments,
+        diffTabId: activeTabId,
+        sourceTabId: isPlainFileOverlayTab ? activeTabId : activePlanDiffSourceTabId,
+        sourceLabel,
+        isPlainFile: isPlainFileOverlayTab,
+      }];
+    }
+
+    if (isAiChatTab) return aiChatComposerDiffAttachments;
+
+    if (screen === 'ide' && activeTabId && activeEditorTabMeta?.label && !isReviewDiffTab && !isAgentsCatalogueTab) {
+      return [{
+        id: `review-context-${activeTabId}`,
+        label: activeEditorTabMeta.label,
+        icon: typeof activeEditorTabMeta.icon === 'string'
+          ? activeEditorTabMeta.icon
+          : resolveAgentTaskPlanFileIcon(activeEditorTabMeta.label),
+        sourceTabId: activeTabId,
+        sourceLabel: activeEditorTabMeta.label,
+        isSddDocument: isAgentTaskTab,
+      }];
+    }
+
+    return [];
+  })();
 
   // The same popup the AI Review buttons open, mounted once for the Control+Control shortcut so it
   // can appear over whatever is on screen — including the Welcome screen.
@@ -26445,12 +26904,13 @@ export default function App() {
     <AiReviewComposerDialog
       open={globalReviewDialogOpen}
       onClose={() => setGlobalReviewDialogOpen(false)}
+      initialAgentId="codex"
       currentScopeLabel="Local changes"
       currentFileLabel={activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
       contextLabel="Changes"
       contextMeta="Local changes"
       contextIcon="general/listFiles"
-      sourceAttachments={aiChatComposerDiffAttachments}
+      sourceAttachments={globalAiReviewSourceAttachments}
       onStartReview={handleStartReviewFromDialog}
       onOpenAttachment={(attachment) => handleOpenChatAttachment(attachment, { archived: false })}
       launchSource="shortcut"
@@ -27393,8 +27853,14 @@ export default function App() {
                   onStopMessage={handleAiChatTabStop}
                   onOpenReviewTarget={openCommentTarget}
                   onOpenReviewDiff={openReviewDiffTab}
+                  onAcceptReview={handleAcceptReviewDecision}
                   onApplyReviewAll={(chatId) => applyReviewComments(reviewNoteTextsFor(chatId))}
                   onDismissReviewAll={(chatId) => dismissReviewComments(reviewNoteTextsFor(chatId))}
+                  onReviseReview={handleReviseReviewDecision}
+                  reviewFiles={reviewDiffFiles}
+                  onReviewFileCommentsChange={persistReviewFileComments}
+                  onApplyReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status)}
+                  onDismissReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status)}
                   chatAnnotations={[]}
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
@@ -27406,12 +27872,14 @@ export default function App() {
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}
+                reviewSummary={activeReviewSummary}
+                agentIcon={activeReviewAgentIcon}
                 chatTitle={activeTabContent?.reviewChatTitle || ''}
                 onOpenChat={activeTabContent?.reviewChatId ? () => openChatInEditorTab(activeTabContent.reviewChatId) : null}
                 onOpenFileTab={activateEditorTabById}
                 onFileCommentsChange={persistReviewFileComments}
-                onApplyFile={(tabId, filter) => handleAllReviewFileComments(tabId, filter, 'applied')}
-                onDismissFile={(tabId, filter) => handleAllReviewFileComments(tabId, filter, 'dismissed')}
+                onApplyFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status)}
+                onDismissFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status)}
                 severityFilter={reviewSeverityFilter}
                 onSeverityFilterChange={setReviewSeverityFilter}
                 groupMode={reviewGroupMode}
@@ -27522,7 +27990,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onStartReview={handleStartReviewFromDialog} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onStartReview={handleStartReviewFromDialog} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);

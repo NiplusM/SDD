@@ -6630,6 +6630,22 @@ body {
   outline: none;
 }
 
+.plan-diff-ai-review-dialog-send.is-active {
+  background: #3574f0;
+  color: #fff;
+  cursor: pointer;
+}
+
+.plan-diff-ai-review-dialog-send.is-active:hover,
+.plan-diff-ai-review-dialog-send.is-active:focus-visible {
+  background: #4a82f2;
+  color: #fff;
+}
+
+.plan-diff-ai-review-dialog-send.is-active .plan-diff-ai-review-dialog-send-icon path {
+  fill: #fff;
+}
+
 .plan-diff-ai-review-dialog-plus > .icon,
 .plan-diff-ai-review-dialog-mic > .icon,
 .plan-diff-ai-review-dialog-send-icon {
@@ -7101,13 +7117,34 @@ body {
 }
 
 .plan-diff-aside-comment-meta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
   margin-left: var(--spec-done-comment-agent-reply-content-indent, 0);
   color: var(--text-subtle, #8C8F97);
   line-height: 16px;
 }
 
-/* ── "Panel" review layout: file cards with code stacked on the LEFT, all
-   comment cards collected in ONE shared column on the RIGHT. ──────────────── */
+.plan-diff-aside-comment-meta .icon {
+  flex: 0 0 16px;
+}
+
+.plan-diff-aside-comment-code-context {
+  display: block;
+  min-width: 0;
+  margin-left: var(--spec-done-comment-agent-reply-content-indent, 0);
+  padding: 5px 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #191a1c;
+  color: #b9bcc2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Panel review layout: file cards with code snippets on the left and the
+   severity-grouped comment cards in a dedicated column on the right. ─────── */
 .aiux-review-overview-scroll.is-panel {
   display: flex;
   align-items: stretch;
@@ -7130,13 +7167,44 @@ body {
   --aiux-review-panel-heading-gap: 8px;
   flex: 0 0 380px;
   width: 380px;
+  min-width: 0;
   overflow-y: auto;
-  /* Unified with the review tab background; no separator. */
   background: transparent;
   display: flex;
   flex-direction: column;
   gap: var(--aiux-review-panel-card-gap);
   padding: 12px;
+}
+
+/* Aggregated AI Review is a triage surface: findings are ranked by severity,
+   while the full source diff opens from an individual comment. */
+.aiux-review-overview-scroll.is-comments-only {
+  overflow: auto;
+  padding: 0;
+}
+
+.aiux-review-comments-only-content {
+  width: min(900px, 100%);
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 20px 24px 32px;
+}
+
+.aiux-review-comments-only-content .aiux-review-overview-intro {
+  max-width: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.aiux-review-panel-right.is-comments-only {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex: none;
+  gap: 20px;
+  padding: 0;
+  overflow: visible;
 }
 
 /* Category (severity) groups for the shared comments column. */
@@ -7149,12 +7217,15 @@ body {
 .aiux-review-panel-cat-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: var(--aiux-review-panel-heading-gap);
-  color: #b4b8bf;
-  font: 600 11px/14px Inter, system-ui, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+}
+
+.aiux-review-panel-cat-heading {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
 }
 
 .aiux-review-panel-cat-label {
@@ -7163,15 +7234,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 2px;
 }
 
 /* File headings use the file name verbatim (not an uppercased severity word). */
 .aiux-review-panel-cat.is-file .aiux-review-panel-cat-label,
 .aiux-review-panel-cat-head.is-file .aiux-review-panel-cat-label {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 12px;
   color: #dfe1e5;
 }
 
@@ -7206,49 +7273,14 @@ body {
 
 .aiux-review-panel-cat-count {
   flex: 0 0 auto;
-  color: #6f737a;
-  font-weight: 500;
+  margin-left: 0;
 }
 
 .aiux-review-panel-cat-actions {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-left: 4px;
-}
-
-.aiux-review-panel-cat-resolve {
-  flex: 0 0 auto;
-  height: 20px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #548af7;
-  font: 500 11px/14px Inter, system-ui, sans-serif;
-  cursor: pointer;
-}
-
-.aiux-review-panel-cat-resolve:hover {
-  background: rgba(84, 138, 247, 0.12);
-}
-
-.aiux-review-panel-cat-resolve:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.aiux-review-panel-cat-resolve:disabled:hover {
-  background: transparent;
-}
-
-.aiux-review-panel-cat-resolve.is-dismiss {
-  color: #8a8f98;
-}
-
-.aiux-review-panel-cat-resolve.is-dismiss:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #b4b8bf;
+  margin-left: auto;
 }
 
 /* Each file's comments-only overlay just flows its cards into the shared column;
@@ -10229,6 +10261,28 @@ body {
   line-height: 18px;
 }
 
+.ai-chat-user-card-content {
+  display: block;
+  min-width: 0;
+  color: #DFE1E5;
+  font: 400 13px/25px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ai-chat-user-card-text {
+  white-space: pre-wrap;
+}
+
+.ai-chat-user-card-content .ai-chat-sent-attachment-chip {
+  display: inline-flex;
+  max-width: min(260px, 100%);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.ai-chat-user-card-content .ai-chat-sent-attachment-chip:first-child {
+  margin-left: 0;
+}
+
 .ai-chat-sent-context {
   display: flex;
   flex-direction: column;
@@ -10271,7 +10325,7 @@ body {
 .ai-chat-sent-attachment-chip {
   position: relative;
   max-width: 260px;
-  background: rgba(25, 26, 28, 0.12);
+  background: #2B2D30;
   cursor: pointer;
 }
 
@@ -12328,6 +12382,15 @@ body {
   overflow: hidden auto;
   padding: 8px 24px 36px;
   position: relative;
+}
+
+.aiux543-conversation.is-review-decision-ready .aiux543-conversation-scroll {
+  padding-bottom: 12px;
+}
+
+.aiux543-conversation.is-review-decision-ready .aiux543-composer-sticky {
+  padding-bottom: 0;
+  box-shadow: none;
 }
 
 
@@ -16487,9 +16550,9 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 auto;
   flex-wrap: wrap;
   align-content: flex-start;
-  gap: 3px;
-  padding: 12px 12px 3px;
-  max-height: 67px;
+  gap: 5px;
+  padding: 10px 12px 4px;
+  max-height: 88px;
   overflow: visible;
 }
 
@@ -16532,35 +16595,90 @@ button.aiux543-answer-change-card:focus-visible {
   color: #73767C;
 }
 
+/* Text and attachment chips share one wrapping input flow. `field-sizing`
+   keeps the textarea only as wide as its current content, so newly attached
+   files continue the same line instead of forming a separate row above it. */
+.ai-chat-inline-input-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 61px;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 10px 12px 6px;
+  overflow: visible;
+  cursor: text;
+}
+
+.ai-chat-inline-input-content > textarea,
+.ai-chat-inline-input-content > .aiux543-chat-input {
+  field-sizing: content;
+  width: auto;
+  min-width: 1ch;
+  max-width: 100%;
+  min-height: 25px;
+  max-height: 420px;
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  margin: 0;
+  padding: 3px 0 0;
+  overflow: hidden;
+  line-height: 18px;
+}
+
+/* Attachments added to an empty composer lead the line; the live textarea is
+   ordered after them so its caret stays visible and subsequent typing remains
+   on that side. If text existed first, the default DOM order keeps it before
+   the attachment chips. */
+.ai-chat-inline-input-content.is-input-after-attachments > textarea,
+.ai-chat-inline-input-content.is-input-after-attachments > .aiux543-chat-input {
+  order: 2;
+}
+
+.ai-chat-inline-input-content > .ai-chat-attachments.is-inline-composer-attachments,
+.ai-chat-inline-input-content > .aiux543-composer-attachments.is-inline-composer-attachments {
+  display: contents;
+}
+
+.aiux543-composer-sticky.is-new-session .ai-chat-inline-input-content > .aiux543-chat-input,
+.aiux543-composer-sticky.is-new-session .aiux543-chat-composer.is-expanded .ai-chat-inline-input-content > .aiux543-chat-input {
+  min-height: 25px;
+}
+
 .ai-chat-attachment-chip,
 .aiux543-composer-attachment-chip,
 .aiux543-user-attachment-chip,
 .ai-chat-sent-attachment-chip {
   z-index: 1;
   min-width: 0;
-  height: 20px;
-  max-width: 200px;
+  height: 25px;
+  max-width: 240px;
   box-sizing: border-box;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
-  padding: 0 6px 0 4px;
+  gap: 6px;
+  padding: 0 5px 0 7px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 6px;
   background: #26282C;
   color: #D1D3D9;
   font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: background-color 120ms ease;
 }
 
-.ai-chat-attachment-chip:hover,
-.ai-chat-attachment-chip:focus-visible,
-.aiux543-user-attachment-chip:hover {
-  background: #3B3E45;
+.ai-chat-attachment-chip:is(:hover, :focus-visible, :focus-within),
+.aiux543-user-attachment-chip:is(:hover, :focus-visible, :focus-within) {
+  background-color: #3B3E45;
   outline: none;
 }
 
 .ai-chat-attachment-chip:active {
-  background: #45484F;
+  background-color: #45484F;
 }
 
 .ai-chat-attachment-icon,
@@ -16590,13 +16708,11 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-chat-attachment-close-button,
 .aiux543-composer-attachment-remove {
-  position: absolute;
-  top: 1px;
-  left: 3px;
+  position: static;
   display: inline-flex;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   align-items: center;
   justify-content: center;
   margin: 0;
@@ -16604,13 +16720,12 @@ button.aiux543-answer-change-card:focus-visible {
   background: transparent;
   overflow: hidden;
   color: #B4B8BF;
-  opacity: 0;
-  pointer-events: none;
-  transition: width 120ms ease, opacity 120ms ease, color 120ms ease;
+  opacity: 1;
+  pointer-events: auto;
+  transition: color 120ms ease, background-color 120ms ease;
 }
 
-.ai-chat-attachment-chip:hover .ai-chat-attachment-close-button,
-.ai-chat-attachment-chip:focus-within .ai-chat-attachment-close-button,
+.ai-chat-attachment-chip.has-remove-action:is(:hover, :focus-visible, :focus-within) .ai-chat-attachment-close-button,
 .aiux543-composer-attachment-chip:hover .aiux543-composer-attachment-remove,
 .aiux543-composer-attachment-chip:focus-within .aiux543-composer-attachment-remove {
   opacity: 1;
@@ -16619,34 +16734,14 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-chat-attachment-close-button .icon,
 .aiux543-composer-attachment-remove .icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
-.ai-chat-attachment-chip.has-remove-action:hover > .ai-chat-attachment-icon,
-.ai-chat-attachment-chip.has-remove-action:focus-within > .ai-chat-attachment-icon {
-  opacity: 0;
-}
-
-.ai-chat-attachments-show-all {
-  all: unset;
-  display: inline-flex;
-  height: 20px;
-  box-sizing: border-box;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  border-radius: 4px;
-  background: #F2C55C;
-  color: #1E1F22;
-  cursor: pointer;
-  font: 600 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.ai-chat-attachments-show-all:hover,
-.ai-chat-attachments-show-all:focus-visible {
-  background: #FFD463;
-  outline: none;
+.ai-chat-attachment-close-button:is(:hover, :focus-visible),
+.aiux543-composer-attachment-remove:is(:hover, :focus-visible) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #D1D3D9;
 }
 
 .ai-chat-attachment-path-tooltip {
@@ -17868,63 +17963,94 @@ button.aiux543-answer-change-card:focus-visible {
   color: #7f838c;
 }
 
+/* Collapsed and expanded states render the same severity/file/comment tree.
+   The collapsed state only clips that continuous tree; Show more reveals it. */
 .aiux550-review-summary-message {
-  box-sizing: border-box;
   width: min(750px, 100%);
-  overflow: visible;
-  margin: 10px auto 12px;
-  border: 1px solid #383c43;
-  border-radius: 10px;
-  background: #191b1f;
+  max-height: clamp(480px, 58vh, 620px);
+  margin: 10px auto 14px;
+}
+
+.aiux550-review-summary-message,
+.aiux550-review-summary-decision {
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #40434a;
+  border-radius: 8px;
+  background: #191a1c;
   color: #d1d3d9;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.aiux550-review-summary-message {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  scroll-margin-top: 72px;
+}
+
+.aiux550-review-summary-message.is-expanded {
+  max-height: none;
 }
 
 .aiux550-review-summary-message-head {
   display: flex;
-  min-height: 42px;
+  height: 34px;
+  flex: 0 0 34px;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-bottom: 1px solid #2f3339;
-  background: #25282d;
-  font: 500 15px/22px Inter, system-ui, sans-serif;
-}
-
-.aiux550-review-summary-open {
-  display: inline-flex;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 6px;
-  margin-left: auto;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
+  padding: 0 6px 0 12px;
+  background: #26282c;
+}
+
+.aiux550-review-summary-message-title,
+.aiux550-review-summary-message-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.aiux550-review-summary-message-title {
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+  color: #9fa2a8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux550-review-summary-message-title > .icon {
+  flex: 0 0 16px;
   color: #b4b8bf;
-  font: 500 12px/16px Inter, system-ui, sans-serif;
-  cursor: pointer;
 }
 
-.aiux550-review-summary-status {
-  margin-left: auto;
+.aiux550-review-summary-message-actions {
+  flex: 0 0 auto;
+  gap: 6px;
 }
 
-.aiux550-review-summary-status + .aiux550-review-summary-open {
-  margin-left: 4px;
+.aiux550-review-summary-content {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: #191a1c;
 }
 
-.aiux550-review-summary-open:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #d1d3d9;
+.aiux550-review-summary-content.is-expanded {
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .aiux550-review-summary-body {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px 22px 16px;
+  align-items: flex-start;
+  padding: 12px;
 }
 
 .aiux550-review-summary-body h3,
@@ -17935,39 +18061,188 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-body h3 {
   color: #dfe1e5;
-  font: 750 24px/31px Inter, system-ui, sans-serif;
-  letter-spacing: -0.015em;
 }
 
 .aiux550-review-summary-body h4 {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 0 8px;
   color: #dfe1e5;
-  font: 700 16px/22px Inter, system-ui, sans-serif;
 }
 
 .aiux550-review-summary-body p {
-  color: #8e939d;
-  font: 500 14px/22px Inter, system-ui, sans-serif;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 0;
+  color: #d1d3d9;
 }
 
-.aiux550-review-summary-files {
+.aiux550-review-summary-message:not(.is-expanded) .aiux550-review-summary-body > p:not(.aiux550-review-summary-findings-brief) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.aiux550-review-summary-findings-brief {
+  color: #9fa2a8 !important;
+}
+
+.aiux550-review-summary-groups,
+.aiux550-review-summary-group,
+.aiux550-review-summary-group-comments {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+}
+
+.aiux550-review-summary-groups {
+  gap: 20px;
+  margin-bottom: 8px;
+}
+
+.aiux550-review-summary-findings-head {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 8px;
+}
+
+.aiux550-review-summary-findings-head h4 {
+  width: auto;
+  padding: 0;
+}
+
+.aiux550-review-summary-findings-head > span {
+  min-width: 0;
+  color: #7f838c;
+  white-space: nowrap;
+}
+
+.aiux550-review-summary-group {
+  gap: 6px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.aiux550-review-summary-group > .aiux-review-comment-group-header {
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.aiux550-review-summary-group-comments {
+  gap: 12px;
+}
+
+/* The chat preview renders comment cards only. The full source diff stays one
+   click away in the review tab, while severity, file and line remain visible
+   in the compact card. */
+.aiux550-review-summary-group-comments .plan-diff-overlay {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.aiux550-review-summary-group-comments .plan-diff-scroll {
+  height: auto;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.aiux550-review-summary-group-comments .plan-diff-code {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.aiux550-review-summary-group-comments .plan-diff-comments-only {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 8px;
-  margin-top: 2px;
+  padding: 0;
+}
+
+.aiux550-review-summary-group-comments .plan-diff-comments-only:empty {
+  display: none;
+}
+
+.aiux550-review-summary-file-card.aiux-review-overview-file {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 6px;
+}
+
+.aiux550-review-summary-group-comments .aiux550-review-summary-file-card.aiux-review-overview-file {
+  border: 0;
+  border-radius: 0;
+}
+
+.aiux550-review-summary-group-comments .aiux550-review-summary-file-card + .aiux550-review-summary-file-card {
+  border-top: 1px solid #393b40;
+}
+
+.aiux550-review-summary-file-card .aiux-review-overview-file-body {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.aiux550-review-summary-file-card .aiux-review-overview-file-head {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.aiux550-review-summary-file-card .aiux-review-overview-file-open {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.aiux550-review-summary-file-card .aiux-review-overview-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiux550-review-summary-file-card .aiux-review-overview-file-actions {
+  flex: 0 0 auto;
 }
 
 .aiux550-review-summary-file {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.aiux550-review-summary-file + .aiux550-review-summary-file {
+  margin-top: 12px;
 }
 
 .aiux550-review-summary-file-head {
   display: flex;
-  min-height: 28px;
+  min-height: 24px;
   align-items: center;
   gap: 8px;
-  padding: 0 2px;
 }
 
 .aiux550-review-summary-file-head > .icon,
@@ -17982,7 +18257,7 @@ button.aiux543-answer-change-card:focus-visible {
   color: #dfe1e5;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: 650 13px/18px Inter, system-ui, sans-serif;
+  font: 600 13px/18px Inter, system-ui, sans-serif;
 }
 
 .aiux550-review-summary-file-kind {
@@ -17996,96 +18271,289 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-comment-list {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   flex-direction: column;
   gap: 8px;
 }
 
-.aiux550-review-summary-comment.spec-done-comment-popup-item {
-  padding: 12px 14px;
-  border: 1px solid #30343b;
-  border-radius: 8px;
-  background: #202226;
+.aiux550-review-summary-finding {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 8px 12px;
+  border: 1px solid #303238;
+  border-radius: 6px;
+  background: #1e2023;
 }
 
-.aiux550-review-summary-comment .spec-done-comment-agent-reply {
-  margin-top: 0;
+.aiux550-review-summary-finding-meta {
+  display: inline-flex;
+  min-height: 21px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: #868a91;
+  font: 500 12px/21px Inter, system-ui, sans-serif;
+  white-space: nowrap;
 }
 
-.aiux550-review-summary-comment .spec-done-comment-agent-reply-text,
-.aiux550-review-summary-comment .spec-done-comment-agent-reply-line {
-  margin-left: 24px;
+.aiux550-review-summary-finding > p {
+  min-width: 0;
 }
 
-.aiux550-review-summary-body .aiux550-review-summary-comment .spec-done-comment-agent-reply-text {
-  color: var(--text-primary, #dfe1e5);
-  font: 400 13px/20px Inter, system-ui, sans-serif;
+.aiux550-review-summary-body .aiux550-review-summary-finding-fix {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-top: 2px;
+  color: #9fa2a8;
 }
 
-.aiux550-review-summary-decision-copy {
-  margin-top: 2px !important;
+.aiux550-review-summary-finding-fix > span {
+  color: #6f737a;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.aiux550-review-summary-expand {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  min-width: 0;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #1a1b1d;
+  color: #868a91;
+  cursor: pointer;
+}
+
+.aiux550-review-summary-expand.is-expanded {
+  background: #1a1b1d;
+}
+
+.aiux550-review-summary-expand:hover,
+.aiux550-review-summary-expand:focus-visible {
+  color: #b4b8bf;
+  background: #202124;
+  outline: none;
+}
+
+.aiux550-review-summary-expand .icon,
+.aiux550-review-summary-expand svg {
+  width: 17px;
+  height: 16px;
+  color: #6f737a;
+}
+
+.aiux550-review-summary-expand.is-expanded .icon {
+  transform: rotate(180deg);
+}
+
+.aiux550-review-summary-decision {
+  width: 100%;
+  height: 127px;
+  padding: 0;
+  border-color: #3574f0;
+}
+
+.aiux550-review-decision-composer {
+  display: flex;
+  width: min(750px, 100%);
+  flex-direction: column;
+  gap: 0;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.aiux550-review-decision-composer .aiux550-review-summary-decision {
+  width: 100%;
+}
+
+.aiux550-review-summary-decision-title {
+  box-sizing: border-box;
+  min-height: 37px;
+  padding: 8px;
+  color: #d1d3d9;
+  font: 500 13px/21px Inter, system-ui, sans-serif;
 }
 
 .aiux550-review-summary-choices {
   display: flex;
+  box-sizing: border-box;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px 10px;
-  border-top: 1px solid #2f3339;
+  padding: 0 8px 8px;
 }
 
 .aiux550-review-summary-choice {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  min-height: 36px;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  height: 26px;
+  box-sizing: border-box;
   align-items: center;
-  gap: 10px;
-  padding: 0 8px;
+  gap: 8px;
+  padding: 4px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
-  color: #d1d3d9;
-  font: 500 15px/22px Inter, system-ui, sans-serif;
+  color: #73767c;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
   text-align: left;
   cursor: pointer;
 }
 
 .aiux550-review-summary-choice:hover,
-.aiux550-review-summary-choice.is-accept {
-  border-color: #2f67d8;
-  background: rgba(53, 116, 240, 0.14);
+.aiux550-review-summary-choice:focus-visible,
+.aiux550-review-summary-choice.is-selected {
+  border-color: #3574f0;
+  background: rgba(53, 116, 240, 0.16);
+  outline: none;
+}
+
+.aiux550-review-summary-choice.is-selected {
+  color: #d1d3d9;
 }
 
 .aiux550-review-summary-choice > .icon {
-  color: #9da3ad;
-}
-
-.aiux550-review-summary-reject-icon {
-  position: relative;
   width: 16px;
   height: 16px;
-  border: 1.5px solid #9da3ad;
-  border-radius: 50%;
+  color: #b4b8bf;
 }
 
-.aiux550-review-summary-reject-icon::after {
-  position: absolute;
-  top: 6px;
-  left: 2px;
-  width: 11px;
-  height: 1.5px;
-  background: #9da3ad;
-  content: "";
-  transform: rotate(-45deg);
+.aiux550-review-summary-choice.is-selected > .icon {
+  color: #548af7;
 }
 
-.aiux550-review-summary-key {
-  min-width: 34px;
+.aiux550-review-summary-revision {
+  cursor: text;
+}
+
+.aiux550-review-summary-revision input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  caret-color: #d1d3d9;
+  font: inherit;
+}
+
+.aiux550-review-summary-revision input::placeholder {
+  color: #73767c;
+  opacity: 1;
+}
+
+.aiux550-review-summary-navigation {
+  color: #73767c;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.aiux550-review-summary-decision-actions {
+  display: flex;
+  min-height: 30px;
+  box-sizing: border-box;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.aiux550-review-summary-decision-actions > button {
+  height: 24px;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 3px 12px;
+  border-radius: 4px;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-summary-decision-actions > button:first-child {
+  min-width: 72px;
+  border-color: #40434a;
+  background: transparent;
+}
+
+.aiux550-review-summary-decision-actions > button:last-child {
+  background: #3574f0;
+}
+
+.aiux550-review-summary-button-key {
+  margin-left: 4px;
+  color: #73767c;
+  font-size: 12px;
+  opacity: 1;
+}
+
+.aiux550-review-summary-decision-actions > button:last-child .aiux550-review-summary-button-key {
+  color: rgba(209, 211, 217, 0.5);
+}
+
+.aiux550-review-decision-footer {
+  display: flex;
+  height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 2px 0;
+  color: #4c4f56;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-decision-footer,
+.aiux550-review-decision-footer-left,
+.aiux550-review-decision-footer span {
+  box-sizing: border-box;
+}
+
+.aiux550-review-decision-footer-left,
+.aiux550-review-decision-footer-left > span,
+.aiux550-review-decision-footer > span:last-child {
+  display: inline-flex;
+  align-items: center;
+}
+
+.aiux550-review-decision-footer-left {
+  gap: 0;
+}
+
+.aiux550-review-decision-footer-left > span,
+.aiux550-review-decision-footer > span:last-child {
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.aiux550-review-decision-footer-left > span {
   padding: 2px 6px;
-  border-radius: 6px;
-  background: #3a3e47;
-  color: #aeb3bd;
-  font: 600 12px/16px Inter, system-ui, sans-serif;
-  text-align: center;
+}
+
+.aiux550-review-decision-footer > span:last-child {
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.aiux550-review-decision-footer .icon,
+.aiux550-review-decision-footer svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: #5f6269;
 }
 
 /* "Solved" status pill — shown on resolved notes (done card items and answered
@@ -18945,6 +19413,35 @@ button.aiux543-answer-change-card:focus-visible {
   background: #1b1c1f;
 }
 
+.aiux-review-overview-intro {
+  width: 100%;
+  max-width: 1226px;
+  box-sizing: border-box;
+  margin: 0 auto 12px;
+  padding: 14px 12px 16px;
+  background: #1b1c1f;
+}
+
+.aiux-review-overview-intro-inner {
+  width: 100%;
+  max-width: 1226px;
+  box-sizing: border-box;
+  margin: 0 auto;
+}
+
+.aiux-review-overview-intro h2 {
+  margin: 0 0 5px;
+  color: #dfe1e5;
+  font: 600 16px/22px Inter, system-ui, sans-serif;
+}
+
+.aiux-review-overview-intro p {
+  max-width: 1100px;
+  margin: 0;
+  color: #9fa2a8;
+  font: 400 13px/19px Inter, system-ui, sans-serif;
+}
+
 /* Review navigation inside a single-file diff toolbar (file arrows + files popup
    trigger + comment arrows). */
 .aiux-review-diffnav {
@@ -19068,7 +19565,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux-review-filter-trigger-group.toolbar-button {
-  width: 132px;
+  width: 148px;
 }
 
 .aiux-review-filter-trigger-severity.toolbar-button {
@@ -19601,12 +20098,6 @@ button.aiux543-answer-change-card:focus-visible {
   margin-left: auto;
 }
 
-.aiux-review-overview-file-bulk-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
 /* Clickable filename+summary → opens the file's full diff tab. */
 .aiux-review-overview-file-open {
   display: flex;
@@ -19647,41 +20138,6 @@ button.aiux543-answer-change-card:focus-visible {
   font: 400 13px/18px Inter, system-ui, sans-serif;
 }
 
-/* Bulk actions on each file card header, grouped right after the summary. */
-.aiux-review-overview-file-resolve {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #548af7;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-  cursor: pointer;
-}
-
-.aiux-review-overview-file-resolve:hover {
-  background: #2b2d31;
-  color: #6b9bf7;
-}
-
-.aiux-review-overview-file-resolve:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.aiux-review-overview-file-resolve:disabled:hover {
-  background: transparent;
-  color: #548af7;
-}
-
-.aiux-review-overview-file-resolve.is-dismiss {
-  color: #8a8f98;
-}
-
-.aiux-review-overview-file-resolve.is-dismiss:hover {
-  color: #b4b8bf;
-}
-
 .aiux-review-overview-file-body {
   position: relative;
 }
@@ -19703,4 +20159,118 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-overview-file-body .plan-diff-code {
   min-height: 0;
+}
+
+/* Lightweight section label for the right comment column. Bulk actions live in
+   the shared toolbar, so the label does not pretend to be another card. */
+.aiux-review-comment-group-header.aiux-review-panel-cat-head {
+  min-height: 22px;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.aiux-review-comment-group-header .aiux-review-panel-cat-actions {
+  margin-left: auto;
+}
+
+/* Right-column full view stays flat: label followed by real comment cards. */
+.aiux-review-panel-cat.has-review-group-header {
+  gap: 0;
+}
+
+.aiux-review-panel-cat.has-review-group-header > .plan-diff-overlay {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.aiux-review-panel-cat.has-review-group-header > .plan-diff-overlay + .plan-diff-overlay {
+  margin-top: 8px;
+}
+
+/* Review comment cards are embedded content, not floating popups. Give them a
+   useful reading width in both the full review and the chat preview. */
+.aiux-review-overview .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup,
+.aiux550-review-summary-message .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
+  width: min(760px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  box-shadow: none;
+}
+
+.aiux-review-overview .plan-diff-aside-comment.cmp-popup.spec-done-comment-popup,
+.aiux550-review-summary-message .plan-diff-aside-comment.cmp-popup.spec-done-comment-popup {
+  border-color: #393b40;
+  background: #202124;
+  box-shadow: none;
+}
+
+/* The chat preview is narrower than the editor. Keep the embedded diff on the
+   card's inline size, then ellipsize long source lines; comments get the full
+   readable width below their target line instead of inheriting max-content. */
+.aiux550-review-summary-file-card .plan-diff-overlay,
+.aiux550-review-summary-file-card .plan-diff-scroll,
+.aiux550-review-summary-file-card .plan-diff-code {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiux550-review-summary-file-card .plan-diff-scroll {
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+.aiux550-review-summary-file-card .plan-diff-code {
+  padding-bottom: 10px;
+}
+
+.aiux550-review-summary-file-card .plan-diff-row {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiux550-review-summary-file-card .plan-diff-row-code-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiux550-review-summary-file-card .plan-diff-inline-comment {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px 12px;
+}
+
+.aiux550-review-summary-file-card .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiux550-review-summary-file-card .spec-done-comment-popup-group,
+.aiux550-review-summary-file-card .spec-done-comment-popup-list,
+.aiux550-review-summary-file-card .spec-done-comment-popup-item,
+.aiux550-review-summary-file-card .spec-done-comment-popup-item-body,
+.aiux550-review-summary-file-card .spec-done-comment-agent-reply,
+.aiux550-review-summary-file-card .spec-done-comment-agent-reply-thread {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .aiux550-review-summary-findings-head {
+    flex-wrap: wrap;
+  }
+
+  .aiux550-review-summary-file-card .aiux-review-overview-file-summary {
+    display: none;
+  }
 }

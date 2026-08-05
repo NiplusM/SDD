@@ -873,6 +873,11 @@ const AI_REVIEW_AGENT_OPTIONS = [
   },
 ];
 
+function getAiReviewAgentLabel(icon = 'codex') {
+  return AI_REVIEW_AGENT_OPTIONS.find((agent) => agent.icon === icon || agent.id === icon)?.label
+    ?? 'Claude Agent';
+}
+
 const AI_REVIEW_EXISTING_SESSIONS = [
   { id: 'bugs-and-coverage', label: 'Code Review for Bugs and Test Coverage', time: '9m' },
   { id: 'gameplay-enum', label: 'Explain Gameplay Enum and Its Usage', time: '4h' },
@@ -942,6 +947,8 @@ function PlanDiffRefactorIcon() {
 export function AiReviewComposerDialog({
   open = false,
   onClose = null,
+  initialAgentId = 'codex',
+  initialInstructions = '',
   currentScopeLabel = 'New changes',
   currentFileLabel = 'VisitController.java',
   initialScopeId = 'current',
@@ -955,11 +962,16 @@ export function AiReviewComposerDialog({
   launchSource = 'diff',
   popupClassName = '',
 }) {
-  const [selectedAgentId, setSelectedAgentId] = useState('junie');
+  const resolveInitialAgentId = () => (
+    AI_REVIEW_AGENT_OPTIONS.some((item) => item.id === initialAgentId)
+      ? initialAgentId
+      : AI_REVIEW_AGENT_OPTIONS[0].id
+  );
+  const [selectedAgentId, setSelectedAgentId] = useState(resolveInitialAgentId);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [addContextRect, setAddContextRect] = useState(null);
-  const [instructions, setInstructions] = useState('');
+  const [instructions, setInstructions] = useState(initialInstructions);
   const [locationId, setLocationId] = useState(AI_REVIEW_LOCATION_OPTIONS[0].id);
   const [modelId, setModelId] = useState(AI_REVIEW_MODEL_OPTIONS[0].id);
   const [effortId, setEffortId] = useState(AI_REVIEW_EFFORT_OPTIONS[0].id);
@@ -977,18 +989,20 @@ export function AiReviewComposerDialog({
   useEffect(() => {
     if (!open) return;
     setOpenMenu(null);
+    setSelectedAgentId(resolveInitialAgentId());
     setSelectedSessionId(null);
-    setInstructions('');
+    setInstructions(initialInstructions);
     setAttachments(sourceAttachments);
     setAttachmentsExpanded(false);
     setAddContextRect(null);
-  }, [open]);
+  }, [initialAgentId, initialInstructions, open]);
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
   const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
     ?? AI_REVIEW_AGENT_OPTIONS[0];
   const selectedSession = AI_REVIEW_EXISTING_SESSIONS.find((item) => item.id === selectedSessionId) ?? null;
   const selectedLocation = AI_REVIEW_LOCATION_OPTIONS.find((item) => item.id === locationId)
     ?? AI_REVIEW_LOCATION_OPTIONS[0];
+  const canStartReview = instructions.trim().length > 0 || attachments.length > 0;
   const selectAgent = (agent) => {
     setSelectedAgentId(agent.id);
     setOpenMenu(null);
@@ -1007,6 +1021,7 @@ export function AiReviewComposerDialog({
     setAttachments((prev) => prev.filter((item) => item.id !== attachmentId));
   };
   const startReview = () => {
+    if (!canStartReview) return;
     onStartReview?.({
       agentId: selectedAgent.id,
       agentIcon: selectedAgent.icon,
@@ -1234,9 +1249,10 @@ export function AiReviewComposerDialog({
                   </button>
                   <button
                     type="button"
-                    className="plan-diff-ai-review-dialog-send"
+                    className={`plan-diff-ai-review-dialog-send${canStartReview ? ' is-active' : ''}`}
                     aria-label="Start review"
                     title="Start review"
+                    disabled={!canStartReview}
                     onClick={startReview}
                   >
                     <Icon name="general/up" size={16} className="plan-diff-ai-review-dialog-send-icon" />
@@ -1290,6 +1306,7 @@ export function AiReviewComposerDialog({
 
 export function PlanDiffNewReviewButton({
   triggerClassName = '',
+  initialInstructions = '/review',
   ...dialogProps
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1308,7 +1325,7 @@ export function PlanDiffNewReviewButton({
         >
           <span className="plan-diff-ai-review-button-content">
             <span className="plan-diff-ai-review-button-icon">
-              <Icon name="general/balloon" size={16} />
+              <AiChatAgentIcon icon={dialogProps.initialAgentId ?? 'codex'} title="AI Review" />
             </span>
             <span className="plan-diff-ai-review-button-label">AI Review</span>
           </span>
@@ -1316,6 +1333,7 @@ export function PlanDiffNewReviewButton({
       </span>
       <AiReviewComposerDialog
         {...dialogProps}
+        initialInstructions={initialInstructions}
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
       />
@@ -1453,6 +1471,7 @@ export function DiffInlineCommentPopup({
   const normalizedCommentContextLabel = typeof commentContextLabel === 'string'
     ? commentContextLabel.trim()
     : '';
+  const commentAgentLabel = getAiReviewAgentLabel(commentContextIcon);
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
@@ -1914,9 +1933,9 @@ export function DiffInlineCommentPopup({
         <div className="spec-done-comment-agent-reply-thread">
           <div className="spec-done-comment-agent-reply-head">
             <span className={`spec-done-comment-agent-reply-avatar${isProcessing && showProcessingInReply ? ' is-processing' : ''}`} aria-hidden="true">
-              {isProcessing && showProcessingInReply ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
+              {isProcessing && showProcessingInReply ? <Loader size={16} /> : <AiChatAgentIcon icon={commentContextIcon} />}
             </span>
-            <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
+            <span className="spec-done-comment-agent-reply-name">{commentAgentLabel}</span>
             {hasReviewSeverity && (
               <span className={`spec-done-status-severity is-${severity}`}>{severity}</span>
             )}
@@ -2644,6 +2663,12 @@ function shouldFixRow(comment) {
 const PLAN_DIFF_OPEN_SEVERITY_FILTERS = ['critical', 'warning', 'info'];
 const PLAN_DIFF_UNCLASSIFIED_FILTER = 'unclassified';
 
+function planDiffCommentSeverityPriority(comment) {
+  const severity = String(comment?.severity || '').trim().toLowerCase();
+  const index = PLAN_DIFF_OPEN_SEVERITY_FILTERS.indexOf(severity);
+  return index === -1 ? PLAN_DIFF_OPEN_SEVERITY_FILTERS.length : index;
+}
+
 function normalizePlanDiffSeverityFilter(value = 'all') {
   const rawValues = Array.isArray(value)
     ? value
@@ -2706,6 +2731,7 @@ export function PlanDiffOverlay({
   onCommentNavigate = null,
   commentIndexFileLabel = '',
   showCommentIndexFileLabel = false,
+  commentIndexGroupId = '',
   commentIndexStatusFilter = 'all',
   onReviewProcessingChange = null,
   inlineCommentRowIdOnly = false,
@@ -2744,9 +2770,11 @@ export function PlanDiffOverlay({
     return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   }, [severityFilter]);
   const isCommentMatchingIndexFilter = useCallback((comment) => {
+    if (commentIndexGroupId && String(comment?.groupId || '') !== commentIndexGroupId) return false;
     const filterValues = normalizePlanDiffSeverityFilter(severityFilter);
     const isResolved = Boolean(comment && typeof comment === 'object' && comment.resolved);
     const isReplied = !isResolved && typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0;
+    if (commentIndexStatusFilter === 'unresolved' && isResolved) return false;
     if (commentIndexStatusFilter === 'resolved' && !isResolved) return false;
     if (commentIndexStatusFilter === 'replied' && !isReplied) return false;
     if (commentIndexStatusFilter === 'open' && (isResolved || isReplied)) return false;
@@ -2762,7 +2790,7 @@ export function PlanDiffOverlay({
       ? comment.severity.toLowerCase()
       : '';
     return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
-  }, [commentIndexStatusFilter, severityFilter]);
+  }, [commentIndexGroupId, commentIndexStatusFilter, severityFilter]);
   const isCommentHiddenForRender = useCallback(
     (comment) => !isCommentVisibleForRender(comment),
     [isCommentVisibleForRender],
@@ -3973,7 +4001,25 @@ export function PlanDiffOverlay({
         <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
           <div className="plan-diff-code">
 	          {(() => {
-	            const renderPlanDiffRows = (renderMode = 'unified') => displayRows.map((row) => {
+	            const renderPlanDiffRows = (renderMode = 'unified') => {
+                const rowsForRender = renderMode === 'aside-comments'
+                  ? displayRows
+                    .map((row, index) => {
+                      const rowIndexComments = [
+                        ...(diffComments[row.id] ?? []),
+                        ...(normalizedDocumentDiffComments[row.id] ?? []),
+                        ...normalizedCommentSessions.flatMap((session) => session.comments[row.id] ?? []),
+                      ].filter(isCommentMatchingIndexFilter);
+                      const severityPriority = rowIndexComments.length > 0
+                        ? Math.min(...rowIndexComments.map(planDiffCommentSeverityPriority))
+                        : PLAN_DIFF_OPEN_SEVERITY_FILTERS.length + 1;
+                      return { row, index, severityPriority };
+                    })
+                    .sort((left, right) => left.severityPriority - right.severityPriority || left.index - right.index)
+                    .map(({ row }) => row)
+                  : displayRows;
+
+                return rowsForRender.map((row) => {
             const hasInlineHighlight = row.kind === 'added' || row.kind === 'removed';
             const rowComments = diffComments[row.id] ?? [];
             const isRowCommentPending = pendingCommentRowIdSet.has(row.id);
@@ -4751,6 +4797,8 @@ export function PlanDiffOverlay({
 	                (group?.comments ?? [])
 	                  .filter(isCommentMatchingIndexFilter)
 	                  .map((comment) => ({ comment, group }))
+	              )).sort((left, right) => (
+	                planDiffCommentSeverityPriority(left.comment) - planDiffCommentSeverityPriority(right.comment)
 	              ));
 	              if (indexComments.length === 0) return null;
 	              return (
@@ -4769,7 +4817,9 @@ export function PlanDiffOverlay({
 	                    const displayText = text || group?.label || 'AI Note';
 	                    const lineLabel = getCommentEntryLineLabel(comment) || rowLineLabel;
 	                    const fileLabel = showCommentIndexFileLabel && commentIndexFileLabel ? commentIndexFileLabel : '';
-	                    const metaLabel = [lineLabel, fileLabel].filter(Boolean).join(' · ');
+	                    const metaLabel = [fileLabel, lineLabel].filter(Boolean).join(' · ');
+	                    const codeContext = String(row?.text || '').trim();
+	                    const fileIcon = /\.java$/iu.test(fileLabel) ? 'fileTypes/java' : 'fileTypes/text';
 	                    const targetRowIds = getDiffCommentTargetRowIdsForComment(comment, row.id);
 	                    const source = typeof comment?.source === 'string' ? comment.source : 'diff';
 	                    const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : commentIndex;
@@ -4842,9 +4892,9 @@ export function PlanDiffOverlay({
 	                                    <div className="spec-done-comment-agent-reply-thread">
 	                                      <div className="spec-done-comment-agent-reply-head">
 	                                        <span className={`spec-done-comment-agent-reply-avatar${isProcessing ? ' is-processing' : ''}`} aria-hidden="true">
-	                                          {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon="claude" />}
+	                                          {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon={commentContextIcon} />}
 	                                        </span>
-	                                        <span className="spec-done-comment-agent-reply-name">Claude Agent</span>
+	                                        <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
                                         {resolveKeepsComment && ['critical', 'warning', 'info'].includes(String(comment?.severity || '').toLowerCase()) && (
                                           <span className={`spec-done-status-severity is-${String(comment.severity).toLowerCase()}`}>
                                             {String(comment.severity).toLowerCase()}
@@ -4856,7 +4906,15 @@ export function PlanDiffOverlay({
 	                                      </div>
 	                                      <span className="spec-done-comment-agent-reply-text plan-diff-aside-comment-text">{displayText}</span>
 	                                      {metaLabel && (
-	                                        <span className="plan-diff-aside-comment-meta text-ui-small">{metaLabel}</span>
+	                                        <span className="plan-diff-aside-comment-meta text-ui-small">
+	                                          {fileLabel && <Icon name={fileIcon} size={16} />}
+	                                          <span>{metaLabel}</span>
+	                                        </span>
+	                                      )}
+	                                      {codeContext && (
+	                                        <span className="plan-diff-aside-comment-code-context text-editor-small">
+	                                          {codeContext}
+	                                        </span>
 	                                      )}
 	                                      {!resolved && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
 	                                        <div className="spec-done-comment-agent-reply-actions plan-diff-aside-comment-actions">
@@ -4949,7 +5007,8 @@ export function PlanDiffOverlay({
 	                {renderCommentRow()}
 	              </Fragment>
 	            );
-	          });
+	            });
+	            };
 	          return effectiveViewMode === 'split' ? (
 	            <div className="plan-diff-split-code">
 	              <div className="plan-diff-split-pane plan-diff-split-pane-left">

@@ -79,6 +79,7 @@ export function FinalPresetDialog({
 
   const defaultPresetModified = Boolean(draft.defaultPresetModified);
   const recommendedDraft = Boolean(draft.managedRecommendation);
+  const lockedDraft = Boolean(draft.lockedPreset);
 
   const update = (key, nextValue) => {
     const nextDraft = {
@@ -121,10 +122,12 @@ export function FinalPresetDialog({
   };
   // `defaultPresets` may already start with the recommended agent; the managed preset replaces it.
   const installedAgentPresets = defaultPresets.filter((item) => !item.recommended);
+  const lockedCustomPresets = presets.filter((item) => item.lockedPreset);
+  const editableCustomPresets = presets.filter((item) => !item.lockedPreset);
   const dialogPresetItems = (
     // Every installed agent gets a preset row, so the list always offers a starting point.
     customPresetsOnly
-      ? [FINAL_MANAGED_RECOMMENDED_PRESET, ...installedAgentPresets, ...presets]
+      ? [FINAL_MANAGED_RECOMMENDED_PRESET, ...lockedCustomPresets, ...installedAgentPresets, ...editableCustomPresets]
       : [...defaultPresets, ...presets]
   ).map((item) => (
     item.id === draft.id ? { ...item, ...draft } : item
@@ -148,6 +151,7 @@ export function FinalPresetDialog({
         ...draft,
         ...item,
         managedRecommendation: Boolean(item.managedRecommendation),
+        lockedPreset: Boolean(item.lockedPreset),
         defaultPreset: false,
         defaultPresetModified: false,
       }, { promote: false });
@@ -160,6 +164,7 @@ export function FinalPresetDialog({
       preset: false,
       // Leaving the managed recommendation keeps the editor read-only on the agent we just picked.
       managedRecommendation: false,
+      lockedPreset: false,
       defaultPreset: true,
       presetKind: 'default',
       defaultPresetModified: Boolean(item.defaultPresetModified),
@@ -206,7 +211,7 @@ export function FinalPresetDialog({
         <span className="aiux550f4-final-final-preset-list-label">
           <span>{item.label}</span>
           {/* The lock sits next to the name; the trailing cell is reserved for the checkmark. */}
-          {item.managedRecommendation ? (
+          {item.managedRecommendation || item.lockedPreset ? (
             <Icon name="general/locked" size={16} className="aiux550f4-final-final-preset-list-lock" />
           ) : null}
           {!defaultItem && item.secondaryLabel ? <span>{item.secondaryLabel}</span> : null}
@@ -258,7 +263,7 @@ export function FinalPresetDialog({
               <button
                 type="button"
                 aria-label="Remove preset"
-                disabled={empty || recommendedDraft || (!draft.id && !draft.defaultPreset)}
+                disabled={empty || recommendedDraft || lockedDraft || (!draft.id && !draft.defaultPreset)}
                 onClick={() => {
                   const isCurrentPreset = (item) => (draft.defaultPreset
                     ? item.defaultPreset && item.agentId === draft.agentId
@@ -281,15 +286,15 @@ export function FinalPresetDialog({
               <button
                 type="button"
                 aria-label="Duplicate preset"
-                disabled={empty || recommendedDraft}
+                disabled={empty || recommendedDraft || lockedDraft}
                 onClick={() => onDuplicate?.(draft)}
               >
                 <Icon name="general/copy" size={16} />
               </button>
-              <button type="button" aria-label="Move preset up" disabled={empty || recommendedDraft}>
+              <button type="button" aria-label="Move preset up" disabled={empty || recommendedDraft || lockedDraft}>
                 <Icon name="general/moveUp" size={16} />
               </button>
-              <button type="button" aria-label="Move preset down" disabled={empty || recommendedDraft}>
+              <button type="button" aria-label="Move preset down" disabled={empty || recommendedDraft || lockedDraft}>
                 <Icon name="general/moveDown" size={16} />
               </button>
             </div>

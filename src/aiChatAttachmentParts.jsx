@@ -1,6 +1,6 @@
 // Attachment chip primitives shared by the chat composer (App.jsx) and the AI Review popup
 // (PlanDiffView.jsx), so a chip looks and reads the same wherever it is rendered.
-import { Icon, TooltipHelp } from '@jetbrains/int-ui-kit';
+import { Button, Icon, TooltipHelp } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import {
   getAiChatAttachmentCommentPreviewItems,
@@ -58,10 +58,11 @@ export function isAiChatImageAttachment(attachment = null) {
 }
 
 export function shouldShowAiChatAttachmentPathTooltip(attachment = null) {
-  const label = typeof attachment?.label === 'string' ? attachment.label.trim() : '';
   const fullLabel = getAiChatAttachmentFullLabel(attachment);
-  if (!fullLabel) return false;
-  return fullLabel.includes('/') || fullLabel.length > Math.max(34, label.length + 4);
+  // This is the fallback hover content for attachments that do not carry
+  // comments or an image preview. Keep it for short labels too: otherwise a
+  // regular diff/file chip has no hover element at all.
+  return fullLabel.length > 0;
 }
 
 export function AiChatAttachmentPathTooltip({ attachment = null }) {
@@ -363,9 +364,11 @@ export function AiChatAttachmentStrip({
         );
       })}
       {hasOverflow && (
-        <button
-          type="button"
+        <Button
+          type="secondary"
+          size="slim"
           className="ai-chat-attachments-show-all"
+          aria-expanded={expanded}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -373,7 +376,7 @@ export function AiChatAttachmentStrip({
           }}
         >
           {expanded ? 'Show less' : `Show all${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`}
-        </button>
+        </Button>
       )}
     </div>
   );

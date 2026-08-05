@@ -146,6 +146,7 @@ export const FINAL_AI_REVIEW_PRESET = {
   defaultPreset: false,
   presetKind: 'custom',
   autoUpdate: false,
+  lockedPreset: true,
 };
 
 export const FINAL_INITIAL_PRESETS = [FINAL_AI_REVIEW_PRESET];
