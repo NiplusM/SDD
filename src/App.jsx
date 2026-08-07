@@ -23645,6 +23645,61 @@ export default function App() {
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const isReviewDiffTab = Boolean(activeTabContent?.reviewDiffOverview);
+  const activeEditorQuoteSelections = useMemo(() => {
+    if (!activeTabId || (!isDiffTab && !isPlainFileOverlayTab)) return [];
+
+    const selectionsById = new Map();
+    const collectAttachment = (attachment, fallbackChatId = null) => {
+      const contextChatId = attachment?.chatId ?? fallbackChatId;
+      const contextChatTitle = contextChatId
+        ? (
+            getAiChatListItemById(contextChatId)?.title
+            ?? aiChatDraftSessionsById[contextChatId]?.title
+            ?? 'New Chat'
+          )
+        : 'New Chat';
+      getSelectionContextItems(attachment).forEach((selection) => {
+        if (
+          selection?.isChatSelectionContext
+          || selection?.sourceTabId !== activeTabId
+          || !Array.isArray(selection?.rowIds)
+          || selection.rowIds.length === 0
+        ) {
+          return;
+        }
+        const selectionKey = selection.id
+          ?? `${selection.sourceTabId}:${selection.rowIds.join(',')}:${selection.selectedText ?? ''}`;
+        selectionsById.set(selectionKey, {
+          ...selection,
+          contextChatId,
+          contextChatTitle,
+        });
+      });
+    };
+
+    Object.entries(aiChatSelectionContextByChatId).forEach(([chatId, attachments]) => {
+      (Array.isArray(attachments) ? attachments : []).forEach((attachment) => {
+        collectAttachment(attachment, chatId);
+      });
+    });
+    Object.entries(aiChatSentMessagesByChatId).forEach(([chatId, messages]) => {
+      (Array.isArray(messages) ? messages : []).forEach((message) => {
+        (Array.isArray(message?.attachments) ? message.attachments : []).forEach((attachment) => {
+          collectAttachment(attachment, chatId);
+        });
+      });
+    });
+
+    return [...selectionsById.values()];
+  }, [
+    activeTabId,
+    aiChatDraftSessionsById,
+    aiChatSelectionContextByChatId,
+    aiChatSentMessagesByChatId,
+    getAiChatListItemById,
+    isDiffTab,
+    isPlainFileOverlayTab,
+  ]);
   const activeReviewSummary = isReviewDiffTab && activeTabContent?.reviewChatId
     ? [...(aiChatSentMessagesByChatId[activeTabContent.reviewChatId] ?? [])]
       .reverse()
@@ -28189,6 +28244,7 @@ export default function App() {
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
+                    contextSelections={activeEditorQuoteSelections}
                     composerAttachments={aiChatComposerDiffAttachments}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffCommentsWithPending}

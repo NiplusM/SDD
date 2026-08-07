@@ -2783,6 +2783,7 @@ function normalizePlanDiffSeverityFilter(value = 'all') {
 
 export function PlanDiffOverlay({
   diffData,
+  contextSelections = [],
   initialDiffComments = {},
   documentDiffComments = {},
   documentContextLabel = '',
@@ -2911,6 +2912,47 @@ export function PlanDiffOverlay({
     () => orderPlanDiffRowsForDisplay(diffData?.rows ?? []),
     [diffData?.rows],
   );
+  const contextSelectionRangesByRowId = useMemo(() => {
+    const rowsById = new Map((diffData?.rows ?? []).map((row) => [row.id, row]));
+    const rangesByRowId = new Map();
+    contextSelections.forEach((selection) => {
+      const rowIds = (Array.isArray(selection?.rowIds) ? selection.rowIds : [])
+        .filter((rowId) => rowsById.has(rowId));
+      if (rowIds.length === 0) return;
+
+      const selectedText = String(selection?.selectedText ?? '').replace(/\r\n?/g, '\n');
+      const selectedLines = selectedText.split('\n');
+      rowIds.forEach((rowId, rowIndex) => {
+        const row = rowsById.get(rowId);
+        const rowText = (row.fragments ?? [{ text: row.text || ' ' }])
+          .map((fragment) => fragment.text || ' ')
+          .join('');
+        const candidate = rowIds.length === 1
+          ? selectedText
+          : (selectedLines.length === rowIds.length ? selectedLines[rowIndex] : null);
+        const trimmedCandidate = candidate?.trim() ?? '';
+        let start = candidate ? rowText.indexOf(candidate) : -1;
+        let matchedText = candidate;
+        if (start < 0 && trimmedCandidate) {
+          start = rowText.indexOf(trimmedCandidate);
+          matchedText = trimmedCandidate;
+        }
+        if (start < 0 || !matchedText) {
+          start = 0;
+          matchedText = rowText;
+        }
+
+        const ranges = rangesByRowId.get(rowId) ?? [];
+        ranges.push({
+          start,
+          end: Math.max(start + matchedText.length, start + 1),
+          chatTitle: selection?.contextChatTitle || 'New Chat',
+        });
+        rangesByRowId.set(rowId, ranges);
+      });
+    });
+    return rangesByRowId;
+  }, [contextSelections, diffData?.rows]);
   const normalizedUiState = useMemo(
     () => normalizePlanDiffUiState(uiState),
     [uiState],
@@ -4584,9 +4626,60 @@ export function PlanDiffOverlay({
 	                );
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
 	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id);
+	              const contextSelectionRanges = contextSelectionRangesByRowId.get(row.id) ?? [];
+	              let rowTextOffset = 0;
+	              const renderedCodeFragments = (row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, index) => (
+	                <span
+	                  key={`${row.id}-fragment-${index}`}
+	                  className={`plan-diff-fragment${fragment.tone && fragment.tone !== 'plain' ? ` is-${fragment.tone}` : ''}`}
+	                >
+	                  {tokenizeCodeFragment(fragment.text || ' ', diffData?.language || 'text').map((token, tokenIndex) => {
+	                    const tokenStart = rowTextOffset;
+	                    const tokenEnd = tokenStart + token.text.length;
+	                    rowTextOffset = tokenEnd;
+	                    const boundaries = [...new Set([
+	                      0,
+	                      token.text.length,
+	                      ...contextSelectionRanges.flatMap((range) => [
+	                        Math.max(0, Math.min(token.text.length, range.start - tokenStart)),
+	                        Math.max(0, Math.min(token.text.length, range.end - tokenStart)),
+	                      ]),
+	                    ])].sort((left, right) => left - right);
+	                    return (
+	                      <span
+	                        key={`${row.id}-fragment-${index}-token-${tokenIndex}`}
+	                        className={`plan-diff-token plan-diff-token-${token.type}`}
+	                      >
+	                        {boundaries.slice(0, -1).map((segmentStart, segmentIndex) => {
+	                          const segmentEnd = boundaries[segmentIndex + 1];
+	                          if (segmentEnd <= segmentStart) return null;
+	                          const absoluteStart = tokenStart + segmentStart;
+	                          const absoluteEnd = tokenStart + segmentEnd;
+	                          const chatTitles = [...new Set(
+	                            contextSelectionRanges
+	                              .filter((range) => range.start < absoluteEnd && range.end > absoluteStart)
+	                              .map((range) => range.chatTitle),
+	                          )];
+	                          const segmentText = token.text.slice(segmentStart, segmentEnd);
+	                          if (chatTitles.length === 0) return segmentText;
+	                          return (
+	                            <mark
+	                              key={`${row.id}-fragment-${index}-token-${tokenIndex}-context-${segmentIndex}`}
+	                              className="plan-diff-context-selection-mark"
+	                              title={`Quoted in: ${chatTitles.join(', ')}`}
+	                            >
+	                              {segmentText}
+	                            </mark>
+	                          );
+	                        })}
+	                      </span>
+	                    );
+	                  })}
+	                </span>
+	              ));
 	              return (
 	              <div
-	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}`}
+	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${contextSelectionRanges.length > 0 ? ' has-context-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
                 role="button"
@@ -4705,21 +4798,7 @@ export function PlanDiffOverlay({
                   />
                   <span className="plan-diff-row-rail" aria-hidden="true" />
                   <span className="plan-diff-row-code-text">
-                    {(row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, index) => (
-                      <span
-                        key={`${row.id}-fragment-${index}`}
-                        className={`plan-diff-fragment${fragment.tone && fragment.tone !== 'plain' ? ` is-${fragment.tone}` : ''}`}
-                      >
-                        {tokenizeCodeFragment(fragment.text || ' ', diffData?.language || 'text').map((token, tokenIndex) => (
-                          <span
-                            key={`${row.id}-fragment-${index}-token-${tokenIndex}`}
-                            className={`plan-diff-token plan-diff-token-${token.type}`}
-                          >
-                            {token.text}
-                          </span>
-                        ))}
-                      </span>
-                    ))}
+                    {renderedCodeFragments}
                   </span>
                 </div>
 	              </div>
@@ -5305,6 +5384,7 @@ export function PlanDiffInline({ diffData }) {
 
 export function PlanDiffEditorArea({
   diffData,
+  contextSelections = [],
   // Attachments exactly as the chat composer renders them, so the AI Review popup opens with the
   // same chips (same notes, selections and hover cards) instead of a locally rebuilt one.
   composerAttachments = null,
@@ -5516,6 +5596,7 @@ export function PlanDiffEditorArea({
       {overlayHost && createPortal(
         <PlanDiffOverlay
           diffData={diffData}
+          contextSelections={contextSelections}
           initialDiffComments={initialDiffComments}
           documentDiffComments={documentDiffComments}
           documentContextLabel={documentContextLabel}
