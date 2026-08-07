@@ -12565,6 +12565,10 @@ function snapshotAiChatMessageAttachment(attachment = null) {
 }
 
 function getAiChatAttachmentSequenceKey(attachment = null, index = 0) {
+  const composerKey = typeof attachment?.composerSequenceKey === 'string'
+    ? attachment.composerSequenceKey.trim()
+    : '';
+  if (composerKey) return composerKey;
   const id = typeof attachment?.id === 'string' ? attachment.id.trim() : '';
   if (id) return id;
   return [
@@ -16391,6 +16395,8 @@ function AiChatTabView({
   chatId,
   scenarios = {},
   sentMessages = [],
+  composerDraft = null,
+  onComposerDraftChange = null,
   onSendMessage = null,
   onAgentChange = null,
   onOpenDiffTab = null,
@@ -16441,11 +16447,17 @@ function AiChatTabView({
   };
   const messageId = scenario?.messageId ?? `editor-chat-${chatId}`;
   const initialComposerText = typeof scenario?.initialComposerText === 'string' ? scenario.initialComposerText : '';
+  const persistedComposerText = typeof composerDraft?.text === 'string'
+    ? composerDraft.text
+    : initialComposerText;
+  const persistedComposerContentParts = Array.isArray(composerDraft?.contentParts)
+    ? composerDraft.contentParts
+    : [];
   const initialSessionModel = typeof scenario?.initialModel === 'string' ? scenario.initialModel : null;
   const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
-  const [composerText, setComposerText] = useState(initialComposerText);
-  const [composerContentParts, setComposerContentParts] = useState([]);
+  const [composerText, setComposerText] = useState(persistedComposerText);
+  const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
   const scenarioAgentId = AI_CHAT_AGENTS.some((agent) => agent.id === scenario?.icon)
     ? scenario.icon
     : 'claude';
@@ -16459,8 +16471,13 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
   const composerRef = useRef(null);
+  const composerDraftRef = useRef(composerDraft);
+  composerDraftRef.current = composerDraft;
   const previousComposerAttachmentStateRef = useRef({ chatId: null, ids: [] });
-  const composerContentPartIdRef = useRef(0);
+  const composerContentPartIdRef = useRef(persistedComposerContentParts.reduce((highestId, part) => {
+    const match = typeof part?.id === 'string' ? part.id.match(/-(\d+)$/u) : null;
+    return match ? Math.max(highestId, Number.parseInt(match[1], 10)) : highestId;
+  }, 0));
   const scrollRef = useRef(null);
   const agentPickerRef = useRef(null);
   const newSessionSettingsRef = useRef(null);
@@ -16539,7 +16556,9 @@ function AiChatTabView({
   }, []);
 
   useEffect(() => {
-    setComposerText(initialComposerText);
+    const savedDraft = composerDraftRef.current;
+    setComposerText(typeof savedDraft?.text === 'string' ? savedDraft.text : initialComposerText);
+    setComposerContentParts(Array.isArray(savedDraft?.contentParts) ? savedDraft.contentParts : []);
     setSelectedAgentId(scenarioAgentId);
     setSelectedModelOverride(initialSessionModel);
     setIsAgentMenuOpen(false);
@@ -16549,6 +16568,13 @@ function AiChatTabView({
     setIsNewSessionComposerExpanded(false);
     focusComposerAtEnd();
   }, [chatId, focusComposerAtEnd, initialComposerText, initialSessionAccess, initialSessionEffort, initialSessionModel, scenarioAgentId]);
+
+  useEffect(() => {
+    onComposerDraftChange?.(chatId, {
+      text: composerText,
+      contentParts: composerContentParts,
+    });
+  }, [chatId, composerContentParts, composerText, onComposerDraftChange]);
 
   useEffect(() => {
     setResolvedReviewDecisionId(null);
@@ -16699,14 +16725,26 @@ function AiChatTabView({
     const chatChanged = previous.chatId !== chatId;
     const previousIds = new Set(chatChanged ? [] : previous.ids);
     const addedIds = editorComposerAttachmentIds.filter((id) => !previousIds.has(id));
+    const representedComposerAttachmentIds = new Set(
+      composerContentParts
+        .filter((part) => part.type === 'attachment')
+        .map((part) => part.attachmentId),
+    );
+    const attachmentIdsToInsert = addedIds.filter((id) => !representedComposerAttachmentIds.has(id));
 
     setComposerContentParts((prev) => {
       const liveAttachmentIds = new Set(editorComposerAttachmentIds);
-      const retainedParts = chatChanged
-        ? []
-        : prev.filter((part) => part.type !== 'attachment' || liveAttachmentIds.has(part.attachmentId));
+      const retainedParts = prev.filter((part) => (
+        part.type !== 'attachment' || liveAttachmentIds.has(part.attachmentId)
+      ));
       const next = [...retainedParts];
-      if (!chatChanged && addedIds.length > 0 && composerText.trim().length > 0) {
+      const representedAttachmentIds = new Set(
+        retainedParts
+          .filter((part) => part.type === 'attachment')
+          .map((part) => part.attachmentId),
+      );
+      const unrepresentedAttachmentIds = attachmentIdsToInsert.filter((id) => !representedAttachmentIds.has(id));
+      if (unrepresentedAttachmentIds.length > 0 && composerText.length > 0) {
         composerContentPartIdRef.current += 1;
         next.push({
           id: `text-${composerContentPartIdRef.current}`,
@@ -16714,7 +16752,7 @@ function AiChatTabView({
           text: composerText,
         });
       }
-      addedIds.forEach((attachmentId) => {
+      unrepresentedAttachmentIds.forEach((attachmentId) => {
         composerContentPartIdRef.current += 1;
         next.push({
           id: `attachment-${composerContentPartIdRef.current}`,
@@ -16725,8 +16763,8 @@ function AiChatTabView({
       return next;
     });
 
-    if (addedIds.length > 0) {
-      if (!chatChanged && composerText.trim().length > 0) setComposerText('');
+    if (attachmentIdsToInsert.length > 0) {
+      if (composerText.length > 0) setComposerText('');
       focusComposerAtEnd();
     }
 
@@ -16816,6 +16854,41 @@ function AiChatTabView({
       .filter((attachmentId) => !representedComposerAttachmentIds.has(attachmentId))
       .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
   ];
+  const handleComposerBackspace = (event) => {
+    if (
+      event.key !== 'Backspace'
+      || event.nativeEvent?.isComposing
+      || event.currentTarget.selectionStart !== 0
+      || event.currentTarget.selectionEnd !== 0
+      || composerText.length > 0
+    ) {
+      return false;
+    }
+
+    const lastPart = orderedComposerParts[orderedComposerParts.length - 1];
+    if (!lastPart) return false;
+
+    if (lastPart.type === 'attachment') {
+      const attachment = composerAttachmentById.get(lastPart.attachmentId);
+      if (!attachment || !onRemoveComposerAttachment) return false;
+      event.preventDefault();
+      setComposerContentParts((parts) => parts.filter((part) => (
+        part.type !== 'attachment' || part.attachmentId !== lastPart.attachmentId
+      )));
+      onRemoveComposerAttachment(attachment, { chatId });
+      return true;
+    }
+
+    if (lastPart.type === 'text' && typeof lastPart.text === 'string') {
+      event.preventDefault();
+      setComposerContentParts((parts) => parts.filter((part) => part.id !== lastPart.id));
+      setComposerText(lastPart.text.slice(0, -1));
+      focusComposerAtEnd();
+      return true;
+    }
+
+    return false;
+  };
 
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
@@ -17185,6 +17258,7 @@ function AiChatTabView({
                   setSlashCommandMenuDismissed(false);
                 }}
                 onKeyDown={(event) => {
+                  if (handleComposerBackspace(event)) return;
                   if (showSlashCommandMenu) {
                     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                       event.preventDefault();
@@ -18037,6 +18111,7 @@ export default function App() {
   const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
+  const [aiChatComposerDraftByChatId, setAiChatComposerDraftByChatId] = useState({});
   const [pendingReviewLaunchByChatId, setPendingReviewLaunchByChatId] = useState({});
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
   const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
@@ -18059,11 +18134,29 @@ export default function App() {
   const handleAiChatAddContextPopupOpen = useCallback(() => {
     setAiChatContextPopupOpenCount((count) => Math.min(6, count + 1));
   }, []);
+  const handleAiChatComposerDraftChange = useCallback((chatId, draft) => {
+    if (!chatId) return;
+    setAiChatComposerDraftByChatId((prev) => {
+      const nextDraft = {
+        text: typeof draft?.text === 'string' ? draft.text : '',
+        contentParts: Array.isArray(draft?.contentParts) ? draft.contentParts : [],
+      };
+      const previousDraft = prev[chatId];
+      if (
+        previousDraft?.text === nextDraft.text
+        && JSON.stringify(previousDraft?.contentParts ?? []) === JSON.stringify(nextDraft.contentParts)
+      ) {
+        return prev;
+      }
+      return { ...prev, [chatId]: nextDraft };
+    });
+  }, []);
   const aiChatDraftSessionCounterRef = useRef(0);
   const [pendingDiffCommentRowsByTabId, setPendingDiffCommentRowsByTabId] = useState({});
   const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
   const [pendingDocumentDiffCommentSnapshotsByTabId, setPendingDocumentDiffCommentSnapshotsByTabId] = useState({});
   const [editorExternalCommentRequest, setEditorExternalCommentRequest] = useState(null);
+  const selectionContextSequenceRef = useRef(0);
   const editorSelectionToolbarMenuOpenRef = useRef(false);
   const editorInlineCommentOpenRef = useRef(false);
   const handleEditorSelectionToolbarMenuOpenChange = useCallback((open) => {
@@ -24256,8 +24349,6 @@ export default function App() {
     sourceLabel = 'Selected context',
     sourceTabId = null,
     sourceIcon = 'fileTypes/text',
-    chipLabel = 'Quote',
-    chipIcon = 'general/balloon',
     isChatSelectionContext = false,
     messageId = null,
     blockId = null,
@@ -24283,16 +24374,20 @@ export default function App() {
       : targetChatId;
     const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
     const stamp = Date.now();
-    // Quotes taken from chat stay independent: each chip carries exactly the
-    // selection that created it and can be removed without affecting siblings.
+    selectionContextSequenceRef.current += 1;
+    const selectionNonce = `${stamp}-${selectionContextSequenceRef.current}`;
+    // Chat quotes stay independent. File/diff context is one stable attachment
+    // per source so another selection updates its counter without replacing a
+    // neighbouring quote or inserting another file chip into the input flow.
     const attachmentId = isChatSelectionContext
-      ? `selection-context-${targetChatId}-${normalizedSourceTabId}-${stamp}`
+      ? `selection-context-${targetChatId}-${normalizedSourceTabId}-${selectionNonce}`
       : `selection-context-${targetChatId}-${normalizedSourceTabId}`;
     const selection = {
-      id: `${attachmentId}:selection-${stamp}`,
+      id: `${attachmentId}:selection-${selectionNonce}`,
       selectedText: normalizedSelectedText,
       sourceTabId: normalizedSourceTabId,
       sourceLabel: normalizedSourceLabel,
+      sourceIcon,
       isChatSelectionContext,
       messageId,
       blockId,
@@ -24306,8 +24401,8 @@ export default function App() {
     };
     const attachment = {
       id: attachmentId,
-      label: isChatSelectionContext ? normalizedSelectedText : chipLabel,
-      icon: isChatSelectionContext ? 'general/balloon' : chipIcon,
+      label: isChatSelectionContext ? normalizedSelectedText : normalizedSourceLabel,
+      icon: isChatSelectionContext ? 'general/balloon' : sourceIcon,
       hideInlineCount: isChatSelectionContext,
       isSelectionContext: true,
       isChatSelectionContext,
@@ -24315,6 +24410,7 @@ export default function App() {
       chatId: targetChatId,
       sourceTabId: normalizedSourceTabId,
       sourceLabel: normalizedSourceLabel,
+      sourceIcon,
       selectedText: normalizedSelectedText,
       messageId,
       blockId,
@@ -24332,47 +24428,46 @@ export default function App() {
       ...prev,
       [targetChatId]: (() => {
         const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
-        const existingIndex = currentAttachments.findIndex((item) => item?.id === attachmentId);
-        if (isChatSelectionContext) {
-          const nextQuoteOrder = currentAttachments
-            .flatMap((item) => getSelectionContextItems(item))
-            .filter((item) => item.isChatSelectionContext)
-            .reduce((highestOrder, item, index) => (
-              Math.max(highestOrder, Number.isInteger(item.quoteOrder) ? item.quoteOrder : index + 1)
-            ), 0) + 1;
-          return [
-            ...currentAttachments,
-            {
-              ...attachment,
-              quoteOrder: nextQuoteOrder,
-              selections: attachment.selections.map((item) => ({ ...item, quoteOrder: nextQuoteOrder })),
-            },
-          ];
-        }
-        if (existingIndex < 0) {
+        if (!isChatSelectionContext) {
+          const existingIndex = currentAttachments.findIndex((item) => (
+            !item?.isChatSelectionContext
+            && item?.sourceTabId === normalizedSourceTabId
+          ));
+          if (existingIndex >= 0) {
+            return currentAttachments.map((item, index) => {
+              if (index !== existingIndex) return item;
+              const nextSelections = [
+                ...getSelectionContextItems(item),
+                selection,
+              ];
+              return {
+                ...item,
+                label: normalizedSourceLabel,
+                icon: sourceIcon,
+                hideInlineCount: false,
+                selectionCount: nextSelections.length,
+                selectedText: selection.selectedText,
+                lineLabel: selection.lineLabel,
+                rowIds: selection.rowIds,
+                selections: nextSelections,
+              };
+            });
+          }
           return [...currentAttachments, attachment];
         }
 
-        return currentAttachments.map((item, index) => {
-          if (index !== existingIndex) return item;
-          const nextSelections = [
-            ...getSelectionContextItems(item),
-            selection,
-          ];
-          return {
-            ...item,
-            label: attachment.label ?? item.label,
-            icon: attachment.icon ?? item.icon,
-            isSelectionContext: true,
-            isChatSelectionContext: Boolean(item.isChatSelectionContext || isChatSelectionContext),
-            selectionCount: nextSelections.length,
-            selectedText: selection.selectedText,
-            lineLabel: selection.lineLabel,
-            sourceRowKey: selection.sourceRowKey ?? item.sourceRowKey ?? null,
-            sourceRowIndex: Number.isInteger(selection.sourceRowIndex) ? selection.sourceRowIndex : (item.sourceRowIndex ?? null),
-            selections: nextSelections,
-          };
-        });
+        const nextQuoteOrder = currentAttachments
+          .flatMap((item) => getSelectionContextItems(item))
+          .filter((item) => item.isChatSelectionContext)
+          .length + 1;
+        return [
+          ...currentAttachments,
+          {
+            ...attachment,
+            quoteOrder: nextQuoteOrder,
+            selections: attachment.selections.map((item) => ({ ...item, quoteOrder: nextQuoteOrder })),
+          },
+        ];
       })(),
     }));
     if (openChat) openAiToolWindow(targetChatId);
@@ -24398,7 +24493,7 @@ export default function App() {
     // "Create New Chat" in the target submenu.
     const createsNewChat = requestedChatId === NEW_CHAT_TARGET_ID;
     const boundChatId = createsNewChat
-      ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude' }).id
+      ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude', select: false }).id
       : requestedChatId.length > 0
         ? requestedChatId
         : ensureSpecStatusChat(activeSpecTopBarStatus, {
@@ -24412,12 +24507,10 @@ export default function App() {
       sourceLabel,
       sourceTabId,
       sourceIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
-      chipLabel: sourceLabel,
-      chipIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
       sourceRowKey: rowKey,
       sourceRowIndex: rowIndex,
       lineLabel,
-      openChat: !createsNewChat,
+      openChat: false,
     });
   }, [
     activeEditorTabMeta?.icon,
@@ -24478,23 +24571,13 @@ export default function App() {
         ? toolbarState.chatId
         : activeAiChatTabChatId;
       if (!selectedText || !chatId) return;
-      const chatTitle =
-        getAiChatListItemById(chatId)?.title
-        ?? getAiChatScenarioById(chatId)?.title
-        ?? activeEditorTabMeta?.label
-        ?? 'Chat';
-      const chatAgentIcon =
-        getAiChatListItemById(chatId)?.icon
-        ?? getAiChatScenarioById(chatId)?.icon
-        ?? 'claude';
 
       const didAddSelectionContext = addSelectionContextToChat({
         chatId,
         selectedText,
         sourceLabel: 'Chat response',
         sourceTabId: `ai-chat-${chatId}`,
-        chipLabel: chatTitle,
-        chipIcon: chatAgentIcon,
+        sourceIcon: 'general/balloon',
         isChatSelectionContext: true,
         messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
         blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
@@ -24522,7 +24605,7 @@ export default function App() {
       // "Create New Chat" in the target submenu: the chat is made here and the quote lands in it.
       const createsNewChat = targetContextChatId === NEW_CHAT_TARGET_ID;
       const targetChatId = createsNewChat
-        ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude' }).id
+        ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude', select: false }).id
         : targetContextChatId || selectedAiChatId;
       const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
         ? toolbarState.sourceLabel.trim()
@@ -24544,13 +24627,12 @@ export default function App() {
         selectedText,
         sourceLabel,
         sourceTabId,
-        chipLabel: sourceLabel,
-        chipIcon: activeTab?.icon ?? 'fileTypes/text',
+        sourceIcon: activeTab?.icon ?? 'fileTypes/text',
         rowIds,
         lineLabel,
-        // Creating the session already opened its tab; opening it again from here would run
-        // against not-yet-flushed state and mislabel the tab.
-        openChat: !createsNewChat,
+        // Adding context from a file is a background action: keep the current
+        // file/diff visible and let the user return to the chat explicitly.
+        openChat: false,
       });
       if (didAddSelectionContext) clearDocumentTextSelection();
       return;
@@ -24640,12 +24722,9 @@ export default function App() {
     });
   }, [
     activeAiChatTabChatId,
-    activeEditorTabMeta?.label,
     activeEditorTab,
     activePlanDiffData,
     activeTabId,
-    getAiChatListItemById,
-    getAiChatScenarioById,
     ideTabs,
     isDiffTab,
     isPlainFileOverlayTab,
@@ -24916,13 +24995,6 @@ export default function App() {
       ? aiChatAnnotationsByChatId[selectedAiChatId]
       : [];
     const chatSourceTabId = `ai-chat-${selectedAiChatId}`;
-    const chatSelectionAttachments = selectionContextAttachments.filter((attachment) => (
-      attachment?.isChatSelectionContext
-      || attachment?.sourceTabId === chatSourceTabId
-    ));
-    const nonChatSelectionAttachments = selectionContextAttachments.filter((attachment) => (
-      !chatSelectionAttachments.includes(attachment)
-    ));
     const diffEntries = Object.entries(ideTabContents)
       .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
     const pinnedDiffTabId = aiChatComposerDiffTabByChatId[selectedAiChatId] ?? null;
@@ -24997,6 +25069,7 @@ export default function App() {
 
       attachments.push({
         id: `diff-${selectedAiChatId}-${diffTabId}`,
+        composerSequenceKey: `file-context-${selectedAiChatId}-${diffTabId}`,
         label: isPlainFile ? sourceLabel : (fileData?.title || `Diff ${sourceLabel}`),
         icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : 'vcs/diff',
         commentCount: selectedSessionCommentCount,
@@ -25028,39 +25101,60 @@ export default function App() {
       });
     }
 
-    // Each "Quote in chat" action is represented by its own chip. Normalize
-    // older grouped state as well, so a chat never falls back to one agent chip
-    // with a numeric badge after navigating away and back.
-    chatSelectionAttachments.forEach((attachment) => {
-      getSelectionContextItems(attachment).forEach((selection) => {
-        attachments.push({
-          ...attachment,
-          ...selection,
-          id: selection.id ?? attachment.id,
-          label: selection.selectedText,
-          icon: 'general/balloon',
-          hideInlineCount: true,
-          isChatAnnotation: false,
-          annotations: [],
-          commentCount: 0,
-          isSelectionContext: true,
-          isChatSelectionContext: true,
-          selections: [selection],
-          selectionCount: 1,
+    // Preserve the order in which context was added while applying different
+    // entity rules: chat quotes are standalone, file selections update their
+    // source file attachment.
+    let chatQuoteOrder = 0;
+    selectionContextAttachments.forEach((attachment) => {
+      const isChatSelectionAttachment = Boolean(
+        attachment?.isChatSelectionContext
+        || attachment?.sourceTabId === chatSourceTabId
+      );
+      if (isChatSelectionAttachment) {
+        getSelectionContextItems(attachment).forEach((selection) => {
+          chatQuoteOrder += 1;
+          const orderedSelection = { ...selection, quoteOrder: chatQuoteOrder };
+          attachments.push({
+            ...attachment,
+            ...orderedSelection,
+            id: orderedSelection.id ?? attachment.id,
+            label: orderedSelection.selectedText,
+            icon: 'general/balloon',
+            hideInlineCount: true,
+            isChatAnnotation: false,
+            annotations: [],
+            commentCount: 0,
+            isSelectionContext: true,
+            isChatSelectionContext: true,
+            quoteOrder: chatQuoteOrder,
+            selections: [orderedSelection],
+            selectionCount: 1,
+          });
         });
-      });
-    });
+        return;
+      }
 
-    nonChatSelectionAttachments.forEach((attachment) => {
+      // File/diff selections belong to the file entity: show the source name
+      // and combined note count, and merge only with that exact non-quote file.
       const matchingAttachmentIndex = attachments.findIndex((candidate) => (
-        attachment?.sourceTabId
+        !candidate?.isChatSelectionContext
+        && attachment?.sourceTabId
         && (
           candidate?.sourceTabId === attachment.sourceTabId
-          || candidate?.id?.includes(attachment.sourceTabId)
+          || candidate?.diffTabId === attachment.sourceTabId
         )
       ));
       if (matchingAttachmentIndex < 0) {
-        attachments.push(attachment);
+        const selections = getSelectionContextItems(attachment);
+        attachments.push({
+          ...attachment,
+          composerSequenceKey: `file-context-${selectedAiChatId}-${attachment.sourceTabId}`,
+          label: attachment.sourceLabel || attachment.label,
+          icon: attachment.sourceIcon || attachment.icon || 'fileTypes/text',
+          hideInlineCount: false,
+          selectionCount: selections.length,
+          selections,
+        });
         return;
       }
 
@@ -25073,7 +25167,9 @@ export default function App() {
       ));
       attachments[matchingAttachmentIndex] = {
         ...matchingAttachment,
-        isSelectionContext: mergedSelections.length > 0,
+        composerSequenceKey: `file-context-${selectedAiChatId}-${attachment.sourceTabId}`,
+        isSelectionContext: true,
+        hideInlineCount: false,
         selectionCount: mergedSelections.length,
         selections: mergedSelections,
       };
@@ -25804,23 +25900,24 @@ export default function App() {
 
     if (attachment.isSelectionContext) {
       const removedSelectionIds = new Set(getSelectionContextItems(attachment).map((selection) => selection.id).filter(Boolean));
-      const attachmentSourceTabId = typeof attachment.sourceTabId === 'string' ? attachment.sourceTabId : '';
-      const attachmentSourceLabel = typeof attachment.sourceLabel === 'string' ? attachment.sourceLabel : '';
       setAiChatSelectionContextByChatId((prev) => {
         const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
-        const nextAttachments = currentAttachments.filter((item) => {
-          if (item?.id === attachment.id) return false;
+        const nextAttachments = currentAttachments.flatMap((item) => {
+          if (item?.id === attachment.id) return [];
           const itemSelections = getSelectionContextItems(item);
-          if (itemSelections.some((selection) => removedSelectionIds.has(selection.id))) return false;
-          // Chat quotes share one source tab, but are intentionally independent
-          // attachments. Removing one chip must not remove every quote from it.
-          if (attachment.isChatSelectionContext) return true;
-          const itemSourceTabId = typeof item?.sourceTabId === 'string' ? item.sourceTabId : '';
-          const itemSourceLabel = typeof item?.sourceLabel === 'string' ? item.sourceLabel : '';
-          if (attachment.diffTabId && itemSourceTabId === attachment.diffTabId) return false;
-          if (attachmentSourceTabId && itemSourceTabId === attachmentSourceTabId) return false;
-          if (attachmentSourceLabel && itemSourceLabel && itemSourceLabel === attachmentSourceLabel) return false;
-          return true;
+          const remainingSelections = itemSelections.filter((selection) => !removedSelectionIds.has(selection.id));
+          if (remainingSelections.length === itemSelections.length) return [item];
+          if (remainingSelections.length === 0) return [];
+          const lastSelection = remainingSelections[remainingSelections.length - 1];
+          return [{
+            ...item,
+            label: lastSelection.selectedText,
+            icon: 'general/balloon',
+            hideInlineCount: true,
+            selectionCount: remainingSelections.length,
+            selectedText: lastSelection.selectedText,
+            selections: remainingSelections,
+          }];
         });
         if (nextAttachments.length === currentAttachments.length) return prev;
         if (nextAttachments.length === 0) {
@@ -28175,9 +28272,12 @@ export default function App() {
             ? (
               <div className="aiux543-chat-editor-host">
                 <AiChatTabView
+                  key={activeAiChatTabChatId}
                   chatId={activeAiChatTabChatId}
                   scenarios={aiChatScenarios}
                   sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
+                  composerDraft={aiChatComposerDraftByChatId[activeAiChatTabChatId] ?? null}
+                  onComposerDraftChange={handleAiChatComposerDraftChange}
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
