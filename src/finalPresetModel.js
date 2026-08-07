@@ -131,12 +131,12 @@ export const FINAL_MANAGED_RECOMMENDED_PRESET = {
   managedRecommendation: true,
 };
 
-// Ships with the prototype's own "AI Review" preset: Codex in Chat on its defaults
-// (5.6 Luna • Full • Medium) with `/review` as the injected instruction.
+// Ships with the prototype's own "Default Review Agent" preset: Codex in Chat on its
+// defaults (5.6 Luna • Full • Medium) with `/review` as the injected instruction.
 export const FINAL_AI_REVIEW_PRESET = {
   id: 'ai-review',
-  label: 'AI Review',
-  buttonLabel: 'AI Review',
+  label: 'Default Review Agent',
+  buttonLabel: 'Default Review Agent',
   agentId: 'codex',
   runInId: 'this-mac',
   launchTarget: 'chat',

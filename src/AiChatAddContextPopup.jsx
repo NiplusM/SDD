@@ -59,7 +59,7 @@ export function AiChatAddContextPopup({
           <PopupCell icon="nodes/folder" submenu onClick={handleClose}>Files</PopupCell>
           <PopupCell icon="toolwindows/packageManager" submenu onClick={handleClose}>Skills</PopupCell>
           <PopupCell
-            icon="fileTypes/image"
+            icon="actions/viewAsImage"
             onClick={() => {
               onSelectAttachment?.({ id: 'context-image', label: 'Image', icon: 'fileTypes/image' });
               handleClose();
@@ -67,7 +67,6 @@ export function AiChatAddContextPopup({
           >
             Image...
           </PopupCell>
-
           <AiChatAddContextSeparator />
 
           <AiChatContextToggleCell

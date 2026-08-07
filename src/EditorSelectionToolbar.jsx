@@ -24,12 +24,10 @@ const CHAT_SELECTION_TOOLBAR_ITEMS = [
 const CODE_SELECTION_ACTIONS = [
   { id: 'comment', iconName: 'general/balloon', label: 'Attach AI Note', title: AI_NOTE_FILE_HINT },
   { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
-  { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
 const CHAT_SELECTION_ACTIONS = [
   { id: 'chat-add-to-chat', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
-  { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
 export function EditorSelectionToolbar({ position, onAction = null, chatTargets = [], onMenuOpenChange = null, onDismiss = null }) {

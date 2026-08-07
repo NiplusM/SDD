@@ -3223,6 +3223,24 @@ body {
   background: rgba(180, 184, 191, 0.18);
 }
 
+.ai-chat-selection-context-mark.is-navigation-highlight,
+.ai-chat-selection-context-mark.is-navigation-highlight:hover {
+  background: rgba(210, 213, 219, 0.3);
+  box-shadow: none;
+  animation: ai-chat-quote-navigation-highlight 0.9s ease-out;
+}
+
+@keyframes ai-chat-quote-navigation-highlight {
+  0%, 35% {
+    background: rgba(220, 223, 228, 0.36);
+    box-shadow: none;
+  }
+  100% {
+    background: rgba(180, 184, 191, 0.18);
+    box-shadow: none;
+  }
+}
+
 .aiux543-answer ::selection,
 .ai-chat-ai-message ::selection,
 [data-ai-chat-annotatable="true"]::selection {
@@ -4573,13 +4591,17 @@ body {
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin-top: -4px;
+  margin-top: 0;
   padding: 0;
   background: none;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   color: #9fa2a8;
+}
+
+.spec-done-comment-agent-reply-head > .spec-done-comment-popup-more-btn {
+  margin: 0 0 0 auto;
 }
 
 .spec-done-comment-popup-more-btn:hover {
@@ -6462,12 +6484,65 @@ body {
   height: 16px;
 }
 
+.plan-diff-ai-review-dialog-quick-actions {
+  display: flex;
+  min-width: 0;
+  height: 34px;
+  flex: 0 0 34px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 2px;
+  margin: 0 10px;
+  padding: 0 4px;
+  border-radius: 6px 6px 0 0;
+  background: #303136;
+  color: var(--text-muted, #9fa2a8);
+}
+
+.plan-diff-ai-review-dialog-quick-actions > button {
+  all: unset;
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.plan-diff-ai-review-dialog-quick-actions > button:hover,
+.plan-diff-ai-review-dialog-quick-actions > button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  color: var(--text-default, #d1d3d9);
+  outline: none;
+}
+
+.plan-diff-ai-review-dialog-quick-actions > button > .icon,
+.plan-diff-ai-review-dialog-quick-actions > button > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.plan-diff-ai-review-dialog-quick-actions > .plan-diff-ai-review-dialog-quick-actions-close {
+  width: 28px;
+  flex: 0 0 28px;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+}
+
 /* The composer island: 2px brand border, the input on top and the +/mic/send row pinned
-   to the bottom (Figma keeps it 153px tall). */
+   to the bottom. It stays tall enough to read as the dialog's primary work area. */
 .plan-diff-ai-review-dialog-main {
   position: relative;
   display: flex;
-  min-height: 153px;
+  min-height: 182px;
   box-sizing: border-box;
   flex: 1 1 auto;
   flex-direction: column;
@@ -7106,7 +7181,7 @@ body {
 }
 
 .plan-diff-aside-comment .spec-done-comment-popup-item {
-  padding-right: 10px;
+  padding-right: 8px;
 }
 
 .plan-diff-aside-comment .plan-diff-aside-comment-text {
@@ -7116,31 +7191,88 @@ body {
   -webkit-line-clamp: 3;
 }
 
-.plan-diff-aside-comment-meta {
-  display: inline-flex;
+.plan-diff-aside-comment-source {
+  display: flex;
   min-width: 0;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
   margin-left: var(--spec-done-comment-agent-reply-content-indent, 0);
-  color: var(--text-subtle, #8C8F97);
-  line-height: 16px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  /* One flat rectangle a step lighter than the comment card it sits in — no
+     border, no darker inset. */
+  background: #26282C;
 }
 
-.plan-diff-aside-comment-meta .icon {
-  flex: 0 0 16px;
+.plan-diff-aside-comment-source-tree > .tree-node-children {
+  border-top: 0;
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node {
+  padding-left: 6px !important;
+  cursor: pointer;
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node > .tree-node-toggle {
+  order: 4;
+  margin-right: 0;
+  margin-left: auto;
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node > .tree-node-secondary {
+  margin-left: 4px;
+  color: var(--text-muted);
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node > .tree-node-toggle .icon {
+  transition: transform 120ms ease;
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node > .tree-node-toggle:not(.expanded) .icon {
+  transform: rotate(90deg);
+}
+
+.plan-diff-aside-comment-source-tree > .tree-node > .tree-node-toggle.expanded .icon {
+  transform: rotate(180deg);
 }
 
 .plan-diff-aside-comment-code-context {
-  display: block;
+  display: flex;
   min-width: 0;
-  margin-left: var(--spec-done-comment-agent-reply-content-indent, 0);
-  padding: 5px 8px;
-  overflow: hidden;
-  border-radius: 4px;
-  background: #191a1c;
-  color: #b9bcc2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-height: 220px;
+  flex-direction: column;
+  margin-left: 0;
+  padding: 4px 0;
+  overflow: auto;
+  background: transparent;
+  color: var(--editor-text, #BCBEC4);
+  font: 12px/20px "JetBrains Mono", monospace;
+}
+
+.plan-diff-aside-comment-code-context .plan-diff-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+  min-height: 20px;
+  cursor: text;
+}
+
+.plan-diff-aside-comment-code-context .plan-diff-row-gutter {
+  grid-template-columns: 32px 32px;
+  padding: 0 4px;
+}
+
+.plan-diff-aside-comment-code-context .plan-diff-line-number {
+  min-height: 20px;
+  justify-content: flex-end;
+  padding-right: 5px;
+}
+
+.plan-diff-aside-comment-code-context .plan-diff-row-code {
+  min-height: 20px;
+  padding: 0 10px;
+}
+
+.plan-diff-aside-comment-code-context .plan-diff-row-code-text {
+  white-space: pre;
 }
 
 /* ── Panel review layout: file cards with code snippets on the left and the
@@ -7212,6 +7344,19 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* Grouped diff cards in the editor view: the category heading behaves like the one
+   in the comments list, and lines up with the centred card column beneath it. */
+.aiux-review-overview-group {
+  /* Plain block: the cards inside keep their own max-width + auto margins, exactly as
+     in the ungrouped list. Shrink-wrapping the section here squeezed the diffs. */
+  display: block;
+}
+
+
+.aiux-review-overview-group + .aiux-review-overview-group {
+  margin-top: 8px;
 }
 
 .aiux-review-panel-cat-head {
@@ -7323,7 +7468,7 @@ body {
 }
 
 .aiux-review-panel-right .spec-done-comment-popup-more-btn {
-  display: none;
+  display: flex;
 }
 
 /* The stacked diff overlay is overflow:visible and its rows use width:max-content
@@ -10272,6 +10417,21 @@ body {
   white-space: pre-wrap;
 }
 
+.ai-chat-user-card-content.is-ordered-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-chat-user-card-content.is-ordered-content .ai-chat-user-card-text {
+  order: 2;
+}
+
+.ai-chat-user-card-content.is-ordered-content .ai-chat-sent-attachment-chip {
+  margin-left: 0;
+}
+
 .ai-chat-user-card-content .ai-chat-sent-attachment-chip {
   display: inline-flex;
   max-width: min(260px, 100%);
@@ -10325,7 +10485,6 @@ body {
 .ai-chat-sent-attachment-chip {
   position: relative;
   max-width: 260px;
-  background: #2B2D30;
   cursor: pointer;
 }
 
@@ -11823,130 +11982,6 @@ body {
   background: #191a1c;
 }
 
-/* Temporary Side Chat opened from selected text. It uses the real right
-   tool-window slot, so the editor remains a separate IDE surface on the left. */
-.side-chat-tool-window {
-  width: 617px !important;
-  min-width: 617px;
-  max-width: 617px;
-  border-left: 1px solid #303238;
-  background: #191a1c;
-}
-
-.side-chat-tool-window .tool-window-header {
-  min-height: 40px;
-  border-bottom: 1px solid #303238;
-  background: #191a1c;
-}
-
-.side-chat-tool-window .tool-window-header-title {
-  display: none;
-}
-
-.side-chat-tool-window .tool-window-content {
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-  padding: 0;
-  background: #191a1c;
-}
-
-.side-chat-tool-window-header {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-}
-
-.side-chat-tool-window-tab {
-  box-sizing: border-box;
-  display: inline-flex;
-  height: 28px;
-  max-width: min(180px, 100%);
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid #2f5eb9;
-  border-radius: 4px;
-  padding: 0 4px 0 8px;
-  background: #233558;
-  color: #d7d9df;
-  font: 500 13px/20px Inter, system-ui, sans-serif;
-}
-
-.side-chat-tool-window-tab-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-chat-tool-window-tab-close {
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 3px;
-  padding: 0;
-  background: transparent;
-  color: #9fa2a8;
-  cursor: default;
-}
-
-.side-chat-tool-window-tab-close:hover,
-.side-chat-tool-window-more:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #dfe1e5;
-}
-
-.side-chat-tool-window-more {
-  margin-left: auto;
-  color: #9fa2a8;
-}
-
-.side-chat-tool-window-body {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: #191a1c;
-}
-
-.side-chat-tool-window-body > .aiux543-conversation {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  background: #191a1c;
-}
-
-.side-chat-tool-window .aiux543-conversation-scroll {
-  padding-top: 0;
-}
-
-.side-chat-tool-window-empty-state {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  left: 50%;
-  width: min(320px, calc(100% - 72px));
-  transform: translate(-50%, -50%);
-  color: #73767c;
-  font: 400 13px/18px Inter, system-ui, sans-serif;
-  text-align: center;
-  pointer-events: none;
-}
-
-.side-chat-tool-window-empty-state[aria-hidden="true"] {
-  display: none;
-}
-
-
 .aiux550-chat-tab-scroll {
 
   min-height: 0;
@@ -12483,6 +12518,30 @@ body {
   color: #1E1F22;
 }
 
+.ai-chat-changed-files-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-chat-changed-files-review {
+  all: unset;
+  color: #7BA0F7;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.ai-chat-changed-files-review:hover {
+  text-decoration: underline;
+}
+
+.ai-chat-changed-files-action-separator {
+  width: 1px;
+  height: 16px;
+  background: #4B4D52;
+}
+
 .ai-chat-changed-files-rollback {
   all: unset;
   color: #7BA0F7;
@@ -12794,6 +12853,17 @@ button.aiux543-answer-change-card:focus-visible {
   box-shadow: 0 -12px 14px #191a1c;
 }
 
+.aiux543-ai-review-banner.banner {
+  width: min(750px, 100%);
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.aiux543-ai-review-banner .banner-body {
+  min-width: 0;
+}
+
 
 /* Spec-suggestion banner shown above the composer when the chat is iterating
    on a spec. Mirrors the visual weight of system banners in the AI chat. */
@@ -12987,6 +13057,80 @@ button.aiux543-answer-change-card:focus-visible {
   border: 2px solid #3871e1;
   border-radius: 8px;
   background: #191a1c;
+}
+
+.aiux543-slash-command-menu {
+  position: absolute;
+  z-index: 120;
+  right: -2px;
+  bottom: calc(100% + 8px);
+  left: -2px;
+  overflow: hidden;
+  border: 1px solid #4b4d52;
+  border-radius: 8px;
+  background: #2b2d30;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.52);
+  color: #dfe1e5;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux543-slash-command-list {
+  max-height: min(360px, 46vh);
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.aiux543-slash-command-item {
+  all: unset;
+  display: grid;
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  grid-template-columns: minmax(140px, 0.36fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.aiux543-slash-command-item:hover,
+.aiux543-slash-command-item.is-selected {
+  background: #3a3c41;
+}
+
+.aiux543-slash-command-name {
+  overflow: hidden;
+  color: #dfe1e5;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-slash-command-description {
+  overflow: hidden;
+  color: #989ba2;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-slash-command-footer {
+  display: flex;
+  min-height: 32px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-top: 1px solid #414348;
+  color: #8b8e96;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 
@@ -16480,11 +16624,7 @@ button.aiux543-answer-change-card:focus-visible {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  background: #2b2d30;
   font: inherit;
-}
-.aiux543-user-attachment-chip:hover {
-  background: #35373b;
 }
 .aiux543-code-card-clickable {
   cursor: pointer;
@@ -16631,13 +16771,14 @@ button.aiux543-answer-change-card:focus-visible {
   line-height: 18px;
 }
 
-/* Attachments added to an empty composer lead the line; the live textarea is
-   ordered after them so its caret stays visible and subsequent typing remains
-   on that side. If text existed first, the default DOM order keeps it before
-   the attachment chips. */
-.ai-chat-inline-input-content.is-input-after-attachments > textarea,
-.ai-chat-inline-input-content.is-input-after-attachments > .aiux543-chat-input {
-  order: 2;
+.ai-chat-composer-text-segment {
+  min-width: 0;
+  min-height: 25px;
+  padding-top: 3px;
+  color: inherit;
+  font: inherit;
+  line-height: 18px;
+  white-space: pre-wrap;
 }
 
 .ai-chat-inline-input-content > .ai-chat-attachments.is-inline-composer-attachments,
@@ -16679,6 +16820,19 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-chat-attachment-chip:active {
   background-color: #45484F;
+}
+
+/* The shared #26282C above is tuned for the dark composer. Attachments of a SENT
+   message sit on the #393B40 bubble instead, so there they have to be a step lighter
+   than the message — otherwise they read as holes punched in it. */
+.aiux543-user-attachment-chip,
+.ai-chat-sent-attachment-chip {
+  background: #43454A;
+}
+
+.aiux543-user-attachment-chip:is(:hover, :focus-visible, :focus-within),
+.ai-chat-sent-attachment-chip:is(:hover, :focus-visible, :focus-within) {
+  background-color: #4B5059;
 }
 
 .ai-chat-attachment-icon,
@@ -18023,9 +18177,29 @@ button.aiux543-answer-change-card:focus-visible {
   color: #b4b8bf;
 }
 
+/* Scope totals in the preview head stay muted next to the "AI Review" label. */
+.aiux550-review-summary-message-sep,
+.aiux550-review-summary-message-total {
+  flex: 0 0 auto;
+  color: #6f737a;
+}
+
 .aiux550-review-summary-message-actions {
   flex: 0 0 auto;
   gap: 6px;
+}
+
+.aiux550-review-header-action {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  color: #b4b8bf;
+}
+
+.aiux550-review-header-action:hover,
+.aiux550-review-header-action:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #dfe1e5;
 }
 
 .aiux550-review-summary-content {
@@ -18053,39 +18227,28 @@ button.aiux543-answer-change-card:focus-visible {
   padding: 12px;
 }
 
-.aiux550-review-summary-body h3,
-.aiux550-review-summary-body h4,
-.aiux550-review-summary-body p {
+.aiux550-review-summary-body > h3,
+.aiux550-review-summary-body > h4,
+.aiux550-review-summary-body > p {
   margin: 0;
 }
 
-.aiux550-review-summary-body h3 {
+.aiux550-review-summary-body > h3 {
   color: #dfe1e5;
 }
 
-.aiux550-review-summary-body h4 {
+.aiux550-review-summary-body > h4 {
   width: 100%;
   box-sizing: border-box;
   padding: 12px 0 8px;
   color: #dfe1e5;
 }
 
-.aiux550-review-summary-body p {
+.aiux550-review-summary-body > p {
   width: 100%;
   box-sizing: border-box;
   padding: 4px 0;
   color: #d1d3d9;
-}
-
-.aiux550-review-summary-message:not(.is-expanded) .aiux550-review-summary-body > p:not(.aiux550-review-summary-findings-brief) {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.aiux550-review-summary-findings-brief {
-  color: #9fa2a8 !important;
 }
 
 .aiux550-review-summary-groups,
@@ -18100,27 +18263,8 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-groups {
   gap: 20px;
+  margin-top: 12px;
   margin-bottom: 8px;
-}
-
-.aiux550-review-summary-findings-head {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0 8px;
-}
-
-.aiux550-review-summary-findings-head h4 {
-  width: auto;
-  padding: 0;
-}
-
-.aiux550-review-summary-findings-head > span {
-  min-width: 0;
-  color: #7f838c;
-  white-space: nowrap;
 }
 
 .aiux550-review-summary-group {
@@ -19926,6 +20070,14 @@ button.aiux543-answer-change-card:focus-visible {
   gap: 8px;
 }
 
+.aiux-review-overview-controls,
+.aiux-review-overview-completion-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Split/Unified segmented control — the library SegmentedControl with icon
    labels; only alignment is nudged so it sits inline in the toolbar. */
 .aiux-review-overview-viewtoggle {
@@ -20177,6 +20329,16 @@ button.aiux543-answer-change-card:focus-visible {
   margin-left: auto;
 }
 
+/* Section heading above grouped diff cards in the editor view: same centred column
+   as the cards (.aiux-review-overview-file), so it sits over them rather than
+   spanning the whole scroll area. Must come after the reset above, which would
+   otherwise win on margin. */
+.aiux-review-overview-group > .aiux-review-comment-group-header.aiux-review-panel-cat-head {
+  width: 100%;
+  max-width: 1226px;
+  margin: 0 auto 6px;
+}
+
 /* Right-column full view stays flat: label followed by real comment cards. */
 .aiux-review-panel-cat.has-review-group-header {
   gap: 0;
@@ -20266,10 +20428,6 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 @media (max-width: 720px) {
-  .aiux550-review-summary-findings-head {
-    flex-wrap: wrap;
-  }
-
   .aiux550-review-summary-file-card .aiux-review-overview-file-summary {
     display: none;
   }

@@ -9,7 +9,6 @@ import {
   normalizePlanDiffUiState,
   DiffInlineCommentPopup,
   PlanDiffCommentBadge,
-  PlanDiffNewReviewButton,
   AiReviewComposerDialog,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
@@ -116,6 +115,7 @@ const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.jav
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
+const AI_REVIEW_ICON_NAME = 'general/balloon';
 const COMPOSER_ATTACHMENT_COLLAPSED_LIMIT = 18;
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
@@ -123,6 +123,17 @@ const AI_CHAT_AGENTS = [
   { id: 'codex', label: 'Codex', buttonLabel: 'Codex', model: '5.6 Luna', badge: 'Free usage' },
   { id: 'gemini', label: 'Gemini CLI', buttonLabel: 'Gemini CLI', model: 'Gemini 2.5 Pro' },
   { id: 'copilot', label: 'GitHub Copilot', buttonLabel: 'GitHub Copilot', model: 'GPT-5.2-Codex' },
+];
+const AI_CHAT_SLASH_COMMANDS = [
+  { command: '/review', description: 'Review current changes with the selected agent.' },
+  { command: '/compact', description: 'Summarize conversation to free up context.' },
+  { command: '/goal', description: 'Set a goal for the agent to keep pursuing.' },
+  { command: '/mcp', description: 'List configured Model Context Protocol tools.' },
+  { command: '/plan', description: 'Turn plan mode on.' },
+  { command: '/review-branch', description: 'Review changes relative to a base branch.' },
+  { command: '/review-commit', description: 'Review a specific commit.' },
+  { command: '/skills', description: 'List available skills.' },
+  { command: '/status', description: 'Display session configuration and usage.' },
 ];
 // Storage key for the toolbar session configuration remembered between reloads.
 const FINAL_TOOLBAR_VARIANT_KEY = 'final-4-toolbar';
@@ -976,7 +987,6 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
 function CommitToolWindow({
   ctx,
   onOpenFile = null,
-  onStartReview = null,
   onReviewContextChange = null,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
@@ -985,17 +995,6 @@ function CommitToolWindow({
   const [message, setMessage] = useState('');
 
   const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, 'chat'), []);
-  // "Current file" scope in the AI Review popup follows the first checked file.
-  const reviewScopeFileLabel = useMemo(() => (
-    COMMIT_CHANGE_FILES.find((file) => checkedIds.has(file.id))?.label ?? COMMIT_CHANGE_FILES[0]?.label ?? ''
-  ), [checkedIds]);
-  const reviewContextMeta = useMemo(() => {
-    const selectedFiles = COMMIT_CHANGE_FILES.filter((file) => checkedIds.has(file.id));
-    const changeCount = selectedFiles.reduce((total, file) => total + commitFileChangedLines(file), 0);
-    const fileLabel = selectedFiles.length === 1 ? 'file' : 'files';
-    const changeLabel = changeCount === 1 ? 'change' : 'changes';
-    return `${selectedFiles.length} ${fileLabel} · ${changeCount} ${changeLabel}`;
-  }, [checkedIds]);
   const reviewSourceAttachments = useMemo(() => (
     COMMIT_CHANGE_FILES
       .filter((file) => checkedIds.has(file.id))
@@ -1057,23 +1056,7 @@ function CommitToolWindow({
           <IconButton icon="vcs/revert" tooltip="Rollback" />
           <IconButton icon="vcs/patch" tooltip="Create Patch" />
           <span className="commit-toolbar-separator" aria-hidden="true" />
-          {/* Same AI Review entry point as the chat-generated diff's top bar. The
-              checked commit files become the popup's initial context attachments. */}
-          <span className="commit-ai-review-entry">
-            <PlanDiffNewReviewButton
-              currentScopeLabel="Local changes"
-              currentFileLabel={reviewScopeFileLabel}
-              contextLabel="Changes"
-              contextMeta={reviewContextMeta}
-              contextIcon="general/listFiles"
-              sourceAttachments={reviewSourceAttachments}
-              onStartReview={onStartReview}
-              launchSource="commit"
-              triggerClassName="commit-ai-review-trigger"
-              popupClassName="commit-ai-review-popup"
-            />
-          </span>
-          <span className="commit-toolbar-separator" aria-hidden="true" />
+          {/* AI Review entry point in Commit is temporarily disabled. */}
           <IconButton icon="general/show" tooltip="Show" />
           <IconButton icon="general/expandAll" tooltip="Expand All" onClick={() => setCollapsedGroups(new Set())} />
           <IconButton icon="general/collapseAll" tooltip="Collapse All" onClick={() => setCollapsedGroups(new Set(groups.map((g) => g.id)))} />
@@ -8320,7 +8303,6 @@ const SPEC_SELECTION_TOOLBAR_ITEMS = [
 const SPEC_SELECTION_ACTIONS = [
   { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
   { id: 'annotation', label: 'Quote in chat', iconName: 'aiAssistant/toolWindowChat@20x20', accent: 'assistant' },
-  { id: 'ask-in-side-chat', label: 'Ask in Side Chat' },
 ];
 
 function getDoneIssueFixActionLabel(issueTarget) {
@@ -9259,7 +9241,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       ? actionId.slice(annotationTargetPrefix.length)
       : null;
 
-    if (actionId === 'annotation' || targetAnnotationChatId || actionId === 'ask-in-side-chat') {
+    if (actionId === 'annotation' || targetAnnotationChatId) {
       const capturedSnapshot = captureActiveEditorSelectionSnapshot();
       const liveSelection = typeof window !== 'undefined' ? window.getSelection() : null;
       const selectionSnapshot = capturedSnapshot ?? (
@@ -9281,7 +9263,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         // The spec is a document, not a gutter-numbered editor: quotes are counted, not addressed
         // by line, exactly like the ones taken from a chat message.
         lineLabel: '',
-        mode: actionId === 'ask-in-side-chat' ? 'side-chat' : 'selection',
         chatId: targetAnnotationChatId,
       });
       return;
@@ -12583,6 +12564,17 @@ function snapshotAiChatMessageAttachment(attachment = null) {
   };
 }
 
+function getAiChatAttachmentSequenceKey(attachment = null, index = 0) {
+  const id = typeof attachment?.id === 'string' ? attachment.id.trim() : '';
+  if (id) return id;
+  return [
+    attachment?.sourceTabId,
+    attachment?.sourceLabel,
+    attachment?.label,
+    index,
+  ].filter((value) => value != null && String(value).length > 0).join(':');
+}
+
 // Row the editor should scroll to when an attachment is opened: the topmost
 // commented row, so a file/diff with several notes lands on the first one.
 function getAttachmentScrollRowId(diffComments = null) {
@@ -12706,7 +12698,7 @@ function ChatToolWindow({
 }) {
   const [selectedChatId, setSelectedChatId] = useState(controlledSelectedChatId);
   const [composerText, setComposerText] = useState('');
-  const [composerInputPlacement, setComposerInputPlacement] = useState('before');
+  const [composerContentParts, setComposerContentParts] = useState([]);
   const [localSentChatMessages, setLocalSentChatMessages] = useState([]);
   const [optimisticSentMessagesByChatId, setOptimisticSentMessagesByChatId] = useState({});
   const currentChatId = controlledSelectedChatId ?? selectedChatId;
@@ -12733,7 +12725,8 @@ function ChatToolWindow({
   const chatTitleChevronRef = useRef(null);
   const chatListPopupRef = useRef(null);
   const composerTextareaRef = useRef(null);
-  const previousComposerAttachmentStateRef = useRef({ chatId: null, count: 0 });
+  const previousComposerAttachmentStateRef = useRef({ chatId: null, ids: [] });
+  const composerContentPartIdRef = useRef(0);
   const commentResponseTimersRef = useRef({});
   const selectedChat = chatScenarios[currentChatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
   const latestSddCommentEntries = useMemo(
@@ -12827,22 +12820,61 @@ function ChatToolWindow({
     Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
   ));
   const hasSelectionContextAttachment = visibleComposerAttachments.some((attachment) => attachment?.isSelectionContext);
-  const canSendMessage = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
+  const visibleComposerAttachmentIds = visibleComposerAttachments.map(getAiChatAttachmentSequenceKey);
+  const visibleComposerAttachmentSignature = visibleComposerAttachmentIds.join('\n');
+  const committedComposerText = composerContentParts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join(' ')
+    .trim();
+  const canSendMessage = composerText.trim().length > 0
+    || committedComposerText.length > 0
+    || hasComposerCommentAttachment
+    || hasSelectionContextAttachment;
 
   useEffect(() => {
     const previous = previousComposerAttachmentStateRef.current;
-    const nextCount = visibleComposerAttachments.length;
     const chatChanged = previous.chatId !== currentChatId;
+    const previousIds = new Set(chatChanged ? [] : previous.ids);
+    const addedIds = visibleComposerAttachmentIds.filter((id) => !previousIds.has(id));
 
-    if (nextCount === 0) {
-      setComposerInputPlacement('before');
-    } else if (chatChanged || nextCount > previous.count) {
-      setComposerInputPlacement(composerText.length === 0 ? 'after' : 'before');
+    setComposerContentParts((prev) => {
+      const liveAttachmentIds = new Set(visibleComposerAttachmentIds);
+      const retainedParts = chatChanged
+        ? []
+        : prev.filter((part) => part.type !== 'attachment' || liveAttachmentIds.has(part.attachmentId));
+      const next = [...retainedParts];
+      if (!chatChanged && addedIds.length > 0 && composerText.trim().length > 0) {
+        composerContentPartIdRef.current += 1;
+        next.push({ id: `text-${composerContentPartIdRef.current}`, type: 'text', text: composerText });
+      }
+      addedIds.forEach((attachmentId) => {
+        composerContentPartIdRef.current += 1;
+        next.push({ id: `attachment-${composerContentPartIdRef.current}`, type: 'attachment', attachmentId });
+      });
+      return next;
+    });
+
+    if (addedIds.length > 0) {
+      if (!chatChanged && composerText.trim().length > 0) setComposerText('');
       requestAnimationFrame(() => composerTextareaRef.current?.focus({ preventScroll: true }));
     }
 
-    previousComposerAttachmentStateRef.current = { chatId: currentChatId, count: nextCount };
-  }, [currentChatId, visibleComposerAttachments.length]);
+    previousComposerAttachmentStateRef.current = { chatId: currentChatId, ids: visibleComposerAttachmentIds };
+  }, [currentChatId, visibleComposerAttachmentSignature]);
+  const visibleAttachmentById = new Map(visibleComposerAttachments.map((attachment, index) => [
+    getAiChatAttachmentSequenceKey(attachment, index),
+    attachment,
+  ]));
+  const representedVisibleAttachmentIds = new Set(composerContentParts
+    .filter((part) => part.type === 'attachment')
+    .map((part) => part.attachmentId));
+  const orderedVisibleComposerParts = [
+    ...composerContentParts,
+    ...visibleComposerAttachmentIds
+      .filter((attachmentId) => !representedVisibleAttachmentIds.has(attachmentId))
+      .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
+  ];
 
   useEffect(() => {
     if (!expandedAttachmentSourceId) return;
@@ -13045,7 +13077,16 @@ function ChatToolWindow({
   }, [isChatListOpen]);
 
   const handleSendMessage = useCallback(() => {
-    const messageText = (composerTextareaRef.current?.value ?? composerText).trim();
+    const liveText = composerTextareaRef.current?.value ?? composerText;
+    const contentParts = [
+      ...composerContentParts,
+      ...(liveText.trim().length > 0 ? [{ type: 'text', text: liveText }] : []),
+    ];
+    const messageText = contentParts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join(' ')
+      .trim();
     const messageAttachments = hasComposerAttachment
       ? visibleComposerAttachments.map((attachment) => snapshotAiChatMessageAttachment(attachment))
       : [];
@@ -13062,6 +13103,9 @@ function ChatToolWindow({
       id: `${targetChatId}-${Date.now()}-${sentChatMessages.length}`,
       text: messageText,
       attachments: messageAttachments,
+      contentParts: contentParts.map((part) => (part.type === 'attachment'
+        ? { type: 'attachment', attachmentId: part.attachmentId }
+        : { type: 'text', text: part.text })),
     };
     const assistantMessageId = `${targetChatId}-assistant-${Date.now()}-${sentChatMessages.length}`;
     const assistantMessage = shouldStreamCommentResponse
@@ -13097,6 +13141,7 @@ function ChatToolWindow({
       }));
     }
     setComposerText('');
+    setComposerContentParts([]);
     if (hasComposerAttachment) {
       const dismissedIds = {};
       for (const attachment of visibleComposerAttachments) {
@@ -13153,7 +13198,7 @@ function ChatToolWindow({
       commentResponseTimersRef.current[timerKey] = window.setTimeout(streamNextChunk, 240);
     }
     onChatMessageSent?.({ chatId: targetChatId, message: newMessage });
-  }, [composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onCommentAttachmentResponseComplete, onCommentAttachmentResponseStart, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
+  }, [composerContentParts, composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onCommentAttachmentResponseComplete, onCommentAttachmentResponseStart, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
 
   const handleContextAttachmentOpen = useCallback((messageId, attachment, { archived = true } = {}) => {
     const restoredRowId = Object.keys(attachment?.diffComments ?? {})[0] ?? null;
@@ -13388,6 +13433,8 @@ function ChatToolWindow({
 	                  key={message.id}
 	                  messageId={message.id}
 	                  attachments={message.attachments}
+	                  attachmentsFirst={Boolean(message.attachmentsFirst)}
+	                  contentParts={message.contentParts}
 	                  onAttachmentOpen={(attachment) => handleContextAttachmentOpen(message.id, attachment, { archived: true })}
 	                >
                   {message.text}
@@ -13398,15 +13445,48 @@ function ChatToolWindow({
 
         <div className="ai-chat-composer">
           <div
-            className={`ai-chat-inline-input-content${composerInputPlacement === 'after' && visibleComposerAttachments.length > 0 ? ' is-input-after-attachments' : ''}`}
+            className="ai-chat-inline-input-content"
             onClick={(event) => {
               if (!event.target.closest('button')) composerTextareaRef.current?.focus();
             }}
           >
+            {orderedVisibleComposerParts.map((part) => {
+              if (part.type === 'text') {
+                return <span key={part.id} className="ai-chat-composer-text-segment">{part.text}</span>;
+              }
+              const partAttachment = visibleAttachmentById.get(part.attachmentId);
+              if (!partAttachment) return null;
+              return (
+                <AiChatAttachmentStrip
+                  key={part.id}
+                  attachments={[partAttachment]}
+                  collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+                  expanded={composerAttachmentsExpanded}
+                  onExpandedChange={setComposerAttachmentsExpanded}
+                  expandedSourceId={expandedAttachmentSourceId}
+                  onExpandedSourceIdChange={setExpandedAttachmentSourceId}
+                  getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+                  onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
+                  onContextMenu={handleComposerAttachmentContextMenu}
+                  onSourceOpen={(event, attachment, source) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
+                  onRemove={(attachment) => {
+                    setDismissedComposerAttachmentIdsByChatId((prev) => ({
+                      ...prev,
+                      [currentChatId]: {
+                        ...dismissedAttachmentIds,
+                        [attachment.id]: true,
+                      },
+                    }));
+                    onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
+                  }}
+                  className="is-inline-composer-attachments"
+                />
+              );
+            })}
 	          <textarea
               ref={composerTextareaRef}
 	            rows={1}
-	            placeholder={visibleComposerAttachments.length > 0 ? '' : composerPlaceholder}
+	            placeholder={orderedVisibleComposerParts.length > 0 ? '' : composerPlaceholder}
               aria-label="Task prompt"
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
@@ -13415,29 +13495,6 @@ function ChatToolWindow({
                 event.preventDefault();
                 handleSendMessage();
               }}
-            />
-            <AiChatAttachmentStrip
-              attachments={visibleComposerAttachments}
-              collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
-              expanded={composerAttachmentsExpanded}
-              onExpandedChange={setComposerAttachmentsExpanded}
-              expandedSourceId={expandedAttachmentSourceId}
-              onExpandedSourceIdChange={setExpandedAttachmentSourceId}
-              getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
-              onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
-              onContextMenu={handleComposerAttachmentContextMenu}
-              onSourceOpen={(event, attachment, source) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
-              onRemove={(attachment) => {
-                setDismissedComposerAttachmentIdsByChatId((prev) => ({
-                  ...prev,
-                  [currentChatId]: {
-                    ...dismissedAttachmentIds,
-                    [attachment.id]: true,
-                  },
-                }));
-                onRemoveComposerAttachment?.(attachment, { chatId: currentChatId });
-              }}
-              className="is-inline-composer-attachments"
             />
           </div>
 	          <div className="ai-chat-composer-toolbar">
@@ -14127,15 +14184,43 @@ const ChatListPopup = forwardRef(function ChatListPopup({
   );
 });
 
-function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null }) {
+// New messages keep placement per attachment, so a sequence such as
+// quote → text → file remains in that exact visual order after Send.
+// `attachmentsFirst` is retained as a fallback for older stored messages.
+function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null, attachmentsFirst = false, contentParts = null }) {
   const hasMessageText = typeof children === 'string'
     ? children.trim().length > 0
     : Boolean(children);
+  const explicitContentParts = Array.isArray(contentParts) ? contentParts.filter(Boolean) : [];
+  const hasExplicitContentOrder = explicitContentParts.length > 0;
+  const attachmentOrderById = new Map();
+  explicitContentParts.forEach((part, index) => {
+    if (part?.type === 'attachment' && part.attachmentId) {
+      attachmentOrderById.set(part.attachmentId, index + 1);
+    }
+  });
+  const hasOrderedContent = hasExplicitContentOrder || attachmentsFirst || attachments.some((attachment) => (
+    attachment?.inputPlacement === 'before' || attachment?.inputPlacement === 'after'
+  ));
 
   return (
     <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
-      <div className="ai-chat-user-card-content">
-        {hasMessageText && <span className="ai-chat-user-card-text">{children}</span>}
+      <div className={`ai-chat-user-card-content${hasOrderedContent ? ' is-ordered-content' : ''}`}>
+        {hasExplicitContentOrder
+          ? explicitContentParts.map((part, index) => (
+              part?.type === 'text' && String(part.text ?? '').length > 0
+                ? (
+                  <span
+                    key={`text-part-${index}`}
+                    className="ai-chat-user-card-text"
+                    style={{ order: index + 1 }}
+                  >
+                    {part.text}
+                  </span>
+                )
+                : null
+            ))
+          : (hasMessageText && <span className="ai-chat-user-card-text">{children}</span>)}
         {attachments.map((attachment) => {
                 const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
                 const sourcePreviewItems = getAiChatAttachmentSourcePreviewItems(attachment);
@@ -14148,6 +14233,11 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                   <span
                     key={attachment.id}
                     className="ai-chat-attachment-chip ai-chat-sent-attachment-chip"
+                    style={{
+                      order: hasExplicitContentOrder
+                        ? (attachmentOrderById.get(getAiChatAttachmentSequenceKey(attachment)) ?? explicitContentParts.length + 1)
+                        : ((attachment.inputPlacement ?? (attachmentsFirst ? 'before' : 'after')) === 'before' ? 1 : 3),
+                    }}
                     role={onAttachmentOpen ? 'button' : undefined}
                     tabIndex={onAttachmentOpen ? 0 : undefined}
                     onClick={onAttachmentOpen ? () => onAttachmentOpen(attachment) : undefined}
@@ -14779,15 +14869,17 @@ function buildReviewCommentCategories({
   }
   if (groupMode === 'status') {
     return [
-      selectedOpenSeverities.length > 0 && selectedOpenTotal > 0 ? { key: 'open', label: 'Open', filter: selectedOpenSeverities, statusFilter: 'open', tone: 'open', files: filesForStatusFilter(selectedOpenSeverities, 'open'), showFile: true, count: selectedOpenTotal } : null,
-      selectedOpenSeverities.length > 0 && selectedRepliedTotal > 0 ? { key: 'replied', label: 'Replied', filter: selectedOpenSeverities, statusFilter: 'replied', tone: 'replied', files: filesForStatusFilter(selectedOpenSeverities, 'replied'), showFile: true, count: selectedRepliedTotal } : null,
-      counts.resolved > 0 ? { key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], statusFilter: 'resolved', tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved } : null,
+      // Status icons describe the status itself, not a severity: an open finding is
+      // an unanswered note, a replied one a continued thread, a resolved one done.
+      selectedOpenSeverities.length > 0 && selectedOpenTotal > 0 ? { key: 'open', label: 'Open', icon: 'general/balloon', filter: selectedOpenSeverities, statusFilter: 'open', tone: 'open', files: filesForStatusFilter(selectedOpenSeverities, 'open'), showFile: true, count: selectedOpenTotal } : null,
+      selectedOpenSeverities.length > 0 && selectedRepliedTotal > 0 ? { key: 'replied', label: 'Replied', icon: 'general/related', filter: selectedOpenSeverities, statusFilter: 'replied', tone: 'replied', files: filesForStatusFilter(selectedOpenSeverities, 'replied'), showFile: true, count: selectedRepliedTotal } : null,
+      counts.resolved > 0 ? { key: 'resolved', label: 'Resolved', icon: 'general/greenCheckmark', filter: [REVIEW_RESOLVED_FILTER_ID], statusFilter: 'resolved', tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved } : null,
     ].filter(Boolean);
   }
   // severity
   if (selectedOpenSeverities.length === 0 && includesResolved) {
     return counts.resolved > 0
-      ? [{ key: 'resolved', label: 'Resolved', filter: [REVIEW_RESOLVED_FILTER_ID], tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved }]
+      ? [{ key: 'resolved', label: 'Resolved', icon: 'general/greenCheckmark', filter: [REVIEW_RESOLVED_FILTER_ID], tone: 'resolved', files: filesForFilter('resolved'), showFile: true, count: counts.resolved }]
       : [];
   }
   const order = [['critical', 'Critical'], ['warning', 'Warning'], ['info', 'Info']];
@@ -14807,6 +14899,7 @@ function buildReviewCommentCategories({
     severityCategories.push({
       key: 'resolved',
       label: 'Resolved',
+      icon: 'general/greenCheckmark',
       filter: [REVIEW_RESOLVED_FILTER_ID],
       tone: 'resolved',
       files: filesForFilter(REVIEW_RESOLVED_FILTER_ID),
@@ -15042,6 +15135,9 @@ const REVIEW_SEVERITY_FILTERS = [
 ];
 const REVIEW_SEVERITY_FILTER_IDS = REVIEW_SEVERITY_FILTERS.map((option) => option.id);
 const REVIEW_RESOLVED_FILTER_ID = 'resolved';
+// Chat titles that carry no context: a review neither takes its name from them nor
+// preserves them — it overwrites them with the review's own context instead.
+const REVIEW_PLACEHOLDER_CHAT_TITLES = ['', 'AI Review', 'New Chat', 'New Session'];
 const REVIEW_ACTION_DELAY_MS = 2800;
 
 function normalizeReviewSeverityFilter(value = REVIEW_SEVERITY_FILTER_IDS) {
@@ -15263,7 +15359,7 @@ function ReviewDiffToolbarNav({
   return (
     <span className="aiux-review-diffnav" ref={rootRef}>
       <span className="aiux-review-diffnav-context">
-        <AiChatAgentIcon icon={agentIcon} title="AI Review" />
+        <Icon name={AI_REVIEW_ICON_NAME} size={16} />
         <span className="aiux-review-diffnav-chat-name">{chatTitle || 'AI Review'}</span>
         <span className="aiux-review-diffnav-summary">{reviewSummary}</span>
         <span className={`aiux550-review-done-badge aiux-review-overview-status${reviewAllResolved ? ' is-done' : ''}`}>
@@ -15413,13 +15509,16 @@ function ReviewCommentGroupHeader({
   return (
     <div className={`aiux-review-panel-cat-head aiux-review-comment-group-header${className ? ` ${className}` : ''} is-${group?.tone || 'info'}`}>
       <span className="aiux-review-panel-cat-heading">
+        {/* A category shows a marker only when it has one that means something:
+            the severity glyph, or an explicit icon. Categories that aren't about
+            severity (agent groups) render no marker at all — the coloured dot used
+            to inherit the group's worst severity and read as if the whole group
+            carried it. */}
         {group?.severityIcon ? (
           <AiNotesSeverityIcon severity={group.severityIcon} />
         ) : group?.icon ? (
           <Icon name={group.icon} size={16} className="aiux-review-panel-cat-icon" />
-        ) : (
-          <span className="aiux-review-panel-cat-dot" aria-hidden="true" />
-        )}
+        ) : null}
         <span className="aiux-review-panel-cat-label text-ui-default-semibold">{group?.label}</span>
         <Badge
           className="aiux-review-panel-cat-count"
@@ -15430,14 +15529,14 @@ function ReviewCommentGroupHeader({
       </span>
       {!isResolvedOnly && (group?.files?.length ?? 0) > 0 && (onApply || onDismiss) && (
         <span className="aiux-review-panel-cat-actions" role="group" aria-label={`${group?.label || 'Review'} actions`}>
-          <Button
-            type="secondary"
-            size="slim"
+          <ToolbarButton
+            text="Dismiss all"
             disabled={disabled}
             onClick={() => onDismiss?.(filter)}
-          >
-            Dismiss all
-          </Button>
+          />
+          {/* Secondary on purpose: "Complete review" in the review toolbar is the
+              single primary action of the tab. A blue "Apply all" per severity block
+              competed with it and read as the main CTA. */}
           <Button
             type="secondary"
             size="slim"
@@ -15454,7 +15553,7 @@ function ReviewCommentGroupHeader({
 
 // The aggregated overview. Rendered via editorTopBar and portaled into the
 // active editor's body (same host the single-file diff overlay uses).
-function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'codex', onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'severity', onGroupModeChange = null, view = 'inline', onViewChange = null }) {
+function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'codex', onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'severity', onGroupModeChange = null, view = 'inline', onViewChange = null, portalToEditor = true }) {
   const anchorRef = useRef(null);
   const scrollRef = useRef(null);
   const sectionRefs = useRef([]);
@@ -15502,6 +15601,10 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
       ].filter(Boolean).join(' · ')
     : formatReviewOverviewSummary(files, { compact: true });
   const reviewContextTitle = String(reviewSummary?.featureTitle || chatTitle || 'AI Review').trim();
+  // The toolbar's target is a button that opens the chat, so it carries the chat's
+  // current name — which a finished review renames to "AI Review · <context>". The
+  // bare context stays in the "Review complete: …" heading below.
+  const reviewChatLabel = String(chatTitle || '').trim() || reviewContextTitle;
   const reviewSummaryDescription = reviewSummary
     ? buildReviewSummaryDescription(reviewSummary)
     : `AI Review checked ${files.length} file${files.length === 1 ? '' : 's'} and found ${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0)} concrete issue${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0) === 1 ? '' : 's'}. Review the findings below before completing the review.`;
@@ -15595,6 +15698,7 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
   const reviewAllResolved = (openCount + resolvedCount) > 0 && openCount === 0;
 
   useEffect(() => {
+    if (!portalToEditor) { setHost(null); return undefined; }
     if (!anchorRef.current) { setHost(null); return undefined; }
     let frameId = requestAnimationFrame(() => {
       const editorEl = anchorRef.current?.closest('.editor');
@@ -15602,7 +15706,7 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
       setHost(bodyEl instanceof HTMLElement ? bodyEl : null);
     });
     return () => { if (frameId) cancelAnimationFrame(frameId); setHost(null); };
-  }, []);
+  }, [portalToEditor]);
 
   const scrollToIndex = (index) => {
     const clamped = Math.max(0, Math.min(total - 1, index));
@@ -15619,6 +15723,71 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
         onApply={onApply}
         onDismiss={onDismiss}
       />
+    );
+  };
+  // Recreated on every render: which files already got a card this pass.
+  const renderedFileCardTabIds = new Set();
+  // One file's diff card. `scope` narrows it to a single category so the same card
+  // can be rendered under a severity / agent / status heading; `scope.filter` is the
+  // category's severity set, `scope.groupId` / `scope.statusFilter` its extra axes.
+  // Only the first card for a file registers a section ref, so the prev/next file
+  // navigation keeps stepping over files rather than over repeated cards.
+  const renderReviewFileCard = (file, scope = {}, keyPrefix = 'file') => {
+    const cardFilter = scope.filter ?? severityFilter;
+    const cardViewMode = file.isPlain ? 'unified' : (cardViews[file.tabId] ?? 'unified');
+    const findingCount = countReviewCommentsForStatusFilter(
+      [file],
+      cardFilter,
+      scope.statusFilter ?? 'all',
+    );
+    const fileIndex = orderedFiles.indexOf(file);
+    const isFirstCardForFile = !renderedFileCardTabIds.has(file.tabId);
+    if (isFirstCardForFile) renderedFileCardTabIds.add(file.tabId);
+    return (
+      <ReviewFileCard
+        key={`${keyPrefix}-${file.tabId}`}
+        fileName={file.name}
+        isDiff={file.isDiff}
+        summary={`${findingCount} finding${findingCount === 1 ? '' : 's'}`}
+        onOpen={() => onOpenFileTab?.(file.tabId)}
+        data-review-file={file.tabId}
+        ref={isFirstCardForFile ? ((el) => { sectionRefs.current[fileIndex] = el; }) : undefined}
+        actions={!file.isPlain ? (
+          <SegmentedControl
+            className="aiux-review-overview-viewtoggle aiux-review-overview-viewtoggle-text"
+            value={cardViewMode}
+            onChange={(next) => setCardViews((prev) => ({ ...prev, [file.tabId]: next }))}
+            options={[
+              { value: 'split', label: 'Split' },
+              { value: 'unified', label: 'Unified' },
+            ]}
+          />
+        ) : null}
+      >
+        <PlanDiffOverlay
+          diffData={file.diffData}
+          initialDiffComments={file.comments}
+          singleLineNumbers={file.isPlain}
+          showGutterComments
+          commentContextLabel="AI Review"
+          commentContextIcon={agentIcon}
+          severityFilter={cardFilter?.severities ?? cardFilter}
+          commentIndexGroupId={scope.groupId ?? ''}
+          commentIndexStatusFilter={scope.statusFilter ?? 'all'}
+          resolveKeepsComment
+          allowInlineCommentCompose={false}
+          viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
+          inlineCommentRowIdOnly={isPanel}
+          expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
+          highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
+          onReviewProcessingChange={trackReviewProcessing}
+          onInlineCommentExpand={(rowId) => {
+            if (!isPanel) return;
+            setPanelExpandedRowIdsByTabId((prev) => ({ ...prev, [file.tabId]: rowId }));
+          }}
+          onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
+        />
+      </ReviewFileCard>
     );
   };
   const renderReviewCommentGroups = (commentsOnly = false) => (
@@ -15643,6 +15812,7 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
               viewMode="comments"
               commentIndexFileLabel={file.name}
               showCommentIndexFileLabel={cat.showFile}
+              showCommentSourceContext={commentsOnly}
               commentIndexGroupId={cat.filter?.groupId ?? ''}
               commentIndexStatusFilter={cat.statusFilter ?? 'all'}
               onReviewProcessingChange={trackReviewProcessing}
@@ -15663,11 +15833,10 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
             type="button"
             className="aiux-review-overview-chat"
             onClick={() => onOpenChat?.()}
-            disabled={!onOpenChat}
-            title="Open chat"
-          >
-            <AiChatAgentIcon icon={agentIcon} title="AI Review" />
-            <span className="aiux-review-overview-chat-name">{reviewContextTitle}</span>
+          disabled={!onOpenChat}
+          title="Open chat"
+        >
+            <span className="aiux-review-overview-chat-name">{reviewChatLabel}</span>
           </button>
           <span className="aiux-review-overview-sep" aria-hidden="true">·</span>
           <span className="aiux-review-overview-summary-total">{overallSummary}</span>
@@ -15678,38 +15847,42 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
         </div>
         </div>
         <div className="aiux-review-overview-actions">
-          <SegmentedControl
-            className="aiux-review-overview-viewtoggle"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: 'timeline', label: <Icon name="general/listFiles" size={16} /> },
-              { value: 'split', label: <Icon name="general/balloon" size={16} /> },
-              { value: 'editor', label: <Icon name="general/editorOnly" size={16} /> },
-            ]}
-          />
-          <ReviewGroupBy value={groupMode} onChange={onGroupModeChange} />
-          <ReviewSeverityFilter
-            value={severityFilter}
-            onChange={onSeverityFilterChange}
-            resolvedCount={resolvedCount}
-          />
-          <Button
-            type="secondary"
-            size="slim"
-            disabled={isReviewProcessing}
-            onClick={() => onCancel?.()}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="primary"
-            size="slim"
-            disabled={isReviewProcessing}
-            onClick={() => onComplete?.()}
-          >
-            Complete review
-          </Button>
+          <div className="aiux-review-overview-controls">
+            <SegmentedControl
+              className="aiux-review-overview-viewtoggle"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'timeline', label: <Icon name="general/listFiles" size={16} /> },
+                { value: 'split', label: <Icon name="general/balloon" size={16} /> },
+                { value: 'editor', label: <Icon name="general/editorOnly" size={16} /> },
+              ]}
+            />
+            <ReviewGroupBy value={groupMode} onChange={onGroupModeChange} />
+            <ReviewSeverityFilter
+              value={severityFilter}
+              onChange={onSeverityFilterChange}
+              resolvedCount={resolvedCount}
+            />
+          </div>
+          <div className="aiux-review-overview-completion-actions">
+            <Button
+              type="secondary"
+              size="default"
+              disabled={isReviewProcessing}
+              onClick={() => onCancel?.()}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              size="default"
+              disabled={isReviewProcessing}
+              onClick={() => onComplete?.()}
+            >
+              Complete review
+            </Button>
+          </div>
         </div>
       </div>
       {isTimeline ? (
@@ -15733,54 +15906,25 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
                 <p>{reviewSummaryDescription}</p>
               </div>
             </section>
-            {orderedFiles.map((file, index) => {
-              const cardViewMode = file.isPlain ? 'unified' : (cardViews[file.tabId] ?? 'unified');
-              const findingCount = countReviewCommentsForFilter([file], severityFilter);
-              return (
-                <ReviewFileCard
-                  key={file.tabId}
-                  fileName={file.name}
-                  isDiff={file.isDiff}
-                  summary={`${findingCount} finding${findingCount === 1 ? '' : 's'}`}
-                  onOpen={() => onOpenFileTab?.(file.tabId)}
-                  data-review-file={file.tabId}
-                  ref={(el) => { sectionRefs.current[index] = el; }}
-                  actions={!file.isPlain ? (
-                    <SegmentedControl
-                      className="aiux-review-overview-viewtoggle aiux-review-overview-viewtoggle-text"
-                      value={cardViewMode}
-                      onChange={(next) => setCardViews((prev) => ({ ...prev, [file.tabId]: next }))}
-                      options={[
-                        { value: 'split', label: 'Split' },
-                        { value: 'unified', label: 'Unified' },
-                      ]}
-                    />
-                  ) : null}
-                >
-                  <PlanDiffOverlay
-                    diffData={file.diffData}
-                    initialDiffComments={file.comments}
-                    singleLineNumbers={file.isPlain}
-                    showGutterComments
-                    commentContextLabel="AI Review"
-                    commentContextIcon={agentIcon}
-                    severityFilter={severityFilter}
-                    resolveKeepsComment
-                    allowInlineCommentCompose={false}
-                    viewMode={isPanel ? (cardViewMode === 'split' ? 'split' : 'code') : cardViewMode}
-                    inlineCommentRowIdOnly={isPanel}
-                    expandedInlineCommentRowId={isPanel ? (panelExpandedRowIdsByTabId[file.tabId] ?? null) : null}
-                    highlightedCommentRowIds={isPanel ? (panelHighlightedRowIdsByTabId[file.tabId] ?? []) : []}
-                    onReviewProcessingChange={trackReviewProcessing}
-                    onInlineCommentExpand={(rowId) => {
-                      if (!isPanel) return;
-                      setPanelExpandedRowIdsByTabId((prev) => ({ ...prev, [file.tabId]: rowId }));
-                    }}
-                    onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
-                  />
-                </ReviewFileCard>
-              );
-            })}
+            {/* The panel's left column stays a flat file list — its grouping is the
+                right-hand comments column. The editor view has no such column, so the
+                grouping renders here as sections of diff cards, each scoped to its
+                category. "By file" needs no headings: the cards already are the files. */}
+            {isPanel || groupMode === 'file' || commentCategories.length === 0
+              ? orderedFiles.map((file) => renderReviewFileCard(file))
+              : commentCategories.map((cat) => (
+                <div className={`aiux-review-overview-group aiux-review-panel-cat is-${cat.tone}`} key={cat.key}>
+                  {renderReviewGroupHeader(cat, {
+                    onApply: (filter) => runReviewFilesAction(cat.files, filter, 'applied', cat.statusFilter ?? 'all'),
+                    onDismiss: (filter) => runReviewFilesAction(cat.files, filter, 'dismissed', cat.statusFilter ?? 'all'),
+                  })}
+                  {cat.files.map((file) => renderReviewFileCard(
+                    file,
+                    { filter: cat.filter, groupId: cat.filter?.groupId ?? '', statusFilter: cat.statusFilter ?? 'all' },
+                    cat.key,
+                  ))}
+                </div>
+              ))}
           </div>
           {isPanel && renderReviewCommentGroups(false)}
         </div>
@@ -15790,8 +15934,8 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
 
   return (
     <>
-      <div className="aiux-review-overview-anchor" ref={anchorRef} aria-hidden="true" />
-      {host && createPortal(overview, host)}
+      {portalToEditor ? <div className="aiux-review-overview-anchor" ref={anchorRef} aria-hidden="true" /> : overview}
+      {portalToEditor && host && createPortal(overview, host)}
       {filesPopupRect && (
         <ReviewFilesPopup
           files={files}
@@ -15859,7 +16003,7 @@ function AgentRunLoadingPlan({ notes = [], kind = null, agentIcon = 'codex', onO
       items={fileQueueItems}
       title={isReview ? (
         <span className="ij-air-review-queue-title">
-          <AiChatAgentIcon icon={agentIcon} title="AI Review" />
+          <Icon name={AI_REVIEW_ICON_NAME} size={16} />
           <span>AI Review</span>
         </span>
       ) : 'Queue'}
@@ -15971,10 +16115,16 @@ function ReviewSummaryMessage({
     groupMode: 'severity',
   });
   const isReviewProcessing = processingActionCount > 0;
+  // Mirrors ReviewDiffOverview's `overallSummary` so the preview head and the full
+  // view's toolbar render the exact same scope line.
+  const previewSummaryTotal = summary
+    ? [
+        `${summary.fileCount ?? reviewFiles.length} file${(summary.fileCount ?? reviewFiles.length) === 1 ? '' : 's'}`,
+        `${summary.commentCount ?? 0} comment${(summary.commentCount ?? 0) === 1 ? '' : 's'}`,
+        summary.severitySummary,
+      ].filter(Boolean).join(' · ')
+    : formatReviewOverviewSummary(reviewFiles, { compact: true });
   const brief = buildReviewSummaryDescription(summary);
-  const previewFileCount = reviewFiles.filter((file) => (
-    (file.openCount ?? file.commentCount ?? 0) > 0
-  )).length;
   // Derived exactly like the full review's badge (see ReviewDiffOverview), rather
   // than hardcoded to "Open".
   const previewResolvedCount = reviewFiles.reduce((sum, file) => sum + (file.resolvedCount ?? 0), 0);
@@ -16015,19 +16165,29 @@ function ReviewSummaryMessage({
       <article ref={cardRef} className={`aiux550-review-summary-message${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
         <div className="aiux550-review-summary-message-head">
           <span className="aiux550-review-summary-message-title text-ui-default">
-            <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" />
+            <Icon name={AI_REVIEW_ICON_NAME} size={16} />
             <span>AI Review</span>
+            {/* Scope summary only — no feature/chat name. The card sits inside the chat
+                the review was launched from, so naming it here is redundant. The full
+                view's toolbar keeps the context because it lives in its own tab. */}
+            {previewSummaryTotal ? (
+              <>
+                <span className="aiux550-review-summary-message-sep" aria-hidden="true">·</span>
+                <span className="aiux550-review-summary-message-total">{previewSummaryTotal}</span>
+              </>
+            ) : null}
           </span>
           <span className="aiux550-review-summary-message-actions">
-            <Badge
-              className="aiux550-review-summary-status"
-              text={previewAllResolved ? 'All resolved' : 'Open'}
-              color="green-secondary"
-            />
+            <span className="aiux550-review-done-badge aiux550-review-summary-status">
+              <span className="aiux550-review-done-dot" aria-hidden="true" />
+              {previewAllResolved ? 'All resolved' : 'Open'}
+            </span>
             {onOpenReview ? (
               <IconButton
-                icon="general/openInToolWindow"
-                tooltip="Open full review"
+                icon="general/editorOnly"
+                tooltip="Open full review in editor tab"
+                aria-label="Open AI Review in editor tab"
+                className="aiux550-review-header-action"
                 onClick={onOpenReview}
               />
             ) : null}
@@ -16038,11 +16198,6 @@ function ReviewSummaryMessage({
             <h3 className="text-ui-h2">Review complete: {featureTitle}</h3>
             <p className="text-ui-paragraph">{brief}</p>
             {categories.length > 0 && (
-              <>
-                <div className="aiux550-review-summary-findings-head">
-                  <h4 className="text-ui-default-semibold">Findings</h4>
-                  <span className="text-ui-small">{previewOpenCount} across {previewFileCount} file{previewFileCount === 1 ? '' : 's'}</span>
-                </div>
                 <div className="aiux550-review-summary-groups" aria-label="Finding severities">
                   {categories.map((category) => (
                       <div className={`aiux550-review-summary-group aiux-review-panel-cat is-${category.tone}`} key={category.key}>
@@ -16061,7 +16216,7 @@ function ReviewSummaryMessage({
                               singleLineNumbers={file.isPlain}
                               showGutterComments
                               commentContextLabel="AI Review"
-                              commentContextIcon={reviewAgentIcon}
+                              commentContextIcon={AI_REVIEW_ICON_NAME}
                               severityFilter={category.filter}
                               resolveKeepsComment
                               allowInlineCommentCompose={false}
@@ -16069,6 +16224,7 @@ function ReviewSummaryMessage({
                               commentIndexFileLabel={file.name}
                               showCommentIndexFileLabel
                               commentIndexStatusFilter={category.statusFilter ?? 'all'}
+                              allowCommentReplies={false}
                               onCommentNavigate={() => onOpenReview?.()}
                               onReviewProcessingChange={trackReviewProcessing}
                               onDiffCommentsChange={(comments) => onFileCommentsChange?.(file.tabId, comments)}
@@ -16078,7 +16234,6 @@ function ReviewSummaryMessage({
                       </div>
                   ))}
                 </div>
-              </>
             )}
           </div>
         </div>
@@ -16268,6 +16423,7 @@ function AiChatTabView({
   chatAnnotations = [],
   scrollTarget = null,
   onEditAnnotation = null,
+  onRunAiReview = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
@@ -16289,7 +16445,7 @@ function AiChatTabView({
   const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
   const [composerText, setComposerText] = useState(initialComposerText);
-  const [composerInputPlacement, setComposerInputPlacement] = useState('before');
+  const [composerContentParts, setComposerContentParts] = useState([]);
   const scenarioAgentId = AI_CHAT_AGENTS.some((agent) => agent.id === scenario?.icon)
     ? scenario.icon
     : 'claude';
@@ -16297,17 +16453,24 @@ function AiChatTabView({
   const [selectedModelOverride, setSelectedModelOverride] = useState(initialSessionModel);
   const [isAgentMenuOpen, setIsAgentMenuOpen] = useState(false);
   const [newSessionSettingsMenu, setNewSessionSettingsMenu] = useState(null);
+  const [slashCommandIndex, setSlashCommandIndex] = useState(0);
+  const [slashCommandMenuDismissed, setSlashCommandMenuDismissed] = useState(false);
   const [selectedEffort, setSelectedEffort] = useState(initialSessionEffort);
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
   const composerRef = useRef(null);
-  const previousComposerAttachmentStateRef = useRef({ chatId: null, count: 0 });
+  const previousComposerAttachmentStateRef = useRef({ chatId: null, ids: [] });
+  const composerContentPartIdRef = useRef(0);
   const scrollRef = useRef(null);
   const agentPickerRef = useRef(null);
   const newSessionSettingsRef = useRef(null);
   const [composerAttachmentsExpanded, setComposerAttachmentsExpanded] = useState(false);
   const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
   const [resolvedReviewDecisionId, setResolvedReviewDecisionId] = useState(null);
+  const [dismissedReviewBannerChatIds, setDismissedReviewBannerChatIds] = useState(() => new Set());
+  useEffect(() => {
+    setSelectedAgentId(scenarioAgentId);
+  }, [chatId, scenarioAgentId]);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
@@ -16330,6 +16493,11 @@ function AiChatTabView({
   const isReviewDecisionReady = Boolean(
     readyReviewMessage && readyReviewMessage.id !== resolvedReviewDecisionId,
   );
+  const showAiReviewBanner = chatId === DEFAULT_OPEN_CHAT_ID
+    && !dismissedReviewBannerChatIds.has(chatId)
+    && agentRun?.kind !== 'review'
+    && !readyReviewMessage
+    && Boolean(onRunAiReview);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const selectedModelLabel = selectedModelOverride ?? selectedAgent.model;
   const newSessionModelOptions = [
@@ -16338,9 +16506,27 @@ function AiChatTabView({
     'Default model',
   ].filter((label, index, labels) => labels.indexOf(label) === index);
   const scenarioAttachments = Array.isArray(scenario?.attachments) ? scenario.attachments : [];
-  // Chat context is represented only by composer/message attachments. Keep the
-  // conversation text visually unchanged after adding an AI Note or Selection.
-  const renderAnnotatedParagraph = useCallback((text) => text, []);
+  // Keep quote highlights after Send by reading context from both the live
+  // composer and the attachments already stored on user messages.
+  const visibleChatAnnotations = useMemo(() => {
+    const sentContextAnnotations = sentMessages.flatMap((message) => (
+      (Array.isArray(message?.attachments) ? message.attachments : []).flatMap((attachment) => [
+        ...(attachment?.isChatAnnotation && Array.isArray(attachment.annotations) ? attachment.annotations : []),
+        ...getChatSelectionContextHighlights([attachment]),
+      ])
+    ));
+    return [...(Array.isArray(chatAnnotations) ? chatAnnotations : []), ...sentContextAnnotations]
+      .filter((annotation, index, annotations) => (
+        annotations.findIndex((candidate) => candidate?.id === annotation?.id) === index
+      ));
+  }, [chatAnnotations, sentMessages]);
+  const renderAnnotatedParagraph = useCallback((text, blockId, paragraphMessageId = messageId) => (
+    renderAiChatAnnotatedText(
+      text,
+      getAiChatBlockAnnotations(visibleChatAnnotations, paragraphMessageId, blockId),
+      onEditAnnotation,
+    )
+  ), [messageId, onEditAnnotation, visibleChatAnnotations]);
   const focusComposerAtEnd = useCallback(() => {
     const focus = () => {
       const textarea = composerRef.current;
@@ -16426,20 +16612,38 @@ function AiChatTabView({
 
   useEffect(() => {
     const targetMessageId = scrollTarget?.chatId === chatId ? scrollTarget.messageId : null;
-    if (!targetMessageId) return undefined;
+    const targetAnnotationId = scrollTarget?.chatId === chatId ? scrollTarget.annotationId : null;
+    if (!targetMessageId && !targetAnnotationId) return undefined;
 
     let frameId = 0;
     let timeoutId = 0;
+    let highlightTimeoutId = 0;
+    let highlightedElement = null;
     const scrollToTarget = (attempt = 0) => {
       const scrollElement = scrollRef.current;
       if (!scrollElement) return;
 
-      const targetElement = Array.from(scrollElement.querySelectorAll('.aiux543-user-message[data-ai-chat-message-id], [data-ai-chat-annotatable="true"][data-ai-chat-message-id]')).find(
-        (node) => node instanceof HTMLElement && node.dataset.aiChatMessageId === targetMessageId,
-      );
+      const highlightedQuote = targetAnnotationId
+        ? Array.from(scrollElement.querySelectorAll('[data-ai-chat-annotation-id]')).find(
+            (node) => node instanceof HTMLElement && node.dataset.aiChatAnnotationId === targetAnnotationId,
+          )
+        : null;
+      const targetElement = highlightedQuote ?? Array.from(scrollElement.querySelectorAll('.aiux543-user-message[data-ai-chat-message-id], [data-ai-chat-annotatable="true"][data-ai-chat-message-id]')).find(
+          (node) => node instanceof HTMLElement && node.dataset.aiChatMessageId === targetMessageId,
+        );
 
       if (targetElement instanceof HTMLElement) {
         targetElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        if (highlightedQuote instanceof HTMLElement) {
+          highlightedElement = highlightedQuote;
+          highlightedElement.classList.remove('is-navigation-highlight');
+          // Restart the emphasis when the same quote chip is clicked repeatedly.
+          void highlightedElement.offsetWidth;
+          highlightedElement.classList.add('is-navigation-highlight');
+          highlightTimeoutId = window.setTimeout(() => {
+            highlightedElement?.classList.remove('is-navigation-highlight');
+          }, 900);
+        }
         return;
       }
 
@@ -16453,35 +16657,105 @@ function AiChatTabView({
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
       if (timeoutId) window.clearTimeout(timeoutId);
+      if (highlightTimeoutId) window.clearTimeout(highlightTimeoutId);
+      highlightedElement?.classList.remove('is-navigation-highlight');
     };
-  }, [chatId, scrollTarget?.chatId, scrollTarget?.messageId, scrollTarget?.nonce]);
+  }, [chatId, scrollTarget?.annotationId, scrollTarget?.chatId, scrollTarget?.messageId, scrollTarget?.nonce]);
 
   const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
   const hasSelectionContextAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .some((attachment) => attachment?.isSelectionContext);
-  const canSend = composerText.trim().length > 0 || hasComposerCommentAttachment || hasSelectionContextAttachment;
   const editorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
+  const editorComposerAttachmentIds = editorComposerAttachments.map(getAiChatAttachmentSequenceKey);
+  const editorComposerAttachmentSignature = editorComposerAttachmentIds.join('\n');
   const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
+  const committedComposerText = composerContentParts
+    .filter((part) => part.type === 'text')
+    .map((part) => part.text)
+    .join(' ')
+    .trim();
+  const canSend = composerText.trim().length > 0
+    || committedComposerText.length > 0
+    || hasComposerCommentAttachment
+    || hasSelectionContextAttachment;
+  const slashCommandMatch = composerText.match(/^\/([^\s]*)$/);
+  const slashCommandQuery = slashCommandMatch?.[1]?.toLowerCase() ?? null;
+  const filteredSlashCommands = slashCommandQuery == null
+    ? []
+    : AI_CHAT_SLASH_COMMANDS.filter(({ command }) => command.slice(1).includes(slashCommandQuery));
+  const showSlashCommandMenu = !isAgentRunProcessing
+    && !slashCommandMenuDismissed
+    && filteredSlashCommands.length > 0;
+  const activeSlashCommandIndex = Math.min(slashCommandIndex, Math.max(0, filteredSlashCommands.length - 1));
+  const insertSlashCommand = useCallback((command) => {
+    setComposerText(`${command} `);
+    setSlashCommandMenuDismissed(true);
+    focusComposerAtEnd();
+  }, [focusComposerAtEnd]);
 
   useEffect(() => {
     const previous = previousComposerAttachmentStateRef.current;
-    const nextCount = editorComposerAttachments.length;
     const chatChanged = previous.chatId !== chatId;
+    const previousIds = new Set(chatChanged ? [] : previous.ids);
+    const addedIds = editorComposerAttachmentIds.filter((id) => !previousIds.has(id));
 
-    if (nextCount === 0) {
-      setComposerInputPlacement('before');
-    } else if (chatChanged || nextCount > previous.count) {
-      setComposerInputPlacement(composerText.length === 0 ? 'after' : 'before');
+    setComposerContentParts((prev) => {
+      const liveAttachmentIds = new Set(editorComposerAttachmentIds);
+      const retainedParts = chatChanged
+        ? []
+        : prev.filter((part) => part.type !== 'attachment' || liveAttachmentIds.has(part.attachmentId));
+      const next = [...retainedParts];
+      if (!chatChanged && addedIds.length > 0 && composerText.trim().length > 0) {
+        composerContentPartIdRef.current += 1;
+        next.push({
+          id: `text-${composerContentPartIdRef.current}`,
+          type: 'text',
+          text: composerText,
+        });
+      }
+      addedIds.forEach((attachmentId) => {
+        composerContentPartIdRef.current += 1;
+        next.push({
+          id: `attachment-${composerContentPartIdRef.current}`,
+          type: 'attachment',
+          attachmentId,
+        });
+      });
+      return next;
+    });
+
+    if (addedIds.length > 0) {
+      if (!chatChanged && composerText.trim().length > 0) setComposerText('');
       focusComposerAtEnd();
     }
 
-    previousComposerAttachmentStateRef.current = { chatId, count: nextCount };
-  }, [chatId, editorComposerAttachments.length, focusComposerAtEnd]);
+    previousComposerAttachmentStateRef.current = { chatId, ids: editorComposerAttachmentIds };
+  }, [chatId, editorComposerAttachmentSignature, focusComposerAtEnd]);
+  const composerAttachmentById = new Map(editorComposerAttachments.map((attachment, index) => [
+    getAiChatAttachmentSequenceKey(attachment, index),
+    attachment,
+  ]));
   const handleSend = () => {
     if (!canSend) return;
-    onSendMessage?.(chatId, composerText.trim(), composerDiffAttachments);
+    const contentParts = [
+      ...composerContentParts,
+      ...(composerText.trim().length > 0
+        ? [{ id: 'live-text', type: 'text', text: composerText }]
+        : []),
+    ];
+    const messageText = contentParts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join(' ')
+      .trim();
+    onSendMessage?.(chatId, messageText, composerDiffAttachments, {
+      contentParts: contentParts.map((part) => (part.type === 'attachment'
+        ? { type: 'attachment', attachmentId: part.attachmentId }
+        : { type: 'text', text: part.text })),
+    });
     setComposerText('');
+    setComposerContentParts([]);
   };
 
   useEffect(() => {
@@ -16513,6 +16787,35 @@ function AiChatTabView({
     });
     setComposerAttachmentsExpanded(false);
   }, [chatId, editorComposerAttachments, onRemoveComposerAttachment]);
+  const renderComposerAttachment = (attachment, partId) => (
+    <AiChatAttachmentStrip
+      key={partId}
+      attachments={attachment ? [attachment] : []}
+      collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+      expanded={composerAttachmentsExpanded}
+      onExpandedChange={setComposerAttachmentsExpanded}
+      getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+      onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
+      onContextMenu={handleComposerAttachmentContextMenu}
+      onRemove={onRemoveComposerAttachment
+        ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
+        : null}
+      className="aiux543-composer-attachments is-inline-composer-attachments"
+      chipClassName="aiux543-composer-attachment-chip"
+      removeButtonClassName="aiux543-composer-attachment-remove"
+      removeLabel={(attachment) => `Remove ${attachment.label ?? 'attachment'}`}
+      stopClickPropagation
+    />
+  );
+  const representedComposerAttachmentIds = new Set(composerContentParts
+    .filter((part) => part.type === 'attachment')
+    .map((part) => part.attachmentId));
+  const orderedComposerParts = [
+    ...composerContentParts,
+    ...editorComposerAttachmentIds
+      .filter((attachmentId) => !representedComposerAttachmentIds.has(attachmentId))
+      .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
+  ];
 
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
@@ -16625,6 +16928,7 @@ function AiChatTabView({
           <ChatChangedFilesCard
             files={getChatChangeCards(scenario)}
             onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+            onRunReview={onRunAiReview ? () => onRunAiReview(chatId) : null}
           />
         ) : getChatChangeCards(scenario).map((card) => {
           const openDiff = card.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(card.diffRequest) : null;
@@ -16708,6 +17012,8 @@ function AiChatTabView({
               key={message.id}
               messageId={message.id}
               attachments={message.attachments}
+              attachmentsFirst={Boolean(message.attachmentsFirst)}
+              contentParts={message.contentParts}
               onAttachmentOpen={(attachment) => {
                 if (onOpenAttachment) {
                   onOpenAttachment(attachment, { messageId: message.id, chatId, archived: true });
@@ -16723,6 +17029,24 @@ function AiChatTabView({
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
+        {showAiReviewBanner && (
+          <Banner
+            type="info"
+            className="aiux543-ai-review-banner"
+            showCloseButton
+            actions={[{
+              label: 'Run AI Review',
+              onClick: () => onRunAiReview?.(chatId),
+            }]}
+            onClose={() => setDismissedReviewBannerChatIds((dismissedIds) => {
+              const nextDismissedIds = new Set(dismissedIds);
+              nextDismissedIds.add(chatId);
+              return nextDismissedIds;
+            })}
+          >
+            The changes are ready. Run AI Review to catch issues before accepting them, or use the /review command in chat.
+          </Banner>
+        )}
         {isNewSessionState && (
           <div className="aiux543-new-session-agent-picker" ref={agentPickerRef}>
             <button
@@ -16797,6 +17121,33 @@ function AiChatTabView({
         )}
         {!isReviewDecisionReady && (
         <div className={`aiux543-chat-composer${isNewSessionComposerExpanded ? ' is-expanded' : ''}`} onClick={() => composerRef.current?.focus()}>
+          {showSlashCommandMenu && (
+            <div className="aiux543-slash-command-menu" role="listbox" aria-label="Slash commands">
+              <div className="aiux543-slash-command-list">
+                {filteredSlashCommands.map((item, index) => (
+                  <button
+                    key={item.command}
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeSlashCommandIndex}
+                    className={`aiux543-slash-command-item${index === activeSlashCommandIndex ? ' is-selected' : ''}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      insertSlashCommand(item.command);
+                    }}
+                  >
+                    <span className="aiux543-slash-command-name">{item.command}</span>
+                    <span className="aiux543-slash-command-description">{item.description}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="aiux543-slash-command-footer">
+                <span>Press ↵ to insert, ↑↓ to navigate</span>
+                <span>Esc to close</span>
+              </div>
+            </div>
+          )}
           {isNewSessionState && (
             <button
               type="button"
@@ -16812,7 +17163,12 @@ function AiChatTabView({
               <Icon name={isNewSessionComposerExpanded ? 'inline/collapse' : 'inline/expand'} size={16} />
             </button>
           )}
-          <div className={`aiux543-chat-input-row ai-chat-inline-input-content${composerInputPlacement === 'after' && editorComposerAttachments.length > 0 ? ' is-input-after-attachments' : ''}`}>
+          <div className="aiux543-chat-input-row ai-chat-inline-input-content">
+            {!isAgentRunProcessing && orderedComposerParts.map((part) => (
+              part.type === 'text'
+                ? <span key={part.id} className="ai-chat-composer-text-segment">{part.text}</span>
+                : renderComposerAttachment(composerAttachmentById.get(part.attachmentId), part.id)
+            ))}
             {isAgentRunProcessing ? (
               <div className="aiux543-chat-input aiux543-chat-input-waiting" aria-live="polite">Waiting…</div>
             ) : (
@@ -16821,34 +17177,39 @@ function AiChatTabView({
                 className="aiux543-chat-input"
                 rows={1}
                 value={composerText}
-                placeholder={editorComposerAttachments.length > 0 ? '' : 'Type task, use @mentions or /commands'}
+                placeholder={orderedComposerParts.length > 0 ? '' : 'Type task, use @mentions or /commands'}
                 aria-label="Task prompt"
-                onChange={(event) => setComposerText(event.target.value)}
+                onChange={(event) => {
+                  setComposerText(event.target.value);
+                  setSlashCommandIndex(0);
+                  setSlashCommandMenuDismissed(false);
+                }}
                 onKeyDown={(event) => {
+                  if (showSlashCommandMenu) {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      const direction = event.key === 'ArrowDown' ? 1 : -1;
+                      setSlashCommandIndex((index) => (
+                        (index + direction + filteredSlashCommands.length) % filteredSlashCommands.length
+                      ));
+                      return;
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      setSlashCommandMenuDismissed(true);
+                      return;
+                    }
+                    if (event.key === 'Enter' || event.key === 'Tab') {
+                      event.preventDefault();
+                      insertSlashCommand(filteredSlashCommands[activeSlashCommandIndex].command);
+                      return;
+                    }
+                  }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
                     handleSend();
                   }
                 }}
-              />
-            )}
-            {!isAgentRunProcessing && (
-              <AiChatAttachmentStrip
-                attachments={editorComposerAttachments}
-                collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
-                expanded={composerAttachmentsExpanded}
-                onExpandedChange={setComposerAttachmentsExpanded}
-                getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
-                onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
-                onContextMenu={handleComposerAttachmentContextMenu}
-                onRemove={onRemoveComposerAttachment
-                  ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
-                  : null}
-                className="aiux543-composer-attachments is-inline-composer-attachments"
-                chipClassName="aiux543-composer-attachment-chip"
-                removeButtonClassName="aiux543-composer-attachment-remove"
-                removeLabel={(attachment) => `Remove ${attachment.label ?? 'attachment'}`}
-                stopClickPropagation
               />
             )}
           </div>
@@ -16977,68 +17338,6 @@ function AiChatTabView({
         />
       )}
     </div>
-  );
-}
-
-function SideChatPanel({
-  ctx,
-  chatId,
-  scenarios,
-  sentMessages = [],
-  composerAttachments = [],
-  agentRun = null,
-  onClose,
-  onSendMessage,
-  onRemoveComposerAttachment,
-  onOpenAttachment,
-  onStopMessage,
-}) {
-  return (
-    <ToolWindow
-      title="Side Chat"
-      width={617}
-      height="auto"
-      focused={ctx?.focusedPanel === 'right'}
-      onFocus={() => ctx?.setFocusedPanel?.('right')}
-      onActionClick={(action) => {
-        if (action === 'minimize') {
-          ctx?.setShowRightPanel?.(false);
-          onClose?.();
-        }
-      }}
-      actions={[]}
-      toolbarExtra={(
-        <div className="side-chat-tool-window-header">
-          <div className="side-chat-tool-window-tab" aria-label="Side Chat">
-            <Icon name="aiAssistant/toolWindowChat" size={16} />
-            <span className="side-chat-tool-window-tab-title">Side Chat</span>
-            <button type="button" className="side-chat-tool-window-tab-close" aria-label="Close Side Chat" onClick={onClose}>
-              <Icon name="windows/closeSmall" size={16} />
-            </button>
-          </div>
-          <IconButton icon="general/moreVertical" tooltip="More" className="side-chat-tool-window-more" />
-        </div>
-      )}
-      className="side-chat-tool-window main-window-tool-window main-window-tool-window-right"
-    >
-      <div className="side-chat-tool-window-body">
-        <div className="side-chat-tool-window-empty-state" aria-hidden={sentMessages.length > 0 ? 'true' : undefined}>
-          This is a temporary Side Chat, it's content is deleted once the chat is closed
-        </div>
-        <AiChatTabView
-          chatId={chatId}
-          scenarios={scenarios}
-          sentMessages={sentMessages}
-          fallbackTitle="Side Chat"
-          composerDiffAttachments={composerAttachments}
-          onSendMessage={onSendMessage}
-          onRemoveComposerAttachment={onRemoveComposerAttachment}
-          onOpenAttachment={onOpenAttachment}
-          agentRun={agentRun}
-          onStopMessage={onStopMessage}
-        />
-      </div>
-    </ToolWindow>
   );
 }
 
@@ -17498,7 +17797,7 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
 
 // Summary card for a multi-file change: run status + rollback on top, then the
 // changed files with their line counters. Each row opens that file's diff.
-function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null }) {
+function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null, onRunReview = null }) {
   if (files.length === 0) return null;
 
   return (
@@ -17510,13 +17809,25 @@ function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null
           </span>
           <span>Done</span>
         </span>
-        <button
-          type="button"
-          className="ai-chat-changed-files-rollback"
-          onClick={onRollback ?? undefined}
-        >
-          Rollback
-        </button>
+        <span className="ai-chat-changed-files-actions">
+          {onRunReview && (
+            <button
+              type="button"
+              className="ai-chat-changed-files-review"
+              onClick={onRunReview}
+            >
+              Run AI Review
+            </button>
+          )}
+          {onRunReview && <span className="ai-chat-changed-files-action-separator" aria-hidden="true" />}
+          <button
+            type="button"
+            className="ai-chat-changed-files-rollback"
+            onClick={onRollback ?? undefined}
+          >
+            Rollback
+          </button>
+        </span>
       </header>
       <div className="ai-chat-changed-files-title">Changed Files</div>
       <div className="ai-chat-changed-files-list">
@@ -17654,6 +17965,7 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
       <span
         key={range.annotation.id}
         className={`ai-chat-annotation-mark${isSelectionContext ? ' ai-chat-selection-context-mark' : ''}`}
+        data-ai-chat-annotation-id={range.annotation.id ?? undefined}
         role={!isSelectionContext && onEditAnnotation ? 'button' : undefined}
         tabIndex={!isSelectionContext && onEditAnnotation ? 0 : undefined}
         onClick={!isSelectionContext && onEditAnnotation ? (event) => {
@@ -17669,12 +17981,14 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
         } : undefined}
       >
         {sourceText.slice(range.start, range.end)}
-        <span className="ai-chat-annotation-inline-badge" aria-hidden="true">
-          <Icon name="general/balloon" size={14} />
-          <span className="ai-chat-annotation-inline-count">
-            {Number.isInteger(range.annotation?.order) ? range.annotation.order : 1}
+        {!isSelectionContext && (
+          <span className="ai-chat-annotation-inline-badge" aria-hidden="true">
+            <Icon name="general/balloon" size={14} />
+            <span className="ai-chat-annotation-inline-count">
+              {Number.isInteger(range.annotation?.order) ? range.annotation.order : 1}
+            </span>
           </span>
-        </span>
+        )}
         {!isSelectionContext && (
           <ChatAnnotationInlineHint annotation={range.annotation} />
         )}
@@ -17697,6 +18011,9 @@ export default function App() {
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
+  // Read-only mirror for callbacks that must not re-create themselves on every tab edit.
+  const ideTabContentsRef = useRef(ideTabContents);
+  ideTabContentsRef.current = ideTabContents;
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
@@ -17716,7 +18033,6 @@ export default function App() {
   const [aiChatContextPopupOpenCount, setAiChatContextPopupOpenCount] = useState(0);
   const [chatScrollTarget, setChatScrollTarget] = useState(null);
   const [selectedAiChatId, setSelectedAiChatId] = useState('refactor-time-slots');
-  const [sideChatState, setSideChatState] = useState(null);
   const [aiChatAutoSendRequest, setAiChatAutoSendRequest] = useState(null);
   const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
@@ -17735,6 +18051,9 @@ export default function App() {
   const suppressDoneCommentsChangeRef = useRef(false);
   const suppressDoneCommentsChangeTimerRef = useRef(null);
   const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
+  // Read-only mirror, for callbacks that run from timers and must see current titles.
+  const aiChatDraftSessionsByIdRef = useRef(aiChatDraftSessionsById);
+  aiChatDraftSessionsByIdRef.current = aiChatDraftSessionsById;
   const showNewContextOptionsIndicator =
     diffCommentsOptionIsNew && aiChatContextPopupOpenCount < 6;
   const handleAiChatAddContextPopupOpen = useCallback(() => {
@@ -17760,7 +18079,6 @@ export default function App() {
   // Chats now open as editor tabs (not a right tool window). openChatInEditorTab
   // is defined later, so route through a ref to avoid a TDZ during render.
   const openChatInEditorTabRef = useRef(null);
-  const startReviewFromPresetRef = useRef(null);
   const openAiToolWindow = useCallback((chatId = null) => {
     const targetId = typeof chatId === 'string' && chatId ? chatId : selectedAiChatId;
     openChatInEditorTabRef.current?.(targetId);
@@ -17951,9 +18269,10 @@ export default function App() {
     writeStoredFinalDefaultPresetOverrides(finalDefaultPresetOverrides);
   }, [finalDefaultPresetOverrides]);
   const [finalRemovedDefaultAgentIds, setFinalRemovedDefaultAgentIds] = useState([]);
-  const [finalToolbarChoiceId, setFinalToolbarChoiceId] = useState(
-    () => readStoredFinalConfiguration(FINAL_TOOLBAR_VARIANT_KEY)?.choiceId ?? FINAL_AI_REVIEW_PRESET.id,
-  );
+  const [finalToolbarChoiceId, setFinalToolbarChoiceId] = useState(() => {
+    const storedChoiceId = readStoredFinalConfiguration(FINAL_TOOLBAR_VARIANT_KEY)?.choiceId;
+    return storedChoiceId && storedChoiceId !== FINAL_AI_REVIEW_PRESET.id ? storedChoiceId : 'codex';
+  });
   const [presetDialogDraft, setPresetDialogDraft] = useState(null);
   const [presetDialogEmpty, setPresetDialogEmpty] = useState(false);
   const [finalToolbarAppliedNotice, setFinalToolbarAppliedNotice] = useState(null);
@@ -17968,9 +18287,8 @@ export default function App() {
   // Installing an agent from the catalogue pushes into FINAL_DIRECT_AGENT_OPTIONS, so subscribe to
   // the install store to re-run the (un-memoized) getFinalAgentItems calls below.
   useAgentInstallState();
-  const finalVisiblePresets = finalPresets.some((preset) => preset.id === FINAL_AI_REVIEW_PRESET.id)
-    ? finalPresets
-    : [FINAL_AI_REVIEW_PRESET, ...finalPresets];
+  // AI Review preset entry point is temporarily disabled in the preset menus.
+  const finalVisiblePresets = finalPresets.filter((preset) => preset.id !== FINAL_AI_REVIEW_PRESET.id);
   const finalDefaultAgentItems = getFinalAgentItems(
     [],
     finalDefaultPresetOverrides,
@@ -18105,14 +18423,10 @@ export default function App() {
         label: preset.label,
       });
     }
-    if (preset?.id === FINAL_AI_REVIEW_PRESET.id) {
-      const configuration = applyFinalToolbarPreset(preset);
-      startReviewFromPresetRef.current?.({
-        agentIcon: configuration.agentId,
-        attachments: [],
-      });
-      return;
-    }
+    // Every preset in this menu behaves the same way: open an empty session
+    // configured by the preset. The review preset is no exception — it lands in the
+    // composer as "/review" (see initialComposerText in startFinalSessionFromToolbar)
+    // and the user sends it, instead of the review firing on the menu click.
     startFinalSessionFromToolbar(presetId);
   };
 
@@ -18301,6 +18615,8 @@ export default function App() {
 
   // ─── Control+Control opens the AI Review composer anywhere ────────────────
   const [globalReviewDialogOpen, setGlobalReviewDialogOpen] = useState(false);
+  const [globalReviewLaunchSource, setGlobalReviewLaunchSource] = useState('shortcut');
+  const [globalReviewTargetChatId, setGlobalReviewTargetChatId] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
 
@@ -18310,6 +18626,8 @@ export default function App() {
 
       const now = Date.now();
       if (now - lastControlKeyTimeRef.current <= 500) {
+        setGlobalReviewTargetChatId(null);
+        setGlobalReviewLaunchSource('shortcut');
         setGlobalReviewDialogOpen(true);
         lastControlKeyTimeRef.current = 0;
         return;
@@ -19824,11 +20142,17 @@ export default function App() {
     const listItem = chatId ? getAiChatListItemById(chatId) : null;
     const chatTitle = (scenario?.title || listItem?.title || '').trim();
     const reviewAgentIcon = scenario?.icon || listItem?.icon || 'codex';
-    // "AI Review" + the launching chat as context.
-    const label = chatTitle ? `AI Review · ${chatTitle}` : 'AI Review';
+    // "AI Review" + the launching chat as context. A review that lives in its own
+    // chat is already named "AI Review · <context>", so reuse that title verbatim
+    // instead of stacking a second "AI Review ·" prefix on it.
+    const label = !chatTitle
+      ? 'AI Review'
+      : (/^AI Review\b/iu.test(chatTitle) ? chatTitle : `AI Review · ${chatTitle}`);
     setScreen('ide');
     setReviewView('timeline');
-    setReviewGroupMode('agent');
+    // Grouping is intentionally NOT reset here: the chat review card groups by
+    // severity, so opening the full view has to keep that grouping (and any
+    // grouping the user picked earlier in the tab).
     setIdeTabContents((prev) => ({
       ...prev,
       [REVIEW_DIFF_TAB_ID]: {
@@ -19845,7 +20169,7 @@ export default function App() {
         // Refresh the label so it reflects the chat the review was launched from.
         const nextTabs = prevTabs.map((tab, index) => (
           index === existingIndex
-            ? { ...tab, label, icon: <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" /> }
+            ? { ...tab, label, icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} /> }
             : tab
         ));
         requestAnimationFrame(() => setActiveEditorTab(existingIndex));
@@ -19858,7 +20182,7 @@ export default function App() {
         : prevTabs.length;
       const nextTabs = [
         ...prevTabs.slice(0, insertAt),
-        { id: REVIEW_DIFF_TAB_ID, label, icon: <AiChatAgentIcon icon={reviewAgentIcon} title="AI Review" />, closable: true },
+        { id: REVIEW_DIFF_TAB_ID, label, icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} />, closable: true },
         ...prevTabs.slice(insertAt),
       ];
       requestAnimationFrame(() => setActiveEditorTab(insertAt));
@@ -20017,9 +20341,11 @@ export default function App() {
   // single-file diff). Stored as a checked set of severities so the overview
   // and single-file diffs stay in sync as you move between them.
   const [reviewSeverityFilter, setReviewSeverityFilter] = useState(REVIEW_SEVERITY_FILTER_IDS);
-  // Shared group mode for the review: 'file' | 'severity' | 'status'. Sections
-  // the overview stack and drives the files popup's grouping everywhere.
-  const [reviewGroupMode, setReviewGroupMode] = useState('agent');
+  // Shared group mode for the review: 'agent' | 'file' | 'severity' | 'status'.
+  // Sections the overview stack and drives the files popup's grouping everywhere.
+  // Defaults to 'severity' to match the chat review card, which always groups by
+  // severity — the full view opens from it and must not change the grouping.
+  const [reviewGroupMode, setReviewGroupMode] = useState('severity');
   // Shared review layout: 'inline' (comments in the diff) | 'panel' (code left,
   // comments in a column on the right). Lifted so opening a single file from the
   // overview carries the same toolbar toggle and comment layout.
@@ -20065,6 +20391,44 @@ export default function App() {
     ideTabs,
   ]);
   openChatInEditorTabRef.current = openChatInEditorTab;
+
+  // A finished review turns its session into a review session, so the chat takes its
+  // name from the review context — and the review tab, which mirrors that chat, shows
+  // the same name. Only placeholder titles are replaced: a chat the user (or a
+  // scenario) already named keeps it, since there the review is one message among
+  // many rather than the point of the session.
+  const renameChatAfterReview = useCallback((chatId, featureTitle) => {
+    const context = String(featureTitle || '').trim();
+    if (!chatId || !context) return;
+    const nextTitle = `AI Review · ${context}`;
+    const chatTabId = `ai-chat-${chatId}`;
+    // Decide from the mirror rather than inside the updater: the tab labels below are
+    // separate state, and a flag set inside an updater isn't readable in time.
+    const session = aiChatDraftSessionsByIdRef.current[chatId];
+    const currentTitle = String(session?.title || '').trim();
+    if (!session || currentTitle === nextTitle) return;
+    if (!REVIEW_PLACEHOLDER_CHAT_TITLES.includes(currentTitle)) return;
+    setAiChatDraftSessionsById((prev) => (
+      prev[chatId] ? { ...prev, [chatId]: { ...prev[chatId], title: nextTitle } } : prev
+    ));
+    // Tab labels are snapshots taken when the tab opened, so they need the update too.
+    setIdeTabs((prev) => prev.map((tab) => {
+      if (tab.id === chatTabId) {
+        return { ...tab, label: nextTitle, icon: <AiChatAgentIcon icon={tab.icon?.props?.icon ?? 'codex'} title={nextTitle} /> };
+      }
+      return tab;
+    }));
+    // The full-review tab mirrors the chat it was opened from, so it follows along.
+    if (ideTabContentsRef.current[REVIEW_DIFF_TAB_ID]?.reviewChatId !== chatId) return;
+    setIdeTabContents((prev) => {
+      const reviewContent = prev[REVIEW_DIFF_TAB_ID];
+      if (!reviewContent || reviewContent.reviewChatId !== chatId) return prev;
+      return { ...prev, [REVIEW_DIFF_TAB_ID]: { ...reviewContent, reviewChatTitle: nextTitle } };
+    });
+    setIdeTabs((prev) => prev.map((tab) => (
+      tab.id === REVIEW_DIFF_TAB_ID ? { ...tab, label: nextTitle } : tab
+    )));
+  }, []);
 
   const openEditorTabByLabel = useCallback((label) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
@@ -23864,7 +24228,11 @@ export default function App() {
       : targetChatId;
     const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
     const stamp = Date.now();
-    const attachmentId = `selection-context-${targetChatId}-${normalizedSourceTabId}`;
+    // Quotes taken from chat stay independent: each chip carries exactly the
+    // selection that created it and can be removed without affecting siblings.
+    const attachmentId = isChatSelectionContext
+      ? `selection-context-${targetChatId}-${normalizedSourceTabId}-${stamp}`
+      : `selection-context-${targetChatId}-${normalizedSourceTabId}`;
     const selection = {
       id: `${attachmentId}:selection-${stamp}`,
       selectedText: normalizedSelectedText,
@@ -23883,8 +24251,9 @@ export default function App() {
     };
     const attachment = {
       id: attachmentId,
-      label: chipLabel,
-      icon: chipIcon,
+      label: isChatSelectionContext ? normalizedSelectedText : chipLabel,
+      icon: isChatSelectionContext ? 'general/balloon' : chipIcon,
+      hideInlineCount: isChatSelectionContext,
       isSelectionContext: true,
       isChatSelectionContext,
       selectionCount: 1,
@@ -23909,6 +24278,22 @@ export default function App() {
       [targetChatId]: (() => {
         const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
         const existingIndex = currentAttachments.findIndex((item) => item?.id === attachmentId);
+        if (isChatSelectionContext) {
+          const nextQuoteOrder = currentAttachments
+            .flatMap((item) => getSelectionContextItems(item))
+            .filter((item) => item.isChatSelectionContext)
+            .reduce((highestOrder, item, index) => (
+              Math.max(highestOrder, Number.isInteger(item.quoteOrder) ? item.quoteOrder : index + 1)
+            ), 0) + 1;
+          return [
+            ...currentAttachments,
+            {
+              ...attachment,
+              quoteOrder: nextQuoteOrder,
+              selections: attachment.selections.map((item) => ({ ...item, quoteOrder: nextQuoteOrder })),
+            },
+          ];
+        }
         if (existingIndex < 0) {
           return [...currentAttachments, attachment];
         }
@@ -23941,106 +24326,18 @@ export default function App() {
     openAiToolWindow,
     selectedAiChatId,
   ]);
-  const askSelectionInSideChat = useCallback((selectionContext = {}) => {
-    const selectedText = typeof selectionContext?.selectedText === 'string'
-      ? selectionContext.selectedText.trim()
-      : '';
-    if (!selectedText) return false;
-
-    const existingSideChatId = typeof sideChatState?.chatId === 'string'
-      ? sideChatState.chatId
-      : null;
-    const sideChat = existingSideChatId
-      ? { id: existingSideChatId }
-      : createEmptyAiChatSession({
-          title: 'Side Chat',
-          icon: 'claude',
-          emptyState: true,
-          showAttachmentsInComposer: true,
-          initialComposerText: '',
-          temporary: true,
-          select: false,
-        });
-
-    const didAddContext = addSelectionContextToChat({
-      ...selectionContext,
-      chatId: sideChat.id,
-      selectedText,
-      openChat: false,
-    });
-
-    if (didAddContext) {
-      setScreen('ide');
-      setSideChatState((prev) => ({
-        chatId: sideChat.id,
-        sourceTabId: selectionContext?.sourceTabId ?? prev?.sourceTabId ?? null,
-        sourceLabel: selectionContext?.sourceLabel ?? prev?.sourceLabel ?? 'Selected context',
-        selectedText,
-        lineLabel: selectionContext?.lineLabel ?? '',
-        contextCount: (prev?.chatId === sideChat.id ? (prev.contextCount ?? 0) : 0) + 1,
-      }));
-    }
-
-    return didAddContext;
-  }, [addSelectionContextToChat, createEmptyAiChatSession, sideChatState?.chatId]);
-  const closeSideChat = useCallback(() => {
-    const sideChatId = sideChatState?.chatId;
-    setSideChatState(null);
-    if (!sideChatId) return;
-
-    setAiChatDraftSessionsById((prev) => {
-      if (!(sideChatId in prev)) return prev;
-      const { [sideChatId]: _removed, ...rest } = prev;
-      return rest;
-    });
-    setAiChatSentMessagesByChatId((prev) => {
-      if (!(sideChatId in prev)) return prev;
-      const { [sideChatId]: _removed, ...rest } = prev;
-      return rest;
-    });
-    setAiChatSelectionContextByChatId((prev) => {
-      if (!(sideChatId in prev)) return prev;
-      const { [sideChatId]: _removed, ...rest } = prev;
-      return rest;
-    });
-    setAiChatAnnotationsByChatId((prev) => {
-      if (!(sideChatId in prev)) return prev;
-      const { [sideChatId]: _removed, ...rest } = prev;
-      return rest;
-    });
-    setAgentRunByChatId((prev) => {
-      if (!(sideChatId in prev)) return prev;
-      const { [sideChatId]: _removed, ...rest } = prev;
-      return rest;
-    });
-  }, [sideChatState?.chatId]);
   const handleAddSpecSelectionToChat = useCallback(({
     selectedText = '',
     chatId = null,
     rowKey = null,
     rowIndex = null,
     lineLabel = '',
-    mode = 'selection',
   } = {}) => {
     const sourceTabId = visibleEditorStateTabId ?? activeSourceEditorTabId ?? activeTabId;
     const sourceLabel =
       activeEditorTabMeta?.label
       ?? currentAgentTaskLabel
       ?? 'Spec';
-
-    if (mode === 'side-chat') {
-      return askSelectionInSideChat({
-        selectedText,
-        sourceLabel,
-        sourceTabId,
-        sourceIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
-        chipLabel: sourceLabel,
-        chipIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
-        sourceRowKey: rowKey,
-        sourceRowIndex: rowIndex,
-        lineLabel,
-      });
-    }
 
     const requestedChatId = typeof chatId === 'string' ? chatId.trim() : '';
     // "Create New Chat" in the target submenu.
@@ -24074,7 +24371,6 @@ export default function App() {
     activeSourceEditorTabId,
     activeTabId,
     addSelectionContextToChat,
-    askSelectionInSideChat,
     createEmptyAiChatSession,
     currentAgentTaskLabel,
     ensureSpecStatusChat,
@@ -24086,70 +24382,6 @@ export default function App() {
     const opensInlineEditorComment = actionId === 'comment' || actionId === 'add-context-comment';
     if (!opensInlineEditorComment) {
       clearDocumentTextSelection();
-    }
-
-    if (actionId === 'ask-in-side-chat') {
-      const selectedText = typeof toolbarState?.selectedText === 'string'
-        ? toolbarState.selectedText.trim()
-        : '';
-      if (!selectedText) return;
-
-      const isChatSurface = toolbarState?.surface === 'ai-chat';
-      const sourceChatId = typeof toolbarState?.chatId === 'string' && toolbarState.chatId.trim().length > 0
-        ? toolbarState.chatId.trim()
-        : activeAiChatTabChatId;
-      const activeTab = ideTabs[activeEditorTab ?? 0] ?? null;
-      const sourceChatListItem = isChatSurface && sourceChatId
-        ? getAiChatListItemById(sourceChatId)
-        : null;
-      const sourceChatScenario = isChatSurface && sourceChatId
-        ? getAiChatScenarioById(sourceChatId)
-        : null;
-      const sourceChatTitle =
-        sourceChatListItem?.title
-        ?? sourceChatScenario?.title
-        ?? activeTab?.label
-        ?? 'Chat';
-      const sourceChatIcon =
-        sourceChatListItem?.icon
-        ?? sourceChatScenario?.icon
-        ?? 'claude';
-      const sourceLabel = isChatSurface
-        ? sourceChatTitle
-        : (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0
-            ? toolbarState.sourceLabel.trim()
-            : (activeTab?.label ?? 'Selected context'));
-      const sourceTabId = isChatSurface
-        ? `ai-chat-${sourceChatId}`
-        : (typeof toolbarState?.sourceTabId === 'string' && toolbarState.sourceTabId.trim().length > 0
-            ? toolbarState.sourceTabId
-            : activeTabId);
-      const rowIds = Array.isArray(toolbarState?.rowIds)
-        ? toolbarState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
-        : [];
-      const lineLabel = rowIds.length > 0
-        ? formatEditorCommentLineLabel(rowIds.map((rowId) => {
-            const match = rowId.match(/(\d+)\s*$/u);
-            return match ? Number.parseInt(match[1], 10) : null;
-          }))
-        : '';
-      const didOpenSideChat = askSelectionInSideChat({
-        selectedText,
-        sourceLabel,
-        sourceTabId,
-        sourceIcon: isChatSurface ? sourceChatIcon : (activeTab?.icon ?? 'fileTypes/text'),
-        chipLabel: isChatSurface ? sourceChatTitle : sourceLabel,
-        chipIcon: isChatSurface ? sourceChatIcon : (activeTab?.icon ?? 'fileTypes/text'),
-        isChatSelectionContext: isChatSurface,
-        messageId: typeof toolbarState?.messageId === 'string' ? toolbarState.messageId : null,
-        blockId: typeof toolbarState?.blockId === 'string' ? toolbarState.blockId : null,
-        startOffset: Number.isFinite(toolbarState?.startOffset) ? toolbarState.startOffset : null,
-        endOffset: Number.isFinite(toolbarState?.endOffset) ? toolbarState.endOffset : null,
-        rowIds,
-        lineLabel,
-      });
-      if (didOpenSideChat) clearDocumentTextSelection();
-      return;
     }
 
     if (actionId === 'chat-annotate') {
@@ -24363,7 +24595,6 @@ export default function App() {
     isDiffTab,
     isPlainFileOverlayTab,
     addSelectionContextToChat,
-    askSelectionInSideChat,
     createEmptyAiChatSession,
     selectedAiChatId,
   ]);
@@ -24722,32 +24953,48 @@ export default function App() {
       });
     }
 
-    if (chatAnnotations.length > 0 || chatSelectionAttachments.length > 0) {
+    if (chatAnnotations.length > 0) {
       const chatListItem = getAiChatListItemById(selectedAiChatId);
       const chatTitle =
         chatListItem?.title
         ?? selectedAiChatScenario?.title
         ?? 'Chat';
-      const chatSelections = chatSelectionAttachments.flatMap((attachment) => getSelectionContextItems(attachment));
-      const firstChatSelectionAttachment = chatSelectionAttachments[0] ?? null;
 
       attachments.push({
-        ...(firstChatSelectionAttachment ?? {}),
         id: `chat-context-${selectedAiChatId}`,
         label: chatTitle,
-        icon: chatListItem?.icon ?? selectedAiChatScenario?.icon ?? firstChatSelectionAttachment?.icon ?? 'claude',
+        icon: chatListItem?.icon ?? selectedAiChatScenario?.icon ?? 'claude',
         chatId: selectedAiChatId,
         sourceTabId: chatSourceTabId,
         sourceLabel: chatTitle,
-        isChatAnnotation: chatAnnotations.length > 0,
+        isChatAnnotation: true,
         annotations: chatAnnotations,
         commentCount: chatAnnotations.length,
-        isSelectionContext: chatSelections.length > 0,
-        isChatSelectionContext: chatSelections.length > 0,
-        selections: chatSelections,
-        selectionCount: chatSelections.length,
       });
     }
+
+    // Each "Quote in chat" action is represented by its own chip. Normalize
+    // older grouped state as well, so a chat never falls back to one agent chip
+    // with a numeric badge after navigating away and back.
+    chatSelectionAttachments.forEach((attachment) => {
+      getSelectionContextItems(attachment).forEach((selection) => {
+        attachments.push({
+          ...attachment,
+          ...selection,
+          id: selection.id ?? attachment.id,
+          label: selection.selectedText,
+          icon: 'general/balloon',
+          hideInlineCount: true,
+          isChatAnnotation: false,
+          annotations: [],
+          commentCount: 0,
+          isSelectionContext: true,
+          isChatSelectionContext: true,
+          selections: [selection],
+          selectionCount: 1,
+        });
+      });
+    });
 
     nonChatSelectionAttachments.forEach((attachment) => {
       const matchingAttachmentIndex = attachments.findIndex((candidate) => (
@@ -25510,6 +25757,9 @@ export default function App() {
           if (item?.id === attachment.id) return false;
           const itemSelections = getSelectionContextItems(item);
           if (itemSelections.some((selection) => removedSelectionIds.has(selection.id))) return false;
+          // Chat quotes share one source tab, but are intentionally independent
+          // attachments. Removing one chip must not remove every quote from it.
+          if (attachment.isChatSelectionContext) return true;
           const itemSourceTabId = typeof item?.sourceTabId === 'string' ? item.sourceTabId : '';
           const itemSourceLabel = typeof item?.sourceLabel === 'string' ? item.sourceLabel : '';
           if (attachment.diffTabId && itemSourceTabId === attachment.diffTabId) return false;
@@ -26475,11 +26725,16 @@ export default function App() {
     });
   }, []);
 
-  const handleAiChatTabSend = useCallback((chatId, text, attachments = [], { forceReview = false } = {}) => {
+  const handleAiChatTabSend = useCallback((chatId, text, attachments = [], { forceReview = false, attachmentsFirst = false, attachmentPlacements = {}, contentParts = null } = {}) => {
     if (!chatId) return;
     const messageText = (text ?? '').trim();
     const messageAttachments = (Array.isArray(attachments) ? attachments : [])
-      .map((attachment) => snapshotAiChatMessageAttachment(attachment));
+      .map((attachment, index) => ({
+        ...snapshotAiChatMessageAttachment(attachment),
+        inputPlacement: attachmentPlacements[getAiChatAttachmentSequenceKey(attachment, index)]
+          ?? attachment?.inputPlacement
+          ?? (attachmentsFirst ? 'before' : 'after'),
+      }));
     const commentAttachments = messageAttachments.filter((attachment) => (
       Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
     ));
@@ -26497,13 +26752,14 @@ export default function App() {
     const isReviewCommand = forceReview
       || /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
     const reviewSession = isReviewCommand ? getAiChatScenarioById(targetChatId) : null;
+    const resolvedReviewAgentIcon = reviewSession?.icon ?? 'codex';
     const sessionFeatureTitle = String(reviewSession?.reviewFeatureTitle || '').trim();
     const sessionTitle = String(reviewSession?.title || '').trim();
     const attachmentFeatureTitle = String(messageAttachments[0]?.label || '')
       .replace(/^diff\s+/iu, '')
       .trim();
     const reviewFeatureTitle = sessionFeatureTitle
-      || (!['', 'AI Review', 'New Chat'].includes(sessionTitle) ? sessionTitle : '')
+      || (!REVIEW_PLACEHOLDER_CHAT_TITLES.includes(sessionTitle) ? sessionTitle : '')
       || (attachmentFeatureTitle ? `Changes in ${attachmentFeatureTitle}` : 'Current changes');
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
@@ -26513,6 +26769,8 @@ export default function App() {
       id: `${targetChatId}-${stamp}-${baseCount}`,
       text: messageText,
       attachments: messageAttachments,
+      attachmentsFirst,
+      contentParts: Array.isArray(contentParts) ? contentParts : null,
     };
     const assistantMessageId = `${targetChatId}-assistant-${stamp}-${baseCount}`;
     const assistantMessage = shouldRunAgent
@@ -26627,7 +26885,7 @@ export default function App() {
           status: 'processing',
           kind: isReviewCommand ? 'review' : undefined,
           agentIcon: isReviewCommand
-            ? (prev[targetChatId]?.agentIcon ?? getAiChatScenarioById(targetChatId)?.icon ?? 'codex')
+            ? (prev[targetChatId]?.agentIcon ?? resolvedReviewAgentIcon)
             : prev[targetChatId]?.agentIcon,
           iteration: (prev[targetChatId]?.iteration ?? 0) + 1,
           notes: noteItems,
@@ -26710,7 +26968,7 @@ export default function App() {
                     streaming: false,
                     text: 'AI Review summary',
                     reviewSummary: {
-                      agentIcon: getAiChatScenarioById(targetChatId)?.icon ?? 'codex',
+                      agentIcon: resolvedReviewAgentIcon,
                       featureTitle: reviewFeatureTitle,
                       fileCount: summaryFileCount,
                       commentCount: reviewNotes.length,
@@ -26730,6 +26988,7 @@ export default function App() {
             )),
             targetChatId,
           );
+          renameChatAfterReview(targetChatId, reviewFeatureTitle);
         }
       };
       const streamNextChunk = () => {
@@ -26767,6 +27026,7 @@ export default function App() {
     resolveCommentAttachmentResponse,
     handleSelectedAiChatSentMessagesChange,
     getAiChatScenarioById,
+    renameChatAfterReview,
   ]);
 
   const handleAcceptReviewDecision = useCallback((chatId) => {
@@ -26794,15 +27054,17 @@ export default function App() {
     agentIcon = 'codex',
     attachments = [],
   } = {}) => {
-    const sourceChatId = activeAiChatTabChatId || selectedAiChatId;
-    const sourceScenario = sourceChatId ? getAiChatScenarioById(sourceChatId) : null;
-    const sourceTitle = String(sourceScenario?.reviewFeatureTitle || sourceScenario?.title || '').trim();
+    // This flow puts the review in its OWN chat, so the context must describe the
+    // reviewed changes — not the chat the dialog happened to be opened from. Naming
+    // the source chat here made the header point at one chat while its "Open chat"
+    // button opened another.
     const attachmentTitle = String(attachments[0]?.label || '').replace(/^diff\s+/iu, '').trim();
-    const reviewFeatureTitle = !['', 'AI Review', 'New Chat'].includes(sourceTitle)
-      ? sourceTitle
-      : (attachmentTitle ? `Changes in ${attachmentTitle}` : 'Current changes');
+    const reviewFeatureTitle = attachmentTitle ? `Changes in ${attachmentTitle}` : 'Current changes';
+    // The chat gets its own name from the review context, keeping the "AI Review"
+    // block up front so the tab still reads as a review session.
+    const reviewChatTitle = `AI Review · ${reviewFeatureTitle}`;
     const reviewChat = createEmptyAiChatSession({
-      title: 'AI Review',
+      title: reviewChatTitle,
       icon: agentIcon,
       reviewFeatureTitle,
       emptyState: true,
@@ -26839,12 +27101,11 @@ export default function App() {
       },
     }));
     openChatInEditorTabRef.current?.(reviewChat.id, {
-      title: 'AI Review',
+      title: reviewChatTitle,
       icon: agentIcon,
       activate: true,
     });
-  }, [activeAiChatTabChatId, createEmptyAiChatSession, getAiChatScenarioById, selectedAiChatId]);
-  startReviewFromPresetRef.current = handleStartReviewFromDialog;
+  }, [createEmptyAiChatSession]);
 
   const globalAiReviewSourceAttachments = (() => {
     if (commitReviewContext?.focused && Array.isArray(commitReviewContext.attachments)) {
@@ -26880,7 +27141,29 @@ export default function App() {
       }];
     }
 
-    if (isAiChatTab) return aiChatComposerDiffAttachments;
+    if (isAiChatTab) {
+      const activeChatScenario = getAiChatScenarioById(activeAiChatTabChatId);
+      const changeCardAttachments = getChatChangeCards(activeChatScenario)
+        .filter((card) => card?.diffRequest)
+        .map((card, index) => ({
+          id: `review-context-${activeAiChatTabChatId}-${card.id ?? index}`,
+          label: `Diff ${card.name}`,
+          icon: 'vcs/diff',
+          diffRequest: card.diffRequest,
+          sourceTabId: card.diffRequest?.source?.tabId ?? null,
+          sourceLabel: card.diffRequest?.source?.label ?? card.name,
+        }));
+      const seenContextKeys = new Set();
+      return [...aiChatComposerDiffAttachments, ...changeCardAttachments].filter((attachment, index) => {
+        const contextKey = attachment?.sourceTabId
+          ?? attachment?.diffRequest?.source?.tabId
+          ?? attachment?.id
+          ?? `${attachment?.sourceLabel ?? attachment?.label ?? 'context'}-${index}`;
+        if (seenContextKeys.has(contextKey)) return false;
+        seenContextKeys.add(contextKey);
+        return true;
+      });
+    }
 
     if (screen === 'ide' && activeTabId && activeEditorTabMeta?.label && !isReviewDiffTab && !isAgentsCatalogueTab) {
       return [{
@@ -26903,17 +27186,22 @@ export default function App() {
   const globalAiReviewDialogNode = (
     <AiReviewComposerDialog
       open={globalReviewDialogOpen}
-      onClose={() => setGlobalReviewDialogOpen(false)}
-      initialAgentId="codex"
+      onClose={() => {
+        setGlobalReviewDialogOpen(false);
+        setGlobalReviewTargetChatId(null);
+      }}
+      initialAgentId={globalReviewLaunchSource === 'chat-banner' && globalReviewTargetChatId
+        ? (getAiChatScenarioById(globalReviewTargetChatId)?.icon ?? 'codex')
+        : 'codex'}
       currentScopeLabel="Local changes"
-      currentFileLabel={activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
+      currentFileLabel={globalAiReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
       contextLabel="Changes"
       contextMeta="Local changes"
       contextIcon="general/listFiles"
       sourceAttachments={globalAiReviewSourceAttachments}
       onStartReview={handleStartReviewFromDialog}
       onOpenAttachment={(attachment) => handleOpenChatAttachment(attachment, { archived: false })}
-      launchSource="shortcut"
+      launchSource={globalReviewLaunchSource}
     />
   );
 
@@ -27285,6 +27573,21 @@ export default function App() {
 
     if (attachment.isSelectionContext) {
       const sourceTabId = typeof attachment.sourceTabId === 'string' ? attachment.sourceTabId : null;
+      const sourceChatId = attachment.isChatSelectionContext && sourceTabId?.startsWith('ai-chat-')
+        ? sourceTabId.slice('ai-chat-'.length)
+        : null;
+      if (sourceChatId) {
+        const firstSelection = getSelectionContextItems(attachment)[0] ?? attachment;
+        openChatInEditorTab(sourceChatId);
+        setChatScrollTarget({
+          chatId: sourceChatId,
+          messageId: firstSelection.messageId ?? messageId ?? null,
+          blockId: firstSelection.blockId ?? null,
+          annotationId: firstSelection.id ?? null,
+          nonce: Date.now(),
+        });
+        return;
+      }
       const sourceTabIndex = sourceTabId ? ideTabs.findIndex((tab) => tab?.id === sourceTabId) : -1;
       if (sourceTabIndex >= 0) {
         setScreen('ide');
@@ -27760,24 +28063,8 @@ export default function App() {
       },
     ],
   }];
-  const sideChatId = sideChatState?.chatId ?? null;
-  const sideChatComposerAttachments = sideChatId && Array.isArray(aiChatSelectionContextByChatId[sideChatId])
-    ? aiChatSelectionContextByChatId[sideChatId]
-    : [];
-  const ideRightStripeItems = sideChatId
-    ? [
-        {
-          id: 'side-chat',
-          icon: 'aiAssistant/toolWindowChat@20x20',
-          tooltip: 'Side Chat',
-          section: 'top',
-        },
-        ...MY_RIGHT_STRIPE,
-      ]
-    : MY_RIGHT_STRIPE;
-  const ideDefaultOpenToolWindows = sideChatId
-    ? [...ideOpenWindows.filter((windowId) => windowId !== 'side-chat'), 'side-chat']
-    : ideOpenWindows.filter((windowId) => windowId !== 'side-chat');
+  const ideRightStripeItems = MY_RIGHT_STRIPE;
+  const ideDefaultOpenToolWindows = ideOpenWindows;
   return (
     <ThemeProvider defaultTheme="dark">
       <MainWindow
@@ -27837,7 +28124,7 @@ export default function App() {
                   scenarios={aiChatScenarios}
                   sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
-                  onSendMessage={(targetChatId, text, attachments) => handleAiChatTabSend(targetChatId, text, attachments)}
+                  onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
                   onOpenDiffTab={openPlanDiffTab}
                   onOpenAttachment={handleOpenChatAttachment}
@@ -27861,9 +28148,18 @@ export default function App() {
                   onReviewFileCommentsChange={persistReviewFileComments}
                   onApplyReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status)}
                   onDismissReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status)}
-                  chatAnnotations={[]}
+                  chatAnnotations={[
+                    ...(aiChatAnnotationsByChatId[activeAiChatTabChatId] ?? []),
+                    ...getChatSelectionContextHighlights(aiChatComposerDiffAttachments),
+                  ]}
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
+                  onRunAiReview={(targetChatId) => {
+                    setCommitReviewContext(null);
+                    setGlobalReviewTargetChatId(targetChatId);
+                    setGlobalReviewLaunchSource('chat-banner');
+                    setGlobalReviewDialogOpen(true);
+                  }}
                 />
               </div>
             )
@@ -27969,7 +28265,6 @@ export default function App() {
                       />
                     ) : null}
                     reviewSourceTabId={activeTabId}
-                    onStartReview={handleStartReviewFromDialog}
                   />
                 )
                 : undefined)
@@ -27990,29 +28285,12 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onStartReview={handleStartReviewFromDialog} onReviewContextChange={setCommitReviewContext} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} agentRunByChatId={agentRunByChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenReviewDiff={openReviewDiffTab} onOpenFile={openCommentTarget} onSettings={() => setIsSettingsDialogOpen(true)} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => (prev.includes(taskId) ? prev : [...prev, taskId]))} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => {
-          if (id === 'side-chat' && sideChatId) {
-            return (
-              <SideChatPanel
-                ctx={ctx}
-                chatId={sideChatId}
-                scenarios={aiChatScenarios}
-                sentMessages={aiChatSentMessagesByChatId[sideChatId] ?? []}
-                composerAttachments={sideChatComposerAttachments}
-                agentRun={agentRunByChatId[sideChatId] ?? null}
-                onClose={closeSideChat}
-                onSendMessage={handleAiChatTabSend}
-                onRemoveComposerAttachment={handleRemoveComposerAttachment}
-                onOpenAttachment={handleOpenChatAttachment}
-                onStopMessage={handleAiChatTabStop}
-              />
-            );
-          }
           return defaultRightPanelContent(id, ctx);
         }}
         bottomPanelContent={(id, ctx) => renderBottomPanelContent(id, ctx)}

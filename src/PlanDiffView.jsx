@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator, TooltipHelp } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
@@ -850,7 +850,7 @@ function PlanDiffViewingScopeControl({
   );
 }
 
-// The diff top bar's "AI Review" entry point. Also reused outside the diff (the
+// The diff top bar's "Quick Actions" entry point. Also reused outside the diff (the
 // Commit tool window), hence the class hooks for host-specific sizing.
 const AI_REVIEW_AGENT_OPTIONS = [
   {
@@ -977,6 +977,7 @@ export function AiReviewComposerDialog({
   const [effortId, setEffortId] = useState(AI_REVIEW_EFFORT_OPTIONS[0].id);
   const [editModeId, setEditModeId] = useState(AI_REVIEW_EDIT_MODE_OPTIONS[0].id);
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(true);
   const isCommitLaunch = launchSource === 'commit';
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
@@ -994,6 +995,7 @@ export function AiReviewComposerDialog({
     setInstructions(initialInstructions);
     setAttachments(sourceAttachments);
     setAttachmentsExpanded(false);
+    setShowQuickActions(true);
     setAddContextRect(null);
   }, [initialAgentId, initialInstructions, open]);
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
@@ -1109,7 +1111,7 @@ export function AiReviewComposerDialog({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={isCommitLaunch ? 'Start AI Review for commit changes' : 'Start AI Review'}
+            aria-label={isCommitLaunch ? 'Quick Actions for commit changes' : 'Quick Actions'}
             data-launch-source={launchSource}
             className={`plan-diff-ai-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
           >
@@ -1195,6 +1197,41 @@ export function AiReviewComposerDialog({
               </button>
             </div>
 
+            {showQuickActions && (
+              <div className="plan-diff-ai-review-dialog-quick-actions" role="toolbar" aria-label="Quick actions">
+                <button
+                  type="button"
+                  onClick={() => setInstructions('Explain this code')}
+                >
+                  <Icon name="codeInsight/intentionBulb" size={16} />
+                  <span>Explain code</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstructions('Refactor this code')}
+                >
+                  <PlanDiffRefactorIcon />
+                  <span>Refactor code</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInstructions('Review this code')}
+                >
+                  <Icon name="general/show" size={16} />
+                  <span>Review code</span>
+                </button>
+                <button
+                  type="button"
+                  className="plan-diff-ai-review-dialog-quick-actions-close"
+                  aria-label="Hide quick actions"
+                  title="Hide quick actions"
+                  onClick={() => setShowQuickActions(false)}
+                >
+                  <Icon name="general/closeSmall" size={16} />
+                </button>
+              </div>
+            )}
+
             <div className="plan-diff-ai-review-dialog-main">
               <span className="plan-diff-ai-review-dialog-context-side" aria-hidden="true">
                 <Icon name="general/listFiles" size={16} />
@@ -1216,7 +1253,7 @@ export function AiReviewComposerDialog({
                 rows={1}
                 value={instructions}
                 placeholder="Type task, use @mentions or /commands"
-                aria-label="Review instructions"
+                aria-label="Quick action instructions"
                 onChange={(event) => setInstructions(event.target.value)}
               />
 
@@ -1250,8 +1287,8 @@ export function AiReviewComposerDialog({
                   <button
                     type="button"
                     className={`plan-diff-ai-review-dialog-send${canStartReview ? ' is-active' : ''}`}
-                    aria-label="Start review"
-                    title="Start review"
+                    aria-label="Run action"
+                    title="Run action"
                     disabled={!canStartReview}
                     onClick={startReview}
                   >
@@ -1306,7 +1343,7 @@ export function AiReviewComposerDialog({
 
 export function PlanDiffNewReviewButton({
   triggerClassName = '',
-  initialInstructions = '/review',
+  initialInstructions = '',
   ...dialogProps
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1317,17 +1354,17 @@ export function PlanDiffNewReviewButton({
         <button
           className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${dialogOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
           type="button"
-          title="AI Review"
-          aria-label="AI Review"
+          title="Quick Actions"
+          aria-label="Quick Actions"
           aria-haspopup="dialog"
           aria-expanded={dialogOpen}
           onClick={() => setDialogOpen((prev) => !prev)}
         >
           <span className="plan-diff-ai-review-button-content">
             <span className="plan-diff-ai-review-button-icon">
-              <AiChatAgentIcon icon={dialogProps.initialAgentId ?? 'codex'} title="AI Review" />
+              <AiChatAgentIcon icon={dialogProps.initialAgentId ?? 'codex'} title="Quick Actions" />
             </span>
-            <span className="plan-diff-ai-review-button-label">AI Review</span>
+            <span className="plan-diff-ai-review-button-label">Quick Actions</span>
           </span>
         </button>
       </span>
@@ -1348,6 +1385,90 @@ function PlanDiffContentLabel({ children }) {
         <path d="M4 7V5C4 2.79086 5.79086 1 8 1C10.2091 1 12 2.79086 12 5V7H12.5C13.3284 7 14 7.67157 14 8.5V13.5C14 14.3284 13.3284 15 12.5 15H3.5C2.67157 15 2 14.3284 2 13.5V8.5C2 7.67157 2.67157 7 3.5 7H4ZM5 7H11V5C11 3.34315 9.65685 2 8 2C6.34315 2 5 3.34315 5 5V7ZM3.5 8C3.22386 8 3 8.22386 3 8.5V13.5C3 13.7761 3.22386 14 3.5 14H12.5C12.7761 14 13 13.7761 13 13.5V8.5C13 8.22386 12.7761 8 12.5 8H3.5Z" fill="currentColor" />
       </svg>
       <span>{children}</span>
+    </div>
+  );
+}
+
+function PlanDiffCommentActionsMenu({ actions = [] }) {
+  const [triggerRect, setTriggerRect] = useState(null);
+  const availableActions = Array.isArray(actions) ? actions.filter(Boolean) : [];
+  if (availableActions.length === 0) return null;
+
+  const runAction = (action) => {
+    setTriggerRect(null);
+    action?.onSelect?.();
+  };
+
+  return (
+    <>
+      <IconButton
+        icon="general/moreVertical"
+        tooltip="More actions"
+        className="spec-done-comment-popup-more-btn"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setTriggerRect(event.currentTarget.getBoundingClientRect());
+        }}
+      />
+      {triggerRect && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
+            <Popup visible className="diff-comment-actions-popup" onClose={() => setTriggerRect(null)}>
+              {availableActions.map((action, index) => (
+                <PopupCell
+                  key={`${action.label}-${index}`}
+                  icon={action.icon}
+                  onClick={() => runAction(action)}
+                >
+                  {action.label}
+                </PopupCell>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function PlanDiffCommentCodeSnippet({ rows = [], language = 'text', targetRowIds = [] }) {
+  const targetRowIdSet = new Set(targetRowIds);
+
+  return (
+    <div className="plan-diff-aside-comment-code-context" aria-label="Code context">
+      {rows.map((snippetRow) => (
+        <div
+          key={snippetRow.id}
+          className={`plan-diff-row plan-diff-row-${snippetRow.kind}${targetRowIdSet.has(snippetRow.id) ? ' is-comment-target-highlight' : ''}`}
+        >
+          <div className="plan-diff-row-gutter" aria-hidden="true">
+            <span className="plan-diff-line-number">{snippetRow.oldNumber ?? ''}</span>
+            <span className="plan-diff-line-number">{snippetRow.newNumber ?? ''}</span>
+          </div>
+          <div className="plan-diff-row-code">
+            <span className="plan-diff-row-rail" aria-hidden="true" />
+            <span className="plan-diff-row-code-text">
+              {(snippetRow.fragments ?? [{ text: snippetRow.text || ' ', tone: 'plain' }]).map((fragment, fragmentIndex) => (
+                <span
+                  key={`${snippetRow.id}-snippet-fragment-${fragmentIndex}`}
+                  className={`plan-diff-fragment${fragment.tone && fragment.tone !== 'plain' ? ` is-${fragment.tone}` : ''}`}
+                >
+                  {tokenizeCodeFragment(fragment.text || ' ', language).map((token, tokenIndex) => (
+                    <span
+                      key={`${snippetRow.id}-snippet-token-${fragmentIndex}-${tokenIndex}`}
+                      className={`plan-diff-token plan-diff-token-${token.type}`}
+                    >
+                      {token.text}
+                    </span>
+                  ))}
+                </span>
+              ))}
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1394,6 +1515,7 @@ export function DiffInlineCommentPopup({
   severityFilter = 'all',
   forceShowHiddenComments = false,
   showCommentSeverity = false,
+  allowAgentReplies = true,
 }) {
   const ref = useRef(null);
   // Visibility model (mirrors PlanDiffOverlay): resolved comments are collapsed
@@ -1422,7 +1544,6 @@ export function DiffInlineCommentPopup({
   const [submitOptionsWidth, setSubmitOptionsWidth] = useState(null);
   const [submitActionMenuRect, setSubmitActionMenuRect] = useState(null);
   const [selectedSubmitAction, setSelectedSubmitAction] = useState('default');
-  const [actionMenu, setActionMenu] = useState(null);
   const [submitAttachTarget, setSubmitAttachTarget] = useState(null);
   const [hasCreatedNewChatTarget, setHasCreatedNewChatTarget] = useState(false);
   const [agentReplyDrafts, setAgentReplyDrafts] = useState({});
@@ -1714,21 +1835,6 @@ export function DiffInlineCommentPopup({
     setSubmitOptionsRect(rect);
   };
 
-  const openActionMenu = (event, actions = []) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (actions.length === 0) return;
-    setActionMenu({
-      rect: event.currentTarget.getBoundingClientRect(),
-      actions,
-    });
-  };
-
-  const runAction = (action) => {
-    setActionMenu(null);
-    action?.onSelect?.();
-  };
-
   const getAgentReplyDraftKey = (comment, fallbackIndex = 0) => {
     const source = typeof comment?.source === 'string' ? comment.source : 'diff';
     const chatId = typeof comment?.chatId === 'string' ? comment.chatId : '';
@@ -1824,20 +1930,7 @@ export function DiffInlineCommentPopup({
     }, 1400);
   };
 
-  const renderMoreButton = (actions = []) => (
-    actions.length > 0
-      ? (
-          <button
-            type="button"
-            className="spec-done-comment-popup-more-btn"
-            aria-label="More actions"
-            onClick={(event) => openActionMenu(event, actions)}
-          >
-            <Icon name="general/moreVertical" size={16} />
-          </button>
-        )
-      : null
-  );
+  const renderMoreButton = (actions = []) => <PlanDiffCommentActionsMenu actions={actions} />;
 
   const renderSubmitTargetButton = () => (
     showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0
@@ -1884,6 +1977,29 @@ export function DiffInlineCommentPopup({
       : []
   );
 
+  const getAgentCommentActions = (comment, fallbackIndex = 0, context = null) => {
+    if (commentsReadOnly || comment?.resolved) return getReturnToContextActions(context);
+    const draftKey = getAgentReplyDraftKey(comment, fallbackIndex);
+    const changeLabel = typeof comment?.fixLabel === 'string' ? comment.fixLabel.trim() : '';
+    return [
+      ...(changeLabel ? [{
+        label: changeLabel,
+        icon: 'codeInsight/quickfixBulb',
+        onSelect: () => startAgentCommentProcessing(comment, 'quickfix', draftKey, fallbackIndex, context),
+      }] : []),
+      ...(allowAgentReplies ? [{
+        label: 'Reply',
+        icon: 'general/balloon',
+        onSelect: () => openAgentReplyComposer(draftKey),
+      }] : []),
+      {
+        label: 'Dismiss',
+        icon: 'general/hide',
+        onSelect: () => startAgentCommentProcessing(comment, 'dismiss', draftKey, fallbackIndex, context),
+      },
+    ];
+  };
+
   const startCommentTextEdit = (event, index, source = 'diff', context = null) => {
     event.stopPropagation();
     if (!Number.isInteger(index) || commentsReadOnly) return;
@@ -1912,7 +2028,7 @@ export function DiffInlineCommentPopup({
     const draftKey = getAgentReplyDraftKey(comment, fallbackIndex);
     const draftValue = agentReplyDrafts[draftKey] ?? '';
     const userReply = typeof comment.userReply === 'string' ? comment.userReply.trim() : '';
-    const canReplyToAgent = !commentsReadOnly && typeof onReplyToAgent === 'function';
+    const canReplyToAgent = allowAgentReplies && !commentsReadOnly && typeof onReplyToAgent === 'function';
     const isComposerOpen = Boolean(openAgentReplyComposers[draftKey]);
     const canShowPendingLoader = options?.showPendingLoader !== false;
     const isProcessing = Boolean(processingAgentReplies[draftKey] || (canShowPendingLoader && comment?.pending));
@@ -1942,6 +2058,7 @@ export function DiffInlineCommentPopup({
             {isResolved && (
               <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
             )}
+            {renderMoreButton(getAgentCommentActions(comment, fallbackIndex, context))}
           </div>
           {comment.agentReply && (
             <p className="spec-done-comment-agent-reply-text">{comment.agentReply}</p>
@@ -1973,7 +2090,7 @@ export function DiffInlineCommentPopup({
               </button>
             </div>
           )}
-          {userReply.length > 0 && (
+          {allowAgentReplies && userReply.length > 0 && (
             <div className="spec-done-comment-agent-user-reply">
               <div className="spec-done-comment-agent-user-reply-head">
                 <span className="spec-done-comment-agent-user-reply-icon" aria-hidden="true">
@@ -2431,24 +2548,6 @@ export function DiffInlineCommentPopup({
           )}
         </div>
       )}
-      {actionMenu && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={actionMenu.rect} onDismiss={() => setActionMenu(null)} gap={4}>
-            <Popup visible className="diff-comment-actions-popup" onClose={() => setActionMenu(null)}>
-              {actionMenu.actions.map((action) => (
-                <PopupCell
-                  key={action.label}
-                  icon={action.icon}
-                  onClick={() => runAction(action)}
-                >
-                  {action.label}
-                </PopupCell>
-              ))}
-            </Popup>
-          </PositionedPopup>
-        </div>,
-        document.body,
-      )}
     </div>
   );
 }
@@ -2731,6 +2830,7 @@ export function PlanDiffOverlay({
   onCommentNavigate = null,
   commentIndexFileLabel = '',
   showCommentIndexFileLabel = false,
+  showCommentSourceContext = true,
   commentIndexGroupId = '',
   commentIndexStatusFilter = 'all',
   onReviewProcessingChange = null,
@@ -2739,6 +2839,7 @@ export function PlanDiffOverlay({
   onInlineCommentExpand = null,
   highlightCommentRowId = null,
   highlightedCommentRowIds = [],
+  allowCommentReplies = true,
 }) {
   const scrollRef = useRef(null);
   const canCreateInlineComments = !commentsReadOnly && allowInlineCommentCompose;
@@ -2755,9 +2856,18 @@ export function PlanDiffOverlay({
   //    its gutter badge clears that flag (so it shows again), and the "Resolved"
   //    filter reveals every resolved comment at once regardless of the flag.
   //  - Open comments follow the severity filter and the manual hide flag.
+  //  - A caller that scopes the overlay to one group (`commentIndexGroupId`) or one
+  //    status (`commentIndexStatusFilter`) gets that scope inline too, so a grouped
+  //    review renders the same subset in the diff as in its comments list.
   const isCommentVisibleForRender = useCallback((comment) => {
+    if (commentIndexGroupId && String(comment?.groupId || '') !== commentIndexGroupId) return false;
     const filterValues = normalizePlanDiffSeverityFilter(severityFilter);
     const isResolved = Boolean(comment && typeof comment === 'object' && comment.resolved);
+    const isReplied = !isResolved && typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0;
+    if (commentIndexStatusFilter === 'unresolved' && isResolved) return false;
+    if (commentIndexStatusFilter === 'resolved' && !isResolved) return false;
+    if (commentIndexStatusFilter === 'replied' && !isReplied) return false;
+    if (commentIndexStatusFilter === 'open' && (isResolved || isReplied)) return false;
     if (isResolved) {
       if (filterValues.includes('resolved')) return true;
       return !isCommentEntryHidden(comment);
@@ -2768,7 +2878,7 @@ export function PlanDiffOverlay({
       ? comment.severity.toLowerCase()
       : '';
     return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
-  }, [severityFilter]);
+  }, [commentIndexGroupId, commentIndexStatusFilter, severityFilter]);
   const isCommentMatchingIndexFilter = useCallback((comment) => {
     if (commentIndexGroupId && String(comment?.groupId || '') !== commentIndexGroupId) return false;
     const filterValues = normalizePlanDiffSeverityFilter(severityFilter);
@@ -2847,6 +2957,7 @@ export function PlanDiffOverlay({
   const [asideReplyComposerKey, setAsideReplyComposerKey] = useState(null);
   const [asideReplyDrafts, setAsideReplyDrafts] = useState({});
   const [asideProcessingCommentKey, setAsideProcessingCommentKey] = useState(null);
+  const [expandedAsideCodeKeys, setExpandedAsideCodeKeys] = useState(() => new Set());
   const [shortcutHintPosition, setShortcutHintPosition] = useState(null);
   const preservedSelectionSnapshotRef = useRef(null);
   const preservedSelectionTargetRowIdsRef = useRef([]);
@@ -4098,7 +4209,11 @@ export function PlanDiffOverlay({
                     lineLabel: getCommentEntryLineLabel(comment) || rowLineLabel,
                     editable: canCreateInlineComments,
                     localIndex: rowComments.indexOf(comment),
-                    pending: isRowCommentPending,
+                    // Row-level pending (the diff's own `pendingCommentRowIds`) OR the
+                    // comment's own flag, which bulk actions ("Apply all" / "Dismiss all")
+                    // set per comment. Overwriting with the row flag alone dropped the
+                    // loader everywhere the row list isn't used (review card, aside).
+                    pending: isRowCommentPending || Boolean(comment && typeof comment === 'object' && comment.pending),
                   })),
                 }
               : null;
@@ -4657,6 +4772,7 @@ export function PlanDiffOverlay({
                           severityFilter={severityFilter}
                           forceShowHiddenComments={isExpandedInlineCommentRow}
                           showCommentSeverity={resolveKeepsComment}
+                          allowAgentReplies={allowCommentReplies}
                           onChange={setCommentValue}
                           onStartEdit={(idx, source = 'diff', context = null) => {
                             if (commentsReadOnly) return;
@@ -4739,6 +4855,7 @@ export function PlanDiffOverlay({
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
                         showCommentSeverity={resolveKeepsComment}
+                        allowAgentReplies={allowCommentReplies}
                         onChange={setCommentValue}
                         onCancel={() => clearCommentComposeState()}
                         onSubmit={handleRowCommentSubmit}
@@ -4817,10 +4934,24 @@ export function PlanDiffOverlay({
 	                    const displayText = text || group?.label || 'AI Note';
 	                    const lineLabel = getCommentEntryLineLabel(comment) || rowLineLabel;
 	                    const fileLabel = showCommentIndexFileLabel && commentIndexFileLabel ? commentIndexFileLabel : '';
-	                    const metaLabel = [fileLabel, lineLabel].filter(Boolean).join(' · ');
-	                    const codeContext = String(row?.text || '').trim();
-	                    const fileIcon = /\.java$/iu.test(fileLabel) ? 'fileTypes/java' : 'fileTypes/text';
+	                    const sourceLabel = fileLabel
+	                      ? (singleLineNumbers || /^diff\s+/iu.test(fileLabel) ? fileLabel : `Diff ${fileLabel}`)
+	                      : 'Source';
+	                    const sourceIcon = singleLineNumbers
+	                      ? (/\.java$/iu.test(fileLabel) ? 'fileTypes/java' : 'fileTypes/text')
+	                      : 'vcs/diff';
 	                    const targetRowIds = getDiffCommentTargetRowIdsForComment(comment, row.id);
+	                    const targetRowIndices = targetRowIds
+	                      .map((targetRowId) => displayRows.findIndex((displayRow) => displayRow.id === targetRowId))
+	                      .filter((targetRowIndex) => targetRowIndex >= 0);
+	                    const firstTargetRowIndex = targetRowIndices.length > 0 ? Math.min(...targetRowIndices) : displayRows.indexOf(row);
+	                    const lastTargetRowIndex = targetRowIndices.length > 0 ? Math.max(...targetRowIndices) : firstTargetRowIndex;
+	                    const codeContextRows = firstTargetRowIndex >= 0
+	                      ? displayRows.slice(
+	                          Math.max(0, firstTargetRowIndex - 2),
+	                          Math.min(displayRows.length, lastTargetRowIndex + 3),
+	                        )
+	                      : [];
 	                    const source = typeof comment?.source === 'string' ? comment.source : 'diff';
 	                    const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : commentIndex;
 	                    const context = { chatId: comment?.chatId || group?.chatId || null };
@@ -4830,6 +4961,15 @@ export function PlanDiffOverlay({
 	                    const isReplyComposerOpen = asideReplyComposerKey === actionKey;
 	                    const replyDraft = asideReplyDrafts[actionKey] ?? '';
 	                    const isProcessing = pending || asideProcessingCommentKey === actionKey;
+	                    const isCodeExpanded = expandedAsideCodeKeys.has(actionKey);
+	                    const setCodeExpanded = (expanded) => {
+	                      setExpandedAsideCodeKeys((current) => {
+	                        const next = new Set(current);
+	                        if (expanded) next.add(actionKey);
+	                        else next.delete(actionKey);
+	                        return next;
+	                      });
+	                    };
 	                    const navigateToRow = () => (
 	                      onCommentNavigate
 	                        ? onCommentNavigate(row.id, { rowIds: targetRowIds, comment })
@@ -4903,18 +5043,59 @@ export function PlanDiffOverlay({
                                         {resolved && (
                                           <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
                                         )}
+	                                        <PlanDiffCommentActionsMenu
+	                                          actions={[
+	                                            {
+	                                              label: 'Go to code',
+	                                              icon: 'general/locate',
+	                                              onSelect: navigateToRow,
+	                                            },
+	                                            ...(!resolved && !isProcessing ? [
+	                                              {
+	                                                label: changeLabel || 'Apply fix',
+	                                                icon: 'codeInsight/quickfixBulb',
+	                                                onSelect: () => runAsideAction('quickfix'),
+	                                              },
+	                                              ...(allowCommentReplies ? [{
+	                                                label: 'Reply',
+	                                                icon: 'general/balloon',
+	                                                onSelect: () => setAsideReplyComposerKey(actionKey),
+	                                              }] : []),
+	                                              {
+	                                                label: 'Dismiss',
+	                                                icon: 'general/hide',
+	                                                onSelect: () => runAsideAction('dismiss'),
+	                                              },
+	                                            ] : []),
+	                                          ]}
+	                                        />
 	                                      </div>
 	                                      <span className="spec-done-comment-agent-reply-text plan-diff-aside-comment-text">{displayText}</span>
-	                                      {metaLabel && (
-	                                        <span className="plan-diff-aside-comment-meta text-ui-small">
-	                                          {fileLabel && <Icon name={fileIcon} size={16} />}
-	                                          <span>{metaLabel}</span>
-	                                        </span>
-	                                      )}
-	                                      {codeContext && (
-	                                        <span className="plan-diff-aside-comment-code-context text-editor-small">
-	                                          {codeContext}
-	                                        </span>
+	                                      {showCommentSourceContext && (fileLabel || lineLabel || codeContextRows.length > 0) && (
+	                                        <div
+	                                          className="plan-diff-aside-comment-source"
+	                                          onClick={(event) => event.stopPropagation()}
+	                                        >
+	                                          <TreeNode
+	                                            key={`${actionKey}-${isCodeExpanded ? 'expanded' : 'collapsed'}`}
+	                                            className="plan-diff-aside-comment-source-tree"
+	                                            label={sourceLabel}
+	                                            icon={fileLabel ? sourceIcon : undefined}
+	                                            secondaryText={lineLabel || undefined}
+	                                            hasChildren={codeContextRows.length > 0}
+	                                            isExpanded={isCodeExpanded}
+	                                            onToggle={setCodeExpanded}
+	                                            onSelect={() => setCodeExpanded(!isCodeExpanded)}
+	                                          >
+	                                            {codeContextRows.length > 0 && (
+	                                              <PlanDiffCommentCodeSnippet
+	                                                rows={codeContextRows}
+	                                                language={diffData?.language || 'text'}
+	                                                targetRowIds={targetRowIds}
+	                                              />
+	                                            )}
+	                                          </TreeNode>
+	                                        </div>
 	                                      )}
 	                                      {!resolved && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
 	                                        <div className="spec-done-comment-agent-reply-actions plan-diff-aside-comment-actions">
@@ -4928,19 +5109,21 @@ export function PlanDiffOverlay({
 	                                          >
 	                                            {changeLabel || 'Apply fix'}
 	                                          </button>
-	                                          <button
-	                                            type="button"
-	                                            className="spec-done-comment-agent-reply-link"
-	                                            onClick={(event) => {
-	                                              event.stopPropagation();
-	                                              setAsideReplyComposerKey(actionKey);
-	                                            }}
-	                                          >
-	                                            Reply
-	                                          </button>
+	                                          {allowCommentReplies && (
+	                                            <button
+	                                              type="button"
+	                                              className="spec-done-comment-agent-reply-link"
+	                                              onClick={(event) => {
+	                                                event.stopPropagation();
+	                                                setAsideReplyComposerKey(actionKey);
+	                                              }}
+	                                            >
+	                                              Reply
+	                                            </button>
+	                                          )}
 	                                        </div>
 	                                      )}
-	                                      {!resolved && isAgentAuthored && isReplyComposerOpen && (
+	                                      {allowCommentReplies && !resolved && isAgentAuthored && isReplyComposerOpen && (
 	                                        <div
 	                                          className="spec-done-comment-agent-reply-compose plan-diff-aside-comment-reply"
 	                                          onClick={(event) => event.stopPropagation()}
@@ -5295,7 +5478,8 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                <div className="plan-diff-review-action-group" aria-label="Review controls">
+                {/* AI Review entry point in Diff is temporarily disabled. */}
+                {false && <div className="plan-diff-review-action-group" aria-label="Review controls">
                   <PlanDiffNewReviewButton
                     currentScopeLabel="New changes"
                     currentFileLabel={toolbarFileLabel}
@@ -5307,7 +5491,7 @@ export function PlanDiffEditorArea({
                     onStartReview={onStartReview}
                     launchSource="diff"
                   />
-                </div>
+                </div>}
                 {viewMode !== 'aside' && (
                   <SegmentedControl
                     className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"

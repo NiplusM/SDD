@@ -78,6 +78,9 @@ export function AiChatAttachmentPathTooltip({ attachment = null }) {
 
 export function getAiChatAttachmentInlineCount(attachment = null) {
   if (!attachment || typeof attachment !== 'object') return 0;
+  // A quote is already identified by its selected text. A "comment 1" badge
+  // would make every quote look like an aggregated comment thread.
+  if (attachment.hideInlineCount) return 0;
   const selectionCount = Array.isArray(attachment.selections) && attachment.selections.length > 0
     ? attachment.selections.length
     : Number.isFinite(attachment.selectionCount) && attachment.selectionCount > 0

@@ -210,10 +210,6 @@ export function FinalPresetDialog({
         </span>
         <span className="aiux550f4-final-final-preset-list-label">
           <span>{item.label}</span>
-          {/* The lock sits next to the name; the trailing cell is reserved for the checkmark. */}
-          {item.managedRecommendation || item.lockedPreset ? (
-            <Icon name="general/locked" size={16} className="aiux550f4-final-final-preset-list-lock" />
-          ) : null}
           {!defaultItem && item.secondaryLabel ? <span>{item.secondaryLabel}</span> : null}
           {finalItemStartsInTerminal({ ...item, launchTarget: itemLaunchTarget }) ? (
             <span>Terminal</span>

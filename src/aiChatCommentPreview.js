@@ -326,8 +326,11 @@ export function getSelectionContextItems(attachment = null) {
 
 export function getSelectionContextPreviewItems(attachment = null) {
   return getSelectionContextItems(attachment).map((selection, index) => {
+    const quoteOrder = Number.isInteger(selection.quoteOrder) && selection.quoteOrder > 0
+      ? selection.quoteOrder
+      : index + 1;
     const normalizedLineLabel = selection.isChatSelectionContext
-      ? `Quote ${index + 1}`
+      ? `Quote ${quoteOrder}`
       : (typeof selection.lineLabel === 'string'
         ? selection.lineLabel
           .replace(/^Comment to line\s+/i, 'Quote for line ')

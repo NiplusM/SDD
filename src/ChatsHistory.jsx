@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Loader, ToolWindow } from '@jetbrains/int-ui-kit';
-import { AiChatAgentIcon, AiChatCodexIcon } from './AiChatListParts.jsx';
+import { AiChatCodexIcon } from './AiChatListParts.jsx';
 
 // Severity status icon from the shared JetBrains icon registry.
 function AiNotesSeverityIcon({ severity }) {
@@ -1137,7 +1137,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
 
 function Aiux550HistoryChildSectionIcon({ sectionId, agentIcon = 'codex' }) {
   if (sectionId === 'ai-notes') {
-    return <AiChatAgentIcon icon={agentIcon} title="AI Review" />;
+    return <Icon name="general/balloon" size={16} />;
   }
 
   if (sectionId === 'changes') {
