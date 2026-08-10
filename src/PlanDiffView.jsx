@@ -2058,7 +2058,6 @@ export function DiffInlineCommentPopup({
             {isResolved && (
               <span className={`spec-done-comment-resolved-badge${resolvedBadgeTone}`}>{resolvedLabel}</span>
             )}
-            {renderMoreButton(getAgentCommentActions(comment, fallbackIndex, context))}
           </div>
           {comment.agentReply && (
             <p className="spec-done-comment-agent-reply-text">{comment.agentReply}</p>
@@ -2259,7 +2258,7 @@ export function DiffInlineCommentPopup({
                     const actions = commentEntry.editable
                       ? getEditableCommentActions(commentEntry.localIndex, commentEntry.source, commentActionContext)
                       : isAgentAuthored
-                        ? []
+                        ? getAgentCommentActions(commentEntry, commentEntry.localIndex ?? i, commentActionContext)
                         : getReturnToContextActions({ messageId: group.messageId, chatId: group.chatId });
                     const entryLineLabel = getCommentEntryLineLabel(commentEntry) || normalizedFooterMetaLabel;
                     const shouldUseThreadLoaderSlot = !hasRenderedThreadLoaderSlot && hasAgentResolutionThread(commentEntry);
@@ -2308,7 +2307,7 @@ export function DiffInlineCommentPopup({
             const isPending = Boolean(comment && typeof comment === 'object' && comment.pending);
             const isAgentAuthored = comment && typeof comment === 'object' && comment.author === 'agent';
             const actions = isAgentAuthored
-              ? []
+              ? getAgentCommentActions(comment, index)
               : commentsReadOnly
                 ? getReturnToContextActions()
                 : getEditableCommentActions(index);
