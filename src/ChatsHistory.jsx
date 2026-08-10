@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, Loader, ToolWindow } from '@jetbrains/int-ui-kit';
-import { AiChatCodexIcon } from './AiChatListParts.jsx';
+import { AiChatAgentIcon, AiChatCodexIcon } from './AiChatListParts.jsx';
 
 // Severity status icon from the shared JetBrains icon registry.
 function AiNotesSeverityIcon({ severity }) {
@@ -18,6 +18,46 @@ const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
 const AIA_COMPOSER_NPM_INIT_PERMISSION_PROMPT =
   'Allow running npm init -y in the current repository to create a default package.json?';
 
+const AGENT_SESSION_ACTIVE_CHANGES = [
+  {
+    label: 'VisitController.java',
+    status: 'modified',
+    diff: { added: 12, deleted: 7 },
+    diffRequest: {
+      text: 'Refactor VisitController.java time slots',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 3 },
+      source: { tabId: '1', label: 'VisitController.java' },
+      fileCount: 3,
+    },
+  },
+  {
+    label: 'VisitRepository.java',
+    status: 'modified',
+    diff: { added: 2, deleted: 0 },
+    diffRequest: {
+      text: 'Add the visit availability repository query',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 2 },
+      source: { tabId: 'inline-ref-VisitRepository.java', label: 'VisitRepository.java' },
+      fileCount: 3,
+    },
+  },
+  {
+    label: 'VisitControllerTests.java',
+    status: 'modified',
+    diff: { added: 13, deleted: 2 },
+    diffRequest: {
+      text: 'Cover visit time-slot behavior in controller tests',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 6 },
+      source: { tabId: '5', label: 'VisitControllerTests.java' },
+      fileCount: 3,
+    },
+  },
+  { label: 'Vet-Schedules.md', type: 'markdown', agentTaskId: 't2' },
+];
+
 function ChatsHistoryToolWindow({
   ctx,
   activeChatId = null,
@@ -31,6 +71,7 @@ function ChatsHistoryToolWindow({
   onOpenCommit = null,
   onOpenReviewDiff = null,
   onOpenFile = null,
+  vetSchedulesLineCount = 0,
 }) {
   // Everything collapsed by default except the refactoring chat, which is
   // expanded (its Changes / Context / Sub-threads sections stay collapsed).
@@ -42,6 +83,27 @@ function ChatsHistoryToolWindow({
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
+  const projectGroups = useMemo(() => {
+    const sessionRows = flatRows.slice(0, 9);
+    return [
+      {
+        id: 'spring-petclinic',
+        name: 'spring-petclinic',
+        initials: 'SP',
+        status: 'Opened Project',
+        color: 'blue',
+        rows: sessionRows.slice(0, 5),
+      },
+      {
+        id: 'sdd-mvp',
+        name: 'SDD-mvp',
+        initials: 'SD',
+        status: 'Attached',
+        color: 'neutral',
+        rows: sessionRows.slice(5, 9),
+      },
+    ];
+  }, [flatRows]);
 
   // Reveal a newly queued review immediately in history. The queued state is
   // static; processing and its animation begin only when the chat tab is opened.
@@ -84,7 +146,7 @@ function ChatsHistoryToolWindow({
 
   return (
     <ToolWindow
-      title="Chats History"
+      title="Agent Sessions"
       width="100%"
       height="auto"
       actions={['more', 'minimize']}
@@ -96,62 +158,154 @@ function ChatsHistoryToolWindow({
       }}
       className="main-window-tool-window main-window-tool-window-left aiux543-history-tool-window aiux550-history-tool-window"
     >
-      <div className="aiux543-tool-history-content">
-        <div className="aiux543-history-top-actions" aria-label="Chats History actions">
-          <button className="toolbar-button aiux543-history-top-action" type="button" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
-            <div className="toolbar-button-content">
-              <HistoryNewAgentIcon className="toolbar-button-icon" />
-              <span className="toolbar-button-text text-ui-default">New Agent</span>
-            </div>
-          </button>
-          <button type="button" className="aiux543-history-top-action aiux550-new-scope-action" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
-            <HistoryNewScopeIcon />
-            <span><span>New Scope</span><span> with shared context</span></span>
-          </button>
-          <button className="toolbar-button aiux543-history-top-action" type="button">
-            <div className="toolbar-button-content">
-              <HistorySkillsIcon className="toolbar-button-icon" />
-              <span className="toolbar-button-text text-ui-default">Skills</span>
-            </div>
-          </button>
+      <div className="agent-sessions-panel">
+        <button className="agent-sessions-new" type="button" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
+          <AgentSessionsBurstIcon />
+          <span>New Session</span>
+          <span className="agent-sessions-new-actions" aria-hidden="true">
+            <AgentSessionsTuneIcon />
+            <AgentSessionsFolderAddIcon />
+          </span>
+        </button>
+
+        <div className="agent-sessions-divider" />
+
+        <div className="agent-sessions-projects-header">
+          <span>Projects</span>
+          <button type="button" aria-label="Add project"><Icon name="general/add" size={18} /></button>
+          <span className="agent-sessions-project-tools">
+            <button type="button" aria-label="Filter projects"><AgentSessionsFilterIcon /></button>
+            <button type="button" aria-label="Search projects"><Aiux550SearchIcon /></button>
+          </span>
         </div>
-        <label className="aiux543-tool-search-field">
-          <Aiux550SearchIcon />
-          <input placeholder="Search projects or chats" />
-        </label>
-        <Aiux550HistoryList
-          activeChatId={selectedId}
-          agentRunByChatId={agentRunByChatId}
-          rows={flatRows}
-          expandedRows={expandedRows}
-          expandedSections={expandedSections}
-          selectedActive
-          className="aiux543-tool-chat-list"
-          onSelectChat={handleSelectChat}
-          onOpenChangesList={onOpenChangesList}
-          onOpenCommit={onOpenCommit}
-          onOpenReviewDiff={onOpenReviewDiff}
-          onOpenFile={onOpenFile}
-          onToggleRow={(rowId) => setExpandedRows((prev) => ({ ...prev, [rowId]: !(prev[rowId] ?? false) }))}
-          onToggleSection={(sectionId) => setExpandedSections((prev) => ({ ...prev, [sectionId]: !(prev[sectionId] ?? false) }))}
-        />
-        <div className="aiux543-history-bottom-region">
-          <div className="aiux543-history-bottom-bar">
-            <button type="button" className="aiux543-history-bottom-settings" onClick={onSettings}>
-              <Icon name="general/settings" size={16} />
-              <span>Settings</span>
-            </button>
-            <button type="button" className="aiux543-history-bottom-plan" aria-expanded="false">
-              <span>JetBrains AI Free</span>
-              <span className="aiux543-history-bottom-plan-usage">
-                <HistoryCreditsIcon className="aiux543-history-credits-icon" />
-                <span>618.04</span>
-              </span>
-            </button>
-          </div>
+
+        <div className="agent-sessions-scroll">
+          {projectGroups.map((project, projectIndex) => (
+            <section className="agent-sessions-project" key={project.id}>
+              {projectIndex > 0 ? <div className="agent-sessions-project-divider" /> : null}
+              <div className="agent-sessions-project-row">
+                <span className={`agent-sessions-project-avatar is-${project.color}`}>{project.initials}</span>
+                <span className="agent-sessions-project-name">{project.name}</span>
+                <span className="agent-sessions-project-status">{project.status}</span>
+                {projectIndex > 0 ? <Aiux550ChevronIcon expanded /> : null}
+                {projectIndex > 0 ? (
+                  <span className="agent-sessions-project-actions">
+                    <button type="button" aria-label="Add session"><Icon name="general/add" size={18} /></button>
+                    <button type="button" aria-label="Project actions"><Icon name="general/moreVertical" size={16} /></button>
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="agent-sessions-list">
+                {project.rows.map((row, rowIndex) => {
+                  const expanded = Boolean(expandedRows[row.id]);
+                  const showCost = rowIndex < 4;
+                  return (
+                    <React.Fragment key={row.id}>
+                    <button
+                      type="button"
+                      className={`agent-sessions-session${selectedId === row.id ? ' is-selected' : ''}`}
+                      onClick={() => handleSelectChat(row.id)}
+                    >
+                      <span
+                        className="agent-sessions-session-chevron"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setExpandedRows((prev) => ({ ...prev, [row.id]: !expanded }));
+                        }}
+                      >
+                        <Aiux550ChevronIcon expanded={expanded} />
+                      </span>
+                      <span className="agent-sessions-session-agent">
+                        <AiChatAgentIcon
+                          icon={selectedId === row.id ? 'claude' : (row.agent || 'claude')}
+                          title={row.title}
+                        />
+                      </span>
+                      <span className="agent-sessions-session-title">{row.title}</span>
+                      <span className="agent-sessions-session-time">{row.time || '1h'}</span>
+                      {showCost ? <span className="agent-sessions-session-cost">$5.67</span> : null}
+                    </button>
+                    {row.id === 'refactor-time-slots' && expanded ? (
+                      <AgentSessionChanges
+                        files={AGENT_SESSION_ACTIVE_CHANGES}
+                        onOpenFile={onOpenFile}
+                        vetSchedulesLineCount={vetSchedulesLineCount}
+                      />
+                    ) : null}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <button type="button" className="agent-sessions-show-more">Show more…</button>
+            </section>
+          ))}
         </div>
+
+        <button type="button" className="agent-sessions-settings" onClick={onSettings}>
+          <Icon name="general/settings" size={18} />
+          <span>Settings &amp; Accounts</span>
+        </button>
       </div>
     </ToolWindow>
+  );
+}
+
+function AgentSessionsBurstIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M9 1V17M1 9H17M3.35 3.35L14.65 14.65M14.65 3.35L3.35 14.65M5.9 1.9L12.1 16.1M16.1 5.9L1.9 12.1M12.1 1.9L5.9 16.1M1.9 5.9L16.1 12.1" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function AgentSessionsTuneIcon() {
+  return <Icon name="general/settings" size={17} />;
+}
+
+function AgentSessionsFolderAddIcon() {
+  return (
+    <span className="agent-sessions-folder-add">
+      <Icon name="nodes/folder" size={18} />
+      <Icon name="general/add" size={11} />
+    </span>
+  );
+}
+
+function AgentSessionsFilterIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M2 3H16L10.5 9.2V14.1L7.5 16V9.2L2 3Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AgentSessionChanges({ files, onOpenFile, vetSchedulesLineCount = 0 }) {
+  return (
+    <div className="agent-sessions-changes aiux543-chat-row-children" aria-label="Changed files">
+      {files.map((file) => (
+        <div className="aiux543-chat-tree-item" key={file.label}>
+          <button
+            type="button"
+            className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux543-chat-tree-leaf-modified"
+            style={{ '--tree-level': 3 }}
+            onClick={() => onOpenFile?.(file)}
+          >
+            <span className="aiux543-chat-tree-chevron-spacer" />
+            {file.type === 'markdown'
+              ? <Icon name="fileTypes/markdown" size={16} className="icon aiux543-chat-tree-icon agent-sessions-markdown-icon" />
+              : <Aiux550TreeLeafIcon label={file.label} />}
+            <span className="aiux543-chat-tree-leaf-label">{file.label}</span>
+            {file.type === 'markdown' && vetSchedulesLineCount > 0 ? (
+              <span className="aiux543-chat-change-summary" aria-label={`${vetSchedulesLineCount} lines in file`}>
+                <span className="added">+{vetSchedulesLineCount}</span>
+              </span>
+            ) : file.diff ? <HistoryChangeSummary summary={file.diff} /> : null}
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
