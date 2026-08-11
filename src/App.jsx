@@ -13158,7 +13158,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state={genState}>
-          <div className="agent-task-toolbar" ref={toolbarRef}>
+          <div className="agent-task-toolbar" ref={toolbarRef} hidden>
             <div className="agent-task-toolbar-gradient" />
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
@@ -17987,7 +17987,7 @@ function NewSessionFooterPicker({ id, label, options, open, onOpenChange, onSele
   );
 }
 
-function AiReviewComposerPrompt({ onCreateSpec = null, onRunReview = null }) {
+function AiReviewComposerPrompt({ onCreateSpec = null, onRunReview = null, onCommitChanges = null }) {
   return (
     <div className="aiux543-ai-review-prompt" role="group" aria-label="Change actions">
       <button type="button" className="aiux543-ai-review-prompt-button" onClick={onCreateSpec ?? undefined}>
@@ -17996,6 +17996,10 @@ function AiReviewComposerPrompt({ onCreateSpec = null, onRunReview = null }) {
       <span className="aiux543-ai-review-prompt-divider" aria-hidden="true" />
       <button type="button" className="aiux543-ai-review-prompt-button" onClick={onRunReview ?? undefined}>
         <span>Run AI Review</span>
+      </button>
+      <span className="aiux543-ai-review-prompt-divider" aria-hidden="true" />
+      <button type="button" className="aiux543-ai-review-prompt-button" onClick={onCommitChanges ?? undefined}>
+        <span>Commit Changes</span>
       </button>
     </div>
   );
@@ -18041,6 +18045,7 @@ function AiChatTabView({
   onEditAnnotation = null,
   onCreateSpec = null,
   onRunAiReview = null,
+  onCommitChanges = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = agentRun?.status === 'processing';
@@ -18712,10 +18717,12 @@ function AiChatTabView({
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
-        {showAiReviewPrompt && reviewPromptFiles.length > 0 && (
+        {/* Temporarily hidden: Create a Spec / Run AI Review / Commit Changes prompt. */}
+        {false && showAiReviewPrompt && reviewPromptFiles.length > 0 && (
           <AiReviewComposerPrompt
             onCreateSpec={onCreateSpec}
             onRunReview={() => onRunAiReview?.(chatId)}
+            onCommitChanges={() => onCommitChanges?.(chatId)}
           />
         )}
         {isNewSessionState && (
@@ -29018,7 +29025,9 @@ export default function App() {
     // reviewed changes — not the chat the dialog happened to be opened from. Naming
     // the source chat here made the header point at one chat while its "Open chat"
     // button opened another.
-    const attachmentTitle = String(attachments[0]?.label || '').replace(/^diff\s+/iu, '').trim();
+    const primaryReviewAttachment = attachments.find((attachment) => !attachment?.isChatContext)
+      ?? attachments[0];
+    const attachmentTitle = String(primaryReviewAttachment?.label || '').replace(/^diff\s+/iu, '').trim();
     const reviewFeatureTitle = attachmentTitle ? `Changes in ${attachmentTitle}` : 'Current changes';
     // The chat gets its own name from the review context, keeping the "AI Review"
     // block up front so the tab still reads as a review session.
@@ -29068,6 +29077,41 @@ export default function App() {
   }, [createEmptyAiChatSession]);
 
   const globalAiReviewSourceAttachments = (() => {
+    if (globalReviewTargetChatId && globalReviewLaunchSource.startsWith('chat-')) {
+      const targetScenario = getAiChatScenarioById(globalReviewTargetChatId);
+      const chatContextAttachment = {
+        id: `chat-context-${globalReviewTargetChatId}`,
+        label: targetScenario?.title ?? 'Chat Session',
+        icon: targetScenario?.icon ?? 'claude',
+        chatId: globalReviewTargetChatId,
+        sourceTabId: `ai-chat-${globalReviewTargetChatId}`,
+        sourceLabel: targetScenario?.title ?? 'Chat Session',
+        isChatContext: true,
+      };
+      const changeCardAttachments = getChatChangeCards(targetScenario)
+        .filter((card) => card?.diffRequest)
+        .map((card, index) => ({
+          id: `review-context-${globalReviewTargetChatId}-${card.id ?? index}`,
+          label: `Diff ${card.name}`,
+          icon: 'vcs/diff',
+          diffRequest: card.diffRequest,
+          sourceTabId: card.diffRequest?.source?.tabId ?? null,
+          sourceLabel: card.diffRequest?.source?.label ?? card.name,
+        }));
+      const seenContextKeys = new Set();
+      return [chatContextAttachment, ...aiChatComposerDiffAttachments, ...changeCardAttachments]
+        .filter((attachment, index) => {
+          const contextKey = attachment?.chatId
+            ?? attachment?.sourceTabId
+            ?? attachment?.diffRequest?.source?.tabId
+            ?? attachment?.id
+            ?? `${attachment?.sourceLabel ?? attachment?.label ?? 'context'}-${index}`;
+          if (seenContextKeys.has(contextKey)) return false;
+          seenContextKeys.add(contextKey);
+          return true;
+        });
+    }
+
     if (commitReviewContext?.focused && Array.isArray(commitReviewContext.attachments)) {
       return commitReviewContext.attachments;
     }
@@ -29141,6 +29185,17 @@ export default function App() {
     return [];
   })();
 
+  const globalDialogTargetScenario = globalReviewTargetChatId
+    ? getAiChatScenarioById(globalReviewTargetChatId)
+    : null;
+  const globalDialogInitialInstructions = globalReviewLaunchSource === 'chat-spec'
+    ? 'Create a specification for the changes in this chat'
+    : globalReviewLaunchSource === 'chat-review'
+      ? 'Review the changes in this chat'
+      : globalReviewLaunchSource === 'chat-commit'
+        ? 'Commit the changes from this chat'
+        : '';
+
   // The same popup the AI Review buttons open, mounted once for the Control+Control shortcut so it
   // can appear over whatever is on screen — including the Welcome screen.
   const globalAiReviewDialogNode = (
@@ -29150,17 +29205,40 @@ export default function App() {
         setGlobalReviewDialogOpen(false);
         setGlobalReviewTargetChatId(null);
       }}
-      initialAgentId={globalReviewLaunchSource === 'chat-banner' && globalReviewTargetChatId
-        ? (getAiChatScenarioById(globalReviewTargetChatId)?.icon ?? 'codex')
+      initialAgentId={globalReviewLaunchSource.startsWith('chat-') && globalReviewTargetChatId
+        ? (globalDialogTargetScenario?.icon ?? 'codex')
         : 'codex'}
+      initialInstructions={globalDialogInitialInstructions}
+      initialSession={globalReviewTargetChatId ? {
+        id: globalReviewTargetChatId,
+        label: globalDialogTargetScenario?.title ?? 'Chat Session',
+        time: 'Current',
+      } : null}
+      initialShowQuickActions={!globalReviewLaunchSource.startsWith('chat-')}
       currentScopeLabel="Local changes"
       currentFileLabel={globalAiReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
       contextLabel="Changes"
       contextMeta="Local changes"
       contextIcon="general/listFiles"
       sourceAttachments={globalAiReviewSourceAttachments}
-      onStartReview={handleStartReviewFromDialog}
-      onOpenAttachment={(attachment) => handleOpenChatAttachment(attachment, { archived: false })}
+      onStartReview={(payload) => {
+        if (globalReviewLaunchSource === 'chat-spec') {
+          handleAgentTaskSelect('t2');
+          return;
+        }
+        if (globalReviewLaunchSource === 'chat-commit') {
+          openCommitToolWindow();
+          return;
+        }
+        handleStartReviewFromDialog(payload);
+      }}
+      onOpenAttachment={(attachment) => {
+        if (attachment?.isChatContext && attachment?.chatId) {
+          openChatInEditorTab(attachment.chatId);
+          return;
+        }
+        handleOpenChatAttachment(attachment, { archived: false });
+      }}
       launchSource={globalReviewLaunchSource}
     />
   );
@@ -30111,11 +30189,22 @@ export default function App() {
                   ]}
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
-                  onCreateSpec={() => handleAgentTaskSelect('t2')}
+                  onCreateSpec={() => {
+                    setCommitReviewContext(null);
+                    setGlobalReviewTargetChatId(activeAiChatTabChatId);
+                    setGlobalReviewLaunchSource('chat-spec');
+                    setGlobalReviewDialogOpen(true);
+                  }}
                   onRunAiReview={(targetChatId) => {
                     setCommitReviewContext(null);
                     setGlobalReviewTargetChatId(targetChatId);
-                    setGlobalReviewLaunchSource('chat-banner');
+                    setGlobalReviewLaunchSource('chat-review');
+                    setGlobalReviewDialogOpen(true);
+                  }}
+                  onCommitChanges={(targetChatId) => {
+                    setCommitReviewContext(null);
+                    setGlobalReviewTargetChatId(targetChatId);
+                    setGlobalReviewLaunchSource('chat-commit');
                     setGlobalReviewDialogOpen(true);
                   }}
                 />

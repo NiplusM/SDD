@@ -949,6 +949,8 @@ export function AiReviewComposerDialog({
   onClose = null,
   initialAgentId = 'codex',
   initialInstructions = '',
+  initialSession = null,
+  initialShowQuickActions = true,
   currentScopeLabel = 'New changes',
   currentFileLabel = 'VisitController.java',
   initialScopeId = 'current',
@@ -968,7 +970,7 @@ export function AiReviewComposerDialog({
       : AI_REVIEW_AGENT_OPTIONS[0].id
   );
   const [selectedAgentId, setSelectedAgentId] = useState(resolveInitialAgentId);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
+  const [selectedSessionId, setSelectedSessionId] = useState(initialSession?.id ?? null);
   const [attachments, setAttachments] = useState([]);
   const [addContextRect, setAddContextRect] = useState(null);
   const [instructions, setInstructions] = useState(initialInstructions);
@@ -977,7 +979,7 @@ export function AiReviewComposerDialog({
   const [effortId, setEffortId] = useState(AI_REVIEW_EFFORT_OPTIONS[0].id);
   const [editModeId, setEditModeId] = useState(AI_REVIEW_EDIT_MODE_OPTIONS[0].id);
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
-  const [showQuickActions, setShowQuickActions] = useState(true);
+  const [showQuickActions, setShowQuickActions] = useState(initialShowQuickActions);
   const isCommitLaunch = launchSource === 'commit';
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
@@ -991,17 +993,20 @@ export function AiReviewComposerDialog({
     if (!open) return;
     setOpenMenu(null);
     setSelectedAgentId(resolveInitialAgentId());
-    setSelectedSessionId(null);
+    setSelectedSessionId(initialSession?.id ?? null);
     setInstructions(initialInstructions);
     setAttachments(sourceAttachments);
     setAttachmentsExpanded(false);
-    setShowQuickActions(true);
+    setShowQuickActions(initialShowQuickActions);
     setAddContextRect(null);
-  }, [initialAgentId, initialInstructions, open]);
+  }, [initialAgentId, initialInstructions, initialSession?.id, initialShowQuickActions, open]);
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
   const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
     ?? AI_REVIEW_AGENT_OPTIONS[0];
-  const selectedSession = AI_REVIEW_EXISTING_SESSIONS.find((item) => item.id === selectedSessionId) ?? null;
+  const sessionOptions = initialSession
+    ? [initialSession, ...AI_REVIEW_EXISTING_SESSIONS.filter((item) => item.id !== initialSession.id)]
+    : AI_REVIEW_EXISTING_SESSIONS;
+  const selectedSession = sessionOptions.find((item) => item.id === selectedSessionId) ?? null;
   const selectedLocation = AI_REVIEW_LOCATION_OPTIONS.find((item) => item.id === locationId)
     ?? AI_REVIEW_LOCATION_OPTIONS[0];
   const canStartReview = instructions.trim().length > 0 || attachments.length > 0;
@@ -1151,7 +1156,7 @@ export function AiReviewComposerDialog({
                         New Session
                       </PopupCell>
                       <PopupCell type="separator" text="Existing sessions" />
-                      {AI_REVIEW_EXISTING_SESSIONS.map((item) => (
+                      {sessionOptions.map((item) => (
                         <PopupCell
                           key={item.id}
                           shortcut={item.time}
