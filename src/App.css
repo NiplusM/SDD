@@ -13082,24 +13082,6 @@ body {
   gap: 10px;
 }
 
-.ai-chat-changed-files-review {
-  all: unset;
-  color: #7BA0F7;
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 20px;
-}
-
-.ai-chat-changed-files-review:hover {
-  text-decoration: underline;
-}
-
-.ai-chat-changed-files-action-separator {
-  width: 1px;
-  height: 16px;
-  background: #4B4D52;
-}
-
 .ai-chat-changed-files-rollback {
   all: unset;
   color: #7BA0F7;

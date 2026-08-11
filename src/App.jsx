@@ -18616,7 +18616,6 @@ function AiChatTabView({
           <ChatChangedFilesCard
             files={getChatChangeCards(scenario)}
             onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
-            onRunReview={onRunAiReview ? () => onRunAiReview(chatId) : null}
           />
         ) : getChatChangeCards(scenario).map((card) => {
           const openDiff = card.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(card.diffRequest) : null;
@@ -19476,7 +19475,7 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
 
 // Summary card for a multi-file change: run status + rollback on top, then the
 // changed files with their line counters. Each row opens that file's diff.
-function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null, onRunReview = null }) {
+function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null }) {
   if (files.length === 0) return null;
 
   return (
@@ -19489,16 +19488,6 @@ function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null
           <span>Done</span>
         </span>
         <span className="ai-chat-changed-files-actions">
-          {onRunReview && (
-            <button
-              type="button"
-              className="ai-chat-changed-files-review"
-              onClick={onRunReview}
-            >
-              Run AI Review
-            </button>
-          )}
-          {onRunReview && <span className="ai-chat-changed-files-action-separator" aria-hidden="true" />}
           <button
             type="button"
             className="ai-chat-changed-files-rollback"
