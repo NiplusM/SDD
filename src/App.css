@@ -5871,14 +5871,6 @@ body {
   text-overflow: ellipsis;
 }
 
-.plan-diff-toolbar-scope-select.toolbar-dropdown {
-  max-width: 272px;
-}
-
-.plan-diff-toolbar-scope-select .toolbar-dropdown-text {
-  color: #dfe1e5;
-}
-
 .plan-diff-viewing-scope {
   display: inline-flex;
   align-items: center;
@@ -5886,17 +5878,9 @@ body {
   flex: 0 0 auto;
 }
 
-.plan-diff-viewing-scope-trigger,
 .plan-diff-viewing-files-trigger {
   display: inline-flex;
   min-width: 0;
-}
-
-.plan-diff-viewing-scope-separator {
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background: #34363b;
 }
 
 .plan-diff-viewing-file-arrow.toolbar-button {
@@ -5986,11 +5970,6 @@ body {
 
 .plan-diff-popover .popup-cell-separator-line {
   background-color: var(--border-secondary, #33353b);
-}
-
-.plan-diff-scope-popup {
-  width: 252px;
-  max-width: 252px;
 }
 
 .plan-diff-files-popup {
@@ -6855,15 +6834,6 @@ body {
 .plan-diff-ai-review-dialog .plan-diff-ai-review-submenu {
   top: calc(100% + 4px);
   bottom: auto;
-}
-
-.plan-diff-new-review-check {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: #b9c7f4;
 }
 
 .plan-diff-toolbar-meta {

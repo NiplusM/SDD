@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarDropdown, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
@@ -696,19 +696,6 @@ function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
   );
 }
 
-function PlanDiffToolbarSelect({ label, text, icon = null, onClick = null, className = '', title = '' }) {
-  return (
-    <ToolbarDropdown
-      label={label}
-      text={text}
-      icon={icon}
-      title={title}
-      className={`plan-diff-toolbar-select${className ? ` ${className}` : ''}`}
-      onClick={onClick}
-    />
-  );
-}
-
 function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitController.java') {
   return [
     {
@@ -739,11 +726,8 @@ function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
   selectedScopeId = 'new',
-  onScopeChange = null,
 }) {
-  const scopeRef = useRef(null);
   const filesRef = useRef(null);
-  const [scopeRect, setScopeRect] = useState(null);
   const [filesRect, setFilesRect] = useState(null);
   const scopeOptions = buildPlanDiffScopeOptions(fileCount, currentFileLabel);
   const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
@@ -756,24 +740,10 @@ function PlanDiffViewingScopeControl({
     ...item,
     meta: `${index + 1} of ${selectedFileCount}`,
   }));
-  const closeScope = () => setScopeRect(null);
   const closeFiles = () => setFilesRect(null);
 
   return (
     <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
-      <span ref={scopeRef} className="plan-diff-viewing-scope-trigger">
-        <PlanDiffToolbarSelect
-          label="Review scope:"
-          text={selectedScope.triggerText}
-          className="plan-diff-toolbar-scope-select"
-          title="Review scope"
-          onClick={() => {
-            closeFiles();
-            setScopeRect((prev) => (prev ? null : scopeRef.current?.getBoundingClientRect() ?? null));
-          }}
-        />
-      </span>
-      <span className="plan-diff-viewing-scope-separator" aria-hidden="true" />
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
         className="plan-diff-viewing-file-arrow"
@@ -785,7 +755,6 @@ function PlanDiffViewingScopeControl({
           className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
           title="Files in viewed scope"
           onClick={() => {
-            closeScope();
             setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
           }}
         >
@@ -797,34 +766,6 @@ function PlanDiffViewingScopeControl({
         className="plan-diff-viewing-file-arrow"
         title="Next file"
       />
-      {scopeRect && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={scopeRect} onDismiss={closeScope} gap={4}>
-            <Popup visible className="plan-diff-popover plan-diff-scope-popup text-ui-default" onClose={closeScope}>
-              <PopupCell type="separator" text="Review scope" />
-              {scopeOptions.map((item) => (
-                <PopupCell
-                  key={item.id}
-                  selected={item.id === selectedScopeId}
-                  shortcut={item.meta}
-                  icon={(
-                    <span className="plan-diff-new-review-check" aria-hidden="true">
-                      {item.id === selectedScopeId && <Icon name="general/checkmark" size={16} />}
-                    </span>
-                  )}
-                  onClick={() => {
-                    onScopeChange?.(item.id);
-                    closeScope();
-                  }}
-                >
-                  {item.label}
-                </PopupCell>
-              ))}
-            </Popup>
-          </PositionedPopup>
-        </div>,
-        document.body,
-      )}
       {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
@@ -5450,7 +5391,7 @@ export function PlanDiffEditorArea({
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
-  const [viewingScopeId, setViewingScopeId] = useState('new');
+  const viewingScopeId = 'new';
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -5546,7 +5487,6 @@ export function PlanDiffEditorArea({
                 fileCount={toolbarFileCount}
                 currentFileLabel={toolbarFileLabel}
                 selectedScopeId={viewingScopeId}
-                onScopeChange={setViewingScopeId}
               />
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
