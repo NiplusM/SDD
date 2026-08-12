@@ -242,17 +242,24 @@ async function pulseCursor(page, enabled) {
 }
 
 async function getLocatorPoint(locator) {
-  await locator.waitFor({ state: 'visible', timeout: 20000 });
-  await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
-  if (!box) {
-    throw new Error('Target has no bounding box');
+  let lastError = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await locator.waitFor({ state: 'visible', timeout: 20000 });
+      await locator.scrollIntoViewIfNeeded();
+      const box = await locator.boundingBox();
+      if (!box) throw new Error('Target has no bounding box');
+      return {
+        x: box.x + (box.width / 2),
+        y: box.y + (box.height / 2),
+      };
+    } catch (error) {
+      lastError = error;
+      if (!/not attached|not stable/iu.test(String(error?.message || error))) throw error;
+      await pause(180);
+    }
   }
-
-  return {
-    x: box.x + (box.width / 2),
-    y: box.y + (box.height / 2),
-  };
+  throw lastError ?? new Error('Target could not be focused');
 }
 
 async function waitForEnabled(locator, timeoutMs = 20000) {
@@ -315,6 +322,28 @@ async function capture(page, name) {
   });
 }
 
+async function logDomSummary(page, label) {
+  const summary = await page.evaluate(() => {
+    const isVisible = (node) => node instanceof HTMLElement && node.getClientRects().length > 0;
+    const describe = (node) => ({
+      className: typeof node.className === 'string' ? node.className : '',
+      text: (node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+      title: node.getAttribute('title') || '',
+      ariaLabel: node.getAttribute('aria-label') || '',
+    });
+
+    return {
+      url: window.location.href,
+      bodyClassName: document.body.className,
+      shells: Array.from(document.querySelectorAll('.main-window')).filter(isVisible).map(describe),
+      tabs: Array.from(document.querySelectorAll('.main-window-editor-tabs .tab')).filter(isVisible).map(describe),
+      leftStripes: Array.from(document.querySelectorAll('.main-window-stripe-left .stripe')).filter(isVisible).map(describe),
+      panels: Array.from(document.querySelectorAll('.main-window-tool-window')).filter(isVisible).map(describe),
+    };
+  });
+  process.stdout.write(`\n[dom-summary:${label}] ${JSON.stringify(summary)}\n`);
+}
+
 async function clickByDemoId(page, demoId, beat, text, options = {}) {
   const locator = page.locator(`[data-demo-id="${demoId}"]`).first();
   await demoClick(page, locator, beat, text, options);
@@ -322,25 +351,79 @@ async function clickByDemoId(page, demoId, beat, text, options = {}) {
 
 async function focusSpecRow(page, demoId, beat, text) {
   const row = page.locator(`[data-demo-id="${demoId}"]`).first();
+  const inlineInspection = row.locator('[data-inline-inspection="true"]').first();
   const editable = row.locator('[contenteditable]').first();
-  const target = await editable.count().catch(() => 0) ? editable : row;
+  const target = await inlineInspection.count().catch(() => 0)
+    ? inlineInspection
+    : (await editable.count().catch(() => 0) ? editable : row);
   await demoClick(page, target, beat, text);
 }
 
+async function getVisibleAgentTaskRow(page, selector) {
+  let locator = page.locator(`${selector}:visible`).first();
+  if (!await locator.isVisible().catch(() => false)) {
+    const stripe = page.locator('.main-window-stripe-left [title="Agent Tasks"]').first();
+    await stripe.waitFor({ state: 'visible', timeout: 10000 });
+    await stripe.click();
+    await page.locator('.agent-tasks-window:visible').waitFor({ state: 'visible', timeout: 10000 });
+    locator = page.locator(`${selector}:visible`).first();
+  }
+  return locator;
+}
+
 async function clickTaskRow(page, label, beat, text) {
-  const locator = page.locator(`[data-demo-id="agent-task-row-${slugify(label)}"]`).first();
+  const selector = `[data-demo-id="agent-task-row-${slugify(label)}"]`;
+  const escapedLabel = String(label).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const labelPattern = new RegExp(escapedLabel, 'i');
+  const visibleEditorTab = page.locator('.main-window-editor-tabs .tab:visible', { hasText: labelPattern }).first();
+  const selectedTab = page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: labelPattern }).first();
+
+  if (await visibleEditorTab.isVisible().catch(() => false)) {
+    await demoClick(page, visibleEditorTab, beat, `Activate the existing ${label} editor tab.`);
+    await selectedTab.waitFor({ state: 'visible', timeout: 10000 });
+    await pause(250);
+    return;
+  }
+
+  const locator = await getVisibleAgentTaskRow(page, selector);
   await demoFocus(page, locator, beat, text);
   await pulseCursor(page, true);
   await locator.evaluate((node) => node.click());
   await pause(180);
   await pulseCursor(page, false);
-  await page.locator('.main-window-editor-tabs .tab.tab-selected', { hasText: label }).first().waitFor({ state: 'visible', timeout: 10000 });
+  await selectedTab.waitFor({ state: 'visible', timeout: 10000 });
   await pause(250);
+}
+
+async function clickSpecSectionRun(page, sectionTitle, beat, text) {
+  const sectionRow = page.locator('.spec-done-row').filter({
+    has: page.getByRole('heading', { name: sectionTitle, exact: true }),
+  }).first();
+  const runButton = sectionRow.locator('.spec-done-gutter-item-run-btn').first();
+  await demoClick(page, runButton, beat, text);
 }
 
 async function clickByText(page, selector, text, beat, description, options = {}) {
   const locator = page.locator(selector, { hasText: text }).first();
   await demoClick(page, locator, beat, description, options);
+}
+
+async function finishOptionalSpecificationLaunch(page, beat) {
+  const permission = page.locator('[data-demo-id="terminal-permission-allow-once"]').first();
+  if (await permission.waitFor({ state: 'visible', timeout: 1800 }).then(() => true).catch(() => false)) {
+    await demoClick(page, permission, beat, 'Allow the agent execution for this run.');
+  }
+
+  const run = page.locator('[data-demo-id="agent-task-run"]').first();
+  if (await run.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false)) {
+    await pause(1600);
+    return;
+  }
+
+  // Newer prototype builds complete Specify in its own chat without a separate
+  // terminal permission surface. The next beat reopens the source task.
+  await page.locator('.aiux543-conversation:visible').first().waitFor({ state: 'visible', timeout: 10000 });
+  await pause(800);
 }
 
 async function runScenario(page) {
@@ -350,7 +433,7 @@ async function runScenario(page) {
 
   console.log('Running JVM scenario automation…');
   await updateOverlay(page, { beat: 'Beat 1', text: 'Loading the welcome screen…' });
-  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}?screen=welcome`, { waitUntil: 'networkidle' });
   await installScenarioOverlay(page);
   await updateOverlay(page, { beat: 'Beat 1', text: 'Preparing project setup…' });
   await pause(400);
@@ -363,13 +446,19 @@ async function runScenario(page) {
   await capture(page, 'beat-1-prompt');
 
   await clickByDemoId(page, 'agent-task-generate', 'Beat 1', 'Generate the first spec draft.');
-  await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 1', 'Allow the agent execution for this run.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await pause(1600);
+  await finishOptionalSpecificationLaunch(page, 'Beat 1');
   await capture(page, 'beat-1-generated-spec');
 
   await clickTaskRow(page, 'visit-booking.md', 'Beat 2', 'Open visit-booking.md from Agent Tasks.');
-  await page.locator('[data-demo-id="spec-inspection-counts"]').waitFor({ state: 'visible', timeout: 10000 });
+  const inspectionCounts = page.locator('[data-demo-id="spec-inspection-counts"]').first();
+  if (!await inspectionCounts.isVisible().catch(() => false)) {
+    await clickSpecSectionRun(page, 'Plan', 'Beat 2', 'Build the spec to produce current inspection results.');
+  }
+  await inspectionCounts.waitFor({ state: 'visible', timeout: 20000 });
+  await page.locator('[data-demo-id="spec-row-ac-0"][data-issue-severity="warning"]').waitFor({
+    state: 'visible',
+    timeout: 20000,
+  });
   await capture(page, 'beat-2-visit-booking');
 
   await clickByDemoId(page, 'spec-inspection-counts', 'Beat 2', 'Open the issues detected in the spec.');
@@ -382,9 +471,9 @@ async function runScenario(page) {
 
   await focusSpecRow(page, 'spec-row-ac-1', 'Beat 2', 'Focus AC #2 and add a clarifying comment.');
   await clickByDemoId(page, 'spec-comment-ac-1', 'Beat 2', 'Open inline comments for AC #2.');
-  const specCommentInput = page.getByPlaceholder('Write a comment').first();
+  const specCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await demoType(page, specCommentInput, 'Beat 2', 'Describe the exact time-slot behavior.', acComment);
-  await demoClick(page, page.getByRole('button', { name: 'Add a Comment', exact: true }).first(), 'Beat 2', 'Save the AC #2 comment.');
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 2', 'Attach the AC #2 AI Note.');
   await pause(600);
 
   await focusSpecRow(page, 'spec-row-plan-2', 'Beat 2', 'Focus the race-condition plan step.');
@@ -398,15 +487,17 @@ async function runScenario(page) {
   await pause(600);
   await capture(page, 'beat-2-fixes-applied');
 
-  const enhanceButton = page.locator('[data-demo-id="agent-task-enhance"]').first();
-  await waitForEnabled(enhanceButton);
-  await demoClick(page, enhanceButton, 'Beat 2', 'Regenerate the spec with the fixes and comment context.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await pause(1800);
+  await clickSpecSectionRun(page, 'Plan', 'Beat 3', 'Build the refined spec with the fixes and AI Note context.');
+  await page.locator('[data-demo-id="spec-row-plan-2"] .spec-check-status-passed').waitFor({
+    state: 'visible',
+    timeout: 20000,
+  });
+  await page.locator('[data-demo-id="spec-row-ac-0"] .spec-check-status-passed').waitFor({
+    state: 'visible',
+    timeout: 20000,
+  });
+  await pause(1000);
   await capture(page, 'beat-2-enhanced-spec');
-
-  await clickByDemoId(page, 'agent-task-run', 'Beat 3', 'Run the execution loop for the refined spec.');
-  await pause(9000);
   await capture(page, 'beat-3-run-results');
 
   await clickByDemoId(page, 'plan-show-diff-plan-3', 'Beat 4', 'Open the VisitController diff for review.');
@@ -416,34 +507,25 @@ async function runScenario(page) {
   const diffRow = page.locator('.plan-diff-row', { hasText: 'return this.timeSlots;' }).first();
   await demoClick(page, diffRow, 'Beat 4', 'Focus the cached time-slots change in the diff.');
   await demoClick(page, diffRow.locator('[data-demo-id^=\"diff-comment-toggle-\"]').first(), 'Beat 4', 'Open inline review comments for the diff row.');
-  const diffCommentInput = page.getByPlaceholder('Write a comment').first();
+  const diffCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await demoType(page, diffCommentInput, 'Beat 4', 'Leave a compact controller review note.', diffComment);
-  await demoClick(page, page.getByRole('button', { name: 'Add a Comment', exact: true }).first(), 'Beat 4', 'Save the controller review comment.');
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 4', 'Attach the controller AI Note.');
   await capture(page, 'beat-4-diff-comment');
+  await logDomSummary(page, 'beat-4-diff-comment');
 
-  await clickTaskRow(page, 'visit-booking.md', 'Beat 4', 'Return from the diff to visit-booking.md.');
-  await pause(1000);
-  await capture(page, 'beat-4-review-comment-synced');
+  await page.locator('.plan-diff-inline-comment:visible', { hasText: diffComment }).first().waitFor({
+    state: 'visible',
+    timeout: 10000,
+  });
+  await updateOverlay(page, {
+    beat: 'Beat 5',
+    text: 'The AI Note remains anchored to the reviewed diff and Visit-Booking.md context.',
+  });
+  await capture(page, 'beat-5-review-context-retained');
 
-  await clickTaskRow(page, 'vet-schedules.md', 'Beat 5', 'Switch to the parallel vet-schedules task.');
-  await pause(800);
-  await capture(page, 'beat-5-vet-schedules');
-  await clickByDemoId(page, 'agent-task-generate', 'Beat 5', 'Generate the vet-schedules spec draft.');
-  await clickByDemoId(page, 'terminal-permission-allow-once', 'Beat 5', 'Allow the parallel task execution.');
-  await page.locator('[data-demo-id="agent-task-run"]').waitFor({ state: 'visible', timeout: 20000 });
-  await pause(1500);
-  await capture(page, 'beat-5-vet-schedules-generated');
-
-  await clickTaskRow(page, 'visit-booking.md', 'Beat 6', 'Return to visit-booking for wrap-up.');
-  await pause(800);
-  await clickByDemoId(page, 'agent-task-run', 'Beat 6', 'Re-run acceptance checks after the review update.');
-  await pause(9000);
-
-  const addToProjectContext = page.getByText('Add to project context').first();
-  if (await addToProjectContext.isVisible().catch(() => false)) {
-    await demoClick(page, addToProjectContext, 'Beat 6', 'Extract the decision into project context.');
-    await pause(1200);
-  }
+  const diffAiReviewButton = page.locator('.plan-diff-ai-review-button:visible').first();
+  await waitForEnabled(diffAiReviewButton);
+  await demoFocus(page, diffAiReviewButton, 'Beat 6', 'The reviewed diff is ready for a follow-up AI Review.');
 
   await capture(page, 'beat-6-wrap-up');
   await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });

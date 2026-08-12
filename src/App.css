@@ -6494,12 +6494,28 @@ body {
 .plan-diff-ai-review-dialog-header {
   display: flex;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: flex-start;
   gap: 8px;
   box-sizing: border-box;
-  padding: 4px 10px 4px 10px;
+  padding: 12px 10px 8px;
   border-radius: 8px 8px 0 0;
+}
+
+.plan-diff-ai-review-dialog-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-default, #d1d3d9);
+  font: 650 15px/20px Inter, system-ui, sans-serif;
+}
+
+.plan-diff-ai-review-dialog-title > .icon,
+.plan-diff-ai-review-dialog-title > svg {
+  width: 18px;
+  height: 18px;
+  color: #548af7;
 }
 
 .plan-diff-ai-review-dialog-pickers {
@@ -6507,6 +6523,38 @@ body {
   min-width: 0;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.plan-diff-ai-review-dialog-scope-note {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border: 1px solid #3b3d43;
+  border-radius: 6px;
+  background: #2b2d30;
+  color: #8e939d;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.plan-diff-ai-review-dialog-scope-note > span:first-child {
+  color: #d1d3d9;
+  font-weight: 650;
+}
+
+.plan-diff-ai-review-dialog-scope-note > strong {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #3a3c41;
+  color: #b4b8bf;
+  font-size: 11px;
+}
+
+.plan-diff-ai-review-dialog-scope-note > span:last-child {
+  text-align: right;
 }
 
 /* Header and footer share one picker shape: text + chevron, hover-only background. */
@@ -6784,6 +6832,19 @@ body {
   background: var(--background-bg-main-window, #282828);
   color: var(--icon-disabled, #5f6269);
   cursor: pointer;
+}
+
+.plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start {
+  width: auto;
+  min-width: 96px;
+  flex-basis: auto;
+  padding: 0 12px;
+  color: #73767c;
+  font: 600 13px/16px Inter, system-ui, sans-serif;
+}
+
+.plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start.is-active {
+  color: #fff;
 }
 
 .plan-diff-ai-review-dialog-send:hover,
@@ -7327,6 +7388,16 @@ body {
   font: 12px/20px "JetBrains Mono", monospace;
 }
 
+.plan-diff-aside-comment-code-context.is-openable {
+  cursor: pointer;
+}
+
+.plan-diff-aside-comment-code-context.is-openable:hover,
+.plan-diff-aside-comment-code-context.is-openable:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .plan-diff-aside-comment-code-context .plan-diff-row {
   grid-template-columns: 72px minmax(0, 1fr);
   min-height: 20px;
@@ -7375,8 +7446,8 @@ body {
 .aiux-review-panel-right {
   --aiux-review-panel-card-gap: 12px;
   --aiux-review-panel-heading-gap: 8px;
-  flex: 0 0 380px;
-  width: 380px;
+  flex: 0 1 clamp(320px, 34%, 420px);
+  width: clamp(320px, 34%, 420px);
   min-width: 0;
   overflow-y: auto;
   background: transparent;
@@ -7483,6 +7554,19 @@ body {
 .aiux-review-panel-cat-head.is-replied .aiux-review-panel-cat-dot { background: #8c9cff; }
 .aiux-review-panel-cat.is-resolved .aiux-review-panel-cat-dot,
 .aiux-review-panel-cat-head.is-resolved .aiux-review-panel-cat-dot { background: #5fb865; }
+.aiux-review-panel-cat.is-open .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-open .aiux-review-panel-cat-dot { background: #548af7; }
+.aiux-review-panel-cat.is-pending-update .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-pending-update .aiux-review-panel-cat-dot {
+  background: #a879ef;
+  animation: aiux-review-lifecycle-pulse 1.25s ease-in-out infinite;
+}
+.aiux-review-panel-cat.is-accepted .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-accepted .aiux-review-panel-cat-dot { background: #5fb865; }
+.aiux-review-panel-cat.is-dismissed .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-dismissed .aiux-review-panel-cat-dot { background: #8e949e; }
+.aiux-review-panel-cat.is-deleted .aiux-review-panel-cat-dot,
+.aiux-review-panel-cat-head.is-deleted .aiux-review-panel-cat-dot { background: #d46b5a; }
 .aiux-review-panel-cat-dot.is-resolved { background: #5fb865; }
 
 .aiux-review-panel-cat-icon {
@@ -7493,6 +7577,12 @@ body {
 .aiux-review-panel-cat-head .aiux550-ainotes-sev-icon {
   flex: 0 0 16px;
 }
+
+.aiux-review-panel-cat-head.is-open .aiux-review-panel-cat-icon { color: #82afff; }
+.aiux-review-panel-cat-head.is-pending-update .aiux-review-panel-cat-icon { color: #c2a5ff; }
+.aiux-review-panel-cat-head.is-accepted .aiux-review-panel-cat-icon { color: #72c989; }
+.aiux-review-panel-cat-head.is-dismissed .aiux-review-panel-cat-icon { color: #9aa0a8; }
+.aiux-review-panel-cat-head.is-deleted .aiux-review-panel-cat-icon { color: #df8372; }
 
 .aiux-review-panel-cat-count {
   flex: 0 0 auto;
@@ -12956,6 +13046,30 @@ body {
   box-shadow: none;
 }
 
+.aiux550-review-final-state {
+  display: flex;
+  width: min(750px, 100%);
+  min-height: 38px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto;
+  padding: 8px 10px;
+  border: 1px solid #3d4047;
+  border-radius: 6px;
+  background: #26282c;
+  color: #b4b8bf;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-final-state.is-completed > .icon {
+  color: #5fb865;
+}
+
+.aiux550-review-final-state.is-cancelled > .icon {
+  color: #d46b68;
+}
+
 
 .aiux543-user-message {
 
@@ -13721,16 +13835,6 @@ button.aiux543-answer-change-card:focus-visible {
   opacity: 1;
 }
 
-/* Gray "Waiting…" placeholder shown in place of the textarea while a comment
-   run is processing — top-aligned to sit where the idle placeholder text does. */
-.aiux543-chat-input-waiting {
-  display: flex;
-  align-items: flex-start;
-  color: #73767c;
-  cursor: default;
-}
-
-
 .aiux543-chat-attachments-spacer {
 
   box-sizing: border-box;
@@ -14099,6 +14203,10 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-new-session-settings {
   justify-content: flex-start;
   padding-top: 3px;
+}
+
+.aiux543-new-session-settings.aiux543-chat-session-settings {
+  justify-content: space-between;
 }
 
 .aiux543-new-session-settings .aiux543-editor-footer-left {
@@ -18225,475 +18333,10 @@ button.aiux543-answer-change-card:focus-visible {
   gap: 0;
 }
 
-.aiux550-loading-plan-shell {
-  display: flex;
-  width: min(750px, 100%);
-  min-height: 0;
-  box-sizing: border-box;
-  flex-direction: column;
-  margin-right: auto;
-  margin-left: auto;
-}
-
-/* "AI Notes" review checklist that butts against the top of the composer */
-.aiux550-loading-plan {
-  display: flex;
-  width: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-  flex-direction: column;
-  margin-bottom: -1px;
-  padding: 8px 12px 8px;
-  border: 1px solid #33353b;
-  border-bottom: 0;
-  border-radius: 8px 8px 0 0;
-  background: #26282c;
-  color: #ced0d6;
-}
-
-.aiux550-loading-plan-header {
-  all: unset;
-  display: flex;
-  width: 100%;
-  min-height: 26px;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.aiux550-loading-plan-chevron {
-  margin-left: auto;
-  color: #8e939d;
-  transition: transform 0.12s ease;
-}
-
-.aiux550-loading-plan-chevron.is-expanded {
-  transform: rotate(90deg);
-}
-
-.aiux550-loading-plan-title {
-  color: #dfe1e5;
-  font: 650 14px/20px Inter, system-ui, sans-serif;
-  white-space: nowrap;
-}
-
-.aiux550-loading-plan-title-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid #42464e;
-  border-radius: 6px;
-  background: #34373d;
-}
-
-.aiux550-loading-plan-title-count {
-  color: #7f838c;
-  font: 500 13px/20px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-chevron,
-.aiux550-loading-plan-chevron.icon,
-.aiux550-loading-plan-chevron svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-
-.aiux550-loading-plan-list {
-  display: flex;
-  min-width: 0;
-  max-height: 184px;
-  overflow-y: auto;
-  flex-direction: column;
-  gap: 1px;
-  padding: 8px 0 0;
-}
-
-.aiux550-loading-plan-row {
-  all: unset;
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  min-height: 28px;
-  align-items: center;
-  gap: 10px;
-  padding: 3px 4px;
-  box-sizing: border-box;
-  border-radius: 4px;
-  cursor: pointer;
-  animation: aiux550-review-row-in 0.18s ease-out;
-}
-
-.aiux550-loading-plan-row:hover {
-  background: var(--selection-bg-hovered, rgba(255, 255, 255, 0.06));
-}
-
-.aiux550-loading-plan-row.active {
-  background: rgba(84, 138, 247, 0.08);
-}
-
-.aiux550-loading-plan-row.is-note {
-  padding-left: 28px;
-}
-
-.aiux550-loading-plan-row.is-file .aiux550-loading-plan-text {
-  color: #dfe1e5;
-  font-weight: 650;
-}
-
-.aiux550-review-file-queue {
-  padding: 8px 12px 8px;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-list {
-  max-height: 150px;
-  gap: 0;
-  padding-top: 6px;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row {
-  min-height: 30px;
-  padding: 2px 4px;
-  background: transparent;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row.active {
-  background: transparent;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-marker::before {
-  display: none;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-marker > .icon,
-.aiux550-review-file-queue .aiux550-loading-plan-marker > svg {
-  width: 16px;
-  height: 16px;
-  color: #a9adb6;
-}
-
-.aiux550-review-file-queue .aiux550-loading-plan-row-action {
-  color: #aeb3bd;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-}
-
-/* File-grouped comments shown while the agent works. Review runs and AI Note
-   processing runs use this same structure: file header + comment body rows. */
-.aiux550-agent-comment-tree {
-  display: flex;
-  min-width: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 0 0 16px;
-}
-
-.aiux550-agent-comment-section {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.aiux550-agent-comment-section + .aiux550-agent-comment-section {
-  padding-top: 8px;
-  border-top: 1px solid #33353b;
-}
-
-.aiux550-agent-comment-section-title {
-  /* Align under the component header title: the tree already indents 16px, and the
-     header title sits at chevron(16)+gap(8)=24px, so add 8px here to line up. */
-  padding: 0 2px 0 8px;
-  color: #8e939d;
-  font: 600 11px/14px Inter, system-ui, sans-serif;
-  text-transform: uppercase;
-}
-
-.aiux550-agent-comment-file-group {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.aiux550-agent-comment-file-group + .aiux550-agent-comment-file-group {
-  padding-top: 6px;
-  border-top: 1px solid #33353b;
-}
-
-.aiux550-agent-comment-file-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0 2px 2px;
-}
-
-.aiux550-agent-comment-file-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-
-.aiux550-agent-comment-file-loader {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-
-.aiux550-agent-comment-file-loader svg {
-  width: 16px;
-  height: 16px;
-}
-
-.aiux550-agent-comment-file-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #dfe1e5;
-  font: 600 13px/16px Inter, system-ui, sans-serif;
-}
-
-.aiux550-agent-comment-row {
-  display: flex;
-  align-items: flex-start;
-  width: calc(100% + 8px);
-  min-width: 0;
-  margin: 0 -4px;
-  padding: 4px 4px 4px 28px;
-  box-sizing: border-box;
-  border: 0;
-  border-radius: 4px;
-  appearance: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  animation: aiux550-review-row-in 0.18s ease-out;
-}
-
-.aiux550-agent-comment-row.is-clickable {
-  cursor: pointer;
-}
-
-.aiux550-agent-comment-row.is-clickable:hover {
-  background: var(--selection-bg-hovered, rgba(255, 255, 255, 0.06));
-}
-
-.aiux550-agent-comment-body {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.aiux550-agent-comment-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  color: #d1d3d9;
-  font: 400 13px/18px Inter, system-ui, sans-serif;
-}
-
-.aiux550-agent-comment-meta-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-}
-
-.aiux550-agent-comment-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #6f737a;
-  font: 400 11px/15px Inter, system-ui, sans-serif;
-}
-
-.aiux550-agent-comment-state {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  height: 16px;
-  padding: 0 6px;
-  border-radius: 4px;
-  font: 500 11px/16px Inter, system-ui, sans-serif;
-  white-space: nowrap;
-}
-
-.aiux550-agent-comment-state.is-active {
-  background: rgba(84, 138, 247, 0.14);
-  color: #7ca7ff;
-}
-
-.aiux550-agent-comment-state.is-queued {
-  background: rgba(255, 255, 255, 0.06);
-  color: #8e939d;
-}
-
-@keyframes aiux550-review-row-in {
-  from { opacity: 0; transform: translateY(-2px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.aiux550-loading-plan-marker {
-  position: relative;
-  display: inline-flex;
-  width: 16px;
-  height: 16px;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 16px;
-}
-
-.aiux550-loading-plan-marker::before {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #6c707e;
-  content: "";
-}
-
-.aiux550-loading-plan-row.active .aiux550-loading-plan-marker::before,
-.aiux550-loading-plan-row.done .aiux550-loading-plan-marker::before {
-  display: none;
-}
-
-.aiux550-loading-plan-row.done .aiux550-loading-plan-marker > .icon,
-.aiux550-loading-plan-row.done .aiux550-loading-plan-marker > svg {
-  width: 16px;
-  height: 16px;
-  color: #6f737a;
-}
-
-.aiux550-loading-plan-spinner.aiux543-spinner {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  box-sizing: border-box;
-  border-width: 2px;
-}
-
-/* File block: file name on top, comment counts per status below. */
-.aiux550-loading-plan-file {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 0;
-}
-
-.aiux550-loading-plan-file + .aiux550-loading-plan-file {
-  border-top: 1px solid #33353b;
-}
-
-.aiux550-loading-plan-file-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.aiux550-loading-plan-file-head > .icon,
-.aiux550-loading-plan-file-head > svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-}
-
-.aiux550-loading-plan-file-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #dcdee2;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-file-stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  padding-left: 24px;
-}
-
-.aiux550-loading-plan-stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #9598a0;
-  font: 400 12px/16px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-stat.is-done {
-  color: #6db083;
-}
-
-.aiux550-loading-plan-stat.is-active {
-  color: #7ca7ff;
-}
-
-.aiux550-loading-plan-stat-marker {
-  display: inline-flex;
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.aiux550-loading-plan-stat.is-pending .aiux550-loading-plan-stat-marker::before {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #6c707e;
-  content: "";
-}
-
-.aiux550-loading-plan-stat .icon,
-.aiux550-loading-plan-stat svg {
-  width: 14px;
-  height: 14px;
-}
-
-.aiux550-loading-plan-note {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 0;
-}
-
-.aiux550-loading-plan-row-action {
-  flex: 0 0 auto;
-  color: #a0a3a9;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-  white-space: nowrap;
-}
-
-.aiux550-loading-plan-row-action.is-active {
-  color: #7ca7ff;
-}
-
-.aiux550-loading-plan-row-action.is-done {
-  color: #6db083;
-}
-
-.aiux550-loading-plan-more {
-  flex: 0 0 16px;
-  color: #7f838c;
+.aiux543-composer-sticky.is-agent-running .aiux543-chat-composer,
+.aiux543-composer-sticky.is-agent-running .aiux543-chat-composer:focus-within {
+  padding: 3px;
+  border: 1px solid #40434a;
 }
 
 /* Collapsed and expanded states render the same severity/file/comment tree.
@@ -18723,6 +18366,25 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-message.is-expanded {
   max-height: none;
+}
+
+.aiux550-review-running {
+  display: flex;
+  width: min(750px, 100%);
+  min-height: 24px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  margin: 10px auto 14px;
+  color: #d1d3d9;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-running > .icon,
+.aiux550-review-running > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
 }
 
 .aiux550-review-summary-message-head {
@@ -18769,9 +18431,11 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux550-review-header-action {
-  width: 28px;
+  width: auto;
+  min-width: 28px;
   height: 28px;
-  flex: 0 0 28px;
+  flex: 0 0 auto;
+  gap: 5px;
   color: #b4b8bf;
 }
 
@@ -19088,7 +18752,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux550-review-summary-decision {
   width: 100%;
-  height: 127px;
+  min-height: 220px;
   padding: 0;
   border-color: #3574f0;
 }
@@ -19118,17 +18782,18 @@ button.aiux543-answer-change-card:focus-visible {
   display: flex;
   box-sizing: border-box;
   flex-direction: column;
+  gap: 2px;
   padding: 0 8px 8px;
 }
 
 .aiux550-review-summary-choice {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  height: 26px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  min-height: 45px;
   box-sizing: border-box;
   align-items: center;
   gap: 8px;
-  padding: 4px;
+  padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -19138,7 +18803,7 @@ button.aiux543-answer-change-card:focus-visible {
   cursor: pointer;
 }
 
-.aiux550-review-summary-choice:hover,
+.aiux550-review-summary-choice:hover:not(:disabled),
 .aiux550-review-summary-choice:focus-visible,
 .aiux550-review-summary-choice.is-selected {
   border-color: #3574f0;
@@ -19150,41 +18815,45 @@ button.aiux543-answer-change-card:focus-visible {
   color: #d1d3d9;
 }
 
-.aiux550-review-summary-choice > .icon {
-  width: 16px;
-  height: 16px;
-  color: #b4b8bf;
+.aiux550-review-summary-choice:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
-.aiux550-review-summary-choice.is-selected > .icon {
-  color: #548af7;
-}
-
-.aiux550-review-summary-revision {
-  cursor: text;
-}
-
-.aiux550-review-summary-revision input {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  caret-color: #d1d3d9;
-  font: inherit;
-}
-
-.aiux550-review-summary-revision input::placeholder {
+.aiux550-review-summary-choice-number {
+  align-self: start;
+  padding-top: 1px;
   color: #73767c;
-  opacity: 1;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+  text-align: center;
+}
+
+.aiux550-review-summary-choice.is-selected .aiux550-review-summary-choice-number {
+  color: #6f9cff;
+}
+
+.aiux550-review-summary-choice-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.aiux550-review-summary-choice-label {
+  color: inherit;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux550-review-summary-choice-description {
+  overflow: hidden;
+  color: #73767c;
+  font: 400 12px/16px Inter, system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .aiux550-review-summary-navigation {
   color: #73767c;
   font: 500 12px/16px Inter, system-ui, sans-serif;
-  letter-spacing: 0;
   white-space: nowrap;
 }
 
@@ -19192,8 +18861,8 @@ button.aiux543-answer-change-card:focus-visible {
   display: flex;
   min-height: 30px;
   box-sizing: border-box;
-  justify-content: flex-end;
   align-items: flex-end;
+  justify-content: flex-end;
   gap: 8px;
   padding-top: 6px;
 }
@@ -19295,9 +18964,6 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-.aiux550-loading-plan-row .spec-done-status-solved {
-  margin-top: 2px;
-}
 
 .spec-done-status-solved > .icon,
 .spec-done-status-solved > svg {
@@ -19341,39 +19007,30 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 
-.aiux550-loading-plan-text {
-  min-width: 0;
-  color: #dcdee2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 400 13px/20px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-note-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #6f737a;
-  font: 400 11px/15px Inter, system-ui, sans-serif;
-}
-
-.aiux550-loading-plan-row.done .aiux550-loading-plan-text {
-  color: #9598a0;
-}
-
 /* Stop button (replaces Send while a run is in progress) */
+.aiux543-chat-stop-button {
+  width: 32px;
+  height: 26px;
+  border-radius: 4px;
+  background: #402929;
+}
+
+.aiux543-chat-stop-button:hover,
+.aiux543-chat-stop-button:focus-visible {
+  background: #4a2f2f;
+  outline: none;
+}
+
 .aiux543-chat-stop-button .aiux543-chat-stop-square {
   display: inline-block;
   width: 10px;
   height: 10px;
   border-radius: 2px;
-  background: #cfd1d8;
+  background: #db5c5c;
 }
 
 .aiux543-chat-stop-button:hover .aiux543-chat-stop-square {
-  background: #fff;
+  background: #e16c6c;
 }
 
 /* In-code AI Note resolution states shown after the run completes */
@@ -19503,9 +19160,16 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-/* Resolved review comment: kept as a record, dimmed, with a status badge. */
+/* Resolved review comments remain legible records. The finding-state badge, not
+   global card opacity, communicates whether the proposal was accepted,
+   dismissed, or deleted. */
 .spec-done-comment-agent-reply.is-resolved {
-  opacity: 0.55;
+  opacity: 1;
+}
+
+.spec-done-comment-agent-reply.is-resolved .spec-done-comment-agent-reply-text,
+.spec-done-comment-agent-reply.is-resolved .spec-done-comment-agent-reply-line {
+  color: #858a93;
 }
 
 .spec-done-comment-resolved-badge {
@@ -19513,15 +19177,42 @@ button.aiux543-answer-change-card:focus-visible {
   align-items: center;
   flex: 0 0 auto;
   padding: 1px 7px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: #2b3a2e;
-  color: #7bcf90;
+  background: rgba(84, 138, 247, 0.14);
+  color: #8fb2ff;
   font: 500 11px/16px Inter, system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.spec-done-comment-resolved-badge.is-open {
+  border-color: rgba(84, 138, 247, 0.3);
+  background: rgba(84, 138, 247, 0.13);
+  color: #8fb2ff;
+}
+
+.spec-done-comment-resolved-badge.is-pending-update {
+  border-color: rgba(187, 139, 255, 0.32);
+  background: rgba(139, 92, 246, 0.16);
+  color: #c2a5ff;
+}
+
+.spec-done-comment-resolved-badge.is-accepted {
+  border-color: rgba(95, 184, 101, 0.3);
+  background: rgba(95, 184, 101, 0.14);
+  color: #82d596;
 }
 
 .spec-done-comment-resolved-badge.is-dismissed {
-  background: #303236;
-  color: #9aa0a8;
+  border-color: rgba(154, 160, 168, 0.22);
+  background: rgba(154, 160, 168, 0.1);
+  color: #aeb3bb;
+}
+
+.spec-done-comment-resolved-badge.is-deleted {
+  border-color: rgba(229, 101, 78, 0.28);
+  background: rgba(229, 101, 78, 0.11);
+  color: #e99789;
 }
 
 .spec-done-comment-agent-reply-time {
@@ -19847,6 +19538,99 @@ button.aiux543-answer-change-card:focus-visible {
   color: #a0a3a9;
 }
 
+/* Canonical review lifecycle badge. All review surfaces use the same seven
+   states, but each phase stays visually distinguishable at compact IDE scale. */
+.aiux-review-lifecycle-badge {
+  --review-lifecycle-color: #aeb3bb;
+  --review-lifecycle-bg: rgba(154, 160, 168, 0.1);
+  --review-lifecycle-border: rgba(154, 160, 168, 0.2);
+  --review-lifecycle-dot: #8e949e;
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  padding: 2px 7px 2px 6px;
+  border: 1px solid var(--review-lifecycle-border);
+  border-radius: 999px;
+  background: var(--review-lifecycle-bg);
+  color: var(--review-lifecycle-color);
+  font: 500 11px/14px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.aiux-review-lifecycle-badge.is-compact {
+  gap: 4px;
+  padding: 1px 6px 1px 5px;
+}
+
+.aiux-review-lifecycle-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--review-lifecycle-dot);
+}
+
+.aiux-review-lifecycle-badge.is-queued {
+  --review-lifecycle-color: #aeb3bb;
+  --review-lifecycle-bg: rgba(154, 160, 168, 0.09);
+  --review-lifecycle-border: rgba(154, 160, 168, 0.2);
+  --review-lifecycle-dot: #8e949e;
+}
+
+.aiux-review-lifecycle-badge.is-processing {
+  --review-lifecycle-color: #91b4ff;
+  --review-lifecycle-bg: rgba(84, 138, 247, 0.14);
+  --review-lifecycle-border: rgba(84, 138, 247, 0.3);
+  --review-lifecycle-dot: #6698fa;
+}
+
+.aiux-review-lifecycle-badge.is-updating {
+  --review-lifecycle-color: #c2a5ff;
+  --review-lifecycle-bg: rgba(139, 92, 246, 0.15);
+  --review-lifecycle-border: rgba(187, 139, 255, 0.3);
+  --review-lifecycle-dot: #a879ef;
+}
+
+.aiux-review-lifecycle-badge.is-open {
+  --review-lifecycle-color: #82afff;
+  --review-lifecycle-bg: rgba(61, 126, 255, 0.12);
+  --review-lifecycle-border: rgba(84, 138, 247, 0.28);
+  --review-lifecycle-dot: #548af7;
+}
+
+.aiux-review-lifecycle-badge.is-updated {
+  --review-lifecycle-color: #aebdff;
+  --review-lifecycle-bg: rgba(110, 125, 255, 0.14);
+  --review-lifecycle-border: rgba(140, 156, 255, 0.3);
+  --review-lifecycle-dot: #8c9cff;
+}
+
+.aiux-review-lifecycle-badge.is-completed {
+  --review-lifecycle-color: #82d596;
+  --review-lifecycle-bg: rgba(95, 184, 101, 0.14);
+  --review-lifecycle-border: rgba(95, 184, 101, 0.28);
+  --review-lifecycle-dot: #5fb865;
+}
+
+.aiux-review-lifecycle-badge.is-cancelled {
+  --review-lifecycle-color: #d9988c;
+  --review-lifecycle-bg: rgba(201, 92, 73, 0.1);
+  --review-lifecycle-border: rgba(229, 101, 78, 0.24);
+  --review-lifecycle-dot: #c45e4c;
+}
+
+.aiux-review-lifecycle-badge.is-busy .aiux-review-lifecycle-dot {
+  animation: aiux-review-lifecycle-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes aiux-review-lifecycle-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--review-lifecycle-dot) 36%, transparent); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
+
 /* Expressive "Done" status — a green sibling of the blue Approval pill. Reused by
    the composer review card and the Chat History AI Review row. */
 .aiux550-review-done-badge {
@@ -19869,6 +19653,39 @@ button.aiux543-answer-change-card:focus-visible {
   border-radius: 50%;
   background: #5fb865;
   box-shadow: 0 0 0 3px rgba(95, 184, 101, 0.22);
+}
+
+/* Preview/full-review badges can opt into the same lifecycle tones while
+   retaining their established class and dimensions. */
+.aiux550-review-done-badge.is-queued,
+.aiux550-review-done-badge.is-processing,
+.aiux550-review-done-badge.is-updating,
+.aiux550-review-done-badge.is-open,
+.aiux550-review-done-badge.is-updated,
+.aiux550-review-done-badge.is-completed,
+.aiux550-review-done-badge.is-cancelled {
+  color: var(--review-lifecycle-color);
+  background: var(--review-lifecycle-bg);
+  box-shadow: inset 0 0 0 1px var(--review-lifecycle-border);
+}
+
+.aiux550-review-done-badge.is-queued { --review-lifecycle-color: #aeb3bb; --review-lifecycle-bg: rgba(154, 160, 168, 0.09); --review-lifecycle-border: rgba(154, 160, 168, 0.2); }
+.aiux550-review-done-badge.is-processing { --review-lifecycle-color: #91b4ff; --review-lifecycle-bg: rgba(84, 138, 247, 0.14); --review-lifecycle-border: rgba(84, 138, 247, 0.3); }
+.aiux550-review-done-badge.is-open { --review-lifecycle-color: #82d596; --review-lifecycle-bg: rgba(95, 184, 101, 0.14); --review-lifecycle-border: rgba(95, 184, 101, 0.28); }
+.aiux550-review-done-badge.is-updating { --review-lifecycle-color: #c2a5ff; --review-lifecycle-bg: rgba(139, 92, 246, 0.15); --review-lifecycle-border: rgba(187, 139, 255, 0.3); }
+.aiux550-review-done-badge.is-updated { --review-lifecycle-color: #aebdff; --review-lifecycle-bg: rgba(110, 125, 255, 0.14); --review-lifecycle-border: rgba(140, 156, 255, 0.3); }
+.aiux550-review-done-badge.is-completed { --review-lifecycle-color: #82d596; --review-lifecycle-bg: rgba(95, 184, 101, 0.14); --review-lifecycle-border: rgba(95, 184, 101, 0.28); }
+.aiux550-review-done-badge.is-cancelled { --review-lifecycle-color: #d9988c; --review-lifecycle-bg: rgba(201, 92, 73, 0.1); --review-lifecycle-border: rgba(229, 101, 78, 0.24); }
+
+.aiux550-review-done-badge.is-queued .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-processing .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-updating .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-open .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-updated .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-completed .aiux550-review-done-dot,
+.aiux550-review-done-badge.is-cancelled .aiux550-review-done-dot {
+  background: currentColor;
+  box-shadow: none;
 }
 
 .aiux550-ainotes-file-count {
@@ -19989,6 +19806,18 @@ button.aiux543-answer-change-card:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.commit-file-vcs-status {
+  flex: 0 0 14px;
+  color: #78a9ff;
+  font: 600 10px/14px "JetBrains Mono", monospace;
+  text-align: center;
+}
+
+.commit-file-vcs-status.is-added,
+.commit-file-vcs-status.is-untracked { color: #78c98d; }
+.commit-file-vcs-status.is-deleted { color: #e06c75; }
+.commit-file-vcs-status.is-renamed { color: #c2a5ff; }
 
 .commit-file-path {
   flex: 1 1 auto;
@@ -20111,6 +19940,73 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* ─── Aggregated review-diff overview tab ──────────────────────────────────── */
+.ai-review-editor-split-active .main-window-editor-tabs:not(.ai-review-editor-split-tabbar) {
+  display: none;
+}
+
+.editor-top-bar:has(.ai-review-editor-split) {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+}
+
+.editor:has(.ai-review-editor-split) .editor-body {
+  display: none;
+}
+
+.ai-review-editor-split {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(360px, 1fr) 1px minmax(420px, 1.08fr);
+  overflow: hidden;
+  background: #191a1c;
+}
+
+.ai-review-editor-split-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: #191a1c;
+}
+
+.ai-review-editor-split-divider {
+  width: 1px;
+  min-height: 0;
+  background: #34363b;
+}
+
+.ai-review-editor-split-tabbar {
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.ai-review-editor-split-body {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.ai-review-editor-split-body > .aiux543-chat-editor-host {
+  flex: 1 1 auto;
+}
+
+.ai-review-editor-split-body.is-review .aiux-review-overview {
+  position: absolute;
+  inset: 0;
+}
+
 .aiux-review-overview-anchor {
   display: none;
 }
@@ -20122,16 +20018,18 @@ button.aiux543-answer-change-card:focus-visible {
   display: flex;
   flex-direction: column;
   background: #1b1c1f;
+  container-name: ai-review;
+  container-type: inline-size;
 }
 
 .aiux-review-overview-toolbar {
   display: flex;
   flex: 0 0 auto;
+  height: 40px;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  height: 40px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-bottom: 1px solid #2b2d31;
   background: #1b1c1f;
 }
@@ -20295,6 +20193,22 @@ button.aiux543-answer-change-card:focus-visible {
   width: 168px;
 }
 
+.aiux-review-filter-trigger.is-icon-only.toolbar-button {
+  width: 38px;
+  min-width: 38px;
+  padding-inline: 3px;
+}
+
+.aiux-review-filter-trigger.is-icon-only .toolbar-button-content {
+  justify-content: center;
+  gap: 2px;
+}
+
+.aiux-review-filter-trigger.is-icon-only .toolbar-button-content > svg:last-child,
+.aiux-review-filter-trigger.is-icon-only .toolbar-button-content > .icon:last-child {
+  margin-left: 0;
+}
+
 .aiux-review-filter-trigger .toolbar-button-content {
   width: 100%;
   max-width: 220px;
@@ -20429,6 +20343,10 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux-review-overview-group-head.is-warning .aiux-review-overview-group-title,
 .aiux-review-overview-group-head.is-info .aiux-review-overview-group-title,
 .aiux-review-overview-group-head.is-open .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-pending-update .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-accepted .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-dismissed .aiux-review-overview-group-title,
+.aiux-review-overview-group-head.is-deleted .aiux-review-overview-group-title,
 .aiux-review-overview-group-head.is-resolved .aiux-review-overview-group-title {
   color: inherit;
 }
@@ -20442,9 +20360,10 @@ button.aiux543-answer-change-card:focus-visible {
    same gap as the items inside the chat/summary block. */
 .aiux-review-overview-left {
   display: flex;
+  height: 32px;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
-  gap: 8px;
 }
 
 .aiux-review-overview-nav {
@@ -20502,8 +20421,7 @@ button.aiux543-answer-change-card:focus-visible {
   text-decoration: underline;
 }
 
-/* File-tree popup — same content as the old expandable review card above the
-   composer, reusing its .aiux550-agent-comment-* tree styles. */
+/* File-tree popup for navigating the reviewed files. */
 .aiux-review-files-popup {
   display: flex;
   width: 420px;
@@ -20623,7 +20541,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-overview-target {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   /* Allow the target to shrink so the chat name truncates instead of the file
      nav overflowing into the action controls when the summary grows (e.g. once
      "· N resolved" appears). */
@@ -20645,7 +20563,11 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-overview-actions {
   display: flex;
+  height: 34px;
+  flex: 0 0 auto;
+  min-width: 0;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -20655,6 +20577,63 @@ button.aiux543-answer-change-card:focus-visible {
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.aiux-review-overview-completion-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.aiux-review-overview-footer {
+  display: flex;
+  min-height: 52px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  border-top: 1px solid #2b2d31;
+  background: #1b1c1f;
+}
+
+.aiux-review-overview-footer .aiux-review-overview-completion-actions {
+  justify-content: flex-end;
+}
+
+.aiux-review-overview-toolbar-filters {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.aiux-review-split-file-view {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  background: #1b1c1f;
+}
+
+.aiux-review-split-file-body {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.aiux-review-split-file-body > .plan-diff-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.aiux-review-overview-controls-separator.toolbar-separator {
+  flex: 0 0 auto;
+  height: 20px;
+  margin: 0 1px;
 }
 
 /* Split/Unified segmented control — the library SegmentedControl with icon
@@ -21610,4 +21589,178 @@ button.aiux543-answer-change-card:focus-visible {
   0% { background-color: rgba(123, 160, 247, 0.34); }
   60% { background-color: rgba(123, 160, 247, 0.20); }
   100% { background-color: transparent; }
+}
+
+/* AI Review adapts to the editor pane, not only the browser viewport. This is
+   important when Full Review is opened in a narrow IDE split. */
+.aiux-review-overview-toolbar .aiux550-review-final-state {
+  width: auto;
+  min-height: 28px;
+  margin: 0;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+@container ai-review (max-width: 1120px) {
+  .aiux-review-overview-viewtoggle .segmented-button {
+    min-width: 30px;
+    padding-inline: 6px;
+  }
+}
+
+@container ai-review (max-width: 760px) {
+  .aiux-review-overview-summary-total {
+    max-width: 38%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .aiux-review-overview-completion-actions {
+    gap: 4px;
+  }
+
+  .aiux-review-overview-scroll.is-panel {
+    flex-direction: column;
+  }
+
+  .aiux-review-overview-scroll.is-panel .aiux-review-panel-left {
+    flex: 1 1 55%;
+    min-height: 180px;
+  }
+
+  .aiux-review-overview-scroll.is-panel .aiux-review-panel-right {
+    width: 100%;
+    min-height: 180px;
+    max-height: 45%;
+    box-sizing: border-box;
+    flex: 1 1 45%;
+    border-top: 1px solid #34363b;
+  }
+
+  .aiux-review-overview-file-head {
+    flex-wrap: wrap;
+  }
+
+  .aiux-review-overview-file-actions {
+    margin-left: 24px;
+  }
+}
+
+@container ai-review (max-width: 520px) {
+  .aiux-review-overview-summary-total,
+  .aiux-review-overview-sep {
+    display: none;
+  }
+
+  .aiux-review-overview-completion-actions {
+    width: 100%;
+  }
+
+  .aiux-review-comments-only-content {
+    padding: 14px 12px 24px;
+  }
+}
+
+/* The shared launch dialog remains usable at compact IDE/window sizes: scope,
+   configuration, attachments, and Start Review stay reachable without overlap. */
+@media (max-width: 720px) {
+  .plan-diff-ai-review-dialog-backdrop {
+    align-items: flex-start;
+    justify-content: center;
+    padding: 8px;
+    overflow-y: auto;
+  }
+
+  .plan-diff-ai-review-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    margin: auto 0;
+  }
+
+  .plan-diff-ai-review-dialog-pickers {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 8px;
+  }
+
+  .plan-diff-ai-review-dialog-picker {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .plan-diff-ai-review-dialog-picker > span:not(.icon) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .plan-diff-ai-review-dialog-scope-note {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .plan-diff-ai-review-dialog-scope-note > span:last-child {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .plan-diff-ai-review-dialog-quick-actions {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .plan-diff-ai-review-dialog-main {
+    min-height: 140px;
+  }
+
+  .plan-diff-ai-review-dialog-footer {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+
+@media (max-width: 440px) {
+  .plan-diff-ai-review-dialog-pickers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plan-diff-ai-review-dialog-scope-note {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .plan-diff-ai-review-dialog-main {
+    min-height: 124px;
+  }
+
+  .plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start {
+    min-width: 84px;
+    padding-inline: 9px;
+  }
+}
+
+@media (max-height: 620px) {
+  .plan-diff-ai-review-dialog-backdrop {
+    align-items: flex-start;
+    overflow-y: auto;
+  }
+
+  .plan-diff-ai-review-dialog {
+    max-height: none;
+  }
+
+  .plan-diff-ai-review-dialog-main {
+    min-height: 108px;
+  }
+
+  .plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments.is-expanded {
+    max-height: 88px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aiux-review-lifecycle-badge.is-busy .aiux-review-lifecycle-dot,
+  .aiux-review-panel-cat.is-pending-update .aiux-review-panel-cat-dot,
+  .aiux-review-panel-cat-head.is-pending-update .aiux-review-panel-cat-dot {
+    animation: none;
+  }
 }

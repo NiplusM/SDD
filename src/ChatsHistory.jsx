@@ -18,6 +18,54 @@ const AIUX_NEW_SESSION_TAB_ID = 'aiux-new-session';
 const AIA_COMPOSER_NPM_INIT_PERMISSION_PROMPT =
   'Allow running npm init -y in the current repository to create a default package.json?';
 
+const REVIEW_LIFECYCLE_META = Object.freeze({
+  queued: { label: 'Queued', tone: 'queued', phase: 'pending' },
+  processing: { label: 'Processing', tone: 'processing', phase: 'busy' },
+  updating: { label: 'Updating', tone: 'updating', phase: 'busy' },
+  open: { label: 'Open', tone: 'open', phase: 'result' },
+  updated: { label: 'Updated', tone: 'updated', phase: 'result' },
+  completed: { label: 'Completed', tone: 'completed', phase: 'final' },
+  cancelled: { label: 'Cancelled', tone: 'cancelled', phase: 'final' },
+});
+
+const REVIEW_LIFECYCLE_ALIASES = Object.freeze({
+  pending: 'queued',
+  running: 'processing',
+  done: 'open',
+  dismissed: 'cancelled',
+});
+
+function normalizeReviewLifecycleStatus(status = '') {
+  const value = String(status || '').trim().toLowerCase();
+  if (REVIEW_LIFECYCLE_META[value]) return value;
+  return REVIEW_LIFECYCLE_ALIASES[value] ?? 'queued';
+}
+
+function getReviewLifecycleMeta(status = '') {
+  const normalized = normalizeReviewLifecycleStatus(status);
+  return { id: normalized, ...REVIEW_LIFECYCLE_META[normalized] };
+}
+
+function ReviewLifecycleBadge({ status, compact = false, className = '' }) {
+  const lifecycle = getReviewLifecycleMeta(status);
+  return (
+    <span
+      className={[
+        'aiux-review-lifecycle-badge',
+        `is-${lifecycle.tone}`,
+        lifecycle.phase === 'busy' ? 'is-busy' : '',
+        compact ? 'is-compact' : '',
+        className,
+      ].filter(Boolean).join(' ')}
+      data-review-lifecycle={lifecycle.id}
+      aria-label={`Review status: ${lifecycle.label}`}
+    >
+      <span className="aiux-review-lifecycle-dot" aria-hidden="true" />
+      <span>{lifecycle.label}</span>
+    </span>
+  );
+}
+
 const AGENT_SESSION_ACTIVE_CHANGES = [
   {
     label: 'VisitController.java',
@@ -61,7 +109,6 @@ const AGENT_SESSION_ACTIVE_CHANGES = [
 function ChatsHistoryToolWindow({
   ctx,
   activeChatId = null,
-  agentRunByChatId = {},
   chatRows = [],
   onOpenNewSession = null,
   onOpenChatInTab = null,
@@ -69,7 +116,6 @@ function ChatsHistoryToolWindow({
   onSettings = null,
   onOpenChangesList = null,
   onOpenCommit = null,
-  onOpenReviewDiff = null,
   onOpenFile = null,
   vetSchedulesLineCount = 0,
 }) {
@@ -104,30 +150,6 @@ function ChatsHistoryToolWindow({
       },
     ];
   }, [flatRows]);
-
-  // Reveal a newly queued review immediately in history. The queued state is
-  // static; processing and its animation begin only when the chat tab is opened.
-  useEffect(() => {
-    const active = Object.entries(agentRunByChatId)
-      .filter(([, run]) => run?.status === 'queued' || run?.status === 'processing')
-      .map(([chatId]) => chatId);
-    if (active.length === 0) return;
-    setExpandedRows((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      active.forEach((chatId) => { if (!next[chatId]) { next[chatId] = true; changed = true; } });
-      return changed ? next : prev;
-    });
-    setExpandedSections((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      active.forEach((chatId) => {
-        const key = `${chatId}:ai-notes`;
-        if (!next[key]) { next[key] = true; changed = true; }
-      });
-      return changed ? next : prev;
-    });
-  }, [agentRunByChatId]);
 
   const handleSelectChat = (chatId, specId = null) => {
     if (chatId === AIUX_NEW_SESSION_TAB_ID) {
@@ -204,7 +226,10 @@ function ChatsHistoryToolWindow({
                     <React.Fragment key={row.id}>
                     <button
                       type="button"
-                      className={`agent-sessions-session${selectedId === row.id ? ' is-selected' : ''}`}
+                      className={[
+                        'agent-sessions-session',
+                        selectedId === row.id ? 'is-selected' : '',
+                      ].filter(Boolean).join(' ')}
                       onClick={() => handleSelectChat(row.id)}
                     >
                       <span
@@ -689,26 +714,21 @@ function Aiux550HistoryList({
   // highlighted (avoids a default blue selection on load).
   const effectiveActiveChatId = activeChatId ?? null;
 
-  // Prepend an expandable "AI Review" folder to a chat's children only for an
-  // explicit /review run. A plain "execute comments" run also carries notes, but
-  // it shouldn't leave an "AI Review" block lingering in history after it
-  // finishes — its result lives in the chat + the diff. While such a run is
-  // still processing we show the folder so its progress is visible.
-  // Show the "AI Review" folder (with severity counters) whenever the run has
-  // notes — i.e. while processing OR while agent replies/findings still await an
-  // explicit user action (apply the change / resolve). finishRun prunes notes that
-  // don't await action, and resolving/quick-fixing removes them, so the folder
-  // disappears once everything is handled.
+  // Prepend an "AI Review" summary to explicit review sessions only. It remains
+  // in history across active, result, and final phases, including no-findings
+  // reviews; regular comment-to-agent runs keep their result in the chat/diff.
   const withAiNotes = (node) => {
     const run = agentRunByChatId[node.id];
     // Only an explicit /review run gets an "AI Review" folder in history. A plain
     // "send comment to agent" run keeps its result in the chat + the diff/chip.
-    if (run?.kind !== 'review' || !run?.notes?.length) return node;
+    // Do not key visibility to findings: a valid no-findings result still owns a
+    // review lifecycle, summary, and immutable history entry.
+    if (run?.kind !== 'review') return node;
     const aiNotesSection = {
       id: 'ai-notes',
       label: 'AI Review',
-      notes: run.notes,
-      status: run.status,
+      notes: Array.isArray(run.notes) ? run.notes : [],
+      status: normalizeReviewLifecycleStatus(run.status),
       agentIcon: run.agentIcon || node.agent || 'codex',
     };
     return { ...node, children: [aiNotesSection, ...(node.children ?? [])] };
@@ -827,11 +847,13 @@ function Aiux550HistoryRow({
 }) {
   const hasChildren = Boolean(row.children?.length) || Boolean(row.chats?.length);
   const isSpec = row.kind === 'spec';
+  const isReviewRun = agentRun?.kind === 'review';
+  const reviewLifecycle = isReviewRun ? getReviewLifecycleMeta(agentRun?.status) : null;
   // Live agent-run status drives the node: while the agent works the row shows
   // the progress badge (and hides the static +/-); once done, the change summary
   // returns — a visible running → done transition on the node itself.
-  const isRunning = agentRun?.status === 'processing';
-  const isRunDone = agentRun?.status === 'done';
+  const isRunning = reviewLifecycle?.phase === 'busy';
+  const isRunDone = reviewLifecycle?.phase === 'result' || reviewLifecycle?.phase === 'final';
   const changeSummary = isRunning
     ? null
     : (row.diff ?? (isRunDone ? { added: 3, deleted: 1 } : null));
@@ -850,7 +872,9 @@ function Aiux550HistoryRow({
         changeSummary ? 'has-change-summary' : '',
         showProgressBadge ? 'has-status has-progress-plan' : '',
         isRunning ? 'is-agent-running' : '',
+        reviewLifecycle ? `is-review-${reviewLifecycle.tone}` : '',
       ].filter(Boolean).join(' ')}
+      data-review-lifecycle={reviewLifecycle?.id}
       onClick={onSelect}
     >
       {hasChildren ? (
@@ -882,6 +906,9 @@ function Aiux550HistoryRow({
         ) : null}
         {showProgressBadge ? (
           <ProgressPlanBadge />
+        ) : null}
+        {reviewLifecycle ? (
+          <ReviewLifecycleBadge status={reviewLifecycle.id} compact />
         ) : null}
         {changeSummary ? (
           <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${changeSummary.added}, minus ${changeSummary.deleted}`}>
@@ -1159,15 +1186,16 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         const sectionKey = `${rowId}:${section.id}`;
         const isExpanded = expandedSections[sectionKey] ?? false;
         const isAiNotes = section.id === 'ai-notes';
-        const aiNotes = isAiNotes && Array.isArray(section.notes) ? section.notes : [];
+        const reviewLifecycle = isAiNotes ? getReviewLifecycleMeta(section.status) : null;
         // The AI Review section is a single, non-expandable summary row: it shows
         // the file/comment totals and a "See list" escape hatch. The per-file /
         // per-comment detail lives in the diff gutters and the Commit tool window,
         // so we don't render a file tree here (it doesn't scale to large reviews).
-        // While processing, a loader sits in the action column; once done it shows
-        // a green "Open" badge and the "Open review" link.
-        const isAiNotesDone = isAiNotes && ['done', 'completed', 'dismissed'].includes(section.status);
-        const isAiNotesQueued = isAiNotes && section.status === 'queued';
+        // Busy phases show a loader; result/final phases expose the saved review.
+        const isAiNotesReady = isAiNotes
+          && (reviewLifecycle.phase === 'result' || reviewLifecycle.phase === 'final');
+        const isAiNotesQueued = isAiNotes && reviewLifecycle.id === 'queued';
+        const isAiNotesBusy = isAiNotes && reviewLifecycle.phase === 'busy';
         return (
           <div className="aiux543-chat-row-child-section" key={section.id}>
             <div
@@ -1176,26 +1204,23 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 'aiux543-chat-tree-section',
                 'aiux543-chat-tree-section-header',
                 (section.id === 'changes' || isAiNotes) ? 'aiux543-chat-tree-section-with-action' : '',
+                reviewLifecycle ? `is-review-${reviewLifecycle.tone}` : '',
               ].filter(Boolean).join(' ')}
+              data-review-lifecycle={reviewLifecycle?.id}
               aria-expanded={isAiNotes ? undefined : isExpanded}
             >
               {isAiNotes ? (
-                // Non-expandable summary row: review icon + label + "Open" badge.
+                // Non-expandable summary row: review icon + canonical lifecycle badge.
                 <span className="aiux543-chat-tree-section-toggle aiux550-ainotes-summary">
                   <span className="aiux543-chat-tree-chevron-spacer" aria-hidden="true" />
                   <Aiux550HistoryChildSectionIcon sectionId={section.id} agentIcon={section.agentIcon} />
                   <span className="aiux550-ainotes-summary-label">
                     <span>{section.label}</span>
-                    {isAiNotesDone ? (
-                      <span className="aiux550-review-done-badge aiux550-ainotes-summary-status">
-                        <span className="aiux550-review-done-dot" aria-hidden="true" />
-                        Open
-                      </span>
-                    ) : (
-                      <span className="aiux550-ainotes-summary-status aiux550-ainotes-progress-text">
-                        {isAiNotesQueued ? 'Queued' : 'In progress'}
-                      </span>
-                    )}
+                    <ReviewLifecycleBadge
+                      status={reviewLifecycle.id}
+                      compact
+                      className="aiux550-ainotes-summary-status"
+                    />
                   </span>
                 </span>
               ) : (
@@ -1223,7 +1248,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                 </button>
               ) : null}
               {isAiNotes ? (
-                isAiNotesDone ? (
+                isAiNotesReady ? (
                   // Opens the aggregated review-diff overview tab (same as the card).
                   <button
                     className="aiux543-chat-tree-section-link"
@@ -1235,9 +1260,9 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                   >
                     Open review
                   </button>
-                ) : isAiNotesQueued ? null : (
+                ) : isAiNotesBusy ? (
                   <Loader className="aiux550-ainotes-loader" size={16} />
-                )
+                ) : isAiNotesQueued ? null : null
               ) : null}
             </div>
             {isExpanded && !isAiNotes && section.items?.length ? (
@@ -1454,5 +1479,13 @@ function IconMdTask({ className = '' } = {}) {
   );
 }
 
-export { ChatsHistoryToolWindow, AIUX_NEW_SESSION_TAB_ID, AiNotesSeverityIcon };
+export {
+  ChatsHistoryToolWindow,
+  AIUX_NEW_SESSION_TAB_ID,
+  AiNotesSeverityIcon,
+  REVIEW_LIFECYCLE_META,
+  ReviewLifecycleBadge,
+  getReviewLifecycleMeta,
+  normalizeReviewLifecycleStatus,
+};
 export { AIUX550_HISTORY_ROW_CONTENT, getHistoryChangeItemSummary };
