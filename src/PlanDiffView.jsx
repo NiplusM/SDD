@@ -3059,6 +3059,7 @@ export function PlanDiffOverlay({
   const [asideProcessingCommentKey, setAsideProcessingCommentKey] = useState(null);
   const [expandedAsideCodeKeys, setExpandedAsideCodeKeys] = useState(() => new Set());
   const [collapsedAsideCodeKeys, setCollapsedAsideCodeKeys] = useState(() => new Set());
+  const [submittedExpandedCommentRowIds, setSubmittedExpandedCommentRowIds] = useState(() => new Set());
   const [shortcutHintPosition, setShortcutHintPosition] = useState(null);
   const preservedSelectionSnapshotRef = useRef(null);
   const preservedSelectionTargetRowIdsRef = useRef([]);
@@ -4003,6 +4004,7 @@ export function PlanDiffOverlay({
     setCommentEditingIndex(normalizedUiState.commentEditingIndex);
     setCommentEditingSource('diff');
     setCommentEditingTargetChatId(null);
+    setSubmittedExpandedCommentRowIds(new Set());
     setCommentFooterMetaLabel(normalizedUiState.commentRowId
       ? (normalizedUiState.commentFooterMetaLabel || getDiffCommentFooterMetaLabel(normalizedUiState.commentRowId))
       : '');
@@ -4293,6 +4295,7 @@ export function PlanDiffOverlay({
                 })
               ));
             const localRowComments = rowComments.filter((comment) => {
+              if (comment?.isReviewFeedback) return true;
               const commentChatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
               return commentChatId.length === 0 || commentChatId === commentSessionActiveChatId;
             });
@@ -4333,7 +4336,8 @@ export function PlanDiffOverlay({
             const hasVisibleRowComments = rowComments.length > 0 || documentRowComments.length > 0 || rowCommentGroups.some((group) => group.comments.length > 0);
             const visibleRowCommentCount = rowCommentGroups.reduce((count, group) => count + countCommentThreadMessages(group.comments), 0)
               || countCommentThreadMessages(rowComments);
-            const isExpandedInlineCommentRow = expandedInlineCommentRowId === row.id;
+            const isExpandedInlineCommentRow = expandedInlineCommentRowId === row.id
+              || submittedExpandedCommentRowIds.has(row.id);
             const hasRenderableRowComments = rowCommentGroups.some((group) => (
               group.comments.some((comment) => isExpandedInlineCommentRow || !isCommentHiddenForRender(comment))
             ));
@@ -4515,6 +4519,12 @@ export function PlanDiffOverlay({
                 isEditing: Number.isInteger(commentEditingIndex),
                 submitAction,
               });
+              setSubmittedExpandedCommentRowIds((current) => {
+                if (current.has(row.id)) return current;
+                const next = new Set(current);
+                next.add(row.id);
+                return next;
+              });
               clearCommentComposeState();
             };
             const buildAgentUserReplyComment = (comment, userReply) => ({
@@ -4660,10 +4670,24 @@ export function PlanDiffOverlay({
               const targetComment = (sourceState[row.id] ?? [])[commentIndex];
               if (targetComment?.reviewReadOnly) return;
               const noteText = getCommentEntryText(targetComment) || 'Resolved';
-              const targetIsReviewFinding = Boolean(targetComment && typeof targetComment === 'object' && targetComment.author === 'agent');
+              const targetIsReviewFinding = Boolean(
+                targetComment
+                && typeof targetComment === 'object'
+                && (
+                  targetComment.author === 'agent'
+                  || (
+                    targetComment.findingId
+                    && targetComment.agentReply
+                    && targetComment.fixLabel
+                  )
+                ),
+              );
               const resolveAction = {
                 kind,
                 text: noteText,
+                findingId: (targetComment && typeof targetComment === 'object')
+                  ? (targetComment.findingId ?? null)
+                  : null,
                 fixLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.fixLabel ?? null) : null,
                 sourceLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.sourceLabel ?? null) : null,
                 lineLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.lineLabel ?? null) : null,
@@ -4926,10 +4950,15 @@ export function PlanDiffOverlay({
 	              );
 	            };
 	            const shouldRenderInlineCommentRow = (
-	              (hasRenderableRowComments && (
+	              ((hasRenderableRowComments || (
+	                effectiveViewMode === 'comments'
+	                && rowCommentGroups.some((group) => (
+	                  (group?.comments ?? []).some(isCommentMatchingIndexFilter)
+	                ))
+	              )) && (
 	                !inlineCommentRowIdOnly
 	                || commentRowId === row.id
-	                || expandedInlineCommentRowId === row.id
+	                || isExpandedInlineCommentRow
 	              ))
 	              || commentRowId === row.id
 	            );
@@ -5105,7 +5134,7 @@ export function PlanDiffOverlay({
 	              return (
 	                <Fragment key={`aside-code-${row.id}`}>
 	                  {renderCodeRow()}
-	                  {(!inlineCommentRowIdOnly || commentRowId === row.id || expandedInlineCommentRowId === row.id) ? renderCommentRow() : null}
+	                  {(!inlineCommentRowIdOnly || commentRowId === row.id || isExpandedInlineCommentRow) ? renderCommentRow() : null}
 	                </Fragment>
 	              );
 	            }
@@ -5158,6 +5187,8 @@ export function PlanDiffOverlay({
 	                      ? comment.agentFollowUpReply.trim()
 	                      : '';
 	                    const isAgentAuthored = comment?.author === 'agent';
+	                    const agentReply = typeof comment?.agentReply === 'string' ? comment.agentReply.trim() : '';
+	                    const hasActionableAgentResponse = isAgentAuthored || agentReply.length > 0;
 	                    const isReplyComposerOpen = asideReplyComposerKey === actionKey;
 	                    const replyDraft = asideReplyDrafts[actionKey] ?? '';
 	                    const isProcessing = pending || asideProcessingCommentKey === actionKey;
@@ -5241,9 +5272,13 @@ export function PlanDiffOverlay({
 	                                    <div className="spec-done-comment-agent-reply-thread">
 	                                      <div className="spec-done-comment-agent-reply-head">
 	                                        <span className={`spec-done-comment-agent-reply-avatar${isProcessing ? ' is-processing' : ''}`} aria-hidden="true">
-	                                          {isProcessing ? <Loader size={16} /> : <AiChatAgentIcon icon={commentContextIcon} />}
+	                                          {isProcessing
+	                                            ? <Loader size={16} />
+	                                            : isAgentAuthored
+	                                              ? <AiChatAgentIcon icon={commentContextIcon} />
+	                                              : <Icon name="general/user" size={16} />}
 	                                        </span>
-	                                        <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
+	                                        <span className="spec-done-comment-agent-reply-name">{isAgentAuthored ? getAiReviewAgentLabel(commentContextIcon) : 'You'}</span>
                                         {resolveKeepsComment && ['critical', 'warning', 'info'].includes(String(comment?.severity || '').toLowerCase()) && (
                                           <span className={`spec-done-status-severity is-${String(comment.severity).toLowerCase()}`}>
                                             {String(comment.severity).toLowerCase()}
@@ -5314,6 +5349,17 @@ export function PlanDiffOverlay({
 	                                          </TreeNode>
 	                                        </div>
 	                                      )}
+	                                      {!isAgentAuthored && agentReply.length > 0 && (
+	                                        <div className="spec-done-comment-agent-follow-up-reply">
+	                                          <div className="spec-done-comment-agent-reply-head">
+	                                            <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
+	                                              <AiChatAgentIcon icon={commentContextIcon} />
+	                                            </span>
+	                                            <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
+	                                          </div>
+	                                          <p className="spec-done-comment-agent-reply-text">{agentReply}</p>
+	                                        </div>
+	                                      )}
 	                                      {allowCommentReplies && userReply.length > 0 && (
 	                                        <div className="spec-done-comment-agent-user-reply">
 	                                          <div className="spec-done-comment-agent-user-reply-head">
@@ -5336,7 +5382,7 @@ export function PlanDiffOverlay({
 	                                          <p className="spec-done-comment-agent-reply-text">{agentFollowUpReply}</p>
 	                                        </div>
 	                                      )}
-	                                      {!commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
+	                                      {!commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && hasActionableAgentResponse && !isProcessing && !isReplyComposerOpen && (
 	                                        <div className="spec-done-comment-agent-reply-actions plan-diff-aside-comment-actions">
 	                                          <button
 	                                            type="button"
@@ -5362,7 +5408,7 @@ export function PlanDiffOverlay({
 	                                          )}
 	                                        </div>
 	                                      )}
-	                                      {allowCommentReplies && !commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && isAgentAuthored && isReplyComposerOpen && (
+	                                      {allowCommentReplies && !commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && hasActionableAgentResponse && isReplyComposerOpen && (
 	                                        <div
 	                                          className="spec-done-comment-agent-reply-compose plan-diff-aside-comment-reply"
 	                                          onClick={(event) => event.stopPropagation()}

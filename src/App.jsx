@@ -16114,6 +16114,7 @@ const AGENT_RUN_RESOLUTION_REPLY = {
   resolved: 'Addressed in this iteration and marked resolved.',
   'agent-comment': 'Left a follow-up here — please confirm the extracted service name before I continue.',
 };
+const REVIEW_SCOPE_FEEDBACK_REPLY = 'Reviewed this comment as part of the review scope.';
 // The explicit change an agent reply offers to apply, shown as the quick-fix
 // action label on the reply card (instead of a generic "Quick fix").
 const AGENT_RUN_RESOLUTION_FIX_LABEL = 'Extract slot-boundary constant';
@@ -16143,7 +16144,7 @@ const AGENT_REVIEW_FINDINGS = [
     sourceLabel: 'Diff VisitController.java',
     tabId: INITIAL_PLAN_DIFF_TAB_ID,
     rowId: 'plan-code-3-added-3',
-    lineLabel: 'Line 17',
+    lineLabel: 'Line 4',
     severity: 'Critical',
     groupId: 'state-lifecycle',
     groupLabel: 'State & lifecycle',
@@ -16161,7 +16162,7 @@ const AGENT_REVIEW_FINDINGS = [
     sourceLabel: 'Diff VisitController.java',
     tabId: INITIAL_PLAN_DIFF_TAB_ID,
     rowId: 'plan-code-3-removed-3',
-    lineLabel: 'Line 15',
+    lineLabel: 'Line 4',
     severity: 'Warning',
     groupId: 'shared-configuration',
     groupLabel: 'Shared configuration',
@@ -16358,6 +16359,20 @@ function resolveReviewFindingsForAttachments(attachments = [], { fallbackToAll =
   ));
 }
 
+function resolveReviewFindingLocations(findings = [], tabContents = {}) {
+  return (Array.isArray(findings) ? findings : []).map((finding) => {
+    const content = tabContents[finding?.tabId] ?? {};
+    const diffData = content.diffData ?? content.plainFileData ?? null;
+    const row = (diffData?.rows ?? []).find((candidate) => candidate?.id === finding?.rowId);
+    const lineNumber = Number.isInteger(row?.newNumber)
+      ? row.newNumber
+      : (Number.isInteger(row?.oldNumber) ? row.oldNumber : null);
+    return lineNumber == null
+      ? finding
+      : { ...finding, lineLabel: `Line ${lineNumber}` };
+  });
+}
+
 // The latest user turn in a note's thread: the reply-to-agent if the user
 // left one, otherwise the note itself.
 
@@ -16494,6 +16509,65 @@ function reviewDiffFilePath(sourceLabel = '') {
   return match?.path ?? '';
 }
 
+function publishReviewFindingsToTabContents(
+  tabContents = {},
+  findings = [],
+  reviewChatId = null,
+  agentIcon = 'codex',
+) {
+  let changed = false;
+  const next = { ...tabContents };
+  (Array.isArray(findings) ? findings : []).forEach((finding) => {
+    const content = next[finding?.tabId];
+    const rowId = finding?.rowId;
+    const text = String(finding?.text || '').trim();
+    if (!content || !rowId || !text) return;
+    const targetData = content.diffData ?? content.plainFileData ?? null;
+    const targetRow = (targetData?.rows ?? []).find((row) => row?.id === rowId);
+    const targetLineNumber = Number.isInteger(targetRow?.newNumber)
+      ? targetRow.newNumber
+      : (Number.isInteger(targetRow?.oldNumber) ? targetRow.oldNumber : null);
+    const initialDiffComments = normalizeStoredDiffCommentsState(content.initialDiffComments);
+    const existingRow = initialDiffComments[rowId] ?? [];
+    const existingIndex = existingRow.findIndex((comment) => (
+      comment?.reviewChatId === reviewChatId
+      && getStoredCommentText(comment).trim() === text
+    ));
+    const reviewComment = {
+      findingId: finding.id || null,
+      text,
+      author: 'agent',
+      resolution: 'reply',
+      severity: finding.severity,
+      agentReply: text,
+      fixLabel: finding.fixLabel || null,
+      sourceLabel: finding.sourceLabel || null,
+      lineLabel: targetLineNumber == null ? (finding.lineLabel || null) : `Line ${targetLineNumber}`,
+      groupId: finding.groupId || null,
+      groupLabel: finding.groupLabel || null,
+      agentId: agentIcon,
+      agentLabel: AI_CHAT_AGENTS.find((agent) => agent.id === agentIcon)?.label ?? 'Codex',
+      reviewChatId,
+      reviewStatus: 'open',
+      pending: false,
+    };
+    const nextRow = existingIndex >= 0
+      ? existingRow.map((comment, index) => (
+          index === existingIndex
+            ? { ...comment, ...reviewComment, reviewStatus: getReviewFindingStatus(comment), pending: false }
+            : comment
+        ))
+      : [...existingRow, reviewComment];
+    next[finding.tabId] = {
+      ...content,
+      initialDiffComments: { ...initialDiffComments, [rowId]: nextRow },
+      diffCommentsReadOnly: false,
+    };
+    changed = true;
+  });
+  return changed ? next : tabContents;
+}
+
 // Group the review findings by their source tab (preserving order) and resolve
 // each group's diff data + inline comments from the live tab contents. Mirrors
 // the "N files, M comments" the composer card / history row already report.
@@ -16558,7 +16632,18 @@ function buildReviewDiffFiles(findings = [], tabContents = {}, reviewChatId = nu
         const text = String(feedback.text || '').trim();
         if (!rowId || !text) return;
         const existingRow = comments[rowId] ?? [];
-        if (existingRow.some((comment) => getStoredCommentText(comment).trim() === text)) return;
+        const existingIndex = existingRow.findIndex((comment) => getStoredCommentText(comment).trim() === text);
+        if (existingIndex >= 0) {
+          // The file state may still contain the launch-time pending snapshot.
+          // The run feedback is canonical after the agent finishes, so merge it
+          // over that snapshot instead of dropping the completed response.
+          comments[rowId] = existingRow.map((comment, index) => (
+            index === existingIndex
+              ? { ...comment, ...feedback, text, reviewChatId, isReviewFeedback: true }
+              : comment
+          ));
+          return;
+        }
         comments[rowId] = [
           ...existingRow,
           {
@@ -17602,6 +17687,7 @@ function AiReviewEditorSplit({
   onRightTabChange = null,
   onRightTabClose = null,
   onCloseReview,
+  showReviewTab = true,
 }) {
   const reviewTab = {
     label: reviewLabel,
@@ -17625,12 +17711,12 @@ function AiReviewEditorSplit({
       <section className="ai-review-editor-split-pane is-review" aria-label="Full Review pane">
         <div className="main-window-editor-tabs ai-review-editor-split-tabbar">
           <TabBar
-            tabs={[reviewTab, ...rightTabs]}
+            tabs={showReviewTab ? [reviewTab, ...rightTabs] : rightTabs}
             activeTab={activeRightTab}
             onTabChange={(index) => onRightTabChange?.(index)}
             onTabClose={(index) => {
-              if (index === 0) onCloseReview?.();
-              else onRightTabClose?.(index - 1);
+              if (showReviewTab && index === 0) onCloseReview?.();
+              else onRightTabClose?.(showReviewTab ? index - 1 : index);
             }}
             direction="horizontal"
             focused
@@ -22676,12 +22762,13 @@ export default function App() {
     const label = !chatTitle
       ? 'AI Review'
       : (/^AI Review\b/iu.test(chatTitle) ? chatTitle : `AI Review · ${chatTitle}`);
+    const preservesOpenDiffs = Boolean(chatId && reviewSplitChatId === chatId);
     setScreen('ide');
     setSelectedAiChatId(chatId);
     setReviewSplitChatId(chatId);
-    setReviewSplitFileTabIds([]);
+    setReviewSplitFileTabIds((current) => (preservesOpenDiffs ? current : []));
     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
-    setReviewSplitFileFocusByTabId({});
+    setReviewSplitFileFocusByTabId((current) => (preservesOpenDiffs ? current : {}));
     setReviewView('timeline');
     // Grouping is intentionally NOT reset here: the chat review card groups by
     // severity, so opening the full view has to keep that grouping (and any
@@ -22721,7 +22808,7 @@ export default function App() {
       requestAnimationFrame(() => setActiveEditorTab(insertAt));
       return nextTabs;
     });
-  }, [activeEditorTab, getAiChatScenarioById, getAiChatListItemById]);
+  }, [activeEditorTab, getAiChatScenarioById, getAiChatListItemById, reviewSplitChatId]);
 
   // Activate an already-open editor tab by id (used from the review overview to
   // jump into a file's full diff/file tab).
@@ -22735,19 +22822,23 @@ export default function App() {
     });
   }, []);
 
-  const applyReviewOwnedFindingPatches = useCallback((reviewChatId, findingTexts) => {
+  const applyReviewOwnedFindingPatches = useCallback((reviewChatId, findingKeys) => {
     if (!reviewChatId) return [];
-    const requestedTexts = findingTexts instanceof Set
-      ? findingTexts
-      : new Set(Array.isArray(findingTexts) ? findingTexts : [findingTexts]);
+    const requestedKeys = findingKeys instanceof Set
+      ? findingKeys
+      : new Set(Array.isArray(findingKeys) ? findingKeys : [findingKeys]);
     const run = agentRunByChatId[reviewChatId];
-    if (!run || run.kind !== 'review' || requestedTexts.size === 0) return [];
-    const eligibleTexts = new Set(
-      (Array.isArray(run.notes) ? run.notes : [])
-        .filter((note) => !note?.resolved && requestedTexts.has((note?.text || '').trim()))
-        .map((note) => (note?.text || '').trim()),
-    );
-    if (eligibleTexts.size === 0) return [];
+    if (!run || run.kind !== 'review' || requestedKeys.size === 0) return [];
+    const eligibleNotes = (Array.isArray(run.notes) ? run.notes : []).filter((note) => (
+      !note?.resolved
+      && (
+        requestedKeys.has(note?.findingId)
+        || requestedKeys.has((note?.text || '').trim())
+      )
+    ));
+    const eligibleFindingIds = new Set(eligibleNotes.map((note) => note?.findingId).filter(Boolean));
+    const eligibleTexts = new Set(eligibleNotes.map((note) => (note?.text || '').trim()).filter(Boolean));
+    if (eligibleFindingIds.size === 0 && eligibleTexts.size === 0) return [];
 
     const storedLedger = Array.isArray(run.reviewOwnedPatches)
       ? run.reviewOwnedPatches
@@ -22767,7 +22858,7 @@ export default function App() {
       });
       if (!finding?.fixturePatch || seenFindingIds.has(finding.id)) return;
       seenFindingIds.add(finding.id);
-      if (!eligibleTexts.has(finding.text.trim())) return;
+      if (!eligibleFindingIds.has(finding.id) && !eligibleTexts.has(finding.text.trim())) return;
       const patchId = `fixture-${finding.id}`;
       if (appliedPatchIds.has(patchId)) return;
       const record = {
@@ -22909,10 +23000,13 @@ export default function App() {
       });
       return acc;
     }, {});
-    if (metadata?.resolveAction?.kind === 'quickfix' && reviewChatId) {
+    if (metadata?.resolveAction?.isReviewFinding) {
+      resolveReviewCommentRef.current?.(metadata.resolveAction);
+    } else if (metadata?.resolveAction?.kind === 'quickfix' && reviewChatId) {
       applyReviewOwnedFindingPatches(reviewChatId, new Set([
+        metadata.resolveAction.findingId,
         String(metadata.resolveAction.text || '').trim(),
-      ]));
+      ].filter(Boolean)));
     }
     setIdeTabContents((prev) => {
       const content = prev[tabId];
@@ -22967,7 +23061,13 @@ export default function App() {
                 text: getStoredCommentText(comment),
                 reviewStatus: getReviewFindingStatus(comment),
                 pending: Boolean(comment?.pending),
+                resolved: Boolean(comment?.resolved),
+                resolvedKind: comment?.resolvedKind ?? null,
+                resolution: comment?.resolution ?? null,
+                agentReply: comment?.agentReply ?? '',
                 agentFollowUpReply: comment?.agentFollowUpReply ?? '',
+                findingId: comment?.findingId ?? null,
+                fixLabel: comment?.fixLabel ?? null,
                 isReviewFeedback: true,
                 tabId,
                 rowId,
@@ -22982,21 +23082,25 @@ export default function App() {
               }))
           ));
           const previousFeedback = Array.isArray(run.feedback) ? run.feedback : [];
-          const feedbackKeys = new Set(previousFeedback.map((item) => (
-            `${item?.tabId ?? ''}\u0000${item?.rowId ?? ''}\u0000${item?.text ?? ''}`
+          const incomingFeedbackByKey = new Map(incomingFeedback.map((item) => (
+            [`${item.tabId}\u0000${item.rowId}\u0000${item.text}`, item]
           )));
-          const appendedFeedback = incomingFeedback.filter((item) => {
-            const key = `${item.tabId}\u0000${item.rowId}\u0000${item.text}`;
-            if (feedbackKeys.has(key)) return false;
-            feedbackKeys.add(key);
-            return true;
+          const feedback = previousFeedback.map((item) => {
+            const key = `${item?.tabId ?? ''}\u0000${item?.rowId ?? ''}\u0000${item?.text ?? ''}`;
+            const incoming = incomingFeedbackByKey.get(key);
+            if (!incoming) return item;
+            incomingFeedbackByKey.delete(key);
+            runChanged = true;
+            return { ...item, ...incoming };
           });
-          if (runChanged || appendedFeedback.length > 0) {
+          feedback.push(...incomingFeedbackByKey.values());
+          if (incomingFeedbackByKey.size > 0) runChanged = true;
+          if (runChanged) {
             changed = true;
             next[chatId] = {
               ...run,
               notes,
-              feedback: [...previousFeedback, ...appendedFeedback],
+              feedback,
             };
           }
         });
@@ -23998,14 +24102,15 @@ export default function App() {
   const closeReviewSplitView = useCallback(() => {
     const reviewIndex = ideTabs.findIndex((tab) => tab.id === REVIEW_DIFF_TAB_ID);
     const chatIndex = ideTabs.findIndex((tab) => tab.id === `ai-chat-${reviewSplitChatId}`);
-    const nextChatIndex = chatIndex > reviewIndex ? chatIndex - 1 : chatIndex;
+    const isClosingReviewOverview = ideTabs[activeEditorTab]?.id === REVIEW_DIFF_TAB_ID;
+    const nextChatIndex = reviewIndex >= 0 && chatIndex > reviewIndex ? chatIndex - 1 : chatIndex;
     setReviewSplitChatId(null);
     setReviewSplitFileTabIds([]);
     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
     setReviewSplitFileFocusByTabId({});
-    if (reviewIndex >= 0) handleEditorTabClose(reviewIndex);
+    if (reviewIndex >= 0 && isClosingReviewOverview) handleEditorTabClose(reviewIndex);
     if (nextChatIndex >= 0) requestAnimationFrame(() => setActiveEditorTab(nextChatIndex));
-  }, [handleEditorTabClose, ideTabs, reviewSplitChatId]);
+  }, [activeEditorTab, handleEditorTabClose, ideTabs, reviewSplitChatId]);
 
   // Apply a transform to every review comment (matching the run's note texts)
   // across all tabs' in-code + session comments.
@@ -26880,7 +26985,9 @@ export default function App() {
       || getAiChatScenarioById(activeTabContent?.reviewChatId)?.icon
       || getAiChatListItemById(activeTabContent?.reviewChatId)?.icon
       || 'codex'
-    : 'codex';
+    : getAiChatScenarioById(reviewSplitChatId)?.icon
+      || getAiChatListItemById(reviewSplitChatId)?.icon
+      || 'codex';
   const reviewSurfaceChatId = isReviewDiffTab
     ? activeTabContent?.reviewChatId
     : activeAiChatTabChatId;
@@ -26903,7 +27010,10 @@ export default function App() {
         comments
           .filter((comment) => comment?.author !== 'agent' || comment?.userReply || comment?.isReviewFeedback)
           .map((comment, index) => {
-            const isUpdated = activeReviewRun?.status === 'updated';
+            const isPublished = ['open', 'updated', 'completed'].includes(activeReviewRun?.status);
+            const relatedFinding = (activeReviewRun?.findings ?? []).find((finding) => (
+              finding?.tabId === tabId
+            )) ?? null;
             return {
               ...((comment && typeof comment === 'object') ? comment : {}),
               id: comment?.id ?? `submitted-review-feedback-${tabId}-${rowId}-${index}`,
@@ -26912,11 +27022,13 @@ export default function App() {
               rowId,
               sourceLabel,
               severity: comment?.severity ?? 'Info',
-              reviewStatus: isUpdated ? 'open' : 'pending-update',
-              pending: !isUpdated,
-              agentFollowUpReply: isUpdated && threadExpectsAgentReply(comment)
-                ? AGENT_RUN_RESOLUTION_REPLY.reply
-                : (comment?.agentFollowUpReply ?? ''),
+              reviewStatus: isPublished ? 'open' : 'pending-update',
+              pending: !isPublished,
+              resolution: isPublished ? 'reply' : comment?.resolution,
+              agentReply: isPublished ? REVIEW_SCOPE_FEEDBACK_REPLY : comment?.agentReply,
+              agentFollowUpReply: isPublished ? '' : (comment?.agentFollowUpReply ?? ''),
+              findingId: comment?.findingId ?? relatedFinding?.id ?? null,
+              fixLabel: comment?.fixLabel ?? relatedFinding?.fixLabel ?? null,
               isReviewFeedback: true,
             };
           })
@@ -26928,7 +27040,20 @@ export default function App() {
       ? agentRunByChatId[reviewSurfaceChatId].findings
       : []),
     ...(Array.isArray(activeReviewRun?.feedback)
-      ? activeReviewRun.feedback.map((feedback) => ({ ...feedback, isReviewFeedback: true }))
+      ? activeReviewRun.feedback.map((feedback) => {
+          const isPublished = ['open', 'updated', 'completed'].includes(activeReviewRun?.status);
+          const currentStatus = getReviewFindingStatus(feedback);
+          const isResolved = ['accepted', 'dismissed', 'deleted'].includes(currentStatus);
+          return {
+            ...feedback,
+            isReviewFeedback: true,
+            pending: isPublished ? false : Boolean(feedback?.pending),
+            reviewStatus: isPublished && !isResolved ? 'open' : currentStatus,
+            resolution: isPublished ? 'reply' : feedback?.resolution,
+            agentReply: isPublished ? REVIEW_SCOPE_FEEDBACK_REPLY : feedback?.agentReply,
+            agentFollowUpReply: isPublished ? '' : (feedback?.agentFollowUpReply ?? ''),
+          };
+        })
       : []),
     ...submittedReviewFeedback,
   ].filter((finding) => {
@@ -27002,8 +27127,17 @@ export default function App() {
   const activeReviewSplitFile = reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
     ? null
     : reviewSplitFiles.find((file) => file.tabId === reviewSplitActiveTabId) ?? null;
+  const isReviewSplitOverviewMode = Boolean(
+    reviewSplitChatId
+      && isReviewDiffTab
+      && activeTabContent?.reviewChatId === reviewSplitChatId,
+  );
+  const visibleReviewSplitScopeFiles = isReviewSplitOverviewMode
+    ? reviewSplitScopeFiles
+    : reviewSplitFiles;
   const activeReviewSplitTabIndex = activeReviewSplitFile
-    ? reviewSplitFiles.findIndex((file) => file.tabId === activeReviewSplitFile.tabId) + 1
+    ? reviewSplitFiles.findIndex((file) => file.tabId === activeReviewSplitFile.tabId)
+      + (isReviewSplitOverviewMode ? 1 : 0)
     : 0;
   const closeReviewSplitFileTab = useCallback((tabId) => {
     if (!tabId) return;
@@ -27017,22 +27151,49 @@ export default function App() {
   }, []);
   const navigateReviewSplitFileTab = useCallback((tabId) => {
     if (!tabId) return;
-    setReviewSplitFileTabIds((current) => {
-      if (current.includes(tabId)) return current;
-      const activeIndex = current.indexOf(reviewSplitActiveTabId);
-      if (activeIndex < 0) return [...current, tabId];
-      const next = [...current];
-      next[activeIndex] = tabId;
-      return next;
-    });
+    // File navigation may activate an existing tab or append a new one, but it
+    // must never replace another diff the user already opened.
+    setReviewSplitFileTabIds((current) => (
+      current.includes(tabId) ? current : [...current, tabId]
+    ));
     setReviewSplitFileFocusByTabId((current) => ({ ...current, [tabId]: [] }));
     setReviewSplitActiveTabId(tabId);
-  }, [reviewSplitActiveTabId]);
+  }, []);
   const openPlanDiffInReviewSplit = useCallback((diffRequest, chatId = null) => {
     if (!diffRequest) return null;
     const targetChatId = chatId ?? reviewSplitChatId ?? selectedAiChatId;
-    if (!targetChatId || agentRunByChatId[targetChatId]?.kind !== 'review') {
+    if (!targetChatId) {
       return openPlanDiffTab(diffRequest);
+    }
+    const isReviewRun = agentRunByChatId[targetChatId]?.kind === 'review';
+    if (!isReviewRun) {
+      const scenario = getAiChatScenarioById(targetChatId);
+      const scopeRequests = getChatChangeCards(scenario)
+        .map((card) => card?.diffRequest)
+        .filter(Boolean);
+      const requests = scopeRequests.length > 0 ? scopeRequests : [diffRequest];
+      const openedTabIds = requests.map((request) => openPlanDiffTab({
+        ...request,
+        fileCount: requests.length,
+        contextChatId: request.contextChatId ?? targetChatId,
+        registerEditorTab: false,
+        activateTab: false,
+      })).filter(Boolean);
+      const selectedSourceTabId = diffRequest?.source?.tabId ?? null;
+      const selectedTabId = openedTabIds.find((tabId) => (
+        selectedSourceTabId && tabId === buildPlanDiffTabId(selectedSourceTabId)
+      )) ?? openedTabIds[0] ?? null;
+      if (!selectedTabId) return null;
+      setReviewSplitChatId(targetChatId);
+      setReviewSplitFileTabIds(openedTabIds);
+      setReviewSplitFileFocusByTabId(openedTabIds.reduce((next, tabId) => ({
+        ...next,
+        [tabId]: tabId === selectedTabId && diffRequest.navigation?.activeRowId
+          ? [diffRequest.navigation.activeRowId]
+          : [],
+      }), {}));
+      setReviewSplitActiveTabId(selectedTabId);
+      return selectedTabId;
     }
     if (reviewSplitChatId !== targetChatId || !isReviewDiffTab) {
       openReviewDiffTab(targetChatId);
@@ -27056,6 +27217,7 @@ export default function App() {
     return diffTabId;
   }, [
     agentRunByChatId,
+    getAiChatScenarioById,
     isReviewDiffTab,
     openPlanDiffTab,
     openReviewDiffTab,
@@ -27084,8 +27246,10 @@ export default function App() {
   const reviewSplitReviewLabel = ideTabs.find((tab) => tab.id === REVIEW_DIFF_TAB_ID)?.label || 'AI Review';
   const isReviewEditorSplitActive = Boolean(
     reviewSplitChatId
-      && isReviewDiffTab
-      && activeTabContent?.reviewChatId === reviewSplitChatId,
+      && (
+        isReviewSplitOverviewMode
+        || activeTabId === `ai-chat-${reviewSplitChatId}`
+      ),
   );
   // Single-file tabs still need to know when they belong to an explicit review
   // run so review comments keep their review-specific resolve behavior.
@@ -30280,8 +30444,57 @@ export default function App() {
     const queuedReviewFindings = isReviewCommand && Array.isArray(agentRunByChatId[targetChatId]?.findings)
       ? agentRunByChatId[targetChatId].findings
       : null;
-    const scopedReviewFindings = isReviewCommand
+    const unresolvedScopedReviewFindings = isReviewCommand
       ? (queuedReviewFindings ?? resolveReviewFindingsForAttachments(messageAttachments, { fallbackToAll: false }))
+      : [];
+    const scopedReviewFindings = resolveReviewFindingLocations(
+      unresolvedScopedReviewFindings,
+      ideTabContentsRef.current,
+    );
+    // User-authored threads attached to /review are part of the review result,
+    // not just launch context. Keep a canonical copy on the run so both the
+    // compact Review Preview and Full View render the user turn together with
+    // the agent response and its quick fix.
+    const submittedReviewFeedbackItems = isReviewCommand
+      ? messageAttachments.flatMap((attachment) => {
+          const tabId = attachment?.diffTabId ?? attachment?.sourceTabId ?? null;
+          if (!tabId) return [];
+          const sourceLabel = attachment?.diffRequest?.source?.label
+            ?? attachment?.sourceLabel
+            ?? attachment?.label
+            ?? 'File';
+          const content = ideTabContentsRef.current[tabId] ?? {};
+          const diffData = content.diffData ?? content.plainFileData ?? null;
+          const relatedFinding = scopedReviewFindings.find((finding) => finding?.tabId === tabId) ?? null;
+          return Object.entries(normalizeStoredDiffCommentsState(attachment?.diffComments)).flatMap(([rowId, comments]) => {
+            const row = (diffData?.rows ?? []).find((candidate) => candidate?.id === rowId);
+            const lineNumber = Number.isInteger(row?.newNumber)
+              ? row.newNumber
+              : (Number.isInteger(row?.oldNumber) ? row.oldNumber : null);
+            return comments
+              .filter((comment) => (
+                comment?.author !== 'agent'
+                || typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0
+                || Boolean(comment?.isReviewFeedback)
+              ))
+              .map((comment, index) => ({
+                ...((comment && typeof comment === 'object') ? comment : {}),
+                id: comment?.id ?? `review-feedback-${tabId}-${rowId}-${index}`,
+                text: getStoredCommentText(comment),
+                tabId,
+                rowId,
+                sourceLabel,
+                lineLabel: lineNumber == null ? (comment?.lineLabel ?? '') : `Line ${lineNumber}`,
+                severity: comment?.severity ?? 'Info',
+                reviewChatId: targetChatId,
+                reviewStatus: 'pending-update',
+                pending: true,
+                isReviewFeedback: true,
+                findingId: comment?.findingId ?? relatedFinding?.id ?? null,
+                fixLabel: comment?.fixLabel ?? relatedFinding?.fixLabel ?? null,
+              }));
+          });
+        })
       : [];
     const reviewScopeFiles = (() => {
       if (!isReviewCommand) return [];
@@ -30412,49 +30625,6 @@ export default function App() {
             if (commentsChanged) {
               next[tabId] = { ...content, initialDiffComments, diffCommentsReadOnly: false };
             }
-          });
-          scopedReviewFindings.forEach((finding) => {
-            const content = next[finding.tabId];
-            if (!content) return;
-            const rowId = finding.rowId;
-            const existing = normalizeStoredDiffCommentsState(content.initialDiffComments);
-            const existingRow = existing[rowId] ?? [];
-            const existingIndex = existingRow.findIndex((comment) => (
-              comment?.reviewChatId === targetChatId
-              && getStoredCommentText(comment).trim() === finding.text.trim()
-            ));
-            const reviewComment = {
-              findingId: finding.id || null,
-              text: finding.text,
-              author: 'agent',
-              resolution: 'reply',
-              severity: finding.severity,
-              // The finding IS the agent's message — rendered in the agent block,
-              // so it reads as one agent-authored comment (not note + reply).
-              agentReply: finding.text,
-              fixLabel: finding.fixLabel || null,
-              sourceLabel: finding.sourceLabel || null,
-              lineLabel: finding.lineLabel || null,
-              groupId: finding.groupId || null,
-              groupLabel: finding.groupLabel || null,
-              agentId: resolvedReviewAgentIcon,
-              agentLabel: AI_CHAT_AGENTS.find((agent) => agent.id === resolvedReviewAgentIcon)?.label ?? 'Codex',
-              reviewChatId: targetChatId,
-              reviewStatus: 'pending-update',
-              pending: true,
-            };
-            const nextRow = existingIndex >= 0
-              ? existingRow.map((comment, index) => (
-                  index === existingIndex && getReviewFindingStatus(comment) === 'open'
-                    ? { ...comment, reviewStatus: 'pending-update', pending: true }
-                    : comment
-                ))
-              : [...existingRow, reviewComment];
-            next[finding.tabId] = {
-              ...content,
-              initialDiffComments: { ...existing, [rowId]: nextRow },
-              diffCommentsReadOnly: false,
-            };
           });
           // Replies and user-authored review comments enter Pending update as
           // soon as they are written. Starting the next iteration turns only
@@ -30591,6 +30761,18 @@ export default function App() {
             iteration,
             notes: noteItems,
             findings: isReviewCommand ? scopedReviewFindings : prev[targetChatId]?.findings,
+            feedback: isReviewCommand
+              ? (() => {
+                  const merged = [...(prev[targetChatId]?.feedback ?? []), ...submittedReviewFeedbackItems];
+                  const seen = new Set();
+                  return merged.filter((comment) => {
+                    const key = `${comment?.tabId ?? ''}\u0000${comment?.rowId ?? ''}\u0000${getStoredCommentText(comment).trim()}`;
+                    if (!getStoredCommentText(comment).trim() || seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+                })()
+              : prev[targetChatId]?.feedback,
             scopeAttachments: isReviewCommand ? messageAttachments : prev[targetChatId]?.scopeAttachments,
             configuration: isReviewCommand
               ? (reviewConfiguration ?? prev[targetChatId]?.configuration ?? {
@@ -30627,29 +30809,38 @@ export default function App() {
         resolveCommentAttachmentResponse({ chatId: targetChatId, attachments: commentAttachments });
         if (isReviewCommand) {
           setIdeTabContents((prev) => {
-            let changed = false;
-            const next = { ...prev };
-            Object.entries(prev).forEach(([tabId, content]) => {
+            const publishedContents = publishReviewFindingsToTabContents(
+              prev,
+              scopedReviewFindings,
+              targetChatId,
+              resolvedReviewAgentIcon,
+            );
+            let changed = publishedContents !== prev;
+            const next = { ...publishedContents };
+            Object.entries(publishedContents).forEach(([tabId, content]) => {
               if (!content) return;
+              const relatedFinding = scopedReviewFindings.find((finding) => finding?.tabId === tabId) ?? null;
               const comments = normalizeStoredDiffCommentsState(content.initialDiffComments);
               let rowStateChanged = false;
               const initialDiffComments = {};
               Object.entries(comments).forEach(([rowId, rowComments]) => {
                 initialDiffComments[rowId] = rowComments.map((comment) => {
-                  if (
-                    comment?.reviewChatId !== targetChatId
-                    || getReviewFindingStatus(comment) !== 'pending-update'
-                  ) return comment;
-                  rowStateChanged = true;
                   const hasUserFeedback = typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0
                     || Boolean(comment?.isReviewFeedback);
+                  if (
+                    comment?.reviewChatId !== targetChatId
+                    || !hasUserFeedback
+                  ) return comment;
+                  rowStateChanged = true;
                   return {
                     ...comment,
                     pending: false,
                     reviewStatus: 'open',
-                    agentFollowUpReply: hasUserFeedback && threadExpectsAgentReply(comment)
-                      ? AGENT_RUN_RESOLUTION_REPLY.reply
-                      : (comment?.agentFollowUpReply ?? ''),
+                    resolution: hasUserFeedback ? 'reply' : comment?.resolution,
+                    agentReply: hasUserFeedback ? REVIEW_SCOPE_FEEDBACK_REPLY : comment?.agentReply,
+                    agentFollowUpReply: hasUserFeedback ? '' : (comment?.agentFollowUpReply ?? ''),
+                    findingId: comment?.findingId ?? relatedFinding?.id ?? null,
+                    fixLabel: comment?.fixLabel ?? relatedFinding?.fixLabel ?? null,
                   };
                 });
               });
@@ -30659,6 +30850,7 @@ export default function App() {
             });
             Object.entries(next).forEach(([tabId, content]) => {
               if (!content) return;
+              const relatedFinding = scopedReviewFindings.find((finding) => finding?.tabId === tabId) ?? null;
               const sessions = normalizeDiffSessionCommentsByChatId(content.diffSessionCommentsByChatId);
               const reviewSession = sessions[targetChatId];
               if (!reviewSession) return;
@@ -30674,9 +30866,11 @@ export default function App() {
                     reviewStatus: 'open',
                     pending: false,
                     isReviewFeedback: true,
-                    agentFollowUpReply: threadExpectsAgentReply(comment)
-                      ? AGENT_RUN_RESOLUTION_REPLY.reply
-                      : (comment?.agentFollowUpReply ?? ''),
+                    resolution: 'reply',
+                    agentReply: REVIEW_SCOPE_FEEDBACK_REPLY,
+                    agentFollowUpReply: '',
+                    findingId: comment?.findingId ?? relatedFinding?.id ?? null,
+                    fixLabel: comment?.fixLabel ?? relatedFinding?.fixLabel ?? null,
                   };
                 });
               });
@@ -30712,9 +30906,9 @@ export default function App() {
                   ? {
                       ...note,
                       reviewStatus: 'open',
-                      agentFollowUpReply: threadExpectsAgentReply(note)
-                        ? AGENT_RUN_RESOLUTION_REPLY.reply
-                        : (note?.agentFollowUpReply ?? ''),
+                      resolution: note?.isReviewFeedback ? 'reply' : note?.resolution,
+                      agentReply: note?.isReviewFeedback ? REVIEW_SCOPE_FEEDBACK_REPLY : note?.agentReply,
+                      agentFollowUpReply: note?.isReviewFeedback ? '' : (note?.agentFollowUpReply ?? ''),
                     }
                   : note
               ))
@@ -30732,9 +30926,9 @@ export default function App() {
                       ? {
                           ...comment,
                           reviewStatus: 'open',
-                          agentFollowUpReply: threadExpectsAgentReply(comment)
-                            ? AGENT_RUN_RESOLUTION_REPLY.reply
-                            : (comment?.agentFollowUpReply ?? ''),
+                          resolution: comment?.isReviewFeedback ? 'reply' : comment?.resolution,
+                          agentReply: comment?.isReviewFeedback ? REVIEW_SCOPE_FEEDBACK_REPLY : comment?.agentReply,
+                          agentFollowUpReply: comment?.isReviewFeedback ? '' : (comment?.agentFollowUpReply ?? ''),
                         }
                       : comment
                   ))
@@ -30863,8 +31057,54 @@ export default function App() {
           initialEffort: effortLabel,
           select: false,
         });
-    const findings = resolveReviewFindingsForAttachments(attachments, { fallbackToAll: false });
-    const scopeFiles = attachments
+    const sourceContextChatId = requestedSessionId ?? selectedAiChatId;
+    const sentContextAttachments = (aiChatSentMessagesByChatId[sourceContextChatId] ?? [])
+      .flatMap((message) => (Array.isArray(message?.attachments) ? message.attachments : []));
+    const getAttachmentContextKeys = (attachment) => new Set([
+      attachment?.diffTabId,
+      attachment?.sourceTabId,
+      attachment?.diffRequest?.source?.tabId,
+      normalizeReviewScopeLabel(
+        attachment?.sourceLabel
+          ?? attachment?.diffRequest?.source?.label
+          ?? attachment?.label,
+      ),
+    ].filter(Boolean));
+    const reviewAttachments = attachments.map((attachment) => {
+      if (!attachment || attachment.isChatContext) return attachment;
+      const attachmentKeys = getAttachmentContextKeys(attachment);
+      const matchingSentAttachments = sentContextAttachments.filter((candidate) => (
+        [...getAttachmentContextKeys(candidate)].some((key) => attachmentKeys.has(key))
+      ));
+      const sourceTabId = attachment.sourceTabId ?? attachment.diffRequest?.source?.tabId ?? null;
+      const diffTabId = attachment.diffTabId
+        ?? (sourceTabId && ideTabContents[buildPlanDiffTabId(sourceTabId)]
+          ? buildPlanDiffTabId(sourceTabId)
+          : sourceTabId);
+      const content = diffTabId ? ideTabContents[diffTabId] : null;
+      const sessions = normalizeDiffSessionCommentsByChatId(content?.diffSessionCommentsByChatId);
+      const diffComments = [
+        attachment?.diffComments,
+        ...matchingSentAttachments.map((candidate) => candidate?.diffComments),
+        sessions[sourceContextChatId]?.comments,
+        sessions[reviewChat.id]?.comments,
+      ].reduce(
+        (merged, comments) => mergeStoredDiffCommentsStates(merged, comments),
+        {},
+      );
+      const commentCount = flattenStoredDiffCommentsState(diffComments).length;
+      return {
+        ...attachment,
+        diffTabId: attachment.diffTabId ?? diffTabId,
+        commentCount,
+        diffComments,
+      };
+    });
+    const findings = resolveReviewFindingLocations(
+      resolveReviewFindingsForAttachments(reviewAttachments, { fallbackToAll: false }),
+      ideTabContents,
+    );
+    const scopeFiles = reviewAttachments
       .filter((attachment) => !attachment?.isChatContext)
       .map((attachment, index) => ({
         id: `queued-scope-${attachment?.sourceTabId ?? attachment?.diffTabId ?? index}`,
@@ -30891,7 +31131,7 @@ export default function App() {
 
     setPendingReviewLaunchByChatId((prev) => ({
       ...prev,
-      [reviewChat.id]: { attachments, reviewConfiguration },
+      [reviewChat.id]: { attachments: reviewAttachments, reviewConfiguration },
     }));
     setAgentRunByChatId((prev) => ({
       ...prev,
@@ -30902,7 +31142,7 @@ export default function App() {
         iteration: prev[reviewChat.id]?.iteration ?? 0,
         findings,
         files: scopeFiles,
-        scopeAttachments: attachments,
+        scopeAttachments: reviewAttachments,
         configuration: reviewConfiguration,
         reviewOwnedPatches: [],
         reviewPatchStatus: 'none',
@@ -30928,7 +31168,13 @@ export default function App() {
       icon: agentIcon,
       activate: true,
     });
-  }, [createEmptyAiChatSession, getAiChatScenarioById, selectedAiChatId]);
+  }, [
+    aiChatSentMessagesByChatId,
+    createEmptyAiChatSession,
+    getAiChatScenarioById,
+    ideTabContents,
+    selectedAiChatId,
+  ]);
 
   const globalAiReviewSourceAttachments = (() => {
     if (globalReviewTargetChatId && globalReviewLaunchSource.startsWith('chat-')) {
@@ -31296,18 +31542,38 @@ export default function App() {
       ? 'applied'
       : reviewStatus;
     if (action.kind === 'quickfix') {
-      applyReviewOwnedFindingPatches(targetChatId, new Set([text]));
+      applyReviewOwnedFindingPatches(targetChatId, new Set([
+        action.findingId,
+        text,
+      ].filter(Boolean)));
     }
     setAgentRunByChatId((prev) => {
       const run = prev[targetChatId];
-      if (!run || !Array.isArray(run.notes)) return prev;
+      if (!run) return prev;
       let changed = false;
-      const notes = run.notes.map((note) => {
-        if ((note?.text || '').trim() !== text || note?.resolved) return note;
+      const notes = (Array.isArray(run.notes) ? run.notes : []).map((note) => {
+        const matchesFinding = action.findingId
+          ? note?.findingId === action.findingId
+          : (note?.text || '').trim() === text;
+        if (!matchesFinding || note?.resolved) return note;
         changed = true;
         return { ...note, resolved: true, resolvedKind, reviewStatus };
       });
-      return changed ? { ...prev, [targetChatId]: { ...run, notes } } : prev;
+      const feedback = (Array.isArray(run.feedback) ? run.feedback : []).map((comment) => {
+        const matchesFinding = action.findingId
+          ? comment?.findingId === action.findingId
+          : getStoredCommentText(comment).trim() === text;
+        if (!matchesFinding || comment?.resolved) return comment;
+        changed = true;
+        return {
+          ...comment,
+          resolved: true,
+          resolvedKind,
+          reviewStatus,
+          pending: false,
+        };
+      });
+      return changed ? { ...prev, [targetChatId]: { ...run, notes, feedback } } : prev;
     });
     const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
     const response = action.kind === 'quickfix'
@@ -32094,6 +32360,7 @@ export default function App() {
                 reviewLabel={reviewSplitReviewLabel}
                 chatIcon={<AiChatAgentIcon icon={reviewSplitListItem?.icon ?? reviewSplitScenario?.icon ?? 'claude'} title={reviewSplitChatLabel} />}
                 onCloseReview={closeReviewSplitView}
+                showReviewTab={isReviewSplitOverviewMode}
                 rightTabs={reviewSplitFiles.map((file) => ({
                   label: file.name,
                   icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
@@ -32101,10 +32368,20 @@ export default function App() {
                 }))}
                 activeRightTab={activeReviewSplitTabIndex}
                 onRightTabChange={(index) => {
-                  if (index === 0) setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
-                  else if (reviewSplitFiles[index - 1]) setReviewSplitActiveTabId(reviewSplitFiles[index - 1].tabId);
+                  if (isReviewSplitOverviewMode && index === 0) {
+                    setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
+                    return;
+                  }
+                  const fileIndex = isReviewSplitOverviewMode ? index - 1 : index;
+                  if (reviewSplitFiles[fileIndex]) setReviewSplitActiveTabId(reviewSplitFiles[fileIndex].tabId);
                 }}
-                onRightTabClose={(index) => closeReviewSplitFileTab(reviewSplitFiles[index]?.tabId)}
+                onRightTabClose={(index) => {
+                  if (!isReviewSplitOverviewMode) {
+                    closeReviewSplitView();
+                    return;
+                  }
+                  closeReviewSplitFileTab(reviewSplitFiles[index]?.tabId);
+                }}
                 leftPane={(
                   <div className="aiux543-chat-editor-host">
                     <AiChatTabView
@@ -32155,7 +32432,7 @@ export default function App() {
                     <AiReviewSplitFileView
                       key={activeReviewSplitFile.tabId}
                       file={activeReviewSplitFile}
-                      scopeFiles={reviewSplitScopeFiles}
+                      scopeFiles={visibleReviewSplitScopeFiles}
                       focusRowIds={reviewSplitFileFocusByTabId[activeReviewSplitFile.tabId] ?? []}
                       agentIcon={activeReviewAgentIcon}
                       readOnly={activeReviewReadOnly || Boolean(activeReviewSplitFile.commentsReadOnly)}
@@ -32171,7 +32448,7 @@ export default function App() {
                         persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
                     />
-                  ) : (
+                  ) : isReviewSplitOverviewMode ? (
                     <ReviewDiffOverview
                       files={reviewDiffFiles}
                       reviewSummary={activeReviewSummary}
@@ -32202,7 +32479,7 @@ export default function App() {
                       onComplete={activeReviewReadOnly ? null : () => completeReview(reviewSplitChatId)}
                       portalToEditor={false}
                     />
-                  )
+                  ) : null
                 )}
               />
             )

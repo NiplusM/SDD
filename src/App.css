@@ -19344,7 +19344,14 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-text {
-  margin-left: var(--spec-done-comment-agent-reply-content-indent);
+  /* The follow-up header starts with a 16px avatar plus an 8px gap. Keep its
+     body aligned with the agent name even when it is rendered outside the
+     regular `.spec-done-comment-agent-reply` wrapper. */
+  margin-left: 24px;
+}
+
+.spec-done-comment-agent-follow-up-reply .spec-done-comment-agent-reply-actions {
+  margin-left: 24px;
 }
 
 .spec-done-comment-agent-reply-compose {
