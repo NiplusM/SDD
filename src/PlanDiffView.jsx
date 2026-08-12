@@ -1513,6 +1513,7 @@ export function DiffInlineCommentPopup({
   severityFilter = 'all',
   forceShowHiddenComments = false,
   showCommentSeverity = false,
+  resolveKeepsComment = false,
   allowAgentReplies = true,
 }) {
   const ref = useRef(null);
@@ -1882,7 +1883,7 @@ export function DiffInlineCommentPopup({
     if (commentsReadOnly || comment?.reviewReadOnly || isReviewFindingDecided(comment)) return;
     const source = typeof comment?.source === 'string' ? comment.source : 'diff';
     const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : fallbackIndex;
-    onQuickFix?.(localIndex, source, context);
+    onQuickFix?.(localIndex, source, context, comment);
   };
 
   const handleAgentResolve = (comment, solved, fallbackIndex = 0, context = null) => {
@@ -1890,14 +1891,14 @@ export function DiffInlineCommentPopup({
     const source = typeof comment?.source === 'string' ? comment.source : 'diff';
     const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : fallbackIndex;
     if (!solved) closeAgentReplyComposer(getAgentReplyDraftKey(comment, fallbackIndex));
-    onResolveComment?.(localIndex, solved, source, context);
+    onResolveComment?.(localIndex, solved, source, context, comment);
   };
 
   const handleAgentDismiss = (comment, fallbackIndex = 0, context = null) => {
     if (commentsReadOnly || comment?.reviewReadOnly || isReviewFindingDecided(comment)) return;
     const source = typeof comment?.source === 'string' ? comment.source : 'diff';
     const localIndex = Number.isInteger(comment?.localIndex) ? comment.localIndex : fallbackIndex;
-    onDismissComment?.(localIndex, source, context);
+    onDismissComment?.(localIndex, source, context, comment);
   };
 
   // Apply fix / Mark resolved on an agent comment: show a loader while it's
@@ -2891,6 +2892,7 @@ export function PlanDiffOverlay({
   commentIndexGroupId = '',
   commentIndexStatusFilter = 'all',
   onReviewProcessingChange = null,
+  onReviewAction = null,
   inlineCommentRowIdOnly = false,
   expandedInlineCommentRowId = null,
   onInlineCommentExpand = null,
@@ -4659,7 +4661,7 @@ export function PlanDiffOverlay({
             // Apply fix / Mark resolved: regular chat notes disappear once the
             // action finishes. Only findings in the dedicated Review flow keep
             // a resolved record so that review status remains auditable.
-            const removeRowComment = (commentIndex, source = 'diff', context = null, kind = 'resolve') => {
+            const removeRowComment = (commentIndex, source = 'diff', context = null, kind = 'resolve', commentHint = null) => {
               if (commentsReadOnly || !Number.isInteger(commentIndex)) return;
               const contextChatId = typeof context?.chatId === 'string' ? context.chatId.trim() : '';
               const sourceState = source === 'document'
@@ -4667,36 +4669,58 @@ export function PlanDiffOverlay({
                 : source === 'session' && contextChatId
                   ? getSessionCommentsStateForChat(contextChatId)
                   : diffComments;
-              const targetComment = (sourceState[row.id] ?? [])[commentIndex];
-              if (targetComment?.reviewReadOnly) return;
-              const noteText = getCommentEntryText(targetComment) || 'Resolved';
+              const sourceRow = sourceState[row.id] ?? [];
+              const hintedText = getCommentEntryText(commentHint).trim();
+              const hintedId = commentHint && typeof commentHint === 'object' ? commentHint.id : null;
+              const hintedFindingId = commentHint && typeof commentHint === 'object' ? commentHint.findingId : null;
+              const stableCommentIndex = commentHint && typeof commentHint === 'object'
+                ? sourceRow.findIndex((candidate) => {
+                    if (!candidate || typeof candidate !== 'object') return false;
+                    if (hintedId && candidate.id === hintedId) return true;
+                    if (hintedFindingId && candidate.findingId === hintedFindingId && getCommentEntryText(candidate).trim() === hintedText) return true;
+                    return getCommentEntryText(candidate).trim() === hintedText
+                      && candidate.author === commentHint.author
+                      && String(candidate.agentReply ?? '') === String(commentHint.agentReply ?? '');
+                  })
+                : -1;
+              const targetIndex = stableCommentIndex >= 0 ? stableCommentIndex : commentIndex;
+              const targetComment = sourceRow[targetIndex];
+              const actionComment = targetComment ?? commentHint;
+              if (actionComment?.reviewReadOnly) return;
+              const noteText = getCommentEntryText(actionComment) || 'Resolved';
               const targetIsReviewFinding = Boolean(
-                targetComment
-                && typeof targetComment === 'object'
+                resolveKeepsComment
+                &&
+                actionComment
+                && typeof actionComment === 'object'
                 && (
-                  targetComment.author === 'agent'
+                  (kind === 'quickfix' && actionComment.fixLabel)
+                  ||
+                  actionComment.author === 'agent'
                   || (
-                    targetComment.findingId
-                    && targetComment.agentReply
-                    && targetComment.fixLabel
+                    actionComment.agentReply
+                    && actionComment.fixLabel
+                    && (actionComment.findingId || actionComment.reviewChatId)
                   )
                 ),
               );
               const resolveAction = {
                 kind,
                 text: noteText,
-                findingId: (targetComment && typeof targetComment === 'object')
-                  ? (targetComment.findingId ?? null)
+                findingId: (actionComment && typeof actionComment === 'object')
+                  ? (actionComment.findingId ?? null)
                   : null,
-                fixLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.fixLabel ?? null) : null,
-                sourceLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.sourceLabel ?? null) : null,
-                lineLabel: (targetComment && typeof targetComment === 'object') ? (targetComment.lineLabel ?? null) : null,
+                fixLabel: (actionComment && typeof actionComment === 'object') ? (actionComment.fixLabel ?? null) : null,
+                sourceLabel: (actionComment && typeof actionComment === 'object') ? (actionComment.sourceLabel ?? null) : null,
+                lineLabel: (actionComment && typeof actionComment === 'object') ? (actionComment.lineLabel ?? null) : null,
                 // Full comment + its row, so the App can snapshot the resolved
                 // thread into a chat message (context) when it's a user comment.
-                comment: (targetComment && typeof targetComment === 'object') ? targetComment : { text: noteText },
+                comment: (actionComment && typeof actionComment === 'object') ? actionComment : { text: noteText },
                 rowId: row.id,
                 isReviewFinding: targetIsReviewFinding,
+                handledDirectly: Boolean(targetIsReviewFinding && onReviewAction),
               };
+              if (targetIsReviewFinding) onReviewAction?.(resolveAction);
               // In a review, resolving/quick-fixing KEEPS the comment (dimmed +
               // badge) so handled findings stay visible until the review ends.
               // Everywhere else (e.g. a question comment the agent answered),
@@ -4705,7 +4729,7 @@ export function PlanDiffOverlay({
               const markResolved = (state) => {
                 const existing = state[row.id] ?? [];
                 const nextRow = existing.map((comment, index) => {
-                  if (index !== commentIndex) return comment;
+                  if (index !== targetIndex) return comment;
                   const base = (comment && typeof comment === 'object') ? comment : { text: comment };
                   return {
                     ...base,
@@ -4724,7 +4748,7 @@ export function PlanDiffOverlay({
               };
               const withoutRowComment = (state) => {
                 const existing = state[row.id] ?? [];
-                const nextRow = existing.filter((_, index) => index !== commentIndex);
+                const nextRow = existing.filter((_, index) => index !== targetIndex);
                 if (nextRow.length > 0) return { ...state, [row.id]: nextRow };
                 const { [row.id]: _dropped, ...rest } = state;
                 return rest;
@@ -4747,9 +4771,9 @@ export function PlanDiffOverlay({
               }
               commitDiffComments(applyResolution(diffComments), { rowId: row.id, comment: noteText, isEditing: true, resolveAction });
             };
-            const handleAgentQuickFixRowComment = (commentIndex, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'quickfix');
-            const handleAgentResolveRowComment = (commentIndex, _solved, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'resolve');
-            const handleAgentDismissRowComment = (commentIndex, source = 'diff', context = null) => removeRowComment(commentIndex, source, context, 'dismiss');
+            const handleAgentQuickFixRowComment = (commentIndex, source = 'diff', context = null, comment = null) => removeRowComment(commentIndex, source, context, 'quickfix', comment);
+            const handleAgentResolveRowComment = (commentIndex, _solved, source = 'diff', context = null, comment = null) => removeRowComment(commentIndex, source, context, 'resolve', comment);
+            const handleAgentDismissRowComment = (commentIndex, source = 'diff', context = null, comment = null) => removeRowComment(commentIndex, source, context, 'dismiss', comment);
 
 	            const renderCodeRow = (splitSide = null) => {
 	              const isSplitSide = splitSide === 'left' || splitSide === 'right';
@@ -5001,6 +5025,7 @@ export function PlanDiffOverlay({
                           severityFilter={severityFilter}
                           forceShowHiddenComments={isExpandedInlineCommentRow}
                           showCommentSeverity={resolveKeepsComment}
+                          resolveKeepsComment={resolveKeepsComment}
                           allowAgentReplies={allowCommentReplies}
                           onChange={setCommentValue}
                           onStartEdit={(idx, source = 'diff', context = null) => {
@@ -5084,6 +5109,7 @@ export function PlanDiffOverlay({
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
                         showCommentSeverity={resolveKeepsComment}
+                        resolveKeepsComment={resolveKeepsComment}
                         allowAgentReplies={allowCommentReplies}
                         onChange={setCommentValue}
                         onCancel={() => clearCommentComposeState()}
@@ -5221,18 +5247,18 @@ export function PlanDiffOverlay({
 	                      if (commentsReadOnly || comment?.reviewReadOnly || isProcessing) return;
 	                      setAsideReplyComposerKey(null);
 	                      if (resolveKeepsComment && kind === 'quickfix') {
-	                        handleAgentQuickFixRowComment(localIndex, source, context);
+	                        handleAgentQuickFixRowComment(localIndex, source, context, comment);
 	                        return;
 	                      }
 	                      setAsideProcessingCommentKey(actionKey);
 	                      onReviewProcessingChange?.(true);
 	                      window.setTimeout(() => {
 	                        if (kind === 'quickfix') {
-	                          handleAgentQuickFixRowComment(localIndex, source, context);
+	                          handleAgentQuickFixRowComment(localIndex, source, context, comment);
 	                        } else if (kind === 'dismiss') {
-	                          handleAgentDismissRowComment(localIndex, source, context);
+	                          handleAgentDismissRowComment(localIndex, source, context, comment);
 	                        } else {
-	                          handleAgentResolveRowComment(localIndex, true, source, context);
+	                          handleAgentResolveRowComment(localIndex, true, source, context, comment);
 	                        }
 	                        setAsideProcessingCommentKey((currentKey) => (
 	                          currentKey === actionKey ? null : currentKey

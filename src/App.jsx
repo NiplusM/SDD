@@ -14841,7 +14841,10 @@ function ChatToolWindow({
           ...prev,
           [targetChatId]: (prev[targetChatId] ?? []).map((message) => (
             message.id === assistantMessageId
-              ? { ...message, text: nextText, streaming: !isComplete }
+              // A review has no intermediate prose response. Keep rendering the
+              // single Running state until finishRun atomically replaces this
+              // placeholder with Review Preview.
+              ? { ...message, text: nextText, streaming: isReviewCommand ? true : !isComplete }
               : message
           )),
         }));
@@ -17740,6 +17743,7 @@ function AiReviewSplitFileView({
   renderSubmitTargetPicker = null,
   onNavigateFile = null,
   onCommentsChange = null,
+  onReviewAction = null,
 }) {
   const [viewMode, setViewMode] = useState('unified');
   if (!file) return null;
@@ -17796,6 +17800,7 @@ function AiReviewSplitFileView({
           viewMode={file.isPlain ? 'unified' : viewMode}
           highlightedCommentRowIds={focusedRows}
           onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(file.tabId, comments, metadata)}
+          onReviewAction={onReviewAction}
         />
       </div>
     </div>
@@ -23000,7 +23005,7 @@ export default function App() {
       });
       return acc;
     }, {});
-    if (metadata?.resolveAction?.isReviewFinding) {
+    if (metadata?.resolveAction?.isReviewFinding && !metadata.resolveAction.handledDirectly) {
       resolveReviewCommentRef.current?.(metadata.resolveAction);
     } else if (metadata?.resolveAction?.kind === 'quickfix' && reviewChatId) {
       applyReviewOwnedFindingPatches(reviewChatId, new Set([
@@ -24288,7 +24293,9 @@ export default function App() {
   );
 
   // Complete preserves the current applied / dismissed / open state in every
-  // file, ends the active review run and closes only the review surface.
+  // file and ends the active review run in place. The review tab is also the
+  // split-view container, so closing it here would incorrectly close the chat
+  // pane on the left together with the review pane.
   const completeReview = useCallback((chatId) => {
     const noteTexts = reviewNoteTextsFor(chatId);
     const count = noteTexts.size;
@@ -24296,8 +24303,7 @@ export default function App() {
       streamAssistantMessageRef.current?.(chatId, `Review completed — saved the current state of ${count} comment${count === 1 ? '' : 's'}.`);
     }
     finalizeReviewRun(chatId, 'completed');
-    closeReviewDiffTab();
-  }, [agentRunByChatId, finalizeReviewRun, closeReviewDiffTab]);
+  }, [agentRunByChatId, finalizeReviewRun]);
 
   // Cancel rejects the review and rolls back only changes this review owns.
   // Compare-and-swap in rollbackReviewOwnedPatches preserves later manual edits.
@@ -31575,13 +31581,54 @@ export default function App() {
       });
       return changed ? { ...prev, [targetChatId]: { ...run, notes, feedback } } : prev;
     });
-    const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
-    const response = action.kind === 'quickfix'
-      ? `Accepted and applied "${action.fixLabel || 'the fix'}"${where ? ` in ${where}` : ''}.`
-      : action.kind === 'delete'
+    setIdeTabContents((prev) => {
+      let changed = false;
+      const next = {};
+      Object.entries(prev).forEach(([tabId, content]) => {
+        if (!content) {
+          next[tabId] = content;
+          return;
+        }
+        const initialDiffComments = normalizeStoredDiffCommentsState(content.initialDiffComments);
+        let commentsChanged = false;
+        const resolvedComments = {};
+        Object.entries(initialDiffComments).forEach(([rowId, comments]) => {
+          resolvedComments[rowId] = comments.map((comment) => {
+            const belongsToReview = !comment?.reviewChatId || comment.reviewChatId === targetChatId;
+            const matchesFinding = action.findingId
+              ? comment?.findingId === action.findingId
+              : getStoredCommentText(comment).trim() === text;
+            if (!belongsToReview || !matchesFinding) return comment;
+            commentsChanged = true;
+            return {
+              ...comment,
+              resolved: true,
+              resolvedKind,
+              reviewStatus,
+              pending: false,
+              hidden: false,
+            };
+          });
+        });
+        if (commentsChanged) {
+          changed = true;
+          next[tabId] = { ...content, initialDiffComments: resolvedComments };
+        } else {
+          next[tabId] = content;
+        }
+      });
+      return changed ? next : prev;
+    });
+    // Quick fixes are inline review decisions: applying one updates code and
+    // the finding status in place. Do not create a new assistant chat message
+    // for every accepted fix; that quickly floods the review conversation.
+    if (action.kind !== 'quickfix') {
+      const where = [action.sourceLabel, action.lineLabel].filter(Boolean).join(' · ');
+      const response = action.kind === 'delete'
         ? `Deleted the finding${where ? ` in ${where}` : ''}: ${text}`
         : `Dismissed the finding${where ? ` in ${where}` : ''}: ${text}`;
-    streamAssistantMessage(targetChatId, response);
+      streamAssistantMessage(targetChatId, response);
+    }
   }, [agentRunByChatId, applyReviewOwnedFindingPatches, selectedAiChatId, streamAssistantMessage]);
   resolveReviewCommentRef.current = resolveReviewComment;
   streamAssistantMessageRef.current = streamAssistantMessage;
@@ -32447,6 +32494,7 @@ export default function App() {
                       onCommentsChange={(tabId, comments, metadata) => (
                         persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
+                      onReviewAction={(action) => resolveReviewCommentRef.current?.(action)}
                     />
                   ) : isReviewSplitOverviewMode ? (
                     <ReviewDiffOverview
@@ -32475,8 +32523,8 @@ export default function App() {
                       onGroupModeChange={setReviewGroupMode}
                       view={reviewView}
                       onViewChange={setReviewView}
-                      onCancel={activeReviewReadOnly ? null : () => cancelReview(reviewSplitChatId)}
-                      onComplete={activeReviewReadOnly ? null : () => completeReview(reviewSplitChatId)}
+                      onCancel={activeReviewReadOnly ? null : () => cancelReview(reviewSurfaceChatId || reviewSplitChatId)}
+                      onComplete={activeReviewReadOnly ? null : () => completeReview(reviewSurfaceChatId || reviewSplitChatId)}
                       portalToEditor={false}
                     />
                   ) : null
