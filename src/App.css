@@ -21644,6 +21644,28 @@ button.aiux543-answer-change-card:focus-visible {
   .aiux-review-overview-file-actions {
     margin-left: 24px;
   }
+
+  /* Comment cards use the review pane as their sizing boundary. The global
+     popup baseline is 400px, which is too wide once Full Review shares the
+     editor with chat and can force horizontal overflow in the split pane. */
+  .aiux-review-overview .cmp-popup.spec-done-comment-popup,
+  .aiux-review-overview .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .aiux-review-overview .plan-diff-inline-comment {
+    padding: 8px;
+  }
+
+  .aiux-review-overview .spec-done-comment-popup {
+    --spec-done-comment-popup-inline-padding: 10px;
+  }
+
+  .aiux-review-overview .spec-done-comment-agent-reply {
+    --spec-done-comment-agent-reply-content-indent: 20px;
+  }
 }
 
 @container ai-review (max-width: 520px) {
@@ -21658,6 +21680,25 @@ button.aiux543-answer-change-card:focus-visible {
 
   .aiux-review-comments-only-content {
     padding: 14px 12px 24px;
+  }
+
+  .aiux-review-overview .spec-done-comment-popup {
+    --spec-done-comment-popup-inline-padding: 8px;
+  }
+
+  .aiux-review-overview .spec-done-comment-agent-reply {
+    --spec-done-comment-agent-reply-content-indent: 16px;
+  }
+
+  .aiux-review-overview .spec-done-comment-popup-item,
+  .aiux-review-overview .aiux550-review-summary-finding {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .aiux-review-overview .aiux550-review-summary-finding-meta {
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 
