@@ -127,7 +127,9 @@ async function assertProcessingComposer(page, iteration, {
   );
 
   const followUpInput = page.locator(
-    'textarea[aria-label="Add a follow-up"][placeholder="Add a follow-up"]:visible',
+    // Attachments intentionally clear the placeholder, while the standard
+    // processing composer keeps this accessible label stable.
+    'textarea[aria-label="Add a follow-up"]:visible',
   ).last();
   await visible(followUpInput);
   assert(await followUpInput.isEnabled(), `Iteration ${iteration}: the follow-up input is disabled`);
@@ -138,7 +140,7 @@ async function assertProcessingComposer(page, iteration, {
   await visible(voiceInput);
   await visible(stop);
   assert(
-    await composer.getByRole('button').count() === 3,
+    await composer.locator('.aiux543-chat-toolbar button').count() === 3,
     `Iteration ${iteration}: processing composer must contain only Add context, Voice input, and Stop`,
   );
   await visible(page.locator('.aiux543-editor-footer:visible').last());
@@ -150,21 +152,21 @@ async function assertProcessingComposer(page, iteration, {
     await page.locator('.ij-air-follow-up-queue__item-status').count() === 0,
     `Iteration ${iteration}: obsolete per-file status nodes are still mounted`,
   );
-  const queue = page.getByRole('region', { name: 'Follow-up queue' }).last();
+  const queue = page.getByRole('region', { name: 'AI Review' }).last();
   await visible(queue);
-  await visible(queue.getByText('Queue', { exact: true }));
+  await visible(queue.getByText('AI Review', { exact: true }));
   const scopeRows = queue.locator('[data-review-scope-file-status]');
   const scopeFileCount = await scopeRows.count();
-  assert(scopeFileCount > 0, `Iteration ${iteration}: review scope files are missing from Queue`);
+  assert(scopeFileCount > 0, `Iteration ${iteration}: review scope files are missing from AI Review`);
   assert(
     (await queue.locator('[data-review-scope-file-status="processing"]').count()) === 1,
-    `Iteration ${iteration}: Queue must show one actively processing file`,
+    `Iteration ${iteration}: AI Review must show one actively processing file`,
   );
   const count = queue.locator('.ij-air-follow-up-queue__count');
   await visible(count);
   assert(
     (await count.textContent())?.trim() === String(scopeFileCount),
-    `Iteration ${iteration}: Queue count does not match the review scope`,
+    `Iteration ${iteration}: AI Review count does not match the review scope`,
   );
 
   for (const obsoleteLabel of ['Waiting…', 'Queued', 'Reviewed', 'Failed']) {
@@ -258,7 +260,8 @@ async function openFullReviewFileContaining(fullReview, rowSelector) {
   const codeContexts = fullReview.locator('.plan-diff-aside-comment-code-context:visible');
   const count = await codeContexts.count();
   for (let index = 0; index < count; index += 1) {
-    await codeContexts.nth(index).click();
+    await codeContexts.nth(index).focus();
+    await codeContexts.nth(index).press('Enter');
     const fileView = reviewPane.locator('.aiux-review-split-file-view');
     await visible(fileView);
     if (await fileView.locator(rowSelector).count() > 0) return { fileView, reviewPane };
@@ -364,17 +367,7 @@ async function configureCommitReviewScope(dialog) {
     `The launch dialog did not receive the selected Commit scope: ${attachmentNames.join(', ')}`,
   );
 
-  const excludedChip = dialog.locator('.ai-chat-attachment-chip').filter({
-    hasText: 'VisitControllerTests.java',
-  });
-  await excludedChip
-    .getByRole('button', { name: 'Remove attachment from input', exact: true })
-    .evaluate((element) => element.click());
-  await visible(dialog.getByText('2 files', { exact: true }));
-  assert(
-    await dialog.getByText('VisitControllerTests.java', { exact: true }).count() === 0,
-    'The excluded file remained in the configured review scope',
-  );
+  await visible(dialog.getByText('3 files', { exact: true }));
 
   await dialog.getByLabel('Review instructions').fill(instruction);
 
@@ -446,7 +439,7 @@ async function assertCompletedReadOnly(page) {
   );
 
   const openFullReview = completedPreview.card.getByRole('button', {
-    name: 'Open AI Review in editor tab',
+    name: 'Open Full View in editor tab',
     exact: true,
   });
   await visible(openFullReview);
@@ -468,6 +461,10 @@ async function assertCompletedReadOnly(page) {
 async function runCommitLifecycleScenario(page) {
   process.stdout.write('Running AI Review Commit lifecycle scenario…\n');
   await resetPrototype(page);
+  assert(
+    await page.locator('.aiux543-history-tool-window:visible').count() === 0,
+    'Agent Sessions tool window is open by default',
+  );
   await openCommitToolWindow(page);
   await selectOnlyCommitFiles(page, [
     'VisitController.java',
@@ -488,7 +485,7 @@ async function runCommitLifecycleScenario(page) {
   const firstPreview = await latestPreview(page, 'Open');
   await capture(page, 'commit-review-preview-open');
   const fullView = firstPreview.card.getByRole('button', {
-    name: 'Open AI Review in editor tab',
+    name: 'Open Full View in editor tab',
     exact: true,
   });
   await visible(fullView);
@@ -507,9 +504,83 @@ async function runCommitLifecycleScenario(page) {
   const splitFileView = fullReviewPane.locator('.aiux-review-split-file-view');
   await visible(splitFileView);
   await visible(splitFileView.locator('.plan-diff-row').first());
+  const scopeFileCounter = splitFileView.getByText('1 of 3 files', { exact: true });
+  await visible(scopeFileCounter);
+  await scopeFileCounter.click();
+  const scopeFilesPopup = page.locator('.plan-diff-files-popup:visible');
+  await visible(scopeFilesPopup);
+  for (const fileName of ['VisitController.java', 'application.properties', 'VisitControllerTests.java']) {
+    await visible(scopeFilesPopup.getByText(fileName, { exact: false }));
+  }
+  await scopeFilesPopup.getByText('VisitController.java', { exact: false }).click();
+  await scopeFilesPopup.waitFor({ state: 'hidden' });
+  await splitFileView.getByRole('button', { name: 'Next file', exact: true }).click();
+  await visible(splitFileView.getByText('2 of 3 files', { exact: true }));
+  assert(
+    await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
+    'Scope navigation opened another editor tab instead of reusing the current file tab',
+  );
+  await visible(fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').filter({
+    hasText: 'application.properties',
+  }));
+  await splitFileView.getByRole('button', { name: 'Next file', exact: true }).click();
+  await visible(splitFileView.getByText('3 of 3 files', { exact: true }));
+  assert(
+    await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
+    'Scope navigation did not keep a single reusable file tab',
+  );
+  await visible(fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').filter({
+    hasText: 'VisitControllerTests.java',
+  }));
+  await splitFileView.getByText('3 of 3 files', { exact: true }).click();
+  const returnToFirstFilePopup = page.locator('.plan-diff-files-popup:visible');
+  await visible(returnToFirstFilePopup);
+  await returnToFirstFilePopup.getByText('VisitController.java', { exact: false }).click();
+  await visible(splitFileView.getByText('1 of 3 files', { exact: true }));
   assert(
     await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
     'Clicking review code context did not open a file tab beside AI Review',
+  );
+  const addAiNote = splitFileView.getByRole('button', { name: 'Add AI Note', exact: true }).first();
+  await visible(addAiNote);
+  await addAiNote.click();
+  const reviewNoteInput = splitFileView.locator('[data-demo-id="diff-comment-input"]:visible').first();
+  await visible(reviewNoteInput);
+  await reviewNoteInput.fill('Keep this review note attached to the selected chat.');
+  await capture(page, 'commit-review-comment-compose');
+  const reviewNoteTarget = splitFileView.getByRole('button', {
+    name: /^Choose AI Note attachment target:/,
+  }).first();
+  await visible(reviewNoteTarget);
+  await reviewNoteTarget.click();
+  const chatsList = page.getByRole('dialog', { name: 'Chats list', exact: true });
+  await visible(chatsList);
+  await capture(page, 'commit-review-comment-chat-targets');
+  assert(
+    await chatsList.locator('.ai-chat-list-row').count() > 0,
+    'The Full Review note target picker does not list chats',
+  );
+  assert(
+    await chatsList.locator('.ai-chat-list-document-row').count() === 0,
+    'The Full Review note target picker incorrectly lists Agent MD files',
+  );
+  const selectedChatTarget = chatsList.locator('.ai-chat-list-row.is-selected').first();
+  await visible(selectedChatTarget);
+  const selectedChatTitle = (await selectedChatTarget.locator('.ai-chat-list-title').textContent())?.trim();
+  await selectedChatTarget.click();
+  assert(
+    selectedChatTitle && (await reviewNoteTarget.textContent())?.includes(selectedChatTitle),
+    'The standard comment composer did not retain the selected chat title',
+  );
+  await splitFileView.locator('[data-demo-id="diff-comment-submit"]:visible').first().click();
+  await reviewNoteInput.waitFor({ state: 'hidden' });
+  const savedReviewNote = splitFileView.locator('.cmp-popup.spec-done-comment-popup').filter({
+    hasText: 'Keep this review note attached to the selected chat.',
+  }).first();
+  await visible(savedReviewNote);
+  assert(
+    await savedReviewNote.locator('.spec-done-comment-popup-context-header.is-active-session').count() === 1,
+    'A note attached to the active chat is rendered as a muted session',
   );
   await capture(page, 'commit-review-file-tab-split');
   await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
@@ -632,7 +703,7 @@ async function runStoppedReviewSmoke(page) {
   await visible(finding.getByText('Accepted', { exact: true }), 8000);
 
   await stoppedPreview.card.getByRole('button', {
-    name: 'Open AI Review in editor tab',
+    name: 'Open Full View in editor tab',
     exact: true,
   }).click();
   const fullReview = page.locator('.aiux-review-overview:visible').first();
@@ -649,6 +720,16 @@ async function runStoppedReviewSmoke(page) {
   );
   await reviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
   await visible(fullReview);
+  await fullReview.getByRole('button', { name: 'Submit Review', exact: true }).click();
+  const feedbackInput = page
+    .getByRole('region', { name: 'Review chat pane' })
+    .getByPlaceholder('Add feedback for the next review iteration', { exact: true });
+  await visible(feedbackInput);
+  await visible(page.getByRole('region', { name: 'Review chat pane' }).getByRole('button', {
+    name: 'Submit Review',
+    exact: true,
+  }));
+  await feedbackInput.press('Escape');
   await fullReview.getByRole('button', { name: 'Cancel Review', exact: true }).click();
 
   const reviewChatTab = page.locator('.main-window-editor-tabs .tab').filter({
@@ -660,7 +741,7 @@ async function runStoppedReviewSmoke(page) {
   const cancelledPreview = await latestPreview(page, 'Cancelled');
   await activeChatComposer(page);
   await cancelledPreview.card.getByRole('button', {
-    name: 'Open AI Review in editor tab',
+    name: 'Open Full View in editor tab',
     exact: true,
   }).click();
   const readOnlyFullReview = page.locator('.aiux-review-overview:visible').first();

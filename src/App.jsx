@@ -16582,8 +16582,99 @@ function buildReviewDiffFiles(findings = [], tabContents = {}, reviewChatId = nu
     .filter(Boolean);
 }
 
+// File navigation follows the complete review scope, not only files that
+// produced findings. Finding-backed entries keep their live comment state;
+// clean scope files still remain available in the file stepper.
+function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabContents = {}) {
+  const availableReviewFiles = Array.isArray(reviewFiles) ? reviewFiles.filter(Boolean) : [];
+  const reviewFilesByTabId = new Map(
+    availableReviewFiles
+      .filter((file) => file?.tabId)
+      .map((file) => [file.tabId, file]),
+  );
+  const reviewFilesByLabel = availableReviewFiles.reduce((filesByLabel, file) => {
+    const key = normalizeReviewScopeLabel(file?.name);
+    if (!key) return filesByLabel;
+    const current = filesByLabel.get(key) ?? [];
+    current.push(file);
+    filesByLabel.set(key, current);
+    return filesByLabel;
+  }, new Map());
+  const result = [];
+  const seenTabIds = new Set();
+  const seenLabels = new Set();
+  const appendFile = (file) => {
+    if (!file?.tabId || seenTabIds.has(file.tabId)) return;
+    const labelKey = normalizeReviewScopeLabel(file.name);
+    if (labelKey && seenLabels.has(labelKey)) return;
+    seenTabIds.add(file.tabId);
+    if (labelKey) seenLabels.add(labelKey);
+    result.push(file);
+  };
+
+  (Array.isArray(scopeAttachments) ? scopeAttachments : [])
+    .filter((attachment) => attachment && !attachment.isChatContext)
+    .forEach((attachment) => {
+      const explicitTabId = attachment.diffTabId
+        ?? attachment.sourceTabId
+        ?? attachment.diffRequest?.source?.tabId
+        ?? null;
+      const name = attachment.sourceLabel
+        ?? attachment.diffRequest?.source?.label
+        ?? attachment.label
+        ?? 'File';
+      const labelKey = normalizeReviewScopeLabel(name);
+      const matchingReviewFiles = reviewFilesByLabel.get(labelKey) ?? [];
+      const reviewFile = (explicitTabId ? reviewFilesByTabId.get(explicitTabId) : null)
+        ?? [...matchingReviewFiles].sort((left, right) => (
+          (right.commentCount ?? 0) - (left.commentCount ?? 0)
+          || Number(Boolean(right.isDiff)) - Number(Boolean(left.isDiff))
+        ))[0]
+        ?? null;
+      if (reviewFile) {
+        appendFile(reviewFile);
+        return;
+      }
+
+      const presetTabId = MY_EDITOR_TABS.find((tab) => (
+        normalizeReviewScopeLabel(tab.label) === labelKey
+      ))?.id ?? null;
+      const tabId = explicitTabId
+        ?? presetTabId
+        ?? `review-scope-${String(name).replace(/[^A-Za-z0-9._-]/gu, '_')}`;
+      const content = tabContents[tabId] ?? {};
+      const sourceContent = getSpecSourceFileContent(name);
+      const baseDiffData = content.diffData
+        ?? content.plainFileData
+        ?? buildPlainFileData(
+          content.code ?? sourceContent?.code ?? '',
+          name,
+          content.language ?? sourceContent?.language ?? 'text',
+        );
+      appendFile({
+        tabId,
+        name: String(name).replace(/^diff\s+/iu, '').trim() || 'File',
+        isDiff: Boolean(content.diffData),
+        isPlain: !content.diffData,
+        icon: attachment.icon ?? agentRunFileIconName(name),
+        diffData: { ...baseDiffData, focusRowId: null },
+        fullDiffData: { ...baseDiffData, focusRowId: null },
+        comments: {},
+        commentCount: 0,
+        openCount: 0,
+        resolvedCount: 0,
+        statusCounts: { open: 0, accepted: 0, dismissed: 0, deleted: 0, 'pending-update': 0 },
+        severityTotals: { critical: 0, warning: 0, info: 0 },
+        summary: 'No findings',
+        path: reviewDiffFilePath(name),
+      });
+    });
+
+  availableReviewFiles.forEach(appendFile);
+  return result;
+}
+
 const REVIEW_GROUP_MODES = [
-  { id: 'agent', label: 'Agent groups' },
   { id: 'file', label: 'By file' },
   { id: 'severity', label: 'By severity' },
   { id: 'status', label: 'By status' },
@@ -16705,43 +16796,6 @@ function buildReviewCommentCategories({
   }));
   const selectedOpenTotal = countReviewCommentsForStatusFilter(files, selectedOpenSeverities, 'open');
   const selectedPendingUpdateTotal = countReviewCommentsForStatusFilter(files, selectedOpenSeverities, 'pending-update');
-  if (groupMode === 'agent') {
-    const groups = [];
-    const byGroup = new Map();
-    orderedFiles.forEach((file) => {
-      Object.values(normalizeStoredDiffCommentsState(file.comments)).flat().forEach((comment) => {
-        if (!matchesReviewCommentFilter(comment, severityFilter)) return;
-        if (['accepted', 'dismissed', 'deleted'].includes(getReviewCommentStatus(comment)) && !includesResolved) return;
-        const agentId = String(comment?.agentId || 'codex').trim() || 'codex';
-        const agentLabel = String(comment?.agentLabel || 'Codex').trim() || 'Codex';
-        if (!byGroup.has(agentId)) {
-          const group = { agentId, agentLabel, severities: [], files: [] };
-          byGroup.set(agentId, group);
-          groups.push(group);
-        }
-        const group = byGroup.get(agentId);
-        const severity = String(comment?.severity || 'info').toLowerCase();
-        if (!group.severities.includes(severity)) group.severities.push(severity);
-        if (!group.files.includes(file)) group.files.push(file);
-      });
-    });
-    return groups.map((group) => {
-      const filter = { agentId: group.agentId, severities: selectedFilters };
-      const tone = [...group.severities].sort((left, right) => (
-        reviewSeverityPriority(left) - reviewSeverityPriority(right)
-      ))[0] || 'info';
-      return {
-        key: `agent-${group.agentId}`,
-        label: group.agentLabel,
-        filter,
-        statusFilter: includesResolved ? 'all' : 'unresolved',
-        tone,
-        files: group.files,
-        showFile: true,
-        count: countReviewCommentsForStatusFilter(group.files, filter, includesResolved ? 'all' : 'unresolved'),
-      };
-    }).filter((group) => group.count > 0);
-  }
   if (groupMode === 'file') {
     // One heading per file; comments underneath show just the line.
     return orderedFiles
@@ -17534,10 +17588,15 @@ function AiReviewEditorSplit({
 
 function AiReviewSplitFileView({
   file,
+  scopeFiles = [],
   focusRowIds = [],
   agentIcon = 'codex',
   readOnly = false,
   severityFilter = 'all',
+  activeChatId = '',
+  activeChatTitle = 'AI Review',
+  renderSubmitTargetPicker = null,
+  onNavigateFile = null,
   onCommentsChange = null,
 }) {
   const [viewMode, setViewMode] = useState('unified');
@@ -17547,25 +17606,46 @@ function AiReviewSplitFileView({
   const diffData = {
     ...(file.fullDiffData ?? file.diffData),
     focusRowId: focusedRows[0] ?? null,
+    fileCount: Math.max(1, scopeFiles.length),
+  };
+  const currentFileLabel = normalizeReviewScopeLabel(file.name);
+  const currentFileIndex = Math.max(0, scopeFiles.findIndex((scopeFile) => (
+    scopeFile.tabId === file.tabId
+    || normalizeReviewScopeLabel(scopeFile.name) === currentFileLabel
+  )));
+  const openAdjacentFile = (delta) => {
+    const nextFile = scopeFiles[currentFileIndex + delta];
+    if (nextFile) onNavigateFile?.(nextFile.tabId);
   };
 
   return (
     <div className="aiux-review-split-file-view">
-      {!file.isPlain && (
-        <PlanDiffEditorToolbar
-          diffData={diffData}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-        />
-      )}
+      <PlanDiffEditorToolbar
+        diffData={diffData}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        scopeId="all"
+        scopeFiles={scopeFiles.map((scopeFile) => ({
+          tabId: scopeFile.tabId,
+          label: scopeFile.name,
+          icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
+        }))}
+        currentFileIndex={currentFileIndex}
+        onSelectFile={onNavigateFile}
+        onNavigatePreviousFile={() => openAdjacentFile(-1)}
+        onNavigateNextFile={() => openAdjacentFile(1)}
+      />
       <div className="aiux-review-split-file-body">
         <PlanDiffOverlay
           diffData={diffData}
           initialDiffComments={file.comments}
           singleLineNumbers={file.isPlain}
           showGutterComments
-          commentContextLabel="AI Review"
+          commentContextLabel={activeChatTitle}
           commentContextIcon={agentIcon}
+          commentContextSessionLabel="Active"
+          commentSessionActiveChatId={activeChatId}
+          renderSubmitTargetPicker={renderSubmitTargetPicker}
           severityFilter={severityFilter}
           resolveKeepsComment
           allowInlineCommentCompose={!readOnly}
@@ -17582,7 +17662,7 @@ function AiReviewSplitFileView({
 
 // The aggregated overview. Rendered via editorTopBar and portaled into the
 // active editor's body (same host the single-file diff overlay uses).
-function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'codex', lifecycleStatus = 'open', readOnly = false, onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', onOpenChat = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'severity', onGroupModeChange = null, view = 'inline', onViewChange = null, portalToEditor = true }) {
+function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'codex', lifecycleStatus = 'open', readOnly = false, onOpenFileTab = null, onCancel = null, onComplete = null, chatTitle = '', activeChatId = '', onOpenChat = null, onSubmitReview = null, onApplyFile = null, onDismissFile = null, onFileCommentsChange = null, renderSubmitTargetPicker = null, severityFilter = 'all', onSeverityFilterChange = null, groupMode = 'severity', onGroupModeChange = null, view = 'inline', onViewChange = null, portalToEditor = true }) {
   const anchorRef = useRef(null);
   const scrollRef = useRef(null);
   const sectionRefs = useRef([]);
@@ -17801,8 +17881,11 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
           initialDiffComments={file.comments}
           singleLineNumbers={file.isPlain}
           showGutterComments
-          commentContextLabel="AI Review"
+          commentContextLabel={reviewChatLabel}
           commentContextIcon={agentIcon}
+          commentContextSessionLabel="Active"
+          commentSessionActiveChatId={activeChatId}
+          renderSubmitTargetPicker={renderSubmitTargetPicker}
           severityFilter={cardFilter?.severities ?? cardFilter}
           commentIndexGroupId={scope.groupId ?? ''}
           commentIndexStatusFilter={scope.statusFilter ?? 'all'}
@@ -17839,8 +17922,11 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
               initialDiffComments={file.comments}
               singleLineNumbers={file.isPlain}
               showGutterComments
-              commentContextLabel="AI Review"
+              commentContextLabel={reviewChatLabel}
               commentContextIcon={agentIcon}
+              commentContextSessionLabel="Active"
+              commentSessionActiveChatId={activeChatId}
+              renderSubmitTargetPicker={renderSubmitTargetPicker}
               severityFilter={cat.filter?.severities ?? cat.filter}
               resolveKeepsComment
               allowCommentReplies={!readOnly}
@@ -17896,12 +17982,6 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
               compact
             />
           </div>
-          {readOnly && (
-            <div className={`aiux550-review-final-state is-${normalizedLifecycleStatus}`}>
-              <Icon name={normalizedLifecycleStatus === 'completed' ? 'general/checkmark' : 'general/closeSmall'} size={16} />
-              <span>Review {normalizedLifecycleStatus} · Read-only</span>
-            </div>
-          )}
         </div>
       </div>
       {isTimeline ? (
@@ -17974,8 +18054,8 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
             <Button
               type="secondary"
               size="default"
-              disabled={isReviewProcessing || !onOpenChat}
-              onClick={() => onOpenChat?.()}
+              disabled={isReviewProcessing || !onSubmitReview}
+              onClick={() => onSubmitReview?.()}
             >
               Submit Review
             </Button>
@@ -18220,11 +18300,11 @@ function ReviewSummaryMessage({
               <Button
                 type="secondary"
                 size="slim"
-                aria-label="Open AI Review in editor tab"
+                aria-label="Open Full View in editor tab"
                 className="aiux550-review-header-action"
                 onClick={onOpenReview}
               >
-                <span>Review</span>
+                <span>Full View</span>
               </Button>
             ) : null}
           </span>
@@ -18499,6 +18579,7 @@ function AiChatTabView({
   onCompleteReview = null,
   onCancelReview = null,
   onReviseReview = null,
+  reviewFeedbackRequestKey = 0,
   reviewFiles = [],
   onReviewFileCommentsChange = null,
   onApplyReviewFile = null,
@@ -18564,6 +18645,7 @@ function AiChatTabView({
   const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
   const [resolvedReviewDecisionId, setResolvedReviewDecisionId] = useState(null);
   const [reviewFeedbackMessageId, setReviewFeedbackMessageId] = useState(null);
+  const handledReviewFeedbackRequestRef = useRef(0);
   const [queuedFollowUps, setQueuedFollowUps] = useState([]);
   const [processedReviewScopeFileCount, setProcessedReviewScopeFileCount] = useState(0);
   const queuedFollowUpIdRef = useRef(0);
@@ -18673,6 +18755,19 @@ function AiChatTabView({
     };
     requestAnimationFrame(() => requestAnimationFrame(focus));
   }, []);
+
+  useEffect(() => {
+    if (
+      !reviewFeedbackRequestKey
+      || reviewFeedbackRequestKey === handledReviewFeedbackRequestRef.current
+      || !readyReviewMessage
+      || isReviewFinal
+    ) return;
+    handledReviewFeedbackRequestRef.current = reviewFeedbackRequestKey;
+    setReviewFeedbackMessageId(readyReviewMessage.id);
+    setResolvedReviewDecisionId(readyReviewMessage.id);
+    focusComposerAtEnd();
+  }, [focusComposerAtEnd, isReviewFinal, readyReviewMessage, reviewFeedbackRequestKey]);
 
   useEffect(() => {
     const savedDraft = composerDraftRef.current;
@@ -20308,7 +20403,7 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(['chat-history']);
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [diffCommentsOptionIsNew, setDiffCommentsOptionIsNew] = useState(true);
@@ -20331,6 +20426,7 @@ export default function App() {
   const [reviewSplitFileTabIds, setReviewSplitFileTabIds] = useState([]);
   const [reviewSplitActiveTabId, setReviewSplitActiveTabId] = useState(REVIEW_DIFF_TAB_ID);
   const [reviewSplitFileFocusByTabId, setReviewSplitFileFocusByTabId] = useState({});
+  const [reviewFeedbackRequestByChatId, setReviewFeedbackRequestByChatId] = useState({});
   // Synchronous mirror of review-owned fixture patches. The canonical copy is
   // also stored on each run; this ref covers Apply → immediate Cancel in one UI tick.
   const reviewOwnedPatchesByChatIdRef = useRef({});
@@ -22780,6 +22876,113 @@ export default function App() {
       });
     }
   }, [applyReviewOwnedFindingPatches]);
+
+  // Full Review uses the same chat attachment model as a regular diff. A note
+  // is persisted in the review first, then copied into the selected chat's
+  // diff session so the existing composer attachment builder picks it up.
+  const persistReviewFileCommentsWithChatAttachment = useCallback((tabId, comments, reviewChatId = null, metadata = {}) => {
+    persistReviewFileComments(tabId, comments, reviewChatId, metadata);
+
+    const submittedText = typeof metadata?.comment === 'string' ? metadata.comment.trim() : '';
+    if (!submittedText || metadata?.isEditing || metadata?.attachMode === 'document') return;
+
+    const sourceContent = ideTabContentsRef.current[tabId];
+    if (!sourceContent) return;
+    const sourceData = sourceContent.diffData ?? sourceContent.plainFileData ?? {};
+    const sourceLabel = sourceData.sourceTabLabel ?? sourceData.title ?? 'Review diff';
+    const rowIds = Array.isArray(metadata?.rowIds) && metadata.rowIds.length > 0
+      ? metadata.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+      : (typeof metadata?.rowId === 'string' && metadata.rowId.length > 0 ? [metadata.rowId] : []);
+    if (rowIds.length === 0) return;
+
+    const normalizedComments = normalizeStoredDiffCommentsState(comments);
+    const submittedComment = rowIds
+      .flatMap((rowId) => normalizedComments[rowId] ?? [])
+      .find((comment) => getStoredCommentText(comment).trim() === submittedText);
+    const commentForAttachment = {
+      ...(submittedComment && typeof submittedComment === 'object' ? submittedComment : {}),
+      text: submittedText,
+      rowIds,
+    };
+    const diffRequest = {
+      text: sourceData.lineText || sourceData.title || sourceLabel,
+      statusItem: { status: 'passed' },
+      issueTarget: normalizeCommentTarget(sourceContent.diffTarget) ?? { kind: 'plan', index: 0 },
+      source: {
+        tabId,
+        label: sourceLabel,
+      },
+    };
+    const createsNewChat = metadata?.attachMode === 'new';
+    const newChatSession = createsNewChat
+      ? createEmptyAiChatSession({
+          diffRequest,
+          attachmentLabel: sourceData.title || `Diff ${sourceLabel}`,
+          icon: 'codex',
+          select: false,
+        })
+      : null;
+    const explicitTargetChatId = typeof metadata?.targetChatId === 'string' && metadata.targetChatId.trim().length > 0
+      ? metadata.targetChatId.trim()
+      : null;
+    const targetChatId = newChatSession?.id ?? explicitTargetChatId ?? reviewChatId ?? selectedAiChatId;
+    if (!targetChatId) return;
+
+    const targetScenario = newChatSession ?? getAiChatScenarioById(targetChatId);
+    const targetListItem = newChatSession ? { icon: newChatSession.icon } : getAiChatListItemById(targetChatId);
+    setAiChatComposerDiffTabByChatId((prev) => (
+      prev[targetChatId] === tabId ? prev : { ...prev, [targetChatId]: tabId }
+    ));
+    setIdeTabContents((prev) => {
+      const content = prev[tabId];
+      if (!content) return prev;
+      const sessions = normalizeDiffSessionCommentsByChatId(content.diffSessionCommentsByChatId);
+      const previousTargetComments = normalizeStoredDiffCommentsState(sessions[targetChatId]?.comments);
+      const nextTargetComments = { ...previousTargetComments };
+      rowIds.forEach((rowId) => {
+        const previousRow = nextTargetComments[rowId] ?? [];
+        nextTargetComments[rowId] = [
+          ...previousRow.filter((comment) => getStoredCommentText(comment).trim() !== submittedText),
+          { ...commentForAttachment, chatId: targetChatId },
+        ];
+      });
+      return {
+        ...prev,
+        [tabId]: {
+          ...content,
+          diffSessionCommentsByChatId: {
+            ...sessions,
+            [targetChatId]: {
+              chatId: targetChatId,
+              messageId: targetScenario?.messageId ?? `chat-${targetChatId}`,
+              title: targetScenario?.title ?? targetChatId,
+              icon: targetListItem?.icon ?? targetScenario?.icon ?? 'claude',
+              comments: nextTargetComments,
+            },
+          },
+          diffActiveCommentChatId: targetChatId,
+          diffCommentsReadOnly: false,
+        },
+      };
+    });
+
+    if (metadata?.submitAction === 'send-to-agent' || metadata?.submitAction === 'send-all-to-agent') {
+      setSelectedAiChatId(targetChatId);
+      setAiChatAutoSendRequest({
+        chatId: targetChatId,
+        nonce: Date.now(),
+        only: metadata.submitAction === 'send-all-to-agent'
+          ? null
+          : { rowId: rowIds[rowIds.length - 1], text: submittedText },
+      });
+    }
+  }, [
+    createEmptyAiChatSession,
+    getAiChatListItemById,
+    getAiChatScenarioById,
+    persistReviewFileComments,
+    selectedAiChatId,
+  ]);
 
   // Bulk review actions keep handled findings as dimmed records. Apply and
   // Dismiss share the same filtering but persist distinct resolution kinds.
@@ -26538,6 +26741,14 @@ export default function App() {
     () => buildReviewDiffFiles(reviewSurfaceFindings, ideTabContents, reviewSurfaceChatId),
     [ideTabContents, reviewSurfaceChatId, reviewSurfaceFindings],
   );
+  const reviewScopeFiles = useMemo(
+    () => buildReviewScopeFiles(
+      reviewDiffFiles,
+      activeReviewRun?.scopeAttachments ?? [],
+      ideTabContents,
+    ),
+    [activeReviewRun?.scopeAttachments, ideTabContents, reviewDiffFiles],
+  );
   const openReviewSplitFileTab = useCallback((tabId, details = null) => {
     if (!tabId) return;
     const rowIds = Array.isArray(details?.rowIds)
@@ -26550,7 +26761,10 @@ export default function App() {
     setReviewSplitActiveTabId(tabId);
   }, []);
   const reviewSplitFiles = reviewSplitFileTabIds
-    .map((tabId) => reviewDiffFiles.find((file) => file.tabId === tabId))
+    .map((tabId) => (
+      reviewScopeFiles.find((file) => file.tabId === tabId)
+      ?? reviewDiffFiles.find((file) => file.tabId === tabId)
+    ))
     .filter(Boolean);
   const activeReviewSplitFile = reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
     ? null
@@ -26567,6 +26781,26 @@ export default function App() {
       return next;
     });
     setReviewSplitActiveTabId((current) => (current === tabId ? REVIEW_DIFF_TAB_ID : current));
+  }, []);
+  const navigateReviewSplitFileTab = useCallback((tabId) => {
+    if (!tabId) return;
+    setReviewSplitFileTabIds((current) => {
+      if (current.includes(tabId)) return current;
+      const activeIndex = current.indexOf(reviewSplitActiveTabId);
+      if (activeIndex < 0) return [...current, tabId];
+      const next = [...current];
+      next[activeIndex] = tabId;
+      return next;
+    });
+    setReviewSplitFileFocusByTabId((current) => ({ ...current, [tabId]: [] }));
+    setReviewSplitActiveTabId(tabId);
+  }, [reviewSplitActiveTabId]);
+  const requestReviewFeedback = useCallback((chatId) => {
+    if (!chatId) return;
+    setReviewFeedbackRequestByChatId((current) => ({
+      ...current,
+      [chatId]: (current[chatId] ?? 0) + 1,
+    }));
   }, []);
   const reviewSplitScenario = reviewSplitChatId ? getAiChatScenarioById(reviewSplitChatId) : null;
   const reviewSplitListItem = reviewSplitChatId ? getAiChatListItemById(reviewSplitChatId) : null;
@@ -31451,9 +31685,10 @@ export default function App() {
                       onCompleteReview={handleCompleteReviewDecision}
                       onCancelReview={cancelReview}
                       onReviseReview={handleReviseReviewDecision}
+                      reviewFeedbackRequestKey={reviewFeedbackRequestByChatId[reviewSplitChatId] ?? 0}
                       reviewFiles={reviewDiffFiles}
                       onReviewFileCommentsChange={(tabId, comments, metadata) => (
-                        persistReviewFileComments(tabId, comments, reviewSplitChatId, metadata)
+                        persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
                       onApplyReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status, reviewSplitChatId)}
                       onDismissReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status, reviewSplitChatId)}
@@ -31471,12 +31706,20 @@ export default function App() {
                     <AiReviewSplitFileView
                       key={activeReviewSplitFile.tabId}
                       file={activeReviewSplitFile}
+                      scopeFiles={reviewScopeFiles}
                       focusRowIds={reviewSplitFileFocusByTabId[activeReviewSplitFile.tabId] ?? []}
                       agentIcon={activeReviewAgentIcon}
                       readOnly={activeReviewReadOnly}
                       severityFilter={reviewSeverityFilter}
+                      activeChatId={reviewSplitChatId}
+                      activeChatTitle={reviewSplitChatLabel}
+                      renderSubmitTargetPicker={(pickerProps) => renderCommentSubmitTargetPicker({
+                        ...pickerProps,
+                        includeDocuments: false,
+                      })}
+                      onNavigateFile={navigateReviewSplitFileTab}
                       onCommentsChange={(tabId, comments, metadata) => (
-                        persistReviewFileComments(tabId, comments, reviewSplitChatId, metadata)
+                        persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
                     />
                   ) : (
@@ -31487,10 +31730,16 @@ export default function App() {
                       lifecycleStatus={activeReviewRun?.status ?? 'open'}
                       readOnly={activeReviewReadOnly}
                       chatTitle={activeTabContent?.reviewChatTitle || ''}
+                      activeChatId={reviewSplitChatId}
+                      renderSubmitTargetPicker={(pickerProps) => renderCommentSubmitTargetPicker({
+                        ...pickerProps,
+                        includeDocuments: false,
+                      })}
                       onOpenChat={() => document.querySelector('.ai-review-editor-split-pane.is-chat textarea')?.focus()}
+                      onSubmitReview={() => requestReviewFeedback(reviewSplitChatId)}
                       onOpenFileTab={openReviewSplitFileTab}
                       onFileCommentsChange={(tabId, comments, metadata) => (
-                        persistReviewFileComments(tabId, comments, reviewSplitChatId, metadata)
+                        persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
                       onApplyFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status, reviewSplitChatId)}
                       onDismissFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status, reviewSplitChatId)}
@@ -31543,9 +31792,10 @@ export default function App() {
                   onCompleteReview={handleCompleteReviewDecision}
                   onCancelReview={cancelReview}
                   onReviseReview={handleReviseReviewDecision}
+                  reviewFeedbackRequestKey={reviewFeedbackRequestByChatId[activeAiChatTabChatId] ?? 0}
                   reviewFiles={reviewDiffFiles}
                   onReviewFileCommentsChange={(tabId, comments, metadata) => (
-                    persistReviewFileComments(tabId, comments, activeAiChatTabChatId, metadata)
+                    persistReviewFileCommentsWithChatAttachment(tabId, comments, activeAiChatTabChatId, metadata)
                   )}
                   onApplyReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status, activeAiChatTabChatId)}
                   onDismissReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status, activeAiChatTabChatId)}
@@ -31583,10 +31833,19 @@ export default function App() {
                 lifecycleStatus={activeReviewRun?.status ?? 'open'}
                 readOnly={activeReviewReadOnly}
                 chatTitle={activeTabContent?.reviewChatTitle || ''}
+                activeChatId={activeTabContent?.reviewChatId || ''}
+                renderSubmitTargetPicker={(pickerProps) => renderCommentSubmitTargetPicker({
+                  ...pickerProps,
+                  includeDocuments: false,
+                })}
                 onOpenChat={activeTabContent?.reviewChatId ? () => openChatInEditorTab(activeTabContent.reviewChatId) : null}
+                onSubmitReview={activeTabContent?.reviewChatId ? () => {
+                  requestReviewFeedback(activeTabContent.reviewChatId);
+                  openChatInEditorTab(activeTabContent.reviewChatId);
+                } : null}
                 onOpenFileTab={activateEditorTabById}
                 onFileCommentsChange={(tabId, comments, metadata) => (
-                  persistReviewFileComments(tabId, comments, activeTabContent?.reviewChatId, metadata)
+                  persistReviewFileCommentsWithChatAttachment(tabId, comments, activeTabContent?.reviewChatId, metadata)
                 )}
                 onApplyFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status, activeTabContent?.reviewChatId)}
                 onDismissFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status, activeTabContent?.reviewChatId)}

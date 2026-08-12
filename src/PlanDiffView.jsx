@@ -758,20 +758,36 @@ function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
   selectedScopeId = 'new',
+  files = null,
+  currentFileIndex = 0,
+  onSelectFile = null,
+  onNavigatePrevious = null,
+  onNavigateNext = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
   const scopeOptions = buildPlanDiffScopeOptions(fileCount, currentFileLabel);
   const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
-  const selectedFileCount = Math.max(1, selectedScope.fileCount);
-  const fileOptions = [
-    { id: 'current', label: currentFileLabel, meta: '1 of 3', selected: true, icon: 'fileTypes/java' },
-    { id: 'release', label: 'ReleaseController.java', meta: '2 of 3', selected: false, icon: 'fileTypes/java' },
-    { id: 'service', label: 'FeatureService.java', meta: '3 of 3', selected: false, icon: 'fileTypes/java' },
-  ].slice(0, selectedFileCount).map((item, index) => ({
-    ...item,
-    meta: `${index + 1} of ${selectedFileCount}`,
-  }));
+  const providedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+  const selectedFileCount = Math.max(1, providedFiles.length || selectedScope.fileCount);
+  const resolvedCurrentFileIndex = Math.max(0, Math.min(selectedFileCount - 1, currentFileIndex));
+  const fileOptions = providedFiles.length > 0
+    ? providedFiles.map((item, index) => ({
+        id: item.id ?? item.tabId ?? `file-${index}`,
+        label: item.label ?? item.name ?? `File ${index + 1}`,
+        meta: `${index + 1} of ${selectedFileCount}`,
+        selected: index === resolvedCurrentFileIndex,
+        icon: item.icon ?? 'fileTypes/java',
+        tabId: item.tabId ?? item.id ?? null,
+      }))
+    : [
+        { id: 'current', label: currentFileLabel, selected: true, icon: 'fileTypes/java' },
+        { id: 'release', label: 'ReleaseController.java', selected: false, icon: 'fileTypes/java' },
+        { id: 'service', label: 'FeatureService.java', selected: false, icon: 'fileTypes/java' },
+      ].slice(0, selectedFileCount).map((item, index) => ({
+        ...item,
+        meta: `${index + 1} of ${selectedFileCount}`,
+      }));
   const closeFiles = () => setFilesRect(null);
 
   return (
@@ -780,6 +796,8 @@ function PlanDiffViewingScopeControl({
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
         className="plan-diff-viewing-file-arrow"
         title="Previous file"
+        disabled={resolvedCurrentFileIndex <= 0}
+        onClick={onNavigatePrevious}
       />
       <span ref={filesRef} className="plan-diff-viewing-files-trigger">
         <button
@@ -790,13 +808,15 @@ function PlanDiffViewingScopeControl({
             setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
           }}
         >
-          {`1 of ${selectedFileCount} files`}
+          {`${resolvedCurrentFileIndex + 1} of ${selectedFileCount} files`}
         </button>
       </span>
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
         className="plan-diff-viewing-file-arrow"
         title="Next file"
+        disabled={resolvedCurrentFileIndex >= selectedFileCount - 1}
+        onClick={onNavigateNext}
       />
       {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
@@ -809,7 +829,10 @@ function PlanDiffViewingScopeControl({
                   icon={item.icon}
                   selected={item.selected}
                   shortcut={item.meta}
-                  onClick={closeFiles}
+                  onClick={() => {
+                    closeFiles();
+                    if (item.tabId) onSelectFile?.(item.tabId);
+                  }}
                 >
                   {item.label}
                 </PopupCell>
@@ -5427,6 +5450,12 @@ export function PlanDiffEditorToolbar({
   onViewModeChange = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
+  scopeId = 'new',
+  scopeFiles = null,
+  currentFileIndex = 0,
+  onSelectFile = null,
+  onNavigatePreviousFile = null,
+  onNavigateNextFile = null,
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
@@ -5438,7 +5467,12 @@ export function PlanDiffEditorToolbar({
           <PlanDiffViewingScopeControl
             fileCount={fileCount}
             currentFileLabel={fileLabel}
-            selectedScopeId="new"
+            selectedScopeId={scopeId}
+            files={scopeFiles}
+            currentFileIndex={currentFileIndex}
+            onSelectFile={onSelectFile}
+            onNavigatePrevious={onNavigatePreviousFile}
+            onNavigateNext={onNavigateNextFile}
           />
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">

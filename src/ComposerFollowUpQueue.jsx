@@ -349,7 +349,7 @@ export function ComposerFollowUpQueue({
         collapsed ? 'ij-air-follow-up-queue--collapsed' : '',
         revealSendNowOnHover ? 'ij-air-follow-up-queue--reveal-send-on-hover' : '',
       ].filter(Boolean).join(' ')}
-      aria-label="Follow-up queue"
+      aria-label="AI Review"
       onClick={handleQueueToggle}
     >
       <header
@@ -357,11 +357,11 @@ export function ComposerFollowUpQueue({
         role="button"
         tabIndex={0}
         aria-expanded={!collapsed}
-        aria-label={collapsed ? 'Expand queue' : 'Collapse queue'}
+        aria-label={collapsed ? 'Expand AI Review' : 'Collapse AI Review'}
         onKeyDown={handleHeaderKeyDown}
       >
         <span className="ij-air-follow-up-queue__tab">
-          <span className="ij-air-follow-up-queue__title">Queue</span>
+          <span className="ij-air-follow-up-queue__title">AI Review</span>
           <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
         </span>
         <span

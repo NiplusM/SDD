@@ -13979,6 +13979,15 @@ button.aiux543-answer-change-card:focus-visible {
   z-index: 41;
 }
 
+/* Attachment previews extend upward over the review cards. Lift the whole
+   sticky composer stack while a chip is hovered; lifting only the composer
+   leaves the preview trapped behind the scrollable conversation sibling. */
+.aiux543-composer-sticky:has(.ai-chat-attachment-chip:hover),
+.aiux543-composer-sticky:has(.ai-chat-attachment-chip:focus-within) {
+  position: relative;
+  z-index: 1000;
+}
+
 .aiux543-new-session-agent-trigger {
   all: unset;
   display: inline-flex;
@@ -20628,6 +20637,47 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux-review-split-file-body > .plan-diff-overlay {
   position: absolute;
   inset: 0;
+}
+
+/* A review note is editor content, so it uses the full code column instead of
+   the generic inline popup's compact 54% width. The library buttons keep their
+   intrinsic size and wrap as a group only when the pane is genuinely narrow. */
+.aiux-review-split-file-view .plan-diff-inline-comment {
+  width: 100%;
+  gap: 4px;
+  padding: 6px 10px 8px;
+  box-sizing: border-box;
+}
+
+.aiux-review-split-file-view .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
+  --spec-done-comment-popup-inline-padding: 10px;
+  width: min(640px, 100%);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.aiux-review-split-file-view .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups,
+.aiux550-review-summary-message .plan-diff-aside-comment .spec-done-comment-popup-groups {
+  padding-top: 6px;
+  padding-bottom: 4px;
+}
+
+.aiux-review-split-file-view .spec-done-comment-agent-reply-thread,
+.aiux550-review-summary-message .plan-diff-aside-comment .spec-done-comment-agent-reply-thread {
+  gap: 4px;
+}
+
+.aiux-review-split-file-view .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored,
+.aiux550-review-summary-message .plan-diff-aside-comment .spec-done-comment-popup-item.is-agent-authored {
+  padding-bottom: 2px;
+}
+
+.aiux-review-split-file-view .spec-done-comment-popup-actions {
+  flex-wrap: wrap;
+}
+
+.aiux-review-split-file-view .spec-done-comment-popup-actions > * {
+  flex: 0 0 auto;
 }
 
 .aiux-review-overview-controls-separator.toolbar-separator {
