@@ -626,6 +626,24 @@ async function runCommitLifecycleScenario(page) {
   await assertUpdatedReplyThread(page, updatedPreview.card, repliedFinding);
   await capture(page, 'commit-review-preview-updated');
 
+  const feedbackMessage = page.locator('.ai-chat-user-card').filter({
+    hasText: 'Submitted review feedback.',
+  }).last();
+  const feedbackDiff = feedbackMessage.locator('.ai-chat-sent-attachment-chip').first();
+  await visible(feedbackDiff);
+  await feedbackDiff.click();
+  const reopenedReviewSplit = page.getByTestId('ai-review-editor-split');
+  await visible(reopenedReviewSplit);
+  const reopenedFullReviewPane = reopenedReviewSplit.getByRole('region', { name: 'Full Review pane' });
+  await visible(reopenedFullReviewPane.locator('.aiux-review-split-file-view'));
+  assert(
+    await reopenedFullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() >= 2,
+    'Opening a review diff attachment replaced the chat instead of opening in split view',
+  );
+  await reopenedFullReviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
+  await reopenedFullReviewPane.locator('.tab-close').first().click();
+  await latestPreview(page, 'Updated');
+
   await confirmReviewDecision(page, 'Complete Review');
   await assertCompletedReadOnly(page);
   await capture(page, 'commit-review-completed-read-only');

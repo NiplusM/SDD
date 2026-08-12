@@ -22506,7 +22506,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -22567,13 +22567,15 @@ export default function App() {
       sourceTabId,
     };
 
-    setIdeTabs(existingDiffTabIndex >= 0
-      ? ideTabs.map((tab, index) => (index === existingDiffTabIndex ? diffTab : tab))
-      : [
-          ...ideTabs.slice(0, insertIndex),
-          diffTab,
-          ...ideTabs.slice(insertIndex),
-        ]);
+    if (registerEditorTab) {
+      setIdeTabs(existingDiffTabIndex >= 0
+        ? ideTabs.map((tab, index) => (index === existingDiffTabIndex ? diffTab : tab))
+        : [
+            ...ideTabs.slice(0, insertIndex),
+            diffTab,
+            ...ideTabs.slice(insertIndex),
+          ]);
+    }
     setIdeTabContents((prev) => {
       const existingDiffTabContent = prev[diffTabId] ?? {};
       const previousSessionComments = normalizeDiffSessionCommentsByChatId(existingDiffTabContent.diffSessionCommentsByChatId);
@@ -22644,7 +22646,8 @@ export default function App() {
       }
     }
     setScreen('ide');
-    setActiveEditorTab(nextActiveTabIndex);
+    if (activateTab) setActiveEditorTab(nextActiveTabIndex);
+    return diffTabId;
   }, [
     activeEditorTab,
     activeEditorTabId,
@@ -26958,12 +26961,44 @@ export default function App() {
     setReviewSplitFileFocusByTabId((current) => ({ ...current, [tabId]: rowIds }));
     setReviewSplitActiveTabId(tabId);
   }, []);
+  const buildAdHocReviewSplitFile = useCallback((tabId) => {
+    const content = ideTabContents[tabId];
+    const baseDiffData = content?.diffData ?? content?.plainFileData ?? null;
+    if (!baseDiffData) return null;
+    const tab = ideTabs.find((candidate) => candidate.id === tabId) ?? null;
+    const sessions = normalizeDiffSessionCommentsByChatId(content?.diffSessionCommentsByChatId);
+    const comments = normalizeStoredDiffCommentsState(
+      sessions[reviewSplitChatId]?.comments ?? content?.initialDiffComments,
+    );
+    const sourceLabel = baseDiffData.sourceTabLabel
+      ?? tab?.label
+      ?? content?.diffLineText
+      ?? 'Diff';
+    return {
+      tabId,
+      name: String(sourceLabel).replace(/^diff\s+/iu, '').trim() || 'Diff',
+      isDiff: Boolean(content?.diffData),
+      isPlain: !content?.diffData,
+      icon: content?.diffData ? DIFF_TAB_ICON_NAME : agentRunFileIconName(sourceLabel),
+      diffData: { ...baseDiffData, focusRowId: null },
+      fullDiffData: { ...baseDiffData, focusRowId: null },
+      comments,
+      commentsReadOnly: Boolean(content?.diffCommentsReadOnly),
+    };
+  }, [ideTabContents, ideTabs, reviewSplitChatId]);
   const reviewSplitFiles = reviewSplitFileTabIds
     .map((tabId) => (
       reviewScopeFiles.find((file) => file.tabId === tabId)
       ?? reviewDiffFiles.find((file) => file.tabId === tabId)
+      ?? buildAdHocReviewSplitFile(tabId)
     ))
     .filter(Boolean);
+  const reviewSplitScopeFiles = [
+    ...reviewScopeFiles,
+    ...reviewSplitFiles.filter((file) => (
+      !reviewScopeFiles.some((scopeFile) => scopeFile.tabId === file.tabId)
+    )),
+  ];
   const activeReviewSplitFile = reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
     ? null
     : reviewSplitFiles.find((file) => file.tabId === reviewSplitActiveTabId) ?? null;
@@ -26993,6 +27028,40 @@ export default function App() {
     setReviewSplitFileFocusByTabId((current) => ({ ...current, [tabId]: [] }));
     setReviewSplitActiveTabId(tabId);
   }, [reviewSplitActiveTabId]);
+  const openPlanDiffInReviewSplit = useCallback((diffRequest, chatId = null) => {
+    if (!diffRequest) return null;
+    const targetChatId = chatId ?? reviewSplitChatId ?? selectedAiChatId;
+    if (!targetChatId || agentRunByChatId[targetChatId]?.kind !== 'review') {
+      return openPlanDiffTab(diffRequest);
+    }
+    if (reviewSplitChatId !== targetChatId || !isReviewDiffTab) {
+      openReviewDiffTab(targetChatId);
+    }
+    const diffTabId = openPlanDiffTab({
+      ...diffRequest,
+      contextChatId: diffRequest.contextChatId ?? targetChatId,
+      registerEditorTab: false,
+      activateTab: false,
+    });
+    if (!diffTabId) return null;
+    const activeRowId = diffRequest.navigation?.activeRowId ?? null;
+    setReviewSplitFileTabIds((current) => (
+      current.includes(diffTabId) ? current : [...current, diffTabId]
+    ));
+    setReviewSplitFileFocusByTabId((current) => ({
+      ...current,
+      [diffTabId]: activeRowId ? [activeRowId] : [],
+    }));
+    setReviewSplitActiveTabId(diffTabId);
+    return diffTabId;
+  }, [
+    agentRunByChatId,
+    isReviewDiffTab,
+    openPlanDiffTab,
+    openReviewDiffTab,
+    reviewSplitChatId,
+    selectedAiChatId,
+  ]);
   const requestReviewFeedback = useCallback((chatId) => {
     if (!chatId) return;
     setReviewFeedbackRequestByChatId((current) => ({
@@ -31541,15 +31610,15 @@ export default function App() {
     const diffRequest = attachment.diffRequest ?? null;
     if (!diffRequest) return;
 
-    openPlanDiffTab({
+    openPlanDiffInReviewSplit({
       ...diffRequest,
       initialDiffCommentsOverride: attachment.diffComments ?? {},
       commentsReadOnly: archived,
       contextMessageId: messageId,
       contextChatId,
       navigation: scrollRowId ? { activeRowId: scrollRowId } : null,
-    });
-  }, [handleOpenPlainFileArchive, handleOpenSddDocument, ideTabs, openChatInEditorTab, openEditorTabByLabel, openPlanDiffTab, selectedAiChatId]);
+    }, contextChatId);
+  }, [handleOpenPlainFileArchive, handleOpenSddDocument, ideTabs, openChatInEditorTab, openEditorTabByLabel, openPlanDiffInReviewSplit, selectedAiChatId]);
 
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
@@ -32048,7 +32117,7 @@ export default function App() {
                       fallbackTitle={reviewSplitChatLabel}
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
-                      onOpenDiffTab={openPlanDiffTab}
+                      onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, reviewSplitChatId)}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -32086,10 +32155,10 @@ export default function App() {
                     <AiReviewSplitFileView
                       key={activeReviewSplitFile.tabId}
                       file={activeReviewSplitFile}
-                      scopeFiles={reviewScopeFiles}
+                      scopeFiles={reviewSplitScopeFiles}
                       focusRowIds={reviewSplitFileFocusByTabId[activeReviewSplitFile.tabId] ?? []}
                       agentIcon={activeReviewAgentIcon}
-                      readOnly={activeReviewReadOnly}
+                      readOnly={activeReviewReadOnly || Boolean(activeReviewSplitFile.commentsReadOnly)}
                       severityFilter={reviewSeverityFilter}
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
@@ -32156,7 +32225,7 @@ export default function App() {
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
-                  onOpenDiffTab={openPlanDiffTab}
+                  onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, activeAiChatTabChatId)}
                   onOpenAttachment={handleOpenChatAttachment}
                   composerDiffAttachments={aiChatComposerDiffAttachments}
                   onRemoveComposerAttachment={handleRemoveComposerAttachment}
