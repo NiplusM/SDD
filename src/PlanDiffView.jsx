@@ -1913,6 +1913,13 @@ export function DiffInlineCommentPopup({
       || processingAgentReplies[draftKey]
     ) return;
     closeAgentReplyComposer(draftKey);
+    // Review quick fixes are local decisions, not a separate agent run. Apply
+    // them in place so the existing card only changes status and never briefly
+    // collapses/reflows around a loader.
+    if (resolveKeepsComment && kind === 'quickfix') {
+      handleAgentQuickFix(comment, fallbackIndex, context);
+      return;
+    }
     setProcessingAgentReplies((prev) => ({ ...prev, [draftKey]: true }));
     window.setTimeout(() => {
       if (kind === 'quickfix') handleAgentQuickFix(comment, fallbackIndex, context);
@@ -1973,7 +1980,13 @@ export function DiffInlineCommentPopup({
   );
 
   const getAgentCommentActions = (comment, fallbackIndex = 0, context = null, source = 'diff') => {
-    if (commentsReadOnly || comment?.reviewReadOnly || comment?.pending || isReviewFindingDecided(comment)) {
+    if (
+      commentsReadOnly
+      || comment?.reviewReadOnly
+      || comment?.pending
+      || (resolveKeepsComment && getReviewFindingStatus(comment) !== 'open')
+      || isReviewFindingDecided(comment)
+    ) {
       return getReturnToContextActions(context);
     }
     const draftKey = getAgentReplyDraftKey(comment, fallbackIndex);
@@ -2024,16 +2037,38 @@ export function DiffInlineCommentPopup({
   // second visual indentation level.
   const hasAgentResolutionThread = (comment) => Boolean(comment && typeof comment === 'object' && comment.resolution);
 
+  const renderStandaloneAgentFollowUp = (comment) => {
+    const reply = typeof comment?.agentFollowUpReply === 'string'
+      ? comment.agentFollowUpReply.trim()
+      : '';
+    if (!reply || hasAgentResolutionThread(comment)) return null;
+    return (
+      <div className="spec-done-comment-agent-follow-up-reply">
+        <div className="spec-done-comment-agent-reply-head">
+          <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
+            <AiChatAgentIcon icon={commentContextIcon} />
+          </span>
+          <span className="spec-done-comment-agent-reply-name">{commentAgentLabel}</span>
+        </div>
+        <p className="spec-done-comment-agent-reply-text">{reply}</p>
+      </div>
+    );
+  };
+
   const renderAgentResolution = (comment, fallbackIndex = 0, context = null, options = {}) => {
     const resolution = comment && typeof comment === 'object' ? comment.resolution : null;
     if (!resolution) return null;
     const draftKey = getAgentReplyDraftKey(comment, fallbackIndex);
     const draftValue = agentReplyDrafts[draftKey] ?? '';
     const userReply = typeof comment.userReply === 'string' ? comment.userReply.trim() : '';
+    const agentFollowUpReply = typeof comment.agentFollowUpReply === 'string'
+      ? comment.agentFollowUpReply.trim()
+      : '';
     const canReplyToAgent = allowAgentReplies
       && !commentsReadOnly
       && !comment?.reviewReadOnly
       && !comment?.pending
+      && (!showCommentSeverity || getReviewFindingStatus(comment) === 'open')
       && !isReviewFindingDecided(comment)
       && typeof onReplyToAgent === 'function';
     const isComposerOpen = Boolean(openAgentReplyComposers[draftKey]);
@@ -2101,6 +2136,17 @@ export function DiffInlineCommentPopup({
                 <span className="spec-done-comment-agent-user-reply-name">You</span>
               </div>
               <p className="spec-done-comment-agent-user-reply-text">{userReply}</p>
+            </div>
+          )}
+          {agentFollowUpReply.length > 0 && (
+            <div className="spec-done-comment-agent-follow-up-reply">
+              <div className="spec-done-comment-agent-reply-head">
+                <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
+                  <AiChatAgentIcon icon={commentContextIcon} />
+                </span>
+                <span className="spec-done-comment-agent-reply-name">{commentAgentLabel}</span>
+              </div>
+              <p className="spec-done-comment-agent-reply-text">{agentFollowUpReply}</p>
             </div>
           )}
         </div>
@@ -2294,6 +2340,7 @@ export function DiffInlineCommentPopup({
                             showPendingLoader: shouldUseThreadLoaderSlot,
                             showProcessingInReply: !showGroupHeader,
                           })}
+                          {renderStandaloneAgentFollowUp(commentEntry)}
                         </div>
                         {!showGroupHeader && renderMoreButton(actions)}
                       </div>
@@ -2346,6 +2393,7 @@ export function DiffInlineCommentPopup({
                     showPendingLoader: shouldUseThreadLoaderSlot,
                     showProcessingInReply: !showUngroupedHeader,
                   })}
+                  {renderStandaloneAgentFollowUp(comment)}
                 </div>
                 {!showUngroupedHeader && renderMoreButton(actions)}
               </div>
@@ -4474,7 +4522,7 @@ export function PlanDiffOverlay({
               text: getCommentEntryText(comment),
               userReply,
               agentFollowUpReply: '',
-              reviewStatus: 'open',
+              reviewStatus: 'pending-update',
               pending: false,
             });
             const handleAgentReplyToRowComment = (commentIndex, userReply, source = 'diff', context = null) => {
@@ -5106,6 +5154,9 @@ export function PlanDiffOverlay({
 	                    const actionKey = `${row.id}:${source}:${context.chatId || 'local'}:${localIndex}`;
 	                    const changeLabel = typeof comment?.fixLabel === 'string' ? comment.fixLabel.trim() : '';
 	                    const userReply = typeof comment?.userReply === 'string' ? comment.userReply.trim() : '';
+	                    const agentFollowUpReply = typeof comment?.agentFollowUpReply === 'string'
+	                      ? comment.agentFollowUpReply.trim()
+	                      : '';
 	                    const isAgentAuthored = comment?.author === 'agent';
 	                    const isReplyComposerOpen = asideReplyComposerKey === actionKey;
 	                    const replyDraft = asideReplyDrafts[actionKey] ?? '';
@@ -5138,6 +5189,10 @@ export function PlanDiffOverlay({
 	                    const runAsideAction = (kind) => {
 	                      if (commentsReadOnly || comment?.reviewReadOnly || isProcessing) return;
 	                      setAsideReplyComposerKey(null);
+	                      if (resolveKeepsComment && kind === 'quickfix') {
+	                        handleAgentQuickFixRowComment(localIndex, source, context);
+	                        return;
+	                      }
 	                      setAsideProcessingCommentKey(actionKey);
 	                      onReviewProcessingChange?.(true);
 	                      window.setTimeout(() => {
@@ -5204,7 +5259,7 @@ export function PlanDiffOverlay({
 	                                              icon: 'general/locate',
 	                                              onSelect: navigateToRow,
 	                                            },
-	                                            ...(!commentsReadOnly && !resolved && !comment?.reviewReadOnly && !isProcessing ? [
+	                                            ...(!commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && !isProcessing ? [
 	                                              {
 	                                                label: changeLabel || 'Apply fix',
 	                                                icon: 'codeInsight/quickfixBulb',
@@ -5230,17 +5285,6 @@ export function PlanDiffOverlay({
 	                                        />
 	                                      </div>
 	                                      <span className="spec-done-comment-agent-reply-text plan-diff-aside-comment-text">{displayText}</span>
-	                                      {allowCommentReplies && userReply.length > 0 && (
-	                                        <div className="spec-done-comment-agent-user-reply">
-	                                          <div className="spec-done-comment-agent-user-reply-head">
-	                                            <span className="spec-done-comment-agent-user-reply-icon" aria-hidden="true">
-	                                              <Icon name="general/user" size={16} />
-	                                            </span>
-	                                            <span className="spec-done-comment-agent-user-reply-name">You</span>
-	                                          </div>
-	                                          <p className="spec-done-comment-agent-user-reply-text">{userReply}</p>
-	                                        </div>
-	                                      )}
 	                                      {showCommentSourceContext && (fileLabel || lineLabel || codeContextRows.length > 0) && (
 	                                        <div
 	                                          className="plan-diff-aside-comment-source"
@@ -5270,7 +5314,29 @@ export function PlanDiffOverlay({
 	                                          </TreeNode>
 	                                        </div>
 	                                      )}
-	                                      {!commentsReadOnly && !resolved && !comment?.reviewReadOnly && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
+	                                      {allowCommentReplies && userReply.length > 0 && (
+	                                        <div className="spec-done-comment-agent-user-reply">
+	                                          <div className="spec-done-comment-agent-user-reply-head">
+	                                            <span className="spec-done-comment-agent-user-reply-icon" aria-hidden="true">
+	                                              <Icon name="general/user" size={16} />
+	                                            </span>
+	                                            <span className="spec-done-comment-agent-user-reply-name">You</span>
+	                                          </div>
+	                                          <p className="spec-done-comment-agent-user-reply-text">{userReply}</p>
+	                                        </div>
+	                                      )}
+	                                      {agentFollowUpReply.length > 0 && (
+	                                        <div className="spec-done-comment-agent-follow-up-reply">
+	                                          <div className="spec-done-comment-agent-reply-head">
+	                                            <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
+	                                              <AiChatAgentIcon icon={commentContextIcon} />
+	                                            </span>
+	                                            <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
+	                                          </div>
+	                                          <p className="spec-done-comment-agent-reply-text">{agentFollowUpReply}</p>
+	                                        </div>
+	                                      )}
+	                                      {!commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && isAgentAuthored && !isProcessing && !isReplyComposerOpen && (
 	                                        <div className="spec-done-comment-agent-reply-actions plan-diff-aside-comment-actions">
 	                                          <button
 	                                            type="button"
@@ -5296,7 +5362,7 @@ export function PlanDiffOverlay({
 	                                          )}
 	                                        </div>
 	                                      )}
-	                                      {allowCommentReplies && !commentsReadOnly && !resolved && !comment?.reviewReadOnly && isAgentAuthored && isReplyComposerOpen && (
+	                                      {allowCommentReplies && !commentsReadOnly && findingStatus === 'open' && !resolved && !comment?.reviewReadOnly && isAgentAuthored && isReplyComposerOpen && (
 	                                        <div
 	                                          className="spec-done-comment-agent-reply-compose plan-diff-aside-comment-reply"
 	                                          onClick={(event) => event.stopPropagation()}

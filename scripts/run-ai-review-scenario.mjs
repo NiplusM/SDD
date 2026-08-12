@@ -397,29 +397,51 @@ async function exercisePreviewFindingReplyAndDecision(page, previewCard) {
   await visible(finding);
 
   await finding.getByRole('button', { name: 'Reply', exact: true }).click();
-  const reply = 'Keep this finding open; verify the provider lifecycle in the next iteration.';
+  const reply = 'Can you confirm whether the provider lifecycle is safe in the next iteration?';
   const replyComposer = finding.locator('.spec-done-comment-agent-reply-compose');
   const replyInput = replyComposer.locator('textarea');
   await visible(replyInput);
   await replyInput.fill(reply);
   await replyComposer.getByRole('button', { name: 'Send', exact: true }).click();
   await visible(finding.getByText(reply, { exact: true }));
-
-  // The reply is feedback, not a decision. It must remain Open after the local
-  // processing delay and must never be converted into a Deleted tombstone.
-  await page.waitForTimeout(1700);
+  await visible(finding.getByText('Pending update', { exact: true }));
   assert(
-    await finding.getByText('Deleted', { exact: true }).count() === 0,
-    'Replying in Review Preview incorrectly deleted the finding',
+    await finding.getByText('Looked into this', { exact: false }).count() === 0,
+    'The agent replied before Submit Review started a new iteration',
   );
 
-  const acceptFix = finding.getByRole('button', {
-    name: /^(?:Apply change: )?Extract a provider$/,
+  const acceptedFindingText = 'scheduleId is used before a null/range check';
+  const acceptedFinding = previewCard.locator('.spec-done-comment-agent-reply').filter({
+    hasText: acceptedFindingText,
+  }).first();
+  await visible(acceptedFinding);
+  const before = await acceptedFinding.boundingBox();
+  const acceptFix = acceptedFinding.getByRole('button', {
+    name: /^(?:Apply change: )?Add null check$/,
   });
   await visible(acceptFix);
   await acceptFix.click();
-  await visible(finding.getByText('Accepted', { exact: true }), 8000);
+  await visible(acceptedFinding.getByText('Accepted', { exact: true }), 8000);
+  const after = await acceptedFinding.boundingBox();
+  assert(
+    before && after && Math.abs(before.y - after.y) <= 2,
+    'Applying a quick fix moved the finding card instead of updating it in place',
+  );
   process.stdout.write('Exercised Preview reply and Accepted finding state.\n');
+  return { findingText, reply };
+}
+
+async function assertUpdatedReplyThread(page, previewCard, { findingText, reply }) {
+  const showMore = previewCard.getByRole('button', { name: 'Show more', exact: true });
+  if (await showMore.isVisible().catch(() => false)) await showMore.click();
+  const finding = previewCard.locator('.spec-done-comment-agent-reply').filter({ hasText: findingText }).first();
+  await visible(finding);
+  await visible(finding.getByText(reply, { exact: true }));
+  await visible(finding.getByText('Looked into this', { exact: false }));
+  assert(
+    await finding.getByText('Pending update', { exact: true }).count() === 0,
+    'The answered finding stayed Pending update after the iteration completed',
+  );
 }
 
 async function assertCompletedReadOnly(page) {
@@ -546,7 +568,8 @@ async function runCommitLifecycleScenario(page) {
   await addAiNote.click();
   const reviewNoteInput = splitFileView.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await visible(reviewNoteInput);
-  await reviewNoteInput.fill('Keep this review note attached to the selected chat.');
+  const reviewQuestion = 'Can you confirm this review note stays attached to the selected chat?';
+  await reviewNoteInput.fill(reviewQuestion);
   await capture(page, 'commit-review-comment-compose');
   const reviewNoteTarget = splitFileView.getByRole('button', {
     name: /^Choose AI Note attachment target:/,
@@ -564,7 +587,7 @@ async function runCommitLifecycleScenario(page) {
     await chatsList.locator('.ai-chat-list-document-row').count() === 0,
     'The Full Review note target picker incorrectly lists Agent MD files',
   );
-  const selectedChatTarget = chatsList.locator('.ai-chat-list-row.is-selected').first();
+  const selectedChatTarget = chatsList.locator('.ai-chat-list-row').filter({ hasText: /AI Review/u }).first();
   await visible(selectedChatTarget);
   const selectedChatTitle = (await selectedChatTarget.locator('.ai-chat-list-title').textContent())?.trim();
   await selectedChatTarget.click();
@@ -575,12 +598,16 @@ async function runCommitLifecycleScenario(page) {
   await splitFileView.locator('[data-demo-id="diff-comment-submit"]:visible').first().click();
   await reviewNoteInput.waitFor({ state: 'hidden' });
   const savedReviewNote = splitFileView.locator('.cmp-popup.spec-done-comment-popup').filter({
-    hasText: 'Keep this review note attached to the selected chat.',
+    hasText: reviewQuestion,
   }).first();
   await visible(savedReviewNote);
   assert(
     await savedReviewNote.locator('.spec-done-comment-popup-context-header.is-active-session').count() === 1,
     'A note attached to the active chat is rendered as a muted session',
+  );
+  assert(
+    await savedReviewNote.getByText('Pending update', { exact: true }).count() === 0,
+    'A user-authored review comment renders an extra Pending update badge',
   );
   await capture(page, 'commit-review-file-tab-split');
   await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
@@ -588,19 +615,23 @@ async function runCommitLifecycleScenario(page) {
   await fullReviewPane.locator('.tab-close').first().click();
 
   const reopenedPreview = await latestPreview(page, 'Open');
-  await exercisePreviewFindingReplyAndDecision(page, reopenedPreview.card);
+  const repliedFinding = await exercisePreviewFindingReplyAndDecision(page, reopenedPreview.card);
   await capture(page, 'commit-review-preview-replied-and-accepted');
 
-  await confirmReviewDecision(page, 'Submit Review');
+  const reviewDecision = await activeReviewDecision(page);
+  await reviewDecision.getByRole('radio', { name: 'Submit Review', exact: true }).click();
   const reviewComposer = await activeChatComposer(page);
-  const feedback = reviewComposer.getByRole('textbox', { name: 'Task prompt', exact: true });
-  await feedback.fill('Re-check the accepted lifecycle fix and keep the configured two-file scope.');
+  await visible(reviewComposer.getByRole('textbox', { name: 'Task prompt', exact: true }));
   const submitReview = reviewComposer.getByRole('button', { name: 'Submit Review', exact: true });
-  assert(await submitReview.isEnabled(), 'Submit Review stayed disabled after feedback was entered');
+  assert(
+    await submitReview.isEnabled(),
+    'Preview Submit Review stayed disabled after a reply and quick-fix decision',
+  );
   await submitReview.click();
 
   await assertProcessingComposer(page, 2);
   const updatedPreview = await latestPreview(page, 'Updated');
+  await assertUpdatedReplyThread(page, updatedPreview.card, repliedFinding);
   await capture(page, 'commit-review-preview-updated');
 
   await confirmReviewDecision(page, 'Complete Review');
@@ -729,7 +760,28 @@ async function runStoppedReviewSmoke(page) {
     name: 'Submit Review',
     exact: true,
   }));
-  await feedbackInput.press('Escape');
+  const splitSubmitReview = page.getByRole('region', { name: 'Review chat pane' }).getByRole('button', {
+    name: 'Submit Review',
+    exact: true,
+  });
+  assert(
+    await splitSubmitReview.isEnabled(),
+    'Full View did not allow submitting the accepted fix as review feedback',
+  );
+  await splitSubmitReview.click();
+  const splitReviewQueue = page
+    .getByRole('region', { name: 'Review chat pane' })
+    .getByRole('region', { name: 'AI Review' });
+  await visible(splitReviewQueue, 15000);
+  await visible(splitReviewQueue.getByText('AI Review', { exact: true }));
+  await visible(
+    page
+      .getByRole('region', { name: 'Review chat pane' })
+      .locator('.aiux550-review-summary-status')
+      .filter({ hasText: 'Updated' })
+      .last(),
+    15000,
+  );
   await fullReview.getByRole('button', { name: 'Cancel Review', exact: true }).click();
 
   const reviewChatTab = page.locator('.main-window-editor-tabs .tab').filter({
