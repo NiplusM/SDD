@@ -620,16 +620,8 @@ async function runCommitLifecycleScenario(page) {
 
   const reviewDecision = await activeReviewDecision(page);
   await reviewDecision.getByRole('radio', { name: 'Submit Review', exact: true }).click();
-  const reviewComposer = await activeChatComposer(page);
-  await visible(reviewComposer.getByRole('textbox', { name: 'Task prompt', exact: true }));
-  const submitReview = reviewComposer.getByRole('button', { name: 'Submit Review', exact: true });
-  assert(
-    await submitReview.isEnabled(),
-    'Preview Submit Review stayed disabled after a reply and quick-fix decision',
-  );
-  await submitReview.click();
-
   await assertProcessingComposer(page, 2);
+  await visible(page.getByText(repliedFinding.reply, { exact: true }).last());
   const updatedPreview = await latestPreview(page, 'Updated');
   await assertUpdatedReplyThread(page, updatedPreview.card, repliedFinding);
   await capture(page, 'commit-review-preview-updated');
@@ -752,27 +744,16 @@ async function runStoppedReviewSmoke(page) {
   await reviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
   await visible(fullReview);
   await fullReview.getByRole('button', { name: 'Submit Review', exact: true }).click();
-  const feedbackInput = page
-    .getByRole('region', { name: 'Review chat pane' })
-    .getByPlaceholder('Add feedback for the next review iteration', { exact: true });
-  await visible(feedbackInput);
-  await visible(page.getByRole('region', { name: 'Review chat pane' }).getByRole('button', {
-    name: 'Submit Review',
-    exact: true,
-  }));
-  const splitSubmitReview = page.getByRole('region', { name: 'Review chat pane' }).getByRole('button', {
-    name: 'Submit Review',
-    exact: true,
-  });
-  assert(
-    await splitSubmitReview.isEnabled(),
-    'Full View did not allow submitting the accepted fix as review feedback',
-  );
-  await splitSubmitReview.click();
   const splitReviewQueue = page
     .getByRole('region', { name: 'Review chat pane' })
     .getByRole('region', { name: 'AI Review' });
   await visible(splitReviewQueue, 15000);
+  await visible(
+    page
+      .getByRole('region', { name: 'Review chat pane' })
+      .getByText('Submitted review feedback.', { exact: true })
+      .last(),
+  );
   await visible(splitReviewQueue.getByText('AI Review', { exact: true }));
   await visible(
     page

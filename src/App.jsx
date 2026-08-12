@@ -18639,6 +18639,7 @@ function AiChatTabView({
   onCancelReview = null,
   onReviseReview = null,
   reviewFeedbackRequestKey = 0,
+  onReviewFeedbackRequestHandled = null,
   reviewFiles = [],
   onReviewFileCommentsChange = null,
   onApplyReviewFile = null,
@@ -18816,19 +18817,6 @@ function AiChatTabView({
   }, []);
 
   useEffect(() => {
-    if (
-      !reviewFeedbackRequestKey
-      || reviewFeedbackRequestKey === handledReviewFeedbackRequestRef.current
-      || !readyReviewMessage
-      || isReviewFinal
-    ) return;
-    handledReviewFeedbackRequestRef.current = reviewFeedbackRequestKey;
-    setReviewFeedbackMessageId(readyReviewMessage.id);
-    setResolvedReviewDecisionId(readyReviewMessage.id);
-    focusComposerAtEnd();
-  }, [focusComposerAtEnd, isReviewFinal, readyReviewMessage, reviewFeedbackRequestKey]);
-
-  useEffect(() => {
     const savedDraft = composerDraftRef.current;
     setComposerText(typeof savedDraft?.text === 'string' ? savedDraft.text : initialComposerText);
     setComposerContentParts(Array.isArray(savedDraft?.contentParts) ? savedDraft.contentParts : []);
@@ -18979,6 +18967,30 @@ function AiChatTabView({
     || (Array.isArray(reviewFiles) && reviewFiles.some((file) => (
       Object.values(normalizeStoredDiffCommentsState(file?.comments)).flat().length > 0
     )));
+  const hasReviewFeedbackBatch = (Array.isArray(reviewFiles) ? reviewFiles : []).some((file) => (
+    Object.values(normalizeStoredDiffCommentsState(file?.comments)).flat().some((comment) => {
+      const status = getReviewFindingStatus(comment);
+      return status !== 'open'
+        || Boolean(comment?.isReviewFeedback)
+        || comment?.author === 'user'
+        || (typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0);
+    })
+  )) || (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : []).some((attachment) => (
+    Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+  ));
+  const reviewFeedbackMessage = Array.from(new Set(
+    (Array.isArray(reviewFiles) ? reviewFiles : []).flatMap((file) => (
+      Object.values(normalizeStoredDiffCommentsState(file?.comments)).flatMap((comment) => {
+        const userReply = typeof comment?.userReply === 'string' ? comment.userReply.trim() : '';
+        if (userReply) return [userReply];
+        if (comment?.author === 'user' || comment?.isReviewFeedback) {
+          const commentText = getStoredCommentText(comment).trim();
+          return commentText ? [commentText] : [];
+        }
+        return [];
+      })
+    )),
+  )).join('\n') || 'Submitted review feedback.';
   const canSend = composerText.trim().length > 0
     || committedComposerText.length > 0
     || hasComposerCommentAttachment
@@ -19055,6 +19067,22 @@ function AiChatTabView({
     getAiChatAttachmentSequenceKey(attachment, index),
     attachment,
   ]));
+  const sendReviewFeedback = (messageText = '', contentParts = []) => {
+    if (!readyReviewMessage || isReviewFinal) return;
+    const submittedMessageText = String(messageText || '').trim() || reviewFeedbackMessage;
+    setResolvedReviewDecisionId(readyReviewMessage.id);
+    setReviewFeedbackMessageId(null);
+    if (onReviseReview) {
+      onReviseReview(chatId, submittedMessageText, composerDiffAttachments);
+    } else {
+      onSendMessage?.(chatId, submittedMessageText, composerDiffAttachments, {
+        contentParts,
+        forceReview: true,
+      });
+    }
+    setComposerText('');
+    setComposerContentParts([]);
+  };
   const handleSend = () => {
     if (!canSend) return;
     const contentParts = [
@@ -19081,18 +19109,7 @@ function AiChatTabView({
       return;
     }
     if (isReviewFeedbackMode) {
-      setResolvedReviewDecisionId(readyReviewMessage.id);
-      setReviewFeedbackMessageId(null);
-      if (onReviseReview) {
-        onReviseReview(chatId, messageText, composerDiffAttachments);
-      } else {
-        onSendMessage?.(chatId, messageText || 'Review again.', composerDiffAttachments, {
-          contentParts,
-          forceReview: true,
-        });
-      }
-      setComposerText('');
-      setComposerContentParts([]);
+      sendReviewFeedback(messageText, contentParts);
       return;
     }
     const startsReview = /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
@@ -19116,6 +19133,32 @@ function AiChatTabView({
     setComposerText('');
     setComposerContentParts([]);
   };
+
+  useEffect(() => {
+    if (!reviewFeedbackRequestKey) {
+      handledReviewFeedbackRequestRef.current = 0;
+      return;
+    }
+    if (
+      reviewFeedbackRequestKey === handledReviewFeedbackRequestRef.current
+      || !readyReviewMessage
+      || isReviewFinal
+    ) return;
+    handledReviewFeedbackRequestRef.current = reviewFeedbackRequestKey;
+    onReviewFeedbackRequestHandled?.(chatId, reviewFeedbackRequestKey);
+    if (hasReviewFeedbackBatch) {
+      sendReviewFeedback(composerText.trim(), [
+        ...composerContentParts,
+        ...(composerText.trim().length > 0
+          ? [{ id: 'live-text', type: 'text', text: composerText }]
+          : []),
+      ]);
+      return;
+    }
+    setReviewFeedbackMessageId(readyReviewMessage.id);
+    setResolvedReviewDecisionId(readyReviewMessage.id);
+    focusComposerAtEnd();
+  }, [reviewFeedbackRequestKey]);
 
   useEffect(() => {
     if (hasComposerAttachmentOverflow) return;
@@ -19684,6 +19727,15 @@ function AiChatTabView({
               focusComposerAtEnd();
             }}
             onSubmit={() => {
+              if (hasReviewFeedbackBatch) {
+                sendReviewFeedback(composerText.trim(), [
+                  ...composerContentParts,
+                  ...(composerText.trim().length > 0
+                    ? [{ id: 'live-text', type: 'text', text: composerText }]
+                    : []),
+                ]);
+                return;
+              }
               setReviewFeedbackMessageId(readyReviewMessage.id);
               setResolvedReviewDecisionId(readyReviewMessage.id);
               focusComposerAtEnd();
@@ -26948,6 +27000,13 @@ export default function App() {
       [chatId]: (current[chatId] ?? 0) + 1,
     }));
   }, []);
+  const handleReviewFeedbackRequestHandled = useCallback((chatId, requestKey) => {
+    if (!chatId || !requestKey) return;
+    setReviewFeedbackRequestByChatId((current) => {
+      if (current[chatId] !== requestKey) return current;
+      return { ...current, [chatId]: 0 };
+    });
+  }, []);
   const reviewSplitScenario = reviewSplitChatId ? getAiChatScenarioById(reviewSplitChatId) : null;
   const reviewSplitListItem = reviewSplitChatId ? getAiChatListItemById(reviewSplitChatId) : null;
   const reviewSplitChatLabel = String(
@@ -30205,9 +30264,13 @@ export default function App() {
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
+    const isReviewFeedbackSubmission = isReviewCommand
+      && (agentRunByChatId[targetChatId]?.iteration ?? 0) > 0;
     const newMessage = {
       id: `${targetChatId}-${stamp}-${baseCount}`,
-      kind: isReviewCommand ? 'review-command' : undefined,
+      kind: isReviewCommand
+        ? (isReviewFeedbackSubmission ? 'review-feedback' : 'review-command')
+        : undefined,
       text: messageText,
       attachments: messageAttachments,
       attachmentsFirst,
@@ -30689,7 +30752,7 @@ export default function App() {
     const revision = String(instructions || '').trim();
     handleAiChatTabSend(
       chatId,
-      revision || 'Review again.',
+      revision || 'Submitted review feedback.',
       attachments,
       { forceReview: true },
     );
@@ -32002,6 +32065,7 @@ export default function App() {
                       onCancelReview={cancelReview}
                       onReviseReview={handleReviseReviewDecision}
                       reviewFeedbackRequestKey={reviewFeedbackRequestByChatId[reviewSplitChatId] ?? 0}
+                      onReviewFeedbackRequestHandled={handleReviewFeedbackRequestHandled}
                       reviewFiles={reviewDiffFiles}
                       onReviewFileCommentsChange={(tabId, comments, metadata) => (
                         persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
@@ -32109,6 +32173,7 @@ export default function App() {
                   onCancelReview={cancelReview}
                   onReviseReview={handleReviseReviewDecision}
                   reviewFeedbackRequestKey={reviewFeedbackRequestByChatId[activeAiChatTabChatId] ?? 0}
+                  onReviewFeedbackRequestHandled={handleReviewFeedbackRequestHandled}
                   reviewFiles={reviewDiffFiles}
                   onReviewFileCommentsChange={(tabId, comments, metadata) => (
                     persistReviewFileCommentsWithChatAttachment(tabId, comments, activeAiChatTabChatId, metadata)
