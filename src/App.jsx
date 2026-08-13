@@ -17861,6 +17861,7 @@ function AiReviewSplitFileView({
   file,
   scopeFiles = [],
   focusRowIds = [],
+  contextSelections = [],
   agentIcon = 'codex',
   readOnly = false,
   severityFilter = 'all',
@@ -17920,6 +17921,7 @@ function AiReviewSplitFileView({
       <div className="aiux-review-split-file-body">
         <PlanDiffOverlay
           diffData={diffData}
+          contextSelections={contextSelections}
           initialDiffComments={file.comments}
           singleLineNumbers={file.isPlain}
           showGutterComments
@@ -18905,11 +18907,17 @@ function AiChatTabView({
   const persistedComposerContentParts = Array.isArray(composerDraft?.contentParts)
     ? composerDraft.contentParts
     : [];
+  const persistedDismissedAttachmentKeys = Array.isArray(composerDraft?.dismissedAttachmentKeys)
+    ? composerDraft.dismissedAttachmentKeys.filter((key) => typeof key === 'string' && key.length > 0)
+    : [];
   const initialSessionModel = typeof scenario?.initialModel === 'string' ? scenario.initialModel : null;
   const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
   const [composerText, setComposerText] = useState(persistedComposerText);
   const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
+  const [dismissedComposerAttachmentKeys, setDismissedComposerAttachmentKeys] = useState(
+    () => new Set(persistedDismissedAttachmentKeys),
+  );
   const scenarioAgentId = AI_CHAT_AGENTS.some((agent) => agent.id === scenario?.icon)
     ? scenario.icon
     : 'claude';
@@ -19053,6 +19061,9 @@ function AiChatTabView({
     const savedDraft = composerDraftRef.current;
     setComposerText(typeof savedDraft?.text === 'string' ? savedDraft.text : initialComposerText);
     setComposerContentParts(Array.isArray(savedDraft?.contentParts) ? savedDraft.contentParts : []);
+    setDismissedComposerAttachmentKeys(new Set(
+      Array.isArray(savedDraft?.dismissedAttachmentKeys) ? savedDraft.dismissedAttachmentKeys : [],
+    ));
     setSelectedAgentId(scenarioAgentId);
     setSelectedModelOverride(initialSessionModel);
     setIsAgentMenuOpen(false);
@@ -19067,8 +19078,9 @@ function AiChatTabView({
     onComposerDraftChange?.(chatId, {
       text: composerText,
       contentParts: composerContentParts,
+      dismissedAttachmentKeys: [...dismissedComposerAttachmentKeys],
     });
-  }, [chatId, composerContentParts, composerText, onComposerDraftChange]);
+  }, [chatId, composerContentParts, composerText, dismissedComposerAttachmentKeys, onComposerDraftChange]);
 
   useEffect(() => {
     setResolvedReviewDecisionId(null);
@@ -19183,11 +19195,35 @@ function AiChatTabView({
     };
   }, [chatId, scrollTarget?.annotationId, scrollTarget?.chatId, scrollTarget?.messageId, scrollTarget?.nonce]);
 
-  const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+  const rawEditorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
+  const getEditorComposerAttachmentDraftKey = (attachment, index = 0) => {
+    const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+    const previewFingerprint = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => ({
+      text: item?.text ?? '',
+      sourceLabel: item?.sourceLabel ?? '',
+      lineLabel: item?.lineLabel ?? '',
+      noteNumber: item?.noteNumber ?? null,
+      isSelectionContextPreview: Boolean(item?.isSelectionContextPreview),
+    }));
+    return `${attachmentId}\u0000${JSON.stringify(previewFingerprint)}`;
+  };
+  const rawEditorComposerAttachmentDraftKeys = rawEditorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
+  const rawEditorComposerAttachmentDraftSignature = rawEditorComposerAttachmentDraftKeys.join('\n');
+  useEffect(() => {
+    const liveKeys = new Set(rawEditorComposerAttachmentDraftKeys);
+    setDismissedComposerAttachmentKeys((current) => {
+      const next = new Set([...current].filter((key) => liveKeys.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [chatId, rawEditorComposerAttachmentDraftSignature]);
+  const editorComposerAttachments = rawEditorComposerAttachments.filter((attachment, index) => (
+    !dismissedComposerAttachmentKeys.has(getEditorComposerAttachmentDraftKey(attachment, index))
+  ));
+  const editorComposerAttachmentDraftKeys = editorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
+  const hasComposerCommentAttachment = editorComposerAttachments
     .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
-  const hasSelectionContextAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+  const hasSelectionContextAttachment = editorComposerAttachments
     .some((attachment) => attachment?.isSelectionContext);
-  const editorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
   const editorComposerAttachmentIds = editorComposerAttachments.map(getAiChatAttachmentSequenceKey);
   const editorComposerAttachmentSignature = editorComposerAttachmentIds.join('\n');
   const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
@@ -19208,7 +19244,7 @@ function AiChatTabView({
         || comment?.author === 'user'
         || (typeof comment?.userReply === 'string' && comment.userReply.trim().length > 0);
     })
-  )) || (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : []).some((attachment) => (
+  )) || editorComposerAttachments.some((attachment) => (
     Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
   ));
   const reviewFeedbackMessage = Array.from(new Set(
@@ -19315,19 +19351,27 @@ function AiChatTabView({
       return [attachmentId, numberedItems];
     }),
   );
+  const dismissSentComposerAttachments = () => {
+    if (editorComposerAttachmentDraftKeys.length === 0) return;
+    setDismissedComposerAttachmentKeys((current) => new Set([
+      ...current,
+      ...editorComposerAttachmentDraftKeys,
+    ]));
+  };
   const sendReviewFeedback = (messageText = '', contentParts = []) => {
     if (!readyReviewMessage || isReviewFinal) return;
     const submittedMessageText = String(messageText || '').trim() || reviewFeedbackMessage;
     setResolvedReviewDecisionId(readyReviewMessage.id);
     setReviewFeedbackMessageId(null);
     if (onReviseReview) {
-      onReviseReview(chatId, submittedMessageText, composerDiffAttachments);
+      onReviseReview(chatId, submittedMessageText, editorComposerAttachments);
     } else {
-      onSendMessage?.(chatId, submittedMessageText, composerDiffAttachments, {
+      onSendMessage?.(chatId, submittedMessageText, editorComposerAttachments, {
         contentParts,
         forceReview: true,
       });
     }
+    dismissSentComposerAttachments();
     setComposerText('');
     setComposerContentParts([]);
   };
@@ -19361,7 +19405,7 @@ function AiChatTabView({
       return;
     }
     const startsReview = /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
-    onSendMessage?.(chatId, messageText, composerDiffAttachments, {
+    onSendMessage?.(chatId, messageText, editorComposerAttachments, {
       contentParts: contentParts.map((part) => (part.type === 'attachment'
         ? { type: 'attachment', attachmentId: part.attachmentId }
         : { type: 'text', text: part.text })),
@@ -19373,11 +19417,12 @@ function AiChatTabView({
         dedicatedSession: false,
         modelLabel: selectedModelLabel,
         effortLabel: selectedEffort,
-        scopeId: composerDiffAttachments.length > 0 ? 'current' : 'all',
+        scopeId: editorComposerAttachments.length > 0 ? 'current' : 'all',
         launchSource: 'current-chat',
         instructions: messageText.replace(/^\/review\b/iu, '').trim(),
       } : null,
     });
+    dismissSentComposerAttachments();
     setComposerText('');
     setComposerContentParts([]);
   };
@@ -20831,11 +20876,15 @@ export default function App() {
       const nextDraft = {
         text: typeof draft?.text === 'string' ? draft.text : '',
         contentParts: Array.isArray(draft?.contentParts) ? draft.contentParts : [],
+        dismissedAttachmentKeys: Array.isArray(draft?.dismissedAttachmentKeys)
+          ? draft.dismissedAttachmentKeys.filter((key) => typeof key === 'string' && key.length > 0)
+          : [],
       };
       const previousDraft = prev[chatId];
       if (
         previousDraft?.text === nextDraft.text
         && JSON.stringify(previousDraft?.contentParts ?? []) === JSON.stringify(nextDraft.contentParts)
+        && JSON.stringify(previousDraft?.dismissedAttachmentKeys ?? []) === JSON.stringify(nextDraft.dismissedAttachmentKeys)
       ) {
         return prev;
       }
@@ -27106,9 +27155,8 @@ export default function App() {
   const isDiffTab = Boolean(activeTabContent?.diffData);
   const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
   const isReviewDiffTab = Boolean(activeTabContent?.reviewDiffOverview);
-  const activeEditorQuoteSelections = useMemo(() => {
-    if (!activeTabId || (!isDiffTab && !isPlainFileOverlayTab)) return [];
-
+  const getEditorQuoteSelectionsForTab = useCallback((tabId) => {
+    if (!tabId) return [];
     const selectionsById = new Map();
     const collectAttachment = (attachment, fallbackChatId = null) => {
       const contextChatId = attachment?.chatId ?? fallbackChatId;
@@ -27122,7 +27170,7 @@ export default function App() {
       getSelectionContextItems(attachment).forEach((selection) => {
         if (
           selection?.isChatSelectionContext
-          || selection?.sourceTabId !== activeTabId
+          || selection?.sourceTabId !== tabId
           || !Array.isArray(selection?.rowIds)
           || selection.rowIds.length === 0
         ) {
@@ -27153,14 +27201,15 @@ export default function App() {
 
     return [...selectionsById.values()];
   }, [
-    activeTabId,
     aiChatDraftSessionsById,
     aiChatSelectionContextByChatId,
     aiChatSentMessagesByChatId,
     getAiChatListItemById,
-    isDiffTab,
-    isPlainFileOverlayTab,
   ]);
+  const activeEditorQuoteSelections = useMemo(
+    () => (isDiffTab || isPlainFileOverlayTab ? getEditorQuoteSelectionsForTab(activeTabId) : []),
+    [activeTabId, getEditorQuoteSelectionsForTab, isDiffTab, isPlainFileOverlayTab],
+  );
   const activeReviewSummary = isReviewDiffTab && activeTabContent?.reviewChatId
     ? [...(aiChatSentMessagesByChatId[activeTabContent.reviewChatId] ?? [])]
       .reverse()
@@ -27328,6 +27377,10 @@ export default function App() {
   const activeReviewSplitFile = reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
     ? null
     : reviewSplitFiles.find((file) => file.tabId === reviewSplitActiveTabId) ?? null;
+  const activeReviewSplitQuoteSelections = useMemo(
+    () => getEditorQuoteSelectionsForTab(activeReviewSplitFile?.tabId),
+    [activeReviewSplitFile?.tabId, getEditorQuoteSelectionsForTab],
+  );
   const reviewOverviewContent = ideTabContents[REVIEW_DIFF_TAB_ID] ?? null;
   const isReviewSplitOverviewMode = Boolean(
     reviewSplitChatId
@@ -28079,6 +28132,7 @@ export default function App() {
     startOffset = null,
     endOffset = null,
     rowIds = [],
+    selectionRanges = [],
     sourceRowKey = null,
     sourceRowIndex = null,
     lineLabel = '',
@@ -28097,6 +28151,21 @@ export default function App() {
       ? sourceTabId
       : targetChatId;
     const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
+    const normalizedSelectionRanges = (Array.isArray(selectionRanges) ? selectionRanges : [])
+      .filter((range) => (
+        range
+        && typeof range.rowId === 'string'
+        && range.rowId.length > 0
+        && Number.isFinite(range.start)
+        && Number.isFinite(range.end)
+        && range.end > range.start
+      ))
+      .map((range) => ({
+        rowId: range.rowId,
+        start: range.start,
+        end: range.end,
+        selectedText: typeof range.selectedText === 'string' ? range.selectedText : '',
+      }));
     const stamp = Date.now();
     selectionContextSequenceRef.current += 1;
     const selectionNonce = `${stamp}-${selectionContextSequenceRef.current}`;
@@ -28118,6 +28187,7 @@ export default function App() {
       startOffset,
       endOffset,
       rowIds: Array.isArray(rowIds) ? rowIds : [],
+      selectionRanges: normalizedSelectionRanges,
       sourceRowKey: typeof sourceRowKey === 'string' && sourceRowKey.length > 0 ? sourceRowKey : null,
       sourceRowIndex: Number.isInteger(sourceRowIndex) ? sourceRowIndex : null,
       lineLabel: normalizedLineLabel,
@@ -28141,6 +28211,7 @@ export default function App() {
       startOffset,
       endOffset,
       rowIds: Array.isArray(rowIds) ? rowIds : [],
+      selectionRanges: normalizedSelectionRanges,
       sourceRowKey: typeof sourceRowKey === 'string' && sourceRowKey.length > 0 ? sourceRowKey : null,
       sourceRowIndex: Number.isInteger(sourceRowIndex) ? sourceRowIndex : null,
       lineLabel: normalizedLineLabel,
@@ -28173,6 +28244,7 @@ export default function App() {
                 selectedText: selection.selectedText,
                 lineLabel: selection.lineLabel,
                 rowIds: selection.rowIds,
+                selectionRanges: selection.selectionRanges,
                 selections: nextSelections,
               };
             });
@@ -28356,6 +28428,7 @@ export default function App() {
         sourceTabId,
         sourceIcon: toolbarState?.sourceIcon ?? activeTab?.icon ?? 'fileTypes/text',
         rowIds,
+        selectionRanges: Array.isArray(toolbarState?.selectionRanges) ? toolbarState.selectionRanges : [],
         lineLabel,
         // Adding context from a file is a background action: keep the current
         // file/diff visible and let the user return to the chat explicitly.
@@ -32766,6 +32839,7 @@ export default function App() {
                       file={activeReviewSplitFile}
                       scopeFiles={visibleReviewSplitScopeFiles}
                       focusRowIds={reviewSplitFileFocusByTabId[activeReviewSplitFile.tabId] ?? []}
+                      contextSelections={activeReviewSplitQuoteSelections}
                       agentIcon={activeReviewAgentIcon}
                       readOnly={activeReviewReadOnly || Boolean(activeReviewSplitFile.commentsReadOnly)}
                       severityFilter={reviewSeverityFilter}
@@ -32794,6 +32868,7 @@ export default function App() {
                           rowId: selectionState.rowId,
                           rowIds: selectionState.rowIds,
                           selectedText: selectionState.selectedText,
+                          selectionRanges: selectionState.selectionRanges,
                           sourceTabId: activeReviewSplitFile.tabId,
                           sourceLabel: activeReviewSplitFile.name,
                           sourceIcon: activeReviewSplitFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(activeReviewSplitFile.name),
@@ -32988,6 +33063,7 @@ export default function App() {
                           rowId: selectionState.rowId,
                           rowIds: selectionState.rowIds,
                           selectedText: selectionState.selectedText,
+                          selectionRanges: selectionState.selectionRanges,
                           sourceTabId: activeTabId,
                           sourceLabel: activeEditorTabMeta?.label ?? activePlanDiffData?.sourceTabLabel ?? 'Diff',
                           sourceIcon: activeEditorTabMeta?.icon ?? 'vcs/diff',

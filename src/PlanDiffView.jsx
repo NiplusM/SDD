@@ -75,6 +75,49 @@ function hasActiveMultilineSelection() {
   return rects.some((rect) => Math.abs(Math.round(rect.top) - firstTop) > 2);
 }
 
+function getTextOffsetWithinElement(element, container, offset) {
+  if (!(element instanceof HTMLElement) || !container) return null;
+
+  try {
+    const probeRange = document.createRange();
+    probeRange.selectNodeContents(element);
+    probeRange.setEnd(container, offset);
+    return probeRange.toString().length;
+  } catch {
+    return null;
+  }
+}
+
+function getSelectionRangeWithinElement(nativeRange, element, rowId) {
+  if (!nativeRange || !(element instanceof HTMLElement) || !rowId) return null;
+
+  try {
+    if (!nativeRange.intersectsNode(element)) return null;
+  } catch {
+    return null;
+  }
+
+  const rowText = element.textContent ?? '';
+  const startsInside = element.contains(nativeRange.startContainer);
+  const endsInside = element.contains(nativeRange.endContainer);
+  const rawStart = startsInside
+    ? getTextOffsetWithinElement(element, nativeRange.startContainer, nativeRange.startOffset)
+    : 0;
+  const rawEnd = endsInside
+    ? getTextOffsetWithinElement(element, nativeRange.endContainer, nativeRange.endOffset)
+    : rowText.length;
+  const start = Math.max(0, Math.min(rowText.length, Number.isFinite(rawStart) ? rawStart : 0));
+  const end = Math.max(start, Math.min(rowText.length, Number.isFinite(rawEnd) ? rawEnd : rowText.length));
+  if (end <= start) return null;
+
+  return {
+    rowId,
+    start,
+    end,
+    selectedText: rowText.slice(start, end),
+  };
+}
+
 function captureActiveSelectionSnapshot() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return null;
 
@@ -3126,6 +3169,31 @@ export function PlanDiffOverlay({
     const rowsById = new Map((diffData?.rows ?? []).map((row) => [row.id, row]));
     const rangesByRowId = new Map();
     contextSelections.forEach((selection) => {
+      const exactRanges = (Array.isArray(selection?.selectionRanges) ? selection.selectionRanges : [])
+        .filter((range) => range && rowsById.has(range.rowId));
+      if (exactRanges.length > 0) {
+        exactRanges.forEach((range) => {
+          const row = rowsById.get(range.rowId);
+          const rowText = (row.fragments ?? [{ text: row.text || ' ' }])
+            .map((fragment) => fragment.text || ' ')
+            .join('');
+          const start = Math.max(0, Math.min(rowText.length, Number.isFinite(range.start) ? range.start : 0));
+          const end = Math.max(start, Math.min(
+            rowText.length,
+            Number.isFinite(range.end) ? range.end : rowText.length,
+          ));
+          if (end <= start) return;
+          const ranges = rangesByRowId.get(range.rowId) ?? [];
+          ranges.push({
+            start,
+            end,
+            chatTitle: selection?.contextChatTitle || 'New Chat',
+          });
+          rangesByRowId.set(range.rowId, ranges);
+        });
+        return;
+      }
+
       const rowIds = (Array.isArray(selection?.rowIds) ? selection.rowIds : [])
         .filter((rowId) => rowsById.has(rowId));
       if (rowIds.length === 0) return;
@@ -3892,6 +3960,24 @@ export function PlanDiffOverlay({
         .map((rowId) => scrollRef.current?.querySelector(`[data-diff-row-id="${CSS.escape(rowId)}"] .plan-diff-row-code-text`))
         .filter((element) => element instanceof HTMLElement);
       if (selectedRows.length === 0 || selectedElements.length === 0) return;
+      const selectionRanges = nativeRange
+        ? selectedElements
+          .map((element) => {
+            const rowElement = element.closest('.plan-diff-row[data-diff-row-id]');
+            return getSelectionRangeWithinElement(nativeRange, element, rowElement?.dataset.diffRowId);
+          })
+          .filter(Boolean)
+        : selectedRows.map((row) => {
+            const rowText = (row.fragments ?? [{ text: row.text || ' ' }])
+              .map((fragment) => fragment.text || ' ')
+              .join('');
+            return {
+              rowId: row.id,
+              start: 0,
+              end: rowText.length,
+              selectedText: rowText,
+            };
+          });
 
       const nativeRects = nativeRange
         ? Array.from(nativeRange.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0)
@@ -3922,6 +4008,7 @@ export function PlanDiffOverlay({
         rowId: selectedRowIds[0],
         rowIds: selectedRowIds,
         selectedText: nativeSelectionText || selectedRows.map((row) => row.text || '').join('\n').trim(),
+        selectionRanges,
       });
     };
 
