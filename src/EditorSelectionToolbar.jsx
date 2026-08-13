@@ -26,6 +26,11 @@ const CODE_SELECTION_ACTIONS = [
   { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
 ];
 
+const REVIEW_DIFF_SELECTION_ACTIONS = [
+  { id: 'comment', iconName: 'general/balloon', label: 'Add Note', title: 'Add a note to the selected code' },
+  { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Add as context', accent: 'assistant' },
+];
+
 const CHAT_SELECTION_ACTIONS = [
   { id: 'chat-add-to-chat', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
 ];
@@ -43,7 +48,11 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
     : renderPosition?.surface === 'diff'
       ? 'diff'
       : 'file';
-  const selectionActions = surface === 'ai-chat' ? CHAT_SELECTION_ACTIONS : CODE_SELECTION_ACTIONS;
+  const selectionActions = surface === 'ai-chat'
+    ? CHAT_SELECTION_ACTIONS
+    : surface === 'diff' || renderPosition?.reviewSplit
+      ? REVIEW_DIFF_SELECTION_ACTIONS
+      : CODE_SELECTION_ACTIONS;
   const primaryAction = selectionActions[0];
 
   useEffect(() => {
@@ -153,7 +162,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
     >
       {items.map((item) => {
         if (item.kind === 'selectionAction') {
-          if (surface === 'ai-chat') {
+          if (surface === 'ai-chat' || surface === 'diff' || renderPosition?.reviewSplit) {
             return (
               <span key={item.id} className="editor-selection-toolbar-chat-actions">
                 {selectionActions.map((action, actionIndex) => (

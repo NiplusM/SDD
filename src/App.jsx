@@ -14473,6 +14473,21 @@ function ChatToolWindow({
       attachment && !attachments.slice(index + 1).some((candidate) => candidate?.id === attachment.id)
     ))
     .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
+  let composerReviewNoteNumber = 0;
+  const numberedComposerPreviewItemsByAttachmentId = new Map(
+    visibleComposerAttachments.map((attachment, index) => {
+      const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
+        if (item?.isSelectionContextPreview) return item;
+        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
+          composerReviewNoteNumber = Math.max(composerReviewNoteNumber, item.noteNumber);
+          return item;
+        }
+        return { ...item, noteNumber: ++composerReviewNoteNumber };
+      });
+      return [attachmentId, numberedItems];
+    }),
+  );
   const hasComposerAttachmentOverflow = visibleComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
   const hasComposerAttachment = visibleComposerAttachments.length > 0;
   const hasComposerCommentAttachment = visibleComposerAttachments.some((attachment) => (
@@ -15127,7 +15142,10 @@ function ChatToolWindow({
                   onExpandedChange={setComposerAttachmentsExpanded}
                   expandedSourceId={expandedAttachmentSourceId}
                   onExpandedSourceIdChange={setExpandedAttachmentSourceId}
-                  getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+                  getCommentPreviewItems={(attachment) => (
+                    numberedComposerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(attachment))
+                    ?? getAiChatAttachmentCommentPreviewItems(attachment)
+                  )}
                   onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
                   onContextMenu={handleComposerAttachmentContextMenu}
                   onSourceOpen={(event, attachment, source) => handleAttachmentSourceOpen(event, attachment, source, { archived: false })}
@@ -15389,6 +15407,17 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
   },
 ];
 
+const AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS = [
+  {
+    text: 'Vet-Schedules.md — include the parallel scheduling specification changes',
+    statusItem: { status: 'passed' },
+    source: { tabId: 'agent-task-t2', label: 'Vet-Schedules.md' },
+    reviewAdded: 25,
+    reviewRemoved: 0,
+    reviewAllChangesOnly: true,
+  },
+];
+
 // A multi-file change is summarized as one "Changed Files" card (file + counters
 // per row); a single-file change keeps its code-preview card.
 function hasChatChangedFilesList(scenario) {
@@ -15408,6 +15437,86 @@ function getChatChangeCards(scenario) {
     ...scenario.changeCard,
     diffRequest: scenario.changeCard.diffRequest ?? scenario.diffRequest ?? null,
   }];
+}
+
+function buildChatReviewScopeRequests(scenario) {
+  const recentCards = getChatChangeCards(scenario).slice(-3);
+  return [
+    ...recentCards.map((card) => card?.diffRequest).filter(Boolean),
+    ...AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS,
+    ...buildCommitReviewScopeRequests(),
+  ];
+}
+
+function getChatChangedFileLineCount(value) {
+  const parsed = Number.parseInt(String(value ?? '').replace(/[^\d]/gu, ''), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildChatChangedFilesScopeOptions(entries = []) {
+  const files = Array.isArray(entries) ? entries.filter((entry) => entry?.tabId) : [];
+  const chatFiles = files.filter((file) => !file.commitGroupId);
+  const commitFiles = files.filter((file) => file.commitGroupId);
+  const lastTurnFiles = chatFiles.filter((file) => !file.allChangesOnly);
+  const definitions = [
+    { id: 'last-turn', label: 'Last Turn', section: 'chat', files: lastTurnFiles },
+    { id: 'all-chat-changes', label: 'All Chat Changes', section: 'chat', files: chatFiles },
+    ...(commitFiles.length > 0 ? [
+      { id: 'all-commit-changes', label: 'All Commit Changes', section: 'commit', files: commitFiles },
+      ...COMMIT_CHAT_GROUPS.map((group) => ({
+        id: `commit-chat-${group.id}`,
+        label: group.label,
+        section: 'commit',
+        files: commitFiles.filter((file) => file.commitGroupId === group.id),
+      })),
+    ] : []),
+  ];
+
+  return definitions.map(({ files: scopeFiles, ...definition }) => ({
+    ...definition,
+    tabIds: scopeFiles.map((file) => file.tabId),
+    added: scopeFiles.reduce((sum, file) => sum + file.added, 0),
+    removed: scopeFiles.reduce((sum, file) => sum + file.removed, 0),
+  }));
+}
+
+function getCommitScopeLineCounts(file = null, index = 0) {
+  const base = 4 + ((index * 3) % 11);
+  if (file?.status === 'added' || file?.status === 'untracked') {
+    return { added: base + 8, removed: 0 };
+  }
+  if (file?.status === 'deleted') {
+    return { added: 0, removed: base + 5 };
+  }
+  if (file?.status === 'renamed') {
+    return { added: base, removed: Math.max(1, base - 2) };
+  }
+  return { added: base + 2, removed: 1 + (index % 5) };
+}
+
+function buildCommitReviewScopeRequests() {
+  return COMMIT_CHANGE_FILES.map((file, index) => {
+    const content = getSpecSourceFileContent(file.label);
+    const counts = getCommitScopeLineCounts(file, index);
+    const fallbackCode = [
+      `// ${file.label}`,
+      `// ${file.groupLabel}`,
+      `// ${file.status} change prepared in the Commit tool window`,
+    ].join('\n');
+    return {
+      text: `${file.label} — ${file.groupLabel}`,
+      statusItem: { status: 'passed' },
+      source: {
+        tabId: `commit-review-scope-${file.id}`,
+        label: file.label,
+        code: content?.code ?? fallbackCode,
+      },
+      reviewAdded: counts.added,
+      reviewRemoved: counts.removed,
+      reviewCommitGroupId: file.groupId,
+      reviewCommitGroupLabel: file.groupLabel,
+    };
+  });
 }
 
 const AI_CHAT_VISIT_DIFF_REQUEST = {
@@ -15863,6 +15972,21 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
   const hasOrderedContent = hasExplicitContentOrder || attachmentsFirst || attachments.some((attachment) => (
     attachment?.inputPlacement === 'before' || attachment?.inputPlacement === 'after'
   ));
+  let sentReviewNoteNumber = 0;
+  const numberedSentPreviewItemsByAttachmentId = new Map(
+    attachments.map((attachment, index) => {
+      const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
+        if (item?.isSelectionContextPreview) return item;
+        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
+          sentReviewNoteNumber = Math.max(sentReviewNoteNumber, item.noteNumber);
+          return item;
+        }
+        return { ...item, noteNumber: ++sentReviewNoteNumber };
+      });
+      return [attachmentId, numberedItems];
+    }),
+  );
 
   return (
     <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
@@ -15882,8 +16006,10 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                 : null
             ))
           : (hasMessageText && <span className="ai-chat-user-card-text">{children}</span>)}
-        {attachments.map((attachment) => {
-                const commentPreviewItems = getAiChatAttachmentCommentPreviewItems(attachment);
+        {attachments.map((attachment, attachmentIndex) => {
+                const commentPreviewItems = numberedSentPreviewItemsByAttachmentId.get(
+                  getAiChatAttachmentSequenceKey(attachment, attachmentIndex),
+                ) ?? getAiChatAttachmentCommentPreviewItems(attachment);
                 const sourcePreviewItems = getAiChatAttachmentSourcePreviewItems(attachment);
                 const visibleCommentPreviewItems = commentPreviewItems.slice(0, 3);
                 const hiddenCommentPreviewCount = Math.max(0, commentPreviewItems.length - visibleCommentPreviewItems.length);
@@ -17744,6 +17870,13 @@ function AiReviewSplitFileView({
   onNavigateFile = null,
   onCommentsChange = null,
   onReviewAction = null,
+  selectedChangeScopeId = 'last-turn',
+  onChangeScope = null,
+  changeScopeOptions = null,
+  reviewScopeNoteCount = 0,
+  onTextSelectionChange = null,
+  externalCommentRequest = null,
+  onInlineCommentOpenChange = null,
 }) {
   const [viewMode, setViewMode] = useState('unified');
   if (!file) return null;
@@ -17780,6 +17913,9 @@ function AiReviewSplitFileView({
         onSelectFile={onNavigateFile}
         onNavigatePreviousFile={() => openAdjacentFile(-1)}
         onNavigateNextFile={() => openAdjacentFile(1)}
+        selectedChangeScopeId={selectedChangeScopeId}
+        onChangeScope={onChangeScope}
+        changeScopeOptions={changeScopeOptions}
       />
       <div className="aiux-review-split-file-body">
         <PlanDiffOverlay
@@ -17798,9 +17934,14 @@ function AiReviewSplitFileView({
           allowCommentReplies={!readOnly}
           commentsReadOnly={readOnly}
           viewMode={file.isPlain ? 'unified' : viewMode}
+          reviewNoteComposer
+          reviewScopeNoteCount={reviewScopeNoteCount}
           highlightedCommentRowIds={focusedRows}
           onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(file.tabId, comments, metadata)}
           onReviewAction={onReviewAction}
+          onTextSelectionChange={onTextSelectionChange}
+          externalCommentRequest={externalCommentRequest}
+          onInlineCommentOpenChange={onInlineCommentOpenChange}
         />
       </div>
     </div>
@@ -18739,6 +18880,7 @@ function AiChatTabView({
   scrollTarget = null,
   onEditAnnotation = null,
   onCreateSpec = null,
+  onOpenReviewScope = null,
   onRunAiReview = null,
   onCommitChanges = null,
 }) {
@@ -19158,6 +19300,21 @@ function AiChatTabView({
     getAiChatAttachmentSequenceKey(attachment, index),
     attachment,
   ]));
+  let editorComposerReviewNoteNumber = 0;
+  const numberedEditorComposerPreviewItemsByAttachmentId = new Map(
+    editorComposerAttachments.map((attachment, index) => {
+      const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
+        if (item?.isSelectionContextPreview) return item;
+        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
+          editorComposerReviewNoteNumber = Math.max(editorComposerReviewNoteNumber, item.noteNumber);
+          return item;
+        }
+        return { ...item, noteNumber: ++editorComposerReviewNoteNumber };
+      });
+      return [attachmentId, numberedItems];
+    }),
+  );
   const sendReviewFeedback = (messageText = '', contentParts = []) => {
     if (!readyReviewMessage || isReviewFinal) return;
     const submittedMessageText = String(messageText || '').trim() || reviewFeedbackMessage;
@@ -19287,7 +19444,10 @@ function AiChatTabView({
       collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
       expanded={composerAttachmentsExpanded}
       onExpandedChange={setComposerAttachmentsExpanded}
-      getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+      getCommentPreviewItems={(itemAttachment) => (
+        numberedEditorComposerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(itemAttachment))
+        ?? getAiChatAttachmentCommentPreviewItems(itemAttachment)
+      )}
       onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
       onContextMenu={handleComposerAttachmentContextMenu}
       onRemove={onRemoveComposerAttachment
@@ -19456,6 +19616,7 @@ function AiChatTabView({
           <ChatChangedFilesCard
             files={getChatChangeCards(scenario)}
             onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+            onReview={onOpenReviewScope ? () => onOpenReviewScope(chatId) : null}
           />
         ) : getChatChangeCards(scenario).map((card) => {
           const openDiff = card.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(card.diffRequest) : null;
@@ -20389,7 +20550,7 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
 
 // Summary card for a multi-file change: run status + rollback on top, then the
 // changed files with their line counters. Each row opens that file's diff.
-function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null }) {
+function ChatChangedFilesCard({ files = [], onOpenFile = null, onReview = null, onRollback = null }) {
   if (files.length === 0) return null;
 
   return (
@@ -20404,7 +20565,15 @@ function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null
         <span className="ai-chat-changed-files-actions">
           <button
             type="button"
-            className="ai-chat-changed-files-rollback"
+            className="ai-chat-changed-files-action"
+            onClick={onReview ?? undefined}
+          >
+            Review
+          </button>
+          <span className="ai-chat-changed-files-action-separator" aria-hidden="true" />
+          <button
+            type="button"
+            className="ai-chat-changed-files-action"
             onClick={onRollback ?? undefined}
           >
             Rollback
@@ -20635,6 +20804,8 @@ export default function App() {
   const [reviewSplitFileTabIds, setReviewSplitFileTabIds] = useState([]);
   const [reviewSplitActiveTabId, setReviewSplitActiveTabId] = useState(REVIEW_DIFF_TAB_ID);
   const [reviewSplitFileFocusByTabId, setReviewSplitFileFocusByTabId] = useState({});
+  const [reviewSplitChangeScopeId, setReviewSplitChangeScopeId] = useState('last-turn');
+  const [reviewSplitChangeScopeOptions, setReviewSplitChangeScopeOptions] = useState([]);
   const [reviewFeedbackRequestByChatId, setReviewFeedbackRequestByChatId] = useState({});
   // Synchronous mirror of review-owned fixture patches. The canonical copy is
   // also stored on each run; this ref covers Apply → immediate Cancel in one UI tick.
@@ -22774,6 +22945,8 @@ export default function App() {
     setReviewSplitFileTabIds((current) => (preservesOpenDiffs ? current : []));
     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
     setReviewSplitFileFocusByTabId((current) => (preservesOpenDiffs ? current : {}));
+    setReviewSplitChangeScopeId('last-turn');
+    setReviewSplitChangeScopeOptions([]);
     setReviewView('timeline');
     // Grouping is intentionally NOT reset here: the chat review card groups by
     // severity, so opening the full view has to keep that grouping (and any
@@ -24113,6 +24286,8 @@ export default function App() {
     setReviewSplitFileTabIds([]);
     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
     setReviewSplitFileFocusByTabId({});
+    setReviewSplitChangeScopeId('last-turn');
+    setReviewSplitChangeScopeOptions([]);
     if (reviewIndex >= 0 && isClosingReviewOverview) handleEditorTabClose(reviewIndex);
     if (nextChatIndex >= 0) requestAnimationFrame(() => setActiveEditorTab(nextChatIndex));
   }, [activeEditorTab, handleEditorTabClose, ideTabs, reviewSplitChatId]);
@@ -25336,6 +25511,12 @@ export default function App() {
         return;
       }
 
+      // The review split's right diff reports its own row-aware selection.
+      // Do not let the active chat tab's generic DOM-selection observer clear it.
+      if (reviewSplitChatId && tabId === `ai-chat-${reviewSplitChatId}`) {
+        return;
+      }
+
       if (String(tabId).startsWith('ai-chat-')) {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
@@ -25549,7 +25730,7 @@ export default function App() {
       window.removeEventListener('resize', scheduleSync);
       setEditorSelectionToolbarPos(null);
     };
-  }, [screen, ideTabs, activeEditorTab]);
+  }, [screen, ideTabs, activeEditorTab, reviewSplitChatId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -27117,13 +27298,27 @@ export default function App() {
       commentsReadOnly: Boolean(content?.diffCommentsReadOnly),
     };
   }, [ideTabContents, ideTabs, reviewSplitChatId]);
-  const reviewSplitFiles = reviewSplitFileTabIds
+  const selectedReviewSplitChangeScope = reviewSplitChangeScopeOptions.find(
+    (option) => option.id === reviewSplitChangeScopeId,
+  ) ?? reviewSplitChangeScopeOptions[0] ?? null;
+  const visibleReviewSplitFileTabIds = selectedReviewSplitChangeScope?.tabIds?.length
+    ? selectedReviewSplitChangeScope.tabIds
+    : reviewSplitFileTabIds;
+  const reviewSplitFiles = visibleReviewSplitFileTabIds
     .map((tabId) => (
       reviewScopeFiles.find((file) => file.tabId === tabId)
       ?? reviewDiffFiles.find((file) => file.tabId === tabId)
       ?? buildAdHocReviewSplitFile(tabId)
     ))
     .filter(Boolean);
+  const handleReviewSplitChangeScope = useCallback((scopeId) => {
+    const nextScope = reviewSplitChangeScopeOptions.find((option) => option.id === scopeId) ?? null;
+    setReviewSplitChangeScopeId(scopeId);
+    if (!nextScope?.tabIds?.length) return;
+    setReviewSplitActiveTabId((currentTabId) => (
+      nextScope.tabIds.includes(currentTabId) ? currentTabId : nextScope.tabIds[0]
+    ));
+  }, [reviewSplitChangeScopeOptions]);
   const reviewSplitScopeFiles = [
     ...reviewScopeFiles,
     ...reviewSplitFiles.filter((file) => (
@@ -27133,18 +27328,22 @@ export default function App() {
   const activeReviewSplitFile = reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
     ? null
     : reviewSplitFiles.find((file) => file.tabId === reviewSplitActiveTabId) ?? null;
+  const reviewOverviewContent = ideTabContents[REVIEW_DIFF_TAB_ID] ?? null;
   const isReviewSplitOverviewMode = Boolean(
     reviewSplitChatId
-      && isReviewDiffTab
-      && activeTabContent?.reviewChatId === reviewSplitChatId,
+      && reviewSplitActiveTabId === REVIEW_DIFF_TAB_ID
+      && reviewOverviewContent?.reviewChatId === reviewSplitChatId,
   );
   const visibleReviewSplitScopeFiles = isReviewSplitOverviewMode
     ? reviewSplitScopeFiles
     : reviewSplitFiles;
-  const activeReviewSplitTabIndex = activeReviewSplitFile
-    ? reviewSplitFiles.findIndex((file) => file.tabId === activeReviewSplitFile.tabId)
-      + (isReviewSplitOverviewMode ? 1 : 0)
-    : 0;
+  const visibleReviewSplitNoteCount = visibleReviewSplitScopeFiles.reduce((total, file) => (
+    total + Object.values(normalizeStoredDiffCommentsState(file?.comments)).flat().filter((comment) => (
+      !(comment && typeof comment === 'object' && comment.author === 'agent')
+    )).length
+  ), 0);
+  const displayedReviewSplitFiles = activeReviewSplitFile ? [activeReviewSplitFile] : [];
+  const activeReviewSplitTabIndex = activeReviewSplitFile && isReviewSplitOverviewMode ? 1 : 0;
   const closeReviewSplitFileTab = useCallback((tabId) => {
     if (!tabId) return;
     setReviewSplitFileTabIds((current) => current.filter((entry) => entry !== tabId));
@@ -27165,7 +27364,7 @@ export default function App() {
     setReviewSplitFileFocusByTabId((current) => ({ ...current, [tabId]: [] }));
     setReviewSplitActiveTabId(tabId);
   }, []);
-  const openPlanDiffInReviewSplit = useCallback((diffRequest, chatId = null) => {
+  const openPlanDiffInReviewSplit = useCallback((diffRequest, chatId = null, scopeRequestsOverride = null) => {
     if (!diffRequest) return null;
     const targetChatId = chatId ?? reviewSplitChatId ?? selectedAiChatId;
     if (!targetChatId) {
@@ -27174,9 +27373,10 @@ export default function App() {
     const isReviewRun = agentRunByChatId[targetChatId]?.kind === 'review';
     if (!isReviewRun) {
       const scenario = getAiChatScenarioById(targetChatId);
-      const scopeRequests = getChatChangeCards(scenario)
-        .map((card) => card?.diffRequest)
-        .filter(Boolean);
+      const requestedScope = Array.isArray(scopeRequestsOverride)
+        ? scopeRequestsOverride
+        : getChatChangeCards(scenario).map((card) => card?.diffRequest);
+      const scopeRequests = requestedScope.filter(Boolean);
       const requests = scopeRequests.length > 0 ? scopeRequests : [diffRequest];
       const openedTabIds = requests.map((request) => openPlanDiffTab({
         ...request,
@@ -27185,6 +27385,39 @@ export default function App() {
         registerEditorTab: false,
         activateTab: false,
       })).filter(Boolean);
+      if (Array.isArray(scopeRequestsOverride)) {
+        const changedFileCards = getChatChangeCards(scenario);
+        const scopeEntries = requests.map((request, index) => {
+          const requestSourceTabId = request?.source?.tabId ?? null;
+          const card = changedFileCards.find((candidate) => (
+            candidate?.diffRequest === request
+            || (requestSourceTabId && candidate?.diffRequest?.source?.tabId === requestSourceTabId)
+          )) ?? null;
+          return {
+            tabId: openedTabIds[index] ?? null,
+            added: card
+              ? getChatChangedFileLineCount(card.added)
+              : getChatChangedFileLineCount(request?.reviewAdded),
+            removed: card
+              ? getChatChangedFileLineCount(card.removed)
+              : getChatChangedFileLineCount(request?.reviewRemoved),
+            allChangesOnly: Boolean(request?.reviewAllChangesOnly),
+            commitGroupId: request?.reviewCommitGroupId ?? null,
+            commitGroupLabel: request?.reviewCommitGroupLabel ?? null,
+          };
+        }).filter((entry) => entry.tabId);
+        setReviewSplitChangeScopeOptions(buildChatChangedFilesScopeOptions(scopeEntries));
+        setReviewSplitChangeScopeId(
+          diffRequest?.reviewCommitGroupId
+            ? `commit-chat-${diffRequest.reviewCommitGroupId}`
+            : diffRequest?.reviewAllChangesOnly
+              ? 'all-chat-changes'
+              : 'last-turn',
+        );
+      } else {
+        setReviewSplitChangeScopeOptions([]);
+        setReviewSplitChangeScopeId('last-turn');
+      }
       const selectedSourceTabId = diffRequest?.source?.tabId ?? null;
       const selectedTabId = openedTabIds.find((tabId) => (
         selectedSourceTabId && tabId === buildPlanDiffTabId(selectedSourceTabId)
@@ -27230,6 +27463,24 @@ export default function App() {
     reviewSplitChatId,
     selectedAiChatId,
   ]);
+  const openLatestChangedFilesReviewScope = useCallback((chatId) => {
+    if (!chatId) return null;
+    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(chatId));
+    const firstDiffRequest = scopeRequests[0] ?? null;
+    if (!firstDiffRequest) return null;
+    return openPlanDiffInReviewSplit(firstDiffRequest, chatId, scopeRequests);
+  }, [getAiChatScenarioById, openPlanDiffInReviewSplit]);
+  const openChangedFileInReviewScope = useCallback((diffRequest, chatId = null) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    if (!diffRequest || !targetChatId) return null;
+    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
+    const sourceTabId = diffRequest?.source?.tabId ?? null;
+    const scopedDiffRequest = scopeRequests.find((request) => (
+      request === diffRequest
+      || (sourceTabId && request?.source?.tabId === sourceTabId)
+    )) ?? diffRequest;
+    return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests);
+  }, [getAiChatScenarioById, openPlanDiffInReviewSplit, selectedAiChatId]);
   const requestReviewFeedback = useCallback((chatId) => {
     if (!chatId) return;
     setReviewFeedbackRequestByChatId((current) => ({
@@ -27250,13 +27501,9 @@ export default function App() {
     reviewSplitScenario?.title || reviewSplitListItem?.title || 'AI Chat',
   ).trim();
   const reviewSplitReviewLabel = ideTabs.find((tab) => tab.id === REVIEW_DIFF_TAB_ID)?.label || 'AI Review';
-  const isReviewEditorSplitActive = Boolean(
-    reviewSplitChatId
-      && (
-        isReviewSplitOverviewMode
-        || activeTabId === `ai-chat-${reviewSplitChatId}`
-      ),
-  );
+  // Once opened, the review split is persistent. Editor-tab changes must not
+  // implicitly dismiss the right pane; only its explicit close action resets it.
+  const isReviewEditorSplitActive = Boolean(reviewSplitChatId);
   // Single-file tabs still need to know when they belong to an explicit review
   // run so review comments keep their review-specific resolve behavior.
   const hasReviewRun = useMemo(
@@ -28081,9 +28328,12 @@ export default function App() {
 
       // "Create New Chat" in the target submenu: the chat is made here and the quote lands in it.
       const createsNewChat = targetContextChatId === NEW_CHAT_TARGET_ID;
+      const fixedChatId = typeof toolbarState?.fixedChatId === 'string'
+        ? toolbarState.fixedChatId.trim()
+        : '';
       const targetChatId = createsNewChat
         ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude', select: false }).id
-        : targetContextChatId || selectedAiChatId;
+        : targetContextChatId || fixedChatId || selectedAiChatId;
       const sourceLabel = (typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim().length > 0)
         ? toolbarState.sourceLabel.trim()
         : (activeTab?.label ?? 'Selected context');
@@ -28104,7 +28354,7 @@ export default function App() {
         selectedText,
         sourceLabel,
         sourceTabId,
-        sourceIcon: activeTab?.icon ?? 'fileTypes/text',
+        sourceIcon: toolbarState?.sourceIcon ?? activeTab?.icon ?? 'fileTypes/text',
         rowIds,
         lineLabel,
         // Adding context from a file is a background action: keep the current
@@ -28116,9 +28366,14 @@ export default function App() {
     }
 
     if (actionId !== 'comment' && actionId !== 'add-context-comment') return;
-    if ((!isPlainFileOverlayTab && !isDiffTab) || !activeTabId || !activePlanDiffData) return;
+    const isReviewSplitSelection = Boolean(toolbarState?.reviewSplit && activeReviewSplitFile);
+    const selectionDiffData = isReviewSplitSelection
+      ? (activeReviewSplitFile.fullDiffData ?? activeReviewSplitFile.diffData)
+      : activePlanDiffData;
+    const selectionTabId = isReviewSplitSelection ? activeReviewSplitFile.tabId : activeTabId;
+    if ((!isPlainFileOverlayTab && !isDiffTab && !isReviewSplitSelection) || !selectionTabId || !selectionDiffData) return;
 
-    const availableRowIds = new Set((activePlanDiffData.rows ?? []).map((row) => row.id));
+    const availableRowIds = new Set((selectionDiffData.rows ?? []).map((row) => row.id));
     const storedToolbarRowIds = Array.isArray(toolbarState?.rowIds)
       ? toolbarState.rowIds.filter((rowId, index, ids) => (
           typeof rowId === 'string'
@@ -28185,14 +28440,14 @@ export default function App() {
       }
     }
 
-    if (isDiffTab) {
+    if (isDiffTab || isReviewSplitSelection) {
       setDiffGutterCommentsEnabled(true);
     }
     editorInlineCommentOpenRef.current = true;
     setEditorSelectionToolbarPos(null);
     setEditorExternalCommentRequest({
-      nonce: `${activeTabId}:${Date.now()}:${rowIds.join(',')}`,
-      tabId: activeTabId,
+      nonce: `${selectionTabId}:${Date.now()}:${rowIds.join(',')}`,
+      tabId: selectionTabId,
       rowId: rowIds[0] ?? toolbarState?.rowId ?? null,
       rowIds,
       targetHasSelection: true,
@@ -28201,6 +28456,7 @@ export default function App() {
     activeAiChatTabChatId,
     activeEditorTab,
     activePlanDiffData,
+    activeReviewSplitFile,
     activeTabId,
     ideTabs,
     isDiffTab,
@@ -31484,6 +31740,35 @@ export default function App() {
     if (target.diffRequest) openPlanDiffTab(target.diffRequest);
   }, [handleAgentTaskSelect, ideTabs, openEditorTabByLabel, openPlanDiffTab]);
 
+  const openHistoryChangedFileInReviewScope = useCallback((file, { chatId = null } = {}) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    if (!file || !targetChatId) return null;
+    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
+    const fileLabel = String(
+      file?.label
+      ?? file?.sourceLabel
+      ?? file?.diffRequest?.source?.label
+      ?? '',
+    ).trim();
+    const selectedDiffRequest = scopeRequests.find((request) => (
+      String(request?.source?.label ?? '').trim() === fileLabel
+    )) ?? file?.diffRequest ?? null;
+
+    if (!selectedDiffRequest) {
+      openCommentTarget(file);
+      return null;
+    }
+
+    openChatInEditorTab(targetChatId);
+    return openChangedFileInReviewScope(selectedDiffRequest, targetChatId);
+  }, [
+    getAiChatScenarioById,
+    openChatInEditorTab,
+    openChangedFileInReviewScope,
+    openCommentTarget,
+    selectedAiChatId,
+  ]);
+
   // Switch the left tool window to the Commit panel. MainWindow's active left
   // window is uncontrolled (driven by stripe clicks), so we activate it the same
   // way a user would — by clicking the "Commit" stripe item.
@@ -32230,7 +32515,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenFile={openCommentTarget} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
             return defaultLeftPanelContent(id, ctx);
           }}
 	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -32408,7 +32693,7 @@ export default function App() {
                 chatIcon={<AiChatAgentIcon icon={reviewSplitListItem?.icon ?? reviewSplitScenario?.icon ?? 'claude'} title={reviewSplitChatLabel} />}
                 onCloseReview={closeReviewSplitView}
                 showReviewTab={isReviewSplitOverviewMode}
-                rightTabs={reviewSplitFiles.map((file) => ({
+                rightTabs={displayedReviewSplitFiles.map((file) => ({
                   label: file.name,
                   icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
                   closable: true,
@@ -32419,15 +32704,14 @@ export default function App() {
                     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
                     return;
                   }
-                  const fileIndex = isReviewSplitOverviewMode ? index - 1 : index;
-                  if (reviewSplitFiles[fileIndex]) setReviewSplitActiveTabId(reviewSplitFiles[fileIndex].tabId);
+                  if (activeReviewSplitFile) setReviewSplitActiveTabId(activeReviewSplitFile.tabId);
                 }}
                 onRightTabClose={(index) => {
                   if (!isReviewSplitOverviewMode) {
                     closeReviewSplitView();
                     return;
                   }
-                  closeReviewSplitFileTab(reviewSplitFiles[index]?.tabId);
+                  closeReviewSplitFileTab(activeReviewSplitFile?.tabId);
                 }}
                 leftPane={(
                   <div className="aiux543-chat-editor-host">
@@ -32441,7 +32725,8 @@ export default function App() {
                       fallbackTitle={reviewSplitChatLabel}
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
-                      onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, reviewSplitChatId)}
+                      onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, reviewSplitChatId)}
+                      onOpenReviewScope={openLatestChangedFilesReviewScope}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -32491,6 +32776,35 @@ export default function App() {
                         includeDocuments: false,
                       })}
                       onNavigateFile={navigateReviewSplitFileTab}
+                      selectedChangeScopeId={reviewSplitChangeScopeId}
+                      onChangeScope={handleReviewSplitChangeScope}
+                      changeScopeOptions={reviewSplitChangeScopeOptions}
+                      reviewScopeNoteCount={visibleReviewSplitNoteCount}
+                      onTextSelectionChange={(selectionState) => {
+                        if (editorInlineCommentOpenRef.current || !selectionState?.rect) {
+                          setEditorSelectionToolbarPos(null);
+                          return;
+                        }
+                        const anchorRect = getViewportPointRect(selectionState.point) ?? selectionState.rect;
+                        setEditorSelectionToolbarPos({
+                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44 }),
+                          surface: 'diff',
+                          reviewSplit: true,
+                          fixedChatId: reviewSplitChatId,
+                          rowId: selectionState.rowId,
+                          rowIds: selectionState.rowIds,
+                          selectedText: selectionState.selectedText,
+                          sourceTabId: activeReviewSplitFile.tabId,
+                          sourceLabel: activeReviewSplitFile.name,
+                          sourceIcon: activeReviewSplitFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(activeReviewSplitFile.name),
+                        });
+                      }}
+                      externalCommentRequest={
+                        editorExternalCommentRequest?.tabId === activeReviewSplitFile.tabId
+                          ? editorExternalCommentRequest
+                          : null
+                      }
+                      onInlineCommentOpenChange={handleEditorInlineCommentOpenChange}
                       onCommentsChange={(tabId, comments, metadata) => (
                         persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
@@ -32550,7 +32864,8 @@ export default function App() {
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
-                  onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, activeAiChatTabChatId)}
+                  onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, activeAiChatTabChatId)}
+                  onOpenReviewScope={openLatestChangedFilesReviewScope}
                   onOpenAttachment={handleOpenChatAttachment}
                   composerDiffAttachments={aiChatComposerDiffAttachments}
                   onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -32735,7 +33050,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} onStartReview={handleStartReviewFromDialog} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenFile={openCommentTarget} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={(chatId) => openChatInEditorTab(chatId)} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => {
@@ -32762,7 +33077,7 @@ export default function App() {
       <EditorSelectionToolbar
         position={editorSelectionToolbarPos}
         onAction={handleEditorSelectionToolbarAction}
-        chatTargets={selectionChatTargets}
+        chatTargets={editorSelectionToolbarPos?.fixedChatId ? [] : selectionChatTargets}
         onMenuOpenChange={handleEditorSelectionToolbarMenuOpenChange}
         onDismiss={() => {
           editorSelectionToolbarMenuOpenRef.current = false;

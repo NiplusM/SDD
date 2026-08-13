@@ -754,10 +754,101 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
   ];
 }
 
+const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
+  { id: 'last-turn', label: 'Last Turn', section: 'turn' },
+  { id: 'uncommitted', label: 'Uncommitted', section: 'working-tree' },
+  { id: 'unstaged', label: 'Unstaged', section: 'working-tree' },
+  { id: 'staged', label: 'Staged', section: 'working-tree' },
+  { id: 'committed', label: 'Committed', section: 'history', submenu: true },
+  { id: 'branch', label: 'Branch', section: 'history' },
+];
+
+function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = null, options = null }) {
+  const triggerRef = useRef(null);
+  const [triggerRect, setTriggerRect] = useState(null);
+  const [localScopeId, setLocalScopeId] = useState('last-turn');
+  const scopeOptions = Array.isArray(options) && options.length > 0
+    ? options
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+  const resolvedScopeId = selectedScopeId ?? localScopeId;
+  const selectedScope = scopeOptions.find((option) => option.id === resolvedScopeId)
+    ?? scopeOptions[0];
+  const selectScope = (scopeId) => {
+    setLocalScopeId(scopeId);
+    onScopeChange?.(scopeId);
+    setTriggerRect(null);
+  };
+
+  return (
+    <span ref={triggerRef} className="plan-diff-change-scope-trigger">
+      <button
+        type="button"
+        className={`plan-diff-change-scope-button${triggerRect ? ' is-open' : ''}`}
+        aria-label="Select diff scope"
+        aria-haspopup="menu"
+        aria-expanded={Boolean(triggerRect)}
+        onClick={() => {
+          setTriggerRect((current) => (
+            current ? null : triggerRef.current?.getBoundingClientRect() ?? null
+          ));
+        }}
+      >
+        <span>{selectedScope.label}</span>
+        <Icon name="general/chevronDown" size={16} />
+      </button>
+      {Number.isFinite(selectedScope.added) && Number.isFinite(selectedScope.removed) && (
+        <span className="plan-diff-change-scope-counts" aria-label={`${selectedScope.added} added, ${selectedScope.removed} removed`}>
+          <span className="is-added">+{selectedScope.added}</span>
+          <span className="is-removed">-{selectedScope.removed}</span>
+        </span>
+      )}
+      {triggerRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
+            <Popup
+              visible
+              className="plan-diff-popover plan-diff-change-scope-popup text-ui-default"
+              onClose={() => setTriggerRect(null)}
+            >
+              {scopeOptions.map((option, index) => (
+                <Fragment key={option.id}>
+                  {(index === 0 || option.section !== scopeOptions[index - 1].section) && (
+                    <PopupCell
+                      type="separator"
+                      text={option.section === 'commit' ? 'Commit Tool Window' : 'Current Chat'}
+                    />
+                  )}
+                  <PopupCell
+                    selected={option.id === resolvedScopeId}
+                    submenu={option.submenu}
+                    shortcut={Number.isFinite(option.added) && Number.isFinite(option.removed) ? (
+                      <span className="plan-diff-change-scope-counts is-menu-count">
+                        <span className="is-added">+{option.added}</span>
+                        <span className="is-removed">-{option.removed}</span>
+                      </span>
+                    ) : undefined}
+                    onClick={() => selectScope(option.id)}
+                  >
+                    {option.label}
+                  </PopupCell>
+                </Fragment>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
 function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
   selectedScopeId = 'new',
+  selectedChangeScopeId = null,
+  onChangeScope = null,
+  changeScopeOptions = null,
   files = null,
   currentFileIndex = 0,
   onSelectFile = null,
@@ -791,7 +882,13 @@ function PlanDiffViewingScopeControl({
   const closeFiles = () => setFilesRect(null);
 
   return (
-    <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
+    <div className="plan-diff-review-scope-controls">
+      <PlanDiffChangeScopeControl
+        selectedScopeId={selectedChangeScopeId}
+        onScopeChange={onChangeScope}
+        options={changeScopeOptions}
+      />
+      <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
         className="plan-diff-viewing-file-arrow"
@@ -818,11 +915,10 @@ function PlanDiffViewingScopeControl({
         disabled={resolvedCurrentFileIndex >= selectedFileCount - 1}
         onClick={onNavigateNext}
       />
-      {filesRect && typeof document !== 'undefined' && createPortal(
+        {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
             <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
-              <PopupCell type="separator" text={`Files in ${selectedScope.label}`} />
               {fileOptions.map((item) => (
                 <PopupCell
                   key={item.id}
@@ -841,7 +937,8 @@ function PlanDiffViewingScopeControl({
           </PositionedPopup>
         </div>,
         document.body,
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -1491,6 +1588,8 @@ export function DiffInlineCommentPopup({
   submitActionOptions = null,
   secondarySubmitAction = null,
   inputPlaceholder = 'Write an AI Note',
+  composeHeaderLabel = '',
+  reviewScopeNoteCount = null,
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
   commentContextIcon = 'claude',
@@ -1594,6 +1693,16 @@ export function DiffInlineCommentPopup({
   const commentAgentLabel = getAiReviewAgentLabel(commentContextIcon);
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
+  const normalizedComposeHeaderLabel = typeof composeHeaderLabel === 'string' ? composeHeaderLabel.trim() : '';
+  const existingComposeNoteCount = hasGroupedComments
+    ? normalizedCommentGroups.reduce((total, group) => (
+        total + (Array.isArray(group?.comments) ? group.comments.length : 0)
+      ), 0)
+    : comments.length;
+  const normalizedReviewScopeNoteCount = Number.isFinite(reviewScopeNoteCount)
+    ? Math.max(0, Math.trunc(reviewScopeNoteCount))
+    : null;
+  const composeNoteOrdinal = (normalizedReviewScopeNoteCount ?? existingComposeNoteCount) + 1;
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
       ? submitActionOptions
@@ -1696,6 +1805,29 @@ export function DiffInlineCommentPopup({
         )
       : null
   };
+  const getSavedNoteNumber = (entries = []) => {
+    const storedNumber = (Array.isArray(entries) ? entries : []).find((comment) => (
+      comment && typeof comment === 'object'
+      && Number.isInteger(comment.reviewNoteNumber)
+      && comment.reviewNoteNumber > 0
+    ))?.reviewNoteNumber;
+    return storedNumber ?? Math.max(1, Array.isArray(entries) ? entries.length : 1);
+  };
+  const renderNotesHeader = (count = 1) => (
+    <div className="spec-done-comment-popup-notes-header" aria-label={`Note ${count}`}>
+      <Icon
+        name="general/balloon"
+        size={16}
+        className="spec-done-comment-popup-notes-header-icon"
+      />
+      <span className="spec-done-comment-popup-notes-header-label">
+        <span className="spec-done-comment-popup-notes-header-title">
+          Note
+        </span>
+        <span className="spec-done-comment-popup-notes-header-count">{count}</span>
+      </span>
+    </div>
+  );
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -2236,7 +2368,9 @@ export function DiffInlineCommentPopup({
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
       {showUngroupedHeader && (
         <div className="spec-done-comment-popup-context-row">
-          {renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
+          {normalizedComposeHeaderLabel
+            ? renderNotesHeader(getSavedNoteNumber(comments))
+            : renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
           {moveUngroupedCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
         </div>
       )}
@@ -2298,7 +2432,9 @@ export function DiffInlineCommentPopup({
             >
               {showGroupHeader && (
                 <div className="spec-done-comment-popup-context-row">
-                  {renderCommentContextHeader({ ...group, pending: hasPendingGroupComments || hasProcessingGroupComments })}
+                  {normalizedComposeHeaderLabel
+                    ? renderNotesHeader(getSavedNoteNumber(group.comments))
+                    : renderCommentContextHeader({ ...group, pending: hasPendingGroupComments || hasProcessingGroupComments })}
                   {moveCommentMenuToHeader && renderMoreButton(headerCommentActions)}
                 </div>
               )}
@@ -2410,7 +2546,19 @@ export function DiffInlineCommentPopup({
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
           }}
         >
-          {showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
+          {!isEditing && normalizedComposeHeaderLabel.length > 0 ? (
+            <div className="spec-done-comment-popup-compose-header">
+              <Icon
+                name="general/balloon"
+                size={16}
+                className="spec-done-comment-popup-compose-title-icon"
+              />
+              <span className="spec-done-comment-popup-notes-header-label">
+                <span className="spec-done-comment-popup-compose-title">{normalizedComposeHeaderLabel}</span>
+                <span className="spec-done-comment-popup-notes-header-count">{composeNoteOrdinal}</span>
+              </span>
+            </div>
+          ) : showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
             <div className="spec-done-comment-popup-compose-header">
               {renderSubmitTargetButton()}
             </div>
@@ -2899,6 +3047,8 @@ export function PlanDiffOverlay({
   highlightCommentRowId = null,
   highlightedCommentRowIds = [],
   allowCommentReplies = true,
+  reviewNoteComposer = false,
+  reviewScopeNoteCount = null,
 }) {
   const scrollRef = useRef(null);
   const canCreateInlineComments = !commentsReadOnly && allowInlineCommentCompose;
@@ -3895,6 +4045,8 @@ export function PlanDiffOverlay({
     );
     setCommentTargetRowIds(nextTargetRowIds);
     setCommentTargetHasSelection(nextTargetHasSelection);
+    preservedSelectionSnapshotRef.current = resolvedSelectionSnapshot;
+    preservedSelectionTargetRowIdsRef.current = nextTargetRowIds;
     setPreserveSelectionCommentRowId(resolvedSelectionSnapshot ? anchorRowId : null);
     setCommentRowId(anchorRowId);
     setCommentValue('');
@@ -3957,8 +4109,11 @@ export function PlanDiffOverlay({
       : latestTargetRowIds.length > 1
       ? latestTargetRowIds
       : [];
+    const matchesLatestSnapshotRows = latestSnapshotTargetRowIds.length > 0
+      && targetRowIds.length === latestSnapshotTargetRowIds.length
+      && targetRowIds.every((rowId) => latestSnapshotTargetRowIds.includes(rowId));
     const selectionSnapshot = capturedSelectionSnapshot
-      ?? (latestSnapshotTargetRowIds.length > 0 && targetRowIds === latestSnapshotTargetRowIds ? latestSelectionSnapshot : null);
+      ?? (matchesLatestSnapshotRows ? latestSelectionSnapshot : null);
     const targetHasSelection =
       Boolean(externalCommentRequest?.targetHasSelection)
       || explicitTargetRowIds.length > 0
@@ -4349,7 +4504,9 @@ export function PlanDiffOverlay({
                 .map(getCommentEntryText)
             ));
             const hiddenRowCommentCount = hiddenRowCommentTexts.length;
-            const aiNoteHint = singleLineNumbers ? AI_NOTE_FILE_HINT : AI_NOTE_DIFF_HINT;
+            const aiNoteHint = reviewNoteComposer
+              ? 'Add a note to this line'
+              : (singleLineNumbers ? AI_NOTE_FILE_HINT : AI_NOTE_DIFF_HINT);
             const isCommentComposeOpen = commentRowId === row.id;
             const isCommentSelectionHighlighted =
               commentTargetHasSelection
@@ -4448,6 +4605,13 @@ export function PlanDiffOverlay({
                   text,
                   ...(lineLabel.length > 0 ? { lineLabel } : {}),
                   rowIds: targetRowIds,
+                  ...(
+                    reviewNoteComposer
+                    && !previousComment
+                    && Number.isFinite(reviewScopeNoteCount)
+                      ? { reviewNoteNumber: Math.max(0, Math.trunc(reviewScopeNoteCount)) + 1 }
+                      : {}
+                  ),
                 };
                 if (!isDocumentAttachMode && typeof targetChatId === 'string' && targetChatId.trim().length > 0) {
                   commentMetadata.chatId = targetChatId.trim();
@@ -4890,8 +5054,10 @@ export function PlanDiffOverlay({
                         tabIndex={0}
                         aria-label={
                           hasVisibleRowComments
-                            ? `${visibleRowCommentCount} ${visibleRowCommentCount === 1 ? 'AI Note' : 'AI Notes'}${hiddenRowCommentCount > 0 ? ', collapsed in gutter' : ''}`
-                            : canCreateInlineComments ? 'Add AI Note' : 'AI Note'
+                            ? `${visibleRowCommentCount} ${reviewNoteComposer ? (visibleRowCommentCount === 1 ? 'Note' : 'Notes') : (visibleRowCommentCount === 1 ? 'AI Note' : 'AI Notes')}${hiddenRowCommentCount > 0 ? ', collapsed in gutter' : ''}`
+                            : canCreateInlineComments
+                              ? (reviewNoteComposer ? 'Add Note' : 'Add AI Note')
+                              : (reviewNoteComposer ? 'Note' : 'AI Note')
                         }
                         onMouseDown={(event) => {
                           event.preventDefault();
@@ -5011,6 +5177,14 @@ export function PlanDiffOverlay({
                           showCompose={showGroupCompose}
                           commentsReadOnly={commentsReadOnly}
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
+                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                          submitButtonLabel={reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : ''}
+                          showSubmitTargetLabel={!reviewNoteComposer}
+                          showSendToAgentAction={!reviewNoteComposer}
+                          showSubmitActionMenu={!reviewNoteComposer}
+                          inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                          composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
+                          reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
                           commentContextSessionLabel={commentContextSessionLabel}
@@ -5019,7 +5193,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -5096,6 +5270,14 @@ export function PlanDiffOverlay({
                         showCompose
                         commentsReadOnly={commentsReadOnly}
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
+                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                        submitButtonLabel={reviewNoteComposer ? 'Add Note' : ''}
+                        showSubmitTargetLabel={!reviewNoteComposer}
+                        showSendToAgentAction={!reviewNoteComposer}
+                        showSubmitActionMenu={!reviewNoteComposer}
+                        inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                        composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
+                        reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
                         commentContextSessionLabel={commentContextSessionLabel}
@@ -5104,7 +5286,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -5549,7 +5731,7 @@ export function PlanDiffOverlay({
           }}
           data-placement={shortcutHintPosition.placement}
         >
-          <span className="plan-diff-comment-shortcut-title">Add AI Notes faster</span>
+          <span className="plan-diff-comment-shortcut-title">{reviewNoteComposer ? 'Add Notes faster' : 'Add AI Notes faster'}</span>
           <span className="plan-diff-comment-shortcut-copy">
             <span>Press</span>
             <span className="plan-diff-comment-shortcut-keys" aria-label="Option Shift K">
@@ -5594,6 +5776,9 @@ export function PlanDiffEditorToolbar({
   onSelectFile = null,
   onNavigatePreviousFile = null,
   onNavigateNextFile = null,
+  selectedChangeScopeId = null,
+  onChangeScope = null,
+  changeScopeOptions = null,
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
@@ -5611,6 +5796,9 @@ export function PlanDiffEditorToolbar({
             onSelectFile={onSelectFile}
             onNavigatePrevious={onNavigatePreviousFile}
             onNavigateNext={onNavigateNextFile}
+            selectedChangeScopeId={selectedChangeScopeId}
+            onChangeScope={onChangeScope}
+            changeScopeOptions={changeScopeOptions}
           />
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
@@ -5928,6 +6116,7 @@ export function PlanDiffEditorArea({
           severityFilter={severityFilter}
           resolveKeepsComment={resolveKeepsComment}
           allowInlineCommentCompose={allowInlineCommentCompose}
+          reviewNoteComposer
           viewMode={effectiveViewMode}
           onCommentNavigate={onCommentNavigate}
           inlineCommentRowIdOnly={inlineCommentRowIdOnly}

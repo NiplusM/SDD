@@ -260,6 +260,11 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
       sourceLabel: normalizedSourceLabel,
       lineLabel,
       agentReply,
+      noteNumber: comment && typeof comment === 'object'
+        && Number.isInteger(comment.reviewNoteNumber)
+        && comment.reviewNoteNumber > 0
+        ? comment.reviewNoteNumber
+        : null,
     });
     return items;
   };

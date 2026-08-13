@@ -4587,7 +4587,7 @@ body {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 26px);
+  padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 22px);
 }
 
 .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored {
@@ -4842,8 +4842,19 @@ body {
 .spec-done-comment-popup-compose-header {
   display: flex;
   align-items: center;
+  gap: 6px;
   min-width: 0;
   margin: -4px 0 0;
+}
+
+.spec-done-comment-popup-compose-title-icon {
+  flex: 0 0 auto;
+  color: var(--icon-secondary, var(--text-secondary, #b4b8bf));
+}
+
+.spec-done-comment-popup-compose-title {
+  color: var(--text-default, #d1d3d9);
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .spec-done-comment-popup-list + .spec-done-comment-popup-compose,
@@ -4892,6 +4903,37 @@ body {
 
 .spec-done-comment-popup-context-row .spec-done-comment-popup-more-btn {
   margin: 2px 0 0 auto;
+}
+
+.spec-done-comment-popup-notes-header {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 24px;
+  color: var(--text-default, #d1d3d9);
+}
+
+.spec-done-comment-popup-notes-header-icon {
+  flex: 0 0 auto;
+  color: var(--icon-secondary, var(--text-secondary, #b4b8bf));
+}
+
+.spec-done-comment-popup-notes-header-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.spec-done-comment-popup-notes-header-title {
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.spec-done-comment-popup-notes-header-count {
+  color: var(--text-default, #d1d3d9);
+  font: 600 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .spec-done-comment-popup-context-header .toolbar-button-content {
@@ -5869,6 +5911,83 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.plan-diff-review-scope-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.plan-diff-change-scope-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.plan-diff-change-scope-button {
+  display: inline-flex;
+  height: 28px;
+  align-items: center;
+  gap: 3px;
+  padding: 0 7px 0 9px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.plan-diff-change-scope-button:hover,
+.plan-diff-change-scope-button.is-open {
+  background: #303136;
+}
+
+.plan-diff-change-scope-button:focus-visible {
+  outline: 2px solid #3574f0;
+  outline-offset: -2px;
+}
+
+.plan-diff-change-scope-button > .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--icon-secondary, #b4b8bf);
+}
+
+.plan-diff-change-scope-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #8b8e94);
+  font: 500 13px/16px "JetBrains Mono", monospace;
+  white-space: nowrap;
+}
+
+.plan-diff-change-scope-counts .is-added {
+  color: #59a869;
+}
+
+.plan-diff-change-scope-counts .is-removed {
+  color: #db5c5c;
+}
+
+.plan-diff-change-scope-popup {
+  width: 360px;
+  max-width: 360px;
+}
+
+.plan-diff-change-scope-popup .popup-cell-shortcut {
+  max-width: none;
+}
+
+.plan-diff-change-scope-counts.is-menu-count {
+  gap: 6px;
+  font-size: 12px;
 }
 
 .plan-diff-viewing-scope {
@@ -7976,9 +8095,9 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  width: clamp(300px, 54%, 520px);
+  width: clamp(300px, 54%, 420px);
   min-width: 0;
-  max-width: min(100%, 520px);
+  max-width: min(100%, 420px);
   box-sizing: border-box;
 }
 
@@ -13163,10 +13282,17 @@ body {
 .ai-chat-changed-files-actions {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-.ai-chat-changed-files-rollback {
+.ai-chat-changed-files-action-separator {
+  width: 1px;
+  height: 16px;
+  flex: 0 0 1px;
+  background: #4B4D53;
+}
+
+.ai-chat-changed-files-action {
   all: unset;
   color: #7BA0F7;
   cursor: pointer;
@@ -13174,7 +13300,7 @@ body {
   line-height: 20px;
 }
 
-.ai-chat-changed-files-rollback:hover {
+.ai-chat-changed-files-action:hover {
   text-decoration: underline;
 }
 
@@ -20646,9 +20772,8 @@ button.aiux543-answer-change-card:focus-visible {
   inset: 0;
 }
 
-/* A review note is editor content, so it uses the full code column instead of
-   the generic inline popup's compact 54% width. The library buttons keep their
-   intrinsic size and wrap as a group only when the pane is genuinely narrow. */
+/* Keep review notes compact enough to read as an anchored editor card rather
+   than a full-width row, while still fitting the title and two footer actions. */
 .aiux-review-split-file-view .plan-diff-inline-comment {
   width: 100%;
   gap: 4px;
@@ -20658,9 +20783,9 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-split-file-view .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
   --spec-done-comment-popup-inline-padding: 10px;
-  width: min(640px, 100%);
+  width: min(420px, 100%);
   min-width: 0;
-  max-width: 100%;
+  max-width: min(420px, 100%);
 }
 
 .aiux-review-split-file-view .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups,

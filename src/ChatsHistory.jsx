@@ -255,6 +255,7 @@ function ChatsHistoryToolWindow({
                     {row.id === 'refactor-time-slots' && expanded ? (
                       <AgentSessionChanges
                         files={AGENT_SESSION_ACTIVE_CHANGES}
+                        chatId={row.id}
                         onOpenFile={onOpenFile}
                         vetSchedulesLineCount={vetSchedulesLineCount}
                       />
@@ -306,7 +307,7 @@ function AgentSessionsFilterIcon() {
   );
 }
 
-function AgentSessionChanges({ files, onOpenFile, vetSchedulesLineCount = 0 }) {
+function AgentSessionChanges({ files, chatId = null, onOpenFile, vetSchedulesLineCount = 0 }) {
   return (
     <div className="agent-sessions-changes aiux543-chat-row-children" aria-label="Changed files">
       {files.map((file) => (
@@ -315,7 +316,7 @@ function AgentSessionChanges({ files, onOpenFile, vetSchedulesLineCount = 0 }) {
             type="button"
             className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux543-chat-tree-leaf-modified"
             style={{ '--tree-level': 3 }}
-            onClick={() => onOpenFile?.(file)}
+            onClick={() => onOpenFile?.(file, { chatId })}
           >
             <span className="aiux543-chat-tree-chevron-spacer" />
             {file.type === 'markdown'
@@ -1289,7 +1290,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
                         style={{ '--tree-level': 1 }}
                         onClick={() => {
                           if (section.id === 'changes') {
-                            onOpenFile?.(item);
+                            onOpenFile?.(item, { chatId: rowId });
                           }
                         }}
                       >
