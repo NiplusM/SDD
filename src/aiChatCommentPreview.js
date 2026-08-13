@@ -14,7 +14,7 @@ export function normalizeCommentTarget(target) {
 
 export function getCommentIssueSourceLabel(issue = null) {
   const secondaryText = typeof issue?.secondaryText === 'string' ? issue.secondaryText.trim() : '';
-  if (!secondaryText) return 'AI Note';
+  if (!secondaryText) return 'Note';
 
   return secondaryText.replace(/:\d+$/u, '');
 }

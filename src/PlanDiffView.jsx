@@ -387,7 +387,7 @@ export function PlanDiffCommentBadge({ count, previewComments = [], onAdd = null
         className="plan-diff-comment-badge-add"
         role={onAdd ? 'button' : undefined}
         tabIndex={onAdd ? 0 : undefined}
-        aria-label={onAdd ? 'Add AI Note' : undefined}
+        aria-label={onAdd ? 'Add Note' : undefined}
         onClick={onAdd ? (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -411,7 +411,7 @@ export function PlanDiffCommentBadge({ count, previewComments = [], onAdd = null
           style={previewStyle}
         >
           <span className="ai-chat-attachment-comment-preview-title">
-            {previewComments.length === 1 ? 'AI Note' : `AI Notes · ${previewComments.length}`}
+            {previewComments.length === 1 ? 'Note' : `Notes · ${previewComments.length}`}
           </span>
           {visiblePreviewComments.map((comment, index) => (
             <span key={`hidden-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
@@ -580,7 +580,7 @@ function PlanDiffGutterContextMenu({
   const commentToggleItems = [
     {
       kind: 'diff',
-      label: 'Enable Diff AI Notes',
+      label: 'Enable Notes in Diffs',
       checked: diffGutterCommentsEnabled,
       onToggle: onDiffGutterCommentsEnabledChange,
     },
@@ -1630,7 +1630,7 @@ export function DiffInlineCommentPopup({
   showSendToAgentAction = true,
   submitActionOptions = null,
   secondarySubmitAction = null,
-  inputPlaceholder = 'Write an AI Note',
+  inputPlaceholder = 'Write a note',
   composeHeaderLabel = '',
   reviewScopeNoteCount = null,
   renderSubmitTargetPicker = null,
@@ -1746,12 +1746,12 @@ export function DiffInlineCommentPopup({
     ? Math.max(0, Math.trunc(reviewScopeNoteCount))
     : null;
   const composeNoteOrdinal = (normalizedReviewScopeNoteCount ?? existingComposeNoteCount) + 1;
-  const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
+  const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save Note' : 'Add Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
       ? submitActionOptions
       : [
           { id: 'default', label: primarySubmitButtonLabel },
-          { id: 'send-to-agent', label: 'Send AI Note to Agent' },
+          { id: 'send-to-agent', label: 'Send Note to Agent' },
           // { id: 'send-all-to-agent', label: 'Send All AI Notes to Agent' },
         ];
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
@@ -2118,7 +2118,7 @@ export function DiffInlineCommentPopup({
             ref={submitTargetRef}
             className={`diff-comment-submit-target-label text-ui-small${submitOptionsRect ? ' is-selected' : ''}`}
             title={selectedSubmitTargetLabel}
-            aria-label={`Choose AI Note attachment target: ${selectedSubmitTargetLabel}`}
+            aria-label={`Choose Note attachment target: ${selectedSubmitTargetLabel}`}
             aria-haspopup="menu"
             aria-expanded={Boolean(submitOptionsRect)}
             onClick={canChooseSubmitAttachMode ? toggleSubmitOptions : undefined}
@@ -2663,7 +2663,7 @@ export function DiffInlineCommentPopup({
                   disabled={!canSubmitComment}
                   onClick={handleSendToAgentSubmit}
                 >
-                  Send AI Note to Agent
+                  Send Note to Agent
                 </Button>
               )}
               <Button
@@ -3718,8 +3718,8 @@ export function PlanDiffOverlay({
     const normalizedLineLabel = typeof lineLabel === 'string' ? lineLabel.trim() : '';
     if (!normalizedLineLabel) return [];
 
-    const rangeMatch = normalizedLineLabel.match(/^(?:AI Notes|Comments) on lines (\d+) to (\d+)$/u);
-    const singleMatch = normalizedLineLabel.match(/^(?:AI Note|Comment) on line (\d+)$/u);
+    const rangeMatch = normalizedLineLabel.match(/^(?:AI Notes|Notes|Comments) on lines (\d+) to (\d+)$/u);
+    const singleMatch = normalizedLineLabel.match(/^(?:AI Note|Note|Comment) on line (\d+)$/u);
     const startLineNumber = rangeMatch ? Number(rangeMatch[1]) : (singleMatch ? Number(singleMatch[1]) : null);
     const endLineNumber = rangeMatch ? Number(rangeMatch[2]) : startLineNumber;
     if (!Number.isInteger(startLineNumber) || !Number.isInteger(endLineNumber)) return [];
@@ -5141,10 +5141,10 @@ export function PlanDiffOverlay({
                         tabIndex={0}
                         aria-label={
                           hasVisibleRowComments
-                            ? `${visibleRowCommentCount} ${reviewNoteComposer ? (visibleRowCommentCount === 1 ? 'Note' : 'Notes') : (visibleRowCommentCount === 1 ? 'AI Note' : 'AI Notes')}${hiddenRowCommentCount > 0 ? ', collapsed in gutter' : ''}`
+                            ? `${visibleRowCommentCount} ${visibleRowCommentCount === 1 ? 'Note' : 'Notes'}${hiddenRowCommentCount > 0 ? ', collapsed in gutter' : ''}`
                             : canCreateInlineComments
-                              ? (reviewNoteComposer ? 'Add Note' : 'Add AI Note')
-                              : (reviewNoteComposer ? 'Note' : 'AI Note')
+                              ? 'Add Note'
+                              : 'Note'
                         }
                         onMouseDown={(event) => {
                           event.preventDefault();
@@ -5269,7 +5269,7 @@ export function PlanDiffOverlay({
                           showSubmitTargetLabel={!reviewNoteComposer}
                           showSendToAgentAction={!reviewNoteComposer}
                           showSubmitActionMenu={!reviewNoteComposer}
-                          inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                          inputPlaceholder="Write a note"
                           composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
@@ -5362,7 +5362,7 @@ export function PlanDiffOverlay({
                         showSubmitTargetLabel={!reviewNoteComposer}
                         showSendToAgentAction={!reviewNoteComposer}
                         showSubmitActionMenu={!reviewNoteComposer}
-                        inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                        inputPlaceholder="Write a note"
                         composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
@@ -5451,7 +5451,7 @@ export function PlanDiffOverlay({
 	                    const resolvedLabel = getReviewFindingStatusLabel(comment);
 	                    const resolvedBadgeTone = ` is-${findingStatus}`;
 	                    const pending = Boolean(comment && typeof comment === 'object' && comment.pending);
-	                    const displayText = text || group?.label || 'AI Note';
+	                    const displayText = text || group?.label || 'Note';
 	                    const lineLabel = getCommentEntryLineLabel(comment) || rowLineLabel;
 	                    const fileLabel = showCommentIndexFileLabel && commentIndexFileLabel ? commentIndexFileLabel : '';
 	                    const sourceLabel = fileLabel
@@ -5818,7 +5818,7 @@ export function PlanDiffOverlay({
           }}
           data-placement={shortcutHintPosition.placement}
         >
-          <span className="plan-diff-comment-shortcut-title">{reviewNoteComposer ? 'Add Notes faster' : 'Add AI Notes faster'}</span>
+          <span className="plan-diff-comment-shortcut-title">Add Notes faster</span>
           <span className="plan-diff-comment-shortcut-copy">
             <span>Press</span>
             <span className="plan-diff-comment-shortcut-keys" aria-label="Option Shift K">

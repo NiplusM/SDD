@@ -563,7 +563,7 @@ async function runCommitLifecycleScenario(page) {
     await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
     'Clicking review code context did not open a file tab beside AI Review',
   );
-  const addAiNote = splitFileView.getByRole('button', { name: 'Add AI Note', exact: true }).first();
+  const addAiNote = splitFileView.getByRole('button', { name: 'Add Note', exact: true }).first();
   await visible(addAiNote);
   await addAiNote.click();
   const reviewNoteInput = splitFileView.locator('[data-demo-id="diff-comment-input"]:visible').first();
@@ -572,7 +572,7 @@ async function runCommitLifecycleScenario(page) {
   await reviewNoteInput.fill(reviewQuestion);
   await capture(page, 'commit-review-comment-compose');
   const reviewNoteTarget = splitFileView.getByRole('button', {
-    name: /^Choose AI Note attachment target:/,
+    name: /^Choose Note attachment target:/,
   }).first();
   await visible(reviewNoteTarget);
   await reviewNoteTarget.click();

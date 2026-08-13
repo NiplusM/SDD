@@ -22,7 +22,7 @@ const CHAT_SELECTION_TOOLBAR_ITEMS = [
 ];
 
 const CODE_SELECTION_ACTIONS = [
-  { id: 'comment', iconName: 'general/balloon', label: 'Attach AI Note', title: AI_NOTE_FILE_HINT },
+  { id: 'comment', iconName: 'general/balloon', label: 'Add Note', title: AI_NOTE_FILE_HINT },
   { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
 ];
 

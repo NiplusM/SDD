@@ -95,8 +95,8 @@ export function getAiChatAttachmentInlineCount(attachment = null) {
 export function AttachmentCommentHoverCard({
   items = [],
   contextLabel = '',
-  itemLabel = 'AI Note',
-  itemLabelPlural = 'AI Notes',
+  itemLabel = 'Note',
+  itemLabelPlural = 'Notes',
 }) {
   const visible = items.slice(0, 3);
   const hidden = Math.max(0, items.length - visible.length);
@@ -319,7 +319,7 @@ export function AiChatAttachmentStrip({
                       {sourceComments.length > 0 && (
                         <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-row-comment-preview" role="tooltip">
                           <span className="ai-chat-attachment-comment-preview-title">
-                            {sourceComments.length === 1 ? 'AI Note' : 'AI Notes · '}
+                            {sourceComments.length === 1 ? 'Note' : 'Notes · '}
                           </span>
                           {visibleSourceComments.map((comment, index) => (
                             <span key={`${source.key}-source-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">

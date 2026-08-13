@@ -3834,7 +3834,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
       lineNumber: Number.isInteger(rawIndex) ? rawIndex + 1 : null,
       secondaryText: Number.isInteger(rawIndex)
         ? `Line ${rawIndex + 1}`
-        : (entry.sectionTitle || 'AI Note'),
+        : (entry.sectionTitle || 'Note'),
     }));
   });
 }
@@ -3842,7 +3842,7 @@ function buildCommentIssuesFromEntries(commentEntries = [], options = {}) {
 function getDiffCommentRowSecondaryText(row, sourceLabel = '') {
   const normalizedSourceLabel = typeof sourceLabel === 'string' && sourceLabel.trim().length > 0
     ? sourceLabel.trim()
-    : 'AI Note';
+    : 'Note';
   const rowNumber = Number.isInteger(row?.newNumber)
     ? row.newNumber
     : (Number.isInteger(row?.oldNumber) ? row.oldNumber : null);
@@ -4151,7 +4151,7 @@ function getCommentIssueLineLabel(issue = null) {
 }
 
 
-function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'AI Note') {
+function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'Note') {
   const hasExternalSource = Boolean(issue?.sourceKind);
   const sourceLabel = hasExternalSource
     ? getCommentIssueSourceLabel(issue)
@@ -4160,7 +4160,7 @@ function getProblemsCommentNodeDisplay(issue = null, fallbackSourceLabel = 'AI N
   const secondaryText = [sourceLabel, lineLabel].filter(Boolean).join(' · ');
 
   return {
-    label: issue?.label ?? 'AI Note',
+    label: issue?.label ?? 'Note',
     secondaryText,
   };
 }
@@ -4189,7 +4189,7 @@ function buildCommentSourceSummaries({
   };
   const addSource = ({ key, label, icon = null, count = 0, comments = [], navigationTabId = null, navigationRowId = null, rawIndex = null, lineNumber = null }) => {
     const normalizedKey = key || label;
-    const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'AI Note';
+    const normalizedLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'Note';
     const normalizedCount = Number.isFinite(count) ? count : 0;
     if (!normalizedKey || normalizedCount <= 0) return;
 
@@ -5048,7 +5048,7 @@ function buildProblemsTreeForTab(tab, agentTaskIssuesOverride = null, commentEnt
   const commentsGroupNode = commentNodes.length > 0
     ? {
         id: 'active-problems-comments',
-        label: 'AI Notes',
+        label: 'Notes',
         icon: <ProblemsCommentNodeIcon />,
         secondaryText: String(commentNodes.length),
         isExpanded: true,
@@ -7419,7 +7419,7 @@ function DoneCommentButton({ commentCount = 0, isOpen = false, onOpen, demoId = 
       <button
         type="button"
         className={`spec-done-comment-btn${isOpen ? ' is-open' : ''}${hasComments ? ' has-comments' : ''}`}
-        aria-label={hasComments ? `${commentCount} ${commentCount === 1 ? 'AI Note' : 'AI Notes'}` : 'Add AI Note'}
+        aria-label={hasComments ? `${commentCount} ${commentCount === 1 ? 'Note' : 'Notes'}` : 'Add Note'}
         data-demo-id={demoId ?? undefined}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
@@ -9336,7 +9336,7 @@ const SPEC_SELECTION_TOOLBAR_ITEMS = [
 ];
 
 const SPEC_SELECTION_ACTIONS = [
-  { id: 'comment', label: 'Attach AI Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
+  { id: 'comment', label: 'Add Note', iconName: 'general/balloon', title: AI_NOTE_FILE_HINT },
   { id: 'annotation', label: 'Quote in chat', iconName: 'aiAssistant/toolWindowChat@20x20', accent: 'assistant' },
 ];
 
@@ -12113,8 +12113,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       commentContextSessionLabel={isVetSchedulesDocument ? 'Active' : commentContextSessionLabel}
                       submitButtonLabel={activeCommentPopupForRow?.isAnnotation
                         ? (Number.isInteger(activeCommentPopupForRow.editingIndex) ? 'Save Annotation' : 'Add Annotation')
-                        : (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save AI Note' : 'Attach AI Note')}
-                      inputPlaceholder={activeCommentPopupForRow?.isAnnotation ? 'Write an Annotation' : 'Write an AI Note'}
+                        : (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save Note' : 'Add Note')}
+                      inputPlaceholder={activeCommentPopupForRow?.isAnnotation ? 'Write an Annotation' : 'Write a note'}
                       defaultSubmitAttachMode={activeCommentPopupForRow?.isAnnotation
                         ? 'document'
                         : (isVetSchedulesDocument ? 'current' : 'document')}
@@ -12175,7 +12175,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           <div className="spec-external-comments-section">
             <div className="spec-external-comments-header">
               <ProblemsCommentNodeIcon />
-              <span className="spec-external-comments-title">AI Notes</span>
+              <span className="spec-external-comments-title">Notes</span>
               <span className="spec-external-comments-count">{externalSpecCommentIssues.length}</span>
             </div>
             <div className="spec-external-comments-list">
@@ -16592,10 +16592,10 @@ function normalizeAgentRunLineLabel(lineLabel = '') {
   const normalized = String(lineLabel || '').trim();
   if (!normalized) return '';
 
-  const singleLineMatch = normalized.match(/^(?:AI Note|Comment) on line (\d+)$/iu);
+  const singleLineMatch = normalized.match(/^(?:AI Note|Note|Comment) on line (\d+)$/iu);
   if (singleLineMatch) return `Line ${singleLineMatch[1]}`;
 
-  const rangeLineMatch = normalized.match(/^(?:AI Notes|Comments) on lines (\d+) to (\d+)$/iu);
+  const rangeLineMatch = normalized.match(/^(?:AI Notes|Notes|Comments) on lines (\d+) to (\d+)$/iu);
   if (rangeLineMatch) return `Lines ${rangeLineMatch[1]}-${rangeLineMatch[2]}`;
 
   const lineMatch = normalized.match(/^Line\s+(\d+)$/iu);
@@ -20166,9 +20166,9 @@ const AI_ASSISTANT_SETTINGS_SECTIONS = [
   },
   {
     id: 'ai-assistant-comments',
-    label: 'AI Notes',
+    label: 'Notes',
     icon: 'general/balloon',
-    description: 'AI Note entry points in files and diffs.',
+    description: 'Notes entry points in files and diffs.',
   },
 ];
 
@@ -20247,7 +20247,7 @@ function AppSettingsDefaultContent({ path }) {
       <div className="settings-group app-settings-dialog-placeholder">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">{path[path.length - 1]?.label ?? 'Settings'}</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Select Tools, AI Assistant, or AI Notes to configure AI Note workflows.
+          Select Tools, AI Assistant, or Notes to configure Notes workflows.
         </div>
       </div>
     </>
@@ -20272,7 +20272,7 @@ function AppSettingsToolsContent({ path, onSelectAiAssistant }) {
           <span className="app-settings-dialog-nav-card-body">
             <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">AI Assistant</span>
             <span className="app-settings-dialog-nav-card-description text-ui-small">
-              Chat, AI Notes, and code-review context settings.
+              Chat, Notes, and code-review context settings.
             </span>
           </span>
           <Icon name="general/chevronRight" size={16} className="app-settings-dialog-nav-card-chevron" />
@@ -20289,7 +20289,7 @@ function AppSettingsAiAssistantContent({ path, onSelectSection }) {
       <div className="settings-group">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Assistant</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Manage how assistant features collect context and connect code AI Notes to chat sessions.
+          Manage how assistant features collect context and attach Notes to chat sessions.
         </div>
       </div>
       <div className="settings-group app-settings-dialog-card-group">
@@ -20461,8 +20461,8 @@ function AppSettingsCodeReviewContent({ path }) {
           onChange={setSummarizeDiffs}
         />
         <Checkbox
-          label="Suggest Fixes for Review AI Notes"
-          hint="Offer concrete code edits when a review AI Note describes a problem."
+          label="Suggest Fixes for Review Notes"
+          hint="Offer concrete code edits when a review note describes a problem."
           checked={suggestFixes}
           onChange={setSuggestFixes}
         />
@@ -20486,14 +20486,14 @@ function AppSettingsCommentsContent({
     <>
       <AppSettingsBreadcrumb path={path} />
       <div className="settings-group">
-        <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Notes</div>
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Notes</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Choose where the AI Assistant can collect code AI Notes as chat context.
+          Choose where the AI Assistant can collect Notes as chat context.
         </div>
       </div>
       <div className="settings-group app-settings-dialog-options-group">
         <Checkbox
-          label="Enable AI Notes in Diffs"
+          label="Enable Notes in Diffs"
           hint={AI_NOTE_DIFF_HINT}
           checked={diffGutterCommentsEnabled}
           onChange={onDiffGutterCommentsEnabledChange}

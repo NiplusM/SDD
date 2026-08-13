@@ -85,7 +85,7 @@ export function AiChatAddContextPopup({
             tooltip={AI_NOTE_DIFF_HINT}
             badge={diffCommentsOptionIsNew ? 'New' : ''}
           >
-            Enable Diff AI Notes
+            Enable Notes in Diffs
           </AiChatContextToggleCell>
 
           <AiChatAddContextSeparator />

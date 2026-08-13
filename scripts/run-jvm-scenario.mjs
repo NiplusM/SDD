@@ -473,7 +473,7 @@ async function runScenario(page) {
   await clickByDemoId(page, 'spec-comment-ac-1', 'Beat 2', 'Open inline comments for AC #2.');
   const specCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await demoType(page, specCommentInput, 'Beat 2', 'Describe the exact time-slot behavior.', acComment);
-  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 2', 'Attach the AC #2 AI Note.');
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 2', 'Attach the AC #2 Note.');
   await pause(600);
 
   await focusSpecRow(page, 'spec-row-plan-2', 'Beat 2', 'Focus the race-condition plan step.');
@@ -487,7 +487,7 @@ async function runScenario(page) {
   await pause(600);
   await capture(page, 'beat-2-fixes-applied');
 
-  await clickSpecSectionRun(page, 'Plan', 'Beat 3', 'Build the refined spec with the fixes and AI Note context.');
+  await clickSpecSectionRun(page, 'Plan', 'Beat 3', 'Build the refined spec with the fixes and Note context.');
   await page.locator('[data-demo-id="spec-row-plan-2"] .spec-check-status-passed').waitFor({
     state: 'visible',
     timeout: 20000,
@@ -509,7 +509,7 @@ async function runScenario(page) {
   await demoClick(page, diffRow.locator('[data-demo-id^=\"diff-comment-toggle-\"]').first(), 'Beat 4', 'Open inline review comments for the diff row.');
   const diffCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await demoType(page, diffCommentInput, 'Beat 4', 'Leave a compact controller review note.', diffComment);
-  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 4', 'Attach the controller AI Note.');
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 4', 'Attach the controller Note.');
   await capture(page, 'beat-4-diff-comment');
   await logDomSummary(page, 'beat-4-diff-comment');
 
@@ -519,7 +519,7 @@ async function runScenario(page) {
   });
   await updateOverlay(page, {
     beat: 'Beat 5',
-    text: 'The AI Note remains anchored to the reviewed diff and Visit-Booking.md context.',
+    text: 'The Note remains anchored to the reviewed diff and Visit-Booking.md context.',
   });
   await capture(page, 'beat-5-review-context-retained');
 
