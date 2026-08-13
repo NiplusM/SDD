@@ -76,6 +76,7 @@ export function AiChatAddContextPopup({
           >
             Include IDE Context
           </AiChatContextToggleCell>
+          {/* Temporarily hidden until the Notes entry point in the + menu is ready.
           <AiChatContextToggleCell
             checked={diffGutterCommentsEnabled}
             onToggle={() => {
@@ -87,6 +88,7 @@ export function AiChatAddContextPopup({
           >
             Enable Notes in Diffs
           </AiChatContextToggleCell>
+          */}
 
           <AiChatAddContextSeparator />
           <div className="ai-chat-add-context-section-label">Recent files</div>
