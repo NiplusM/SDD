@@ -115,8 +115,10 @@ function ChatsHistoryToolWindow({
   onOpenSpecChat = null,
   onSettings = null,
   onOpenChangesList = null,
+  onOpenUnassignedChanges = null,
   onOpenCommit = null,
   onOpenFile = null,
+  unassignedChangesFiles = [],
   vetSchedulesLineCount = 0,
 }) {
   // Everything collapsed by default except the refactoring chat, which is
@@ -128,6 +130,14 @@ function ChatsHistoryToolWindow({
   // Selection follows the active chat editor tab. When no chat tab is active
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;
+  const unassignedSectionId = 'project-unassigned-changes';
+  const unassignedExpanded = Boolean(expandedRows[unassignedSectionId]);
+  const unassignedSummary = useMemo(() => (
+    unassignedChangesFiles.reduce((summary, file) => ({
+      added: summary.added + Number(file?.diff?.added ?? 0),
+      deleted: summary.deleted + Number(file?.diff?.deleted ?? 0),
+    }), { added: 0, deleted: 0 })
+  ), [unassignedChangesFiles]);
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
   const projectGroups = useMemo(() => {
     const sessionRows = flatRows.slice(0, 9);
@@ -263,6 +273,40 @@ function ChatsHistoryToolWindow({
                     </React.Fragment>
                   );
                 })}
+                {project.id === 'spring-petclinic' && unassignedChangesFiles.length > 0 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="agent-sessions-session agent-sessions-unassigned"
+                      onClick={() => onOpenUnassignedChanges?.()}
+                    >
+                      <span
+                        className="agent-sessions-session-chevron"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setExpandedRows((prev) => ({
+                            ...prev,
+                            [unassignedSectionId]: !unassignedExpanded,
+                          }));
+                        }}
+                      >
+                        <Aiux550ChevronIcon expanded={unassignedExpanded} />
+                      </span>
+                      <span className="agent-sessions-unassigned-icon" aria-hidden="true">
+                        <Icon name="general/edit" size={16} />
+                      </span>
+                      <span className="agent-sessions-session-title">Unassigned Changes</span>
+                      <HistoryChangeSummary summary={unassignedSummary} />
+                    </button>
+                    {unassignedExpanded ? (
+                      <AgentSessionChanges
+                        files={unassignedChangesFiles}
+                        onOpenFile={(file) => onOpenUnassignedChanges?.(file)}
+                      />
+                    ) : null}
+                  </>
+                ) : null}
               </div>
               <button type="button" className="agent-sessions-show-more">Show more…</button>
             </section>

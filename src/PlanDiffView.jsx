@@ -797,28 +797,22 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
   ];
 }
 
+/* Previous Git-state scope menu, intentionally kept disabled while the
+   session-oriented model is evaluated:
+   Last Turn, Uncommitted, Unassigned, Unstaged, Staged, Committed, Branch. */
 const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
-  { id: 'last-turn', label: 'Last Turn', section: 'turn' },
-  { id: 'uncommitted', label: 'Uncommitted', section: 'working-tree' },
-  { id: 'unassigned', label: 'Unassigned', section: 'working-tree' },
-  { id: 'unstaged', label: 'Unstaged', section: 'working-tree' },
-  { id: 'staged', label: 'Staged', section: 'working-tree' },
-  { id: 'committed', label: 'Committed', section: 'history' },
-  {
-    id: 'branch',
-    label: 'Branch',
-    baseBranch: 'main',
-    compareBranch: 'code-notes-v1',
-    compareBranchOptions: [
-      { id: 'code-notes-v1', label: 'code-notes-v1' },
-      { id: 'feature/visit-controller-refactor', label: 'feature/visit-controller-refactor', added: 154, removed: 38 },
-    ],
-    section: 'history',
-  },
+  { id: 'last-turn', label: 'Last Turn', section: 'session' },
+  { id: 'session-changes', label: 'Session Changes', section: 'session' },
+  { id: 'all-sessions-changes', label: 'All Sessions Changes', section: 'project' },
+  { id: 'unassigned-changes', label: 'Unassigned Changes', section: 'project' },
 ];
 
 const PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS = {
-  'last-turn': 'Changes made in the agent\'s latest response in the current chat.',
+  'last-turn': 'Changes made in the agent\'s latest response in the current session.',
+  'session-changes': 'All current changes made across every turn of the current session.',
+  'all-sessions-changes': 'All current changes made across every agent session in this project.',
+  'unassigned-changes': 'Manual or external changes that cannot be attributed to an agent session.',
+  // Legacy descriptions stay available for archived links that still carry an old scope id.
   'all-chat-changes': 'All current changes made across every turn of the current chat.',
   uncommitted: 'All working tree changes that are not committed, including staged, unstaged, and new files.',
   unassigned: 'Changes that are not associated with a chat or agent turn, such as manual or external edits.',
@@ -6125,6 +6119,15 @@ export function PlanDiffEditorToolbar({
       <div className="plan-diff-content-labels">
         <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
         <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+        {diffData?.modifiedAfterSession && (
+          <span
+            className="plan-diff-session-snapshot-notice"
+            title="This historical session diff does not include later manual changes."
+          >
+            <Icon name="general/edit" size={16} />
+            Modified after session
+          </span>
+        )}
       </div>
     </div>
   );

@@ -7185,6 +7185,21 @@ body {
   flex-shrink: 0;
 }
 
+.plan-diff-session-snapshot-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  margin-top: 3px;
+  color: #c7a86b;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.plan-diff-session-snapshot-notice svg {
+  color: #c7a86b;
+}
+
 .plan-diff-viewer-popup {
   position: fixed;
   z-index: 40;
@@ -13379,7 +13394,6 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   background: #191a1c;
 }
 
-
 .aiux543-conversation {
 
   box-sizing: border-box;
@@ -13393,7 +13407,6 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   color: #dfe1e5;
   font-family: Inter, system-ui, sans-serif;
 }
-
 
 .aiux543-conversation-scroll {
 
@@ -13488,133 +13501,95 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 }
 
 
-/* Multi-file change summary in the chat: status + rollback, then file rows.
-   Metrics and colours sampled from the reference screenshot. */
-.ai-chat-changed-files-card {
+/* Agent completion: lightweight edit activity, timing, then the written answer. */
+.ai-chat-agent-completion {
   box-sizing: border-box;
   width: min(750px, 100%);
   margin-right: auto;
   margin-left: auto;
-  padding: 12px 8px 14px;
-  border: 1px solid #33353A;
-  border-radius: 6px;
-  background: #26282C;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 15px;
-  line-height: 20px;
 }
 
-.ai-chat-changed-files-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.ai-chat-changed-files-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #D1D3D9;
-}
-
-/* Filled green disc with the check knocked out in the surface colour. */
-.ai-chat-changed-files-status-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  border-radius: 50%;
-  background: #72AB6C;
-  color: #1E1F22;
-}
-
-.ai-chat-changed-files-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ai-chat-changed-files-action-separator {
-  width: 1px;
-  height: 16px;
-  flex: 0 0 1px;
-  background: #4B4D53;
-}
-
-.ai-chat-changed-files-action {
-  all: unset;
-  color: #7BA0F7;
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 20px;
-}
-
-.ai-chat-changed-files-action:hover {
-  text-decoration: underline;
-}
-
-.ai-chat-changed-files-title {
-  margin-top: 10px;
-  color: #D1D3D9;
-  font-weight: 600;
-}
-
-.ai-chat-changed-files-list {
+.ai-chat-agent-completion-files {
   display: flex;
   flex-direction: column;
-  margin-top: 4px;
+  gap: 2px;
 }
 
-.ai-chat-changed-files-row {
+.ai-chat-agent-completion-file {
   all: unset;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 29px;
-  padding: 0 8px;
-  border-radius: 4px;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 28px;
+  color: #b8bbc3;
   cursor: pointer;
   font-size: 15px;
   line-height: 20px;
 }
 
-.ai-chat-changed-files-row:disabled {
+.ai-chat-agent-completion-file:disabled {
   cursor: default;
 }
 
-.ai-chat-changed-files-row:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.06);
+.ai-chat-agent-completion-file:not(:disabled):hover .ai-chat-agent-completion-name {
+  text-decoration: underline;
 }
 
-.ai-chat-changed-files-row:focus-visible {
+.ai-chat-agent-completion-file:focus-visible {
+  border-radius: 4px;
   outline: 2px solid var(--control-focus-border-brand);
+  outline-offset: 2px;
 }
 
-.ai-chat-changed-files-name {
-  color: #878A90;
+.ai-chat-agent-completion-edit-icon {
+  flex: 0 0 auto;
+  color: #7f838d;
+}
+
+.ai-chat-agent-completion-name {
+  max-width: 440px;
   overflow: hidden;
+  color: #75a7f9;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ai-chat-changed-files-counters {
+.ai-chat-agent-completion-counters {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
+  gap: 5px;
   font-weight: 600;
 }
 
-.ai-chat-changed-files-add {
-  color: #79A978;
+.ai-chat-agent-completion-add {
+  color: #79a978;
 }
 
-.ai-chat-changed-files-remove {
-  color: #E56068;
+.ai-chat-agent-completion-remove {
+  color: #e56068;
+}
+
+.ai-chat-agent-completion-time {
+  margin-top: 12px;
+  color: #7f838d;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.ai-chat-agent-completion-divider {
+  height: 1px;
+  margin-top: 10px;
+  background: #34373d;
+}
+
+.ai-chat-agent-completion-answer > .aiux543-answer {
+  width: 100%;
+}
+
+.ai-chat-agent-completion-answer .aiux543-answer h3 {
+  margin-top: 14px;
 }
 
 .aiux543-code-card {
@@ -20880,21 +20855,6 @@ button.aiux543-answer-change-card:focus-visible {
   padding: 5px 0;
 }
 
-.aiux543-editor-footer-right .ai-review-summary-trigger,
-.ai-chat-footer-right .ai-review-summary-trigger {
-  width: auto;
-  min-height: 28px;
-}
-
-.aiux543-reference-composer-settings > .aiux543-editor-footer-right .ai-review-summary-trigger {
-  min-height: 30px;
-  gap: 5px;
-  padding: 0 6px;
-  color: #8b8e96;
-  font-size: 14px;
-  line-height: 20px;
-}
-
 /* Split review leaves each editor at roughly half of the available width.
    Keep every composer setting on one line and compact the diff toolbar instead
    of letting labels wrap or clipping the middle action groups. */
@@ -20932,13 +20892,6 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-review-editor-split-pane.is-chat .aiux543-reference-composer-settings > .aiux543-editor-footer-right {
   flex: 0 0 auto;
-}
-
-.ai-review-editor-split-pane.is-chat .aiux543-reference-composer-settings > .aiux543-editor-footer-right .ai-review-summary-trigger {
-  gap: 3px;
-  padding-inline: 4px;
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .ai-review-editor-split-pane.is-review .plan-diff-toolbar {
@@ -22493,6 +22446,25 @@ button.aiux543-answer-change-card:focus-visible {
 
 .agent-sessions-session.is-selected {
   background: #2d3035;
+}
+
+.agent-sessions-unassigned {
+  grid-template-columns: 18px 18px minmax(0, 1fr) auto;
+  margin-top: 2px;
+}
+
+.agent-sessions-unassigned-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: #aeb1b8;
+}
+
+.agent-sessions-unassigned .aiux543-chat-change-summary {
+  min-width: max-content;
+  margin-left: 7px;
 }
 
 .agent-sessions-session-chevron,
