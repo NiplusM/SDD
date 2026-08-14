@@ -1,9 +1,7 @@
 // The "Add context" popup behind the composer's "+" button. Shared so the AI Review popup's "+"
 // opens exactly the same thing instead of a bespoke menu.
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Badge, Icon, Popup, PopupCell, PositionedPopup } from '@jetbrains/int-ui-kit';
-import { AI_NOTE_DIFF_HINT } from './aiNoteHints.js';
+import { useMemo, useState } from 'react';
+import { Popup, PopupCell, PositionedPopup } from '@jetbrains/int-ui-kit';
 
 // One source of truth for the rows so a caller can turn a click into an attachment.
 // `path` feeds the chip's hover tooltip (the composer's attachments carry one too).
@@ -21,20 +19,47 @@ export const AI_CHAT_RECENT_CONTEXT_FILES = [
 export function AiChatAddContextPopup({
   triggerRect,
   onDismiss,
-  plainFileGutterCommentsEnabled = true,
-  onPlainFileGutterCommentsEnabledChange = null,
-  diffGutterCommentsEnabled = true,
-  onDiffGutterCommentsEnabledChange = null,
-  fileCommentsOptionIsNew = false,
-  diffCommentsOptionIsNew = false,
-  onFileCommentsOptionSeen = null,
-  onDiffCommentsOptionSeen = null,
   // When set, picking a row hands the caller an attachment instead of only closing the popup.
   onSelectAttachment = null,
-  width = 320,
+  recentFiles = AI_CHAT_RECENT_CONTEXT_FILES,
+  width = 336,
 }) {
   const [query, setQuery] = useState('');
-  const [includeIdeContext, setIncludeIdeContext] = useState(true);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleRecentFiles = useMemo(() => {
+    const uniqueFiles = [];
+    const seenFiles = new Set();
+
+    (Array.isArray(recentFiles) ? recentFiles : []).forEach((file, index) => {
+      const label = String(file?.label ?? file?.name ?? file?.source?.label ?? '').trim();
+      if (!label) return;
+      const path = String(file?.path ?? file?.meta ?? file?.hint ?? file?.source?.label ?? '').trim();
+      const identity = `${label}\u0000${path}`;
+      if (seenFiles.has(identity)) return;
+      seenFiles.add(identity);
+      uniqueFiles.push({
+        ...file,
+        id: file?.id ?? `recent-context-${index}`,
+        label,
+        path,
+        icon: file?.icon ?? inferRecentFileIcon(label),
+      });
+    });
+
+    return uniqueFiles.filter((file) => (
+      !normalizedQuery
+      || file.label.toLocaleLowerCase().includes(normalizedQuery)
+      || file.path.toLocaleLowerCase().includes(normalizedQuery)
+    ));
+  }, [normalizedQuery, recentFiles]);
+
+  const menuItems = [
+    { id: 'project-files', label: 'Project Files and Folders', icon: 'nodes/folder', submenu: true },
+    { id: 'upload', label: 'Upload from Computer...', icon: 'general/upload' },
+    { id: 'screen', label: 'Context from Screen...', icon: 'actions/viewAsImage' },
+    { id: 'commits', label: 'Commits...', icon: 'vcs/commit' },
+    { id: 'skills', label: 'Skills', icon: 'toolwindows/packageManager', submenu: true },
+  ].filter((item) => !normalizedQuery || item.label.toLocaleLowerCase().includes(normalizedQuery));
 
   // This popup is purely visual for now; keep it simple and match the reference.
   // Close on any row click.
@@ -50,73 +75,85 @@ export function AiChatAddContextPopup({
         >
           <PopupCell
             type="search"
-            placeholder="Search"
+            placeholder="Search context to add"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <AiChatAddContextSeparator />
 
-          <PopupCell icon="nodes/folder" submenu onClick={handleClose}>Files</PopupCell>
-          <PopupCell icon="toolwindows/packageManager" submenu onClick={handleClose}>Skills</PopupCell>
-          <PopupCell
-            icon="actions/viewAsImage"
-            onClick={() => {
-              onSelectAttachment?.({ id: 'context-image', label: 'Image', icon: 'fileTypes/image' });
-              handleClose();
-            }}
-          >
-            Image...
-          </PopupCell>
-          <AiChatAddContextSeparator />
-
-          <AiChatContextToggleCell
-            checked={includeIdeContext}
-            onToggle={() => setIncludeIdeContext((prev) => !prev)}
-            tooltip="Shares your active file, selection, and open tabs."
-          >
-            Include IDE Context
-          </AiChatContextToggleCell>
-          {/* Temporarily hidden until the Notes entry point in the + menu is ready.
-          <AiChatContextToggleCell
-            checked={diffGutterCommentsEnabled}
-            onToggle={() => {
-              onDiffCommentsOptionSeen?.();
-              onDiffGutterCommentsEnabledChange?.((prev) => !prev);
-            }}
-            tooltip={AI_NOTE_DIFF_HINT}
-            badge={diffCommentsOptionIsNew ? 'New' : ''}
-          >
-            Enable Notes in Diffs
-          </AiChatContextToggleCell>
-          */}
-
-          <AiChatAddContextSeparator />
-          <div className="ai-chat-add-context-section-label">Recent files</div>
-
-          {AI_CHAT_RECENT_CONTEXT_FILES.map((file) => (
+          {menuItems.map((item) => (
             <PopupCell
-              key={file.id}
-              type={file.type ?? 'line'}
-              icon={file.icon}
-              hint={file.hint}
+              key={item.id}
+              icon={item.icon}
+              submenu={item.submenu}
               onClick={() => {
-                onSelectAttachment?.({
-                  id: file.id,
-                  label: file.label,
-                  icon: file.icon,
-                  meta: file.hint ?? file.path ?? '',
-                  path: file.path ?? '',
-                });
+                if (item.id === 'upload') {
+                  onSelectAttachment?.({ id: 'context-upload', label: 'Uploaded file', icon: 'nodes/folder' });
+                } else if (item.id === 'screen') {
+                  onSelectAttachment?.({ id: 'context-screen', label: 'Screen context', icon: 'fileTypes/image' });
+                }
                 handleClose();
               }}
             >
-              {file.label}
+              {item.label}
             </PopupCell>
           ))}
+
+          {!normalizedQuery && (
+            <>
+              <AiChatAddContextSeparator />
+              <PopupCell
+                icon="general/locate"
+                shortcut={<span className="ai-chat-add-context-goal-hint">Set a goal to keep pursuing</span>}
+                onClick={handleClose}
+              >
+                Goal
+              </PopupCell>
+            </>
+          )}
+
+          {visibleRecentFiles.length > 0 && (
+            <>
+              <AiChatAddContextSeparator />
+              <div className="ai-chat-add-context-section-label">Recent files</div>
+
+              {visibleRecentFiles.map((file) => (
+                <PopupCell
+                  key={file.id}
+                  type={file.type ?? 'line'}
+                  icon={file.icon}
+                  hint={file.hint}
+                  onClick={() => {
+                    onSelectAttachment?.({
+                      id: file.id,
+                      label: file.label,
+                      icon: file.icon,
+                      meta: file.hint ?? file.path ?? '',
+                      path: file.path ?? '',
+                    });
+                    handleClose();
+                  }}
+                >
+                  {file.label}
+                </PopupCell>
+              ))}
+            </>
+          )}
         </Popup>
       </PositionedPopup>
     </div>
   );
+}
+
+function inferRecentFileIcon(label) {
+  const extension = label.split('.').pop()?.toLocaleLowerCase();
+  if (extension === 'js' || extension === 'jsx' || extension === 'mjs') return 'fileTypes/javaScript';
+  if (extension === 'ts' || extension === 'tsx') return 'fileTypes/typeScript';
+  if (extension === 'css') return 'fileTypes/css';
+  if (extension === 'json') return 'fileTypes/json';
+  if (extension === 'java') return 'fileTypes/java';
+  if (extension === 'md' || extension === 'markdown') return 'fileTypes/modified';
+  return 'fileTypes/unknown';
 }
 
 function AiChatAddContextSeparator() {
@@ -125,73 +162,4 @@ function AiChatAddContextSeparator() {
       <div className="ai-chat-add-context-separator-line" />
     </div>
   );
-}
-
-function AiChatContextToggleCell({ checked, onToggle, tooltip, badge = false, children }) {
-  const [tooltipRect, setTooltipRect] = useState(null);
-  const tooltipPosition = getAiChatContextToggleTooltipPosition(tooltipRect);
-
-  const showTooltip = (event) => {
-    setTooltipRect(event.currentTarget.getBoundingClientRect());
-  };
-
-  const hideTooltip = () => {
-    setTooltipRect(null);
-  };
-
-  return (
-    <>
-      <button
-        type="button"
-        className="ai-chat-context-toggle-cell"
-        aria-pressed={checked}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-        onFocus={showTooltip}
-        onBlur={hideTooltip}
-        onClick={onToggle}
-      >
-        <span className="ai-chat-context-toggle-icon">
-          {checked && <Icon name="general/checkmark" size={16} />}
-        </span>
-        <span className="ai-chat-context-toggle-text text-ui-default">{children}</span>
-        {badge && <Badge className="ai-chat-context-toggle-badge" text={badge} color="blue-secondary" />}
-      </button>
-      {tooltipRect && tooltipPosition && createPortal(
-        <span
-          className="ai-chat-context-toggle-tooltip"
-          role="tooltip"
-          style={tooltipPosition}
-        >
-          {tooltip}
-        </span>,
-        document.body,
-      )}
-    </>
-  );
-}
-
-function getAiChatContextToggleTooltipPosition(rect) {
-  if (!rect || typeof window === 'undefined') return null;
-
-  const tooltipWidth = 310;
-  const tooltipHeight = 80;
-  const viewportPadding = 8;
-  const gap = 8;
-  const rightLeft = rect.right + gap;
-  const leftLeft = rect.left - gap - tooltipWidth;
-  const fitsRight = rightLeft + tooltipWidth <= window.innerWidth - viewportPadding;
-  const left = fitsRight
-    ? rightLeft
-    : Math.max(viewportPadding, leftLeft);
-  const centeredTop = rect.top + rect.height / 2 - tooltipHeight / 2;
-  const top = Math.min(
-    Math.max(viewportPadding, centeredTop),
-    window.innerHeight - viewportPadding - tooltipHeight,
-  );
-
-  return {
-    top,
-    left,
-  };
 }

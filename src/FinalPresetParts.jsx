@@ -1,7 +1,7 @@
 // Shared primitives for the AIUX-550 final-4 session control, preset menu, Manage Presets dialog
 // and agents catalogue. Ported from the prototype
 // (JetBrains/aia-design → int-ui-prototypes/src/designers/tanya/AIUX-550-Final4/index.jsx).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
@@ -139,15 +139,17 @@ export function FinalAnchoredPopup({
     setPosition(getFinalAnchoredPopupPosition(anchorRect, width, estimatedHeight, align));
   }, [align, anchorRef, estimatedHeight, width]);
 
-  useEffect(() => {
-    if (!open) return undefined;
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return undefined;
+    }
 
-    const positionFrame = window.requestAnimationFrame(updatePosition);
+    updatePosition();
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
 
     return () => {
-      window.cancelAnimationFrame(positionFrame);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };

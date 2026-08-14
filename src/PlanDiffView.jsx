@@ -800,11 +800,90 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
 const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
   { id: 'last-turn', label: 'Last Turn', section: 'turn' },
   { id: 'uncommitted', label: 'Uncommitted', section: 'working-tree' },
+  { id: 'unassigned', label: 'Unassigned', section: 'working-tree' },
   { id: 'unstaged', label: 'Unstaged', section: 'working-tree' },
   { id: 'staged', label: 'Staged', section: 'working-tree' },
-  { id: 'committed', label: 'Committed', section: 'history', submenu: true },
-  { id: 'branch', label: 'Branch', section: 'history' },
+  { id: 'committed', label: 'Committed', section: 'history' },
+  {
+    id: 'branch',
+    label: 'Branch',
+    baseBranch: 'main',
+    compareBranch: 'code-notes-v1',
+    compareBranchOptions: [
+      { id: 'code-notes-v1', label: 'code-notes-v1' },
+      { id: 'feature/visit-controller-refactor', label: 'feature/visit-controller-refactor', added: 154, removed: 38 },
+    ],
+    section: 'history',
+  },
 ];
+
+const PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS = {
+  'last-turn': 'Changes made in the agent\'s latest response in the current chat.',
+  'all-chat-changes': 'All current changes made across every turn of the current chat.',
+  uncommitted: 'All working tree changes that are not committed, including staged, unstaged, and new files.',
+  unassigned: 'Changes that are not associated with a chat or agent turn, such as manual or external edits.',
+  unstaged: 'Working tree changes that have not been added to the staging area.',
+  staged: 'Changes added to the staging area and prepared for the next commit.',
+  committed: 'Committed changes on the current branch relative to its base branch.',
+  branch: 'The complete current branch diff relative to its base: committed and uncommitted changes.',
+};
+
+function PlanDiffChangeScopeOption({ option, selected = false, onSelect = null }) {
+  const hoverRef = useRef(null);
+  const [hoverRect, setHoverRect] = useState(null);
+  const description = PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS[option.id] ?? option.label;
+  const tooltipWidth = 320;
+  const opensLeft = Boolean(
+    hoverRect
+      && typeof window !== 'undefined'
+      && hoverRect.right + tooltipWidth + 16 > window.innerWidth,
+  );
+  const tooltipStyle = hoverRect ? {
+    left: opensLeft ? Math.max(8, hoverRect.left - tooltipWidth - 8) : hoverRect.right + 8,
+    top: Math.max(8, Math.min(hoverRect.top - 8, (typeof window !== 'undefined' ? window.innerHeight : 900) - 112)),
+    width: tooltipWidth,
+  } : undefined;
+
+  return (
+    <div
+      ref={hoverRef}
+      className="plan-diff-change-scope-option-hover"
+      onMouseEnter={() => setHoverRect(hoverRef.current?.getBoundingClientRect() ?? null)}
+      onMouseLeave={() => setHoverRect(null)}
+      onFocus={() => setHoverRect(hoverRef.current?.getBoundingClientRect() ?? null)}
+      onBlur={() => setHoverRect(null)}
+    >
+      <PopupCell
+        className="plan-diff-change-scope-option"
+        selected={selected}
+        submenu={option.submenu}
+        shortcut={Number.isFinite(option.added) && Number.isFinite(option.removed) ? (
+          <span className="plan-diff-change-scope-counts is-menu-count">
+            <span className="is-added">+{option.added}</span>
+            <span className="is-removed">-{option.removed}</span>
+          </span>
+        ) : undefined}
+        onClick={() => onSelect?.(option.id)}
+      >
+        <span className="plan-diff-change-scope-option-label">{option.label}</span>
+      </PopupCell>
+      {hoverRect && typeof document !== 'undefined' && createPortal(
+        <div
+          className="theme-dark plan-diff-change-scope-hover-card"
+          style={tooltipStyle}
+          role="tooltip"
+        >
+          <TooltipHelp
+            className="plan-diff-change-scope-tooltip"
+            header={option.label}
+            body={description}
+          />
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
 
 function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = null, options = null }) {
   const triggerRef = useRef(null);
@@ -816,6 +895,7 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
   const resolvedScopeId = selectedScopeId ?? localScopeId;
   const selectedScope = scopeOptions.find((option) => option.id === resolvedScopeId)
     ?? scopeOptions[0];
+  const selectedScopeDescription = PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS[selectedScope?.id] ?? '';
   const selectScope = (scopeId) => {
     setLocalScopeId(scopeId);
     onScopeChange?.(scopeId);
@@ -827,7 +907,10 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
       <button
         type="button"
         className={`plan-diff-change-scope-button${triggerRect ? ' is-open' : ''}`}
-        aria-label="Select diff scope"
+        aria-label={selectedScopeDescription
+          ? `Select diff scope. ${selectedScope.label}: ${selectedScopeDescription}`
+          : 'Select diff scope'}
+        title={selectedScopeDescription || undefined}
         aria-haspopup="menu"
         aria-expanded={Boolean(triggerRect)}
         onClick={() => {
@@ -837,14 +920,14 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
         }}
       >
         <span>{selectedScope.label}</span>
+        {Number.isFinite(selectedScope.added) && Number.isFinite(selectedScope.removed) && (
+          <span className="plan-diff-change-scope-counts" aria-label={`${selectedScope.added} added, ${selectedScope.removed} removed`}>
+            <span className="is-added">+{selectedScope.added}</span>
+            <span className="is-removed">-{selectedScope.removed}</span>
+          </span>
+        )}
         <Icon name="general/chevronDown" size={16} />
       </button>
-      {Number.isFinite(selectedScope.added) && Number.isFinite(selectedScope.removed) && (
-        <span className="plan-diff-change-scope-counts" aria-label={`${selectedScope.added} added, ${selectedScope.removed} removed`}>
-          <span className="is-added">+{selectedScope.added}</span>
-          <span className="is-removed">-{selectedScope.removed}</span>
-        </span>
-      )}
       {triggerRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
@@ -855,25 +938,14 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
             >
               {scopeOptions.map((option, index) => (
                 <Fragment key={option.id}>
-                  {(index === 0 || option.section !== scopeOptions[index - 1].section) && (
-                    <PopupCell
-                      type="separator"
-                      text={option.section === 'commit' ? 'Commit Tool Window' : 'Current Chat'}
-                    />
+                  {index > 0 && option.section !== scopeOptions[index - 1].section && (
+                    <div className="plan-diff-change-scope-menu-separator" aria-hidden="true" />
                   )}
-                  <PopupCell
+                  <PlanDiffChangeScopeOption
+                    option={option}
                     selected={option.id === resolvedScopeId}
-                    submenu={option.submenu}
-                    shortcut={Number.isFinite(option.added) && Number.isFinite(option.removed) ? (
-                      <span className="plan-diff-change-scope-counts is-menu-count">
-                        <span className="is-added">+{option.added}</span>
-                        <span className="is-removed">-{option.removed}</span>
-                      </span>
-                    ) : undefined}
-                    onClick={() => selectScope(option.id)}
-                  >
-                    {option.label}
-                  </PopupCell>
+                    onSelect={selectScope}
+                  />
                 </Fragment>
               ))}
             </Popup>
@@ -882,6 +954,81 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
         document.body,
       )}
     </span>
+  );
+}
+
+function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange = null }) {
+  const triggerRef = useRef(null);
+  const [triggerRect, setTriggerRect] = useState(null);
+  const baseBranch = scope?.baseBranch || 'main';
+  const initialCompareBranch = scope?.compareBranch || 'code-notes-v1';
+  const [localCompareBranch, setLocalCompareBranch] = useState(initialCompareBranch);
+  const compareBranch = value || localCompareBranch;
+  const branchOptions = [
+    { id: initialCompareBranch, label: initialCompareBranch },
+    ...(Array.isArray(scope?.compareBranchOptions) ? scope.compareBranchOptions : []),
+  ].map((option) => (
+    typeof option === 'string' ? { id: option, label: option } : option
+  )).filter((option, index, options) => (
+    option?.id
+      && option.id !== baseBranch
+      && options.findIndex((candidate) => candidate?.id === option.id) === index
+  ));
+
+  useEffect(() => {
+    setLocalCompareBranch(initialCompareBranch);
+  }, [initialCompareBranch]);
+
+  return (
+    <div className="plan-diff-branch-comparison-row">
+      <span className="plan-diff-branch-comparison-base">{baseBranch}</span>
+      <span className="plan-diff-branch-comparison-arrow" aria-hidden="true">→</span>
+      <span ref={triggerRef} className="plan-diff-branch-comparison-trigger">
+        <button
+          type="button"
+          className={`plan-diff-branch-comparison-button${triggerRect ? ' is-open' : ''}`}
+          aria-label={`Compare ${baseBranch} with ${compareBranch}`}
+          aria-haspopup="menu"
+          aria-expanded={Boolean(triggerRect)}
+          onClick={() => {
+            setTriggerRect((current) => (
+              current ? null : triggerRef.current?.getBoundingClientRect() ?? null
+            ));
+          }}
+        >
+          <span>{compareBranch}</span>
+          <Icon name="general/chevronDown" size={16} />
+        </button>
+        {triggerRect && typeof document !== 'undefined' && createPortal(
+          <div className="theme-dark">
+            <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
+              <Popup
+                visible
+                className="plan-diff-popover plan-diff-branch-comparison-popup text-ui-default"
+                onClose={() => setTriggerRect(null)}
+              >
+                <PopupCell type="separator" text={`Compare with ${baseBranch}`} />
+                {branchOptions.map((branch) => (
+                  <PopupCell
+                    key={branch.id}
+                    icon="vcs/vcs"
+                    selected={branch.id === compareBranch}
+                    onClick={() => {
+                      setLocalCompareBranch(branch.id);
+                      onChange?.(branch.id);
+                      setTriggerRect(null);
+                    }}
+                  >
+                    {branch.label}
+                  </PopupCell>
+                ))}
+              </Popup>
+            </PositionedPopup>
+          </div>,
+          document.body,
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -897,9 +1044,32 @@ function PlanDiffViewingScopeControl({
   onSelectFile = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
+  selectedCompareBranch = null,
+  onCompareBranchChange = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
+  const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
+    ? changeScopeOptions
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+  const selectedChangeScope = resolvedChangeScopeOptions.find((option) => option.id === selectedChangeScopeId)
+    ?? resolvedChangeScopeOptions[0]
+    ?? null;
+  const activeCompareBranch = selectedCompareBranch || selectedChangeScope?.compareBranch || null;
+  const activeComparison = (selectedChangeScope?.compareBranchOptions ?? [])
+    .map((option) => (typeof option === 'string' ? { id: option, label: option } : option))
+    .find((option) => option?.id === activeCompareBranch);
+  const effectiveChangeScopeOptions = resolvedChangeScopeOptions.map((option) => (
+    option.id === 'branch' && activeComparison
+      ? {
+          ...option,
+          added: Number.isFinite(activeComparison.added) ? activeComparison.added : option.added,
+          removed: Number.isFinite(activeComparison.removed) ? activeComparison.removed : option.removed,
+        }
+      : option
+  ));
+  const effectiveSelectedChangeScope = effectiveChangeScopeOptions.find((option) => option.id === selectedChangeScope?.id)
+    ?? selectedChangeScope;
   const scopeOptions = buildPlanDiffScopeOptions(fileCount, currentFileLabel);
   const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
   const providedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
@@ -929,8 +1099,15 @@ function PlanDiffViewingScopeControl({
       <PlanDiffChangeScopeControl
         selectedScopeId={selectedChangeScopeId}
         onScopeChange={onChangeScope}
-        options={changeScopeOptions}
+        options={effectiveChangeScopeOptions}
       />
+      {effectiveSelectedChangeScope?.id === 'branch' && (
+        <PlanDiffBranchComparisonControl
+          scope={effectiveSelectedChangeScope}
+          value={activeCompareBranch}
+          onChange={onCompareBranchChange}
+        />
+      )}
       <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
@@ -1856,13 +2033,17 @@ export function DiffInlineCommentPopup({
     ))?.reviewNoteNumber;
     return storedNumber ?? Math.max(1, Array.isArray(entries) ? entries.length : 1);
   };
-  const renderNotesHeader = (count = 1) => (
+  const renderNotesHeader = (count = 1, pending = false) => (
     <div className="spec-done-comment-popup-notes-header" aria-label={`Note ${count}`}>
-      <Icon
-        name="general/balloon"
-        size={16}
-        className="spec-done-comment-popup-notes-header-icon"
-      />
+      {pending ? (
+        <Loader className="spec-done-comment-popup-context-loader" size={16} />
+      ) : (
+        <Icon
+          name="general/balloon"
+          size={16}
+          className="spec-done-comment-popup-notes-header-icon"
+        />
+      )}
       <span className="spec-done-comment-popup-notes-header-label">
         <span className="spec-done-comment-popup-notes-header-title">
           Note
@@ -2412,7 +2593,10 @@ export function DiffInlineCommentPopup({
       {showUngroupedHeader && (
         <div className="spec-done-comment-popup-context-row">
           {normalizedComposeHeaderLabel
-            ? renderNotesHeader(getSavedNoteNumber(comments))
+            ? renderNotesHeader(
+                getSavedNoteNumber(comments),
+                hasUngroupedPendingComments || hasProcessingUngroupedComments,
+              )
             : renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
           {moveUngroupedCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
         </div>
@@ -2476,7 +2660,10 @@ export function DiffInlineCommentPopup({
               {showGroupHeader && (
                 <div className="spec-done-comment-popup-context-row">
                   {normalizedComposeHeaderLabel
-                    ? renderNotesHeader(getSavedNoteNumber(group.comments))
+                    ? renderNotesHeader(
+                        getSavedNoteNumber(group.comments),
+                        hasPendingGroupComments || hasProcessingGroupComments,
+                      )
                     : renderCommentContextHeader({ ...group, pending: hasPendingGroupComments || hasProcessingGroupComments })}
                   {moveCommentMenuToHeader && renderMoreButton(headerCommentActions)}
                 </div>
@@ -3292,6 +3479,9 @@ export function PlanDiffOverlay({
     () => new Set(Array.isArray(pendingCommentRowIds) ? pendingCommentRowIds : []),
     [pendingCommentRowIds],
   );
+  const pendingCommentCount = pendingCommentRowIdSet.size;
+  const previousPendingCommentCountRef = useRef(pendingCommentCount);
+  const [commentProcessedAnimationKey, setCommentProcessedAnimationKey] = useState(0);
   const diffResetKey = JSON.stringify({
     title: diffData?.title ?? '',
     focusRowId: diffData?.focusRowId ?? null,
@@ -3307,6 +3497,14 @@ export function PlanDiffOverlay({
     onInlineCommentOpenChange?.(Boolean(commentRowId));
     return () => onInlineCommentOpenChange?.(false);
   }, [commentRowId, onInlineCommentOpenChange]);
+
+  useEffect(() => {
+    const previousPendingCommentCount = previousPendingCommentCountRef.current;
+    previousPendingCommentCountRef.current = pendingCommentCount;
+    if (previousPendingCommentCount > 0 && pendingCommentCount === 0) {
+      setCommentProcessedAnimationKey((current) => current + 1);
+    }
+  }, [pendingCommentCount]);
 
   const commitDiffComments = (nextComments, metadata = null) => {
     const normalizedComments = normalizeDiffCommentsState(nextComments);
@@ -4457,7 +4655,10 @@ export function PlanDiffOverlay({
       <div className={`plan-diff-overlay${singleLineNumbers ? ' plan-diff-overlay--single' : ''}${!showGutterComments ? ' plan-diff-overlay--gutter-comments-off' : ''}${effectiveViewMode === 'split' ? ' plan-diff-overlay--split' : ''}${effectiveViewMode === 'aside' ? ' plan-diff-overlay--aside' : ''}`}>
         {inspectionWidget}
         <div className="plan-diff-scroll" data-overlay-scroll-body="true" ref={scrollRef}>
-          <div className="plan-diff-code">
+          <div
+            key={`diff-code-${commentProcessedAnimationKey}`}
+            className={`plan-diff-code${commentProcessedAnimationKey > 0 ? ' is-comment-processed' : ''}`}
+          >
 	          {(() => {
 	            const renderPlanDiffRows = (renderMode = 'unified') => {
                 const rowsForRender = renderMode === 'aside-comments'
@@ -5866,6 +6067,8 @@ export function PlanDiffEditorToolbar({
   selectedChangeScopeId = null,
   onChangeScope = null,
   changeScopeOptions = null,
+  selectedCompareBranch = null,
+  onCompareBranchChange = null,
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
@@ -5873,7 +6076,8 @@ export function PlanDiffEditorToolbar({
   return (
     <div className="plan-diff-toolbar-shell">
       <div className="plan-diff-toolbar">
-        <div className="plan-diff-toolbar-left">
+        <div className="plan-diff-toolbar-primary-row">
+          <div className="plan-diff-toolbar-left">
           <PlanDiffViewingScopeControl
             fileCount={fileCount}
             currentFileLabel={fileLabel}
@@ -5886,6 +6090,8 @@ export function PlanDiffEditorToolbar({
             selectedChangeScopeId={selectedChangeScopeId}
             onChangeScope={onChangeScope}
             changeScopeOptions={changeScopeOptions}
+            selectedCompareBranch={selectedCompareBranch}
+            onCompareBranchChange={onCompareBranchChange}
           />
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
@@ -5897,8 +6103,8 @@ export function PlanDiffEditorToolbar({
             <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
             <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
           </div>
-        </div>
-        <div className="plan-diff-toolbar-right">
+          </div>
+          <div className="plan-diff-toolbar-right">
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
           </span>
@@ -5912,7 +6118,8 @@ export function PlanDiffEditorToolbar({
               { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
             ]}
           />
-          <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+            <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+          </div>
         </div>
       </div>
       <div className="plan-diff-content-labels">
@@ -6012,7 +6219,6 @@ export function PlanDiffEditorArea({
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
   reviewSourceTabId = null,
-  onStartReview = null,
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
@@ -6023,55 +6229,6 @@ export function PlanDiffEditorArea({
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
-  const hasReviewableChanges = Number(diffData?.differenceCount ?? 0) > 0
-    || (diffData?.rows ?? []).some((row) => row?.kind === 'added' || row?.kind === 'removed');
-  const viewingScopeOptions = buildPlanDiffScopeOptions(toolbarFileCount, toolbarFileLabel);
-  const viewingScope = viewingScopeOptions.find((item) => item.id === viewingScopeId) ?? viewingScopeOptions[0];
-  const reviewDialogScopeId = viewingScopeId === 'current-file' ? 'file' : viewingScopeId === 'all' ? 'all' : 'current';
-  const reviewDiffComments = {};
-  const reviewCommentKeys = new Set();
-  const appendReviewComments = (commentState = {}) => {
-    Object.entries(commentState ?? {}).forEach(([rowId, comments]) => {
-      (Array.isArray(comments) ? comments : [comments]).filter(Boolean).forEach((comment) => {
-        const text = typeof comment === 'string' ? comment.trim() : String(comment?.text ?? '').trim();
-        if (!text) return;
-        const lineLabel = typeof comment === 'object' ? String(comment?.lineLabel ?? '').trim() : '';
-        const key = `${rowId}\u0000${lineLabel}\u0000${text}`;
-        if (reviewCommentKeys.has(key)) return;
-        reviewCommentKeys.add(key);
-        reviewDiffComments[rowId] = [...(reviewDiffComments[rowId] ?? []), comment];
-      });
-    });
-  };
-  appendReviewComments(initialDiffComments);
-  (Array.isArray(commentSessions) ? commentSessions : []).forEach((session) => {
-    appendReviewComments(session?.comments);
-  });
-  const reviewComments = Object.values(reviewDiffComments).flat();
-  const localReviewSourceAttachments = [{
-    id: `diff-${toolbarFileLabel}`,
-    label: `Diff ${toolbarFileLabel}`,
-    meta: viewingScope.meta,
-    icon: 'vcs/diff',
-    commentCount: reviewComments.length,
-    comments: reviewComments,
-    diffComments: reviewDiffComments,
-    diffTabId: reviewSourceTabId,
-    sourceTabId: reviewSourceTabId,
-    sourceLabel: toolbarFileLabel,
-  }];
-  // Prefer the chat composer's own attachment objects when they cover this diff: they carry the
-  // selections, notes and reply threads the composer chip hovers with.
-  const composerReviewAttachments = Array.isArray(composerAttachments)
-    ? composerAttachments.filter((attachment) => (
-      attachment?.diffTabId === reviewSourceTabId
-      || attachment?.sourceTabId === reviewSourceTabId
-      || attachment?.sourceLabel === toolbarFileLabel
-    ))
-    : [];
-  const reviewSourceAttachments = composerReviewAttachments.length > 0
-    ? composerReviewAttachments
-    : localReviewSourceAttachments;
 
   useEffect(() => {
     if (!toolbarRef.current) {
@@ -6128,26 +6285,6 @@ export function PlanDiffEditorArea({
                   <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
                   <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
                 </div>
-                {onStartReview && (
-                  <>
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    <div className="plan-diff-review-action-group" aria-label="Review controls">
-                      <PlanDiffNewReviewButton
-                        disabled={!hasReviewableChanges}
-                        disabledReason="No changes to review"
-                        currentScopeLabel="New changes"
-                        currentFileLabel={toolbarFileLabel}
-                        initialScopeId={reviewDialogScopeId}
-                        contextLabel={viewingScope.label}
-                        contextMeta={viewingScope.meta}
-                        contextIcon="general/listFiles"
-                        sourceAttachments={reviewSourceAttachments}
-                        onStartReview={onStartReview}
-                        launchSource="diff"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
