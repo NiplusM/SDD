@@ -16069,7 +16069,7 @@ const ChatListPopup = forwardRef(function ChatListPopup({
 // New messages keep placement per attachment, so a sequence such as
 // quote → text → file remains in that exact visual order after Send.
 // `attachmentsFirst` is retained as a fallback for older stored messages.
-function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null, attachmentsFirst = false, contentParts = null }) {
+function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null, attachmentsFirst = false, contentParts = null, appearance = 'sent' }) {
   const hasMessageText = typeof children === 'string'
     ? children.trim().length > 0
     : Boolean(children);
@@ -16101,7 +16101,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
   );
 
   return (
-    <article className="ai-chat-user-card" data-ai-chat-message-id={messageId ?? undefined}>
+    <article className={`ai-chat-user-card${appearance === 'sent' ? ' is-sent-message' : ''}`} data-ai-chat-message-id={messageId ?? undefined}>
       <div className={`ai-chat-user-card-content${hasOrderedContent ? ' is-ordered-content' : ''}`}>
         {hasExplicitContentOrder
           ? explicitContentParts.map((part, index) => (
@@ -17998,6 +17998,120 @@ function ReviewBranchFlyout({ onClose = null, uncommittedFileCount = 0 }) {
   );
 }
 
+const CHAT_CHANGE_SCOPE_DESCRIPTIONS = {
+  'last-turn': 'Changes made in the agent\'s latest response in the current session.',
+  'session-changes': 'All current changes made across every turn of the current session.',
+  'all-sessions-changes': 'All current changes made across every agent session in this project.',
+  'unassigned-changes': 'Manual or external changes that cannot be attributed to an agent session.',
+};
+
+const CHAT_CHANGE_SCOPE_ICONS = {
+  'last-turn': 'general/history',
+  'session-changes': 'vcs/diff',
+  'all-sessions-changes': 'toolwindows/changes',
+  'unassigned-changes': 'general/groups',
+};
+
+function ChatChangeScopeInspectionGlyph() {
+  return (
+    <span className="aiux543-chat-change-scope-trigger-glyph" aria-hidden="true">
+      <Icon name="toolwindows/changes" size={16} />
+    </span>
+  );
+}
+
+function ChatChangeScopeMenu({
+  scopeOptions = [],
+  expanded = false,
+  collapsed = false,
+  onExpandedChange = null,
+  onOpenScope = null,
+}) {
+  const [popupOpen, setPopupOpen] = useState(false);
+  const anchorRef = useRef(null);
+  const openScope = (scope) => {
+    setPopupOpen(false);
+    onOpenScope?.(scope);
+  };
+  const pinnedPanelVisible = expanded && !collapsed;
+  const popupVisible = collapsed && popupOpen;
+
+  useEffect(() => {
+    if (!collapsed) setPopupOpen(false);
+  }, [collapsed]);
+
+  const panel = (
+    <aside className="aiux543-chat-change-scope-panel" aria-label="Change scopes">
+      <div className="aiux543-chat-change-scope-header">
+        <span className="aiux543-chat-change-scope-title">Changes</span>
+      </div>
+      <div className="aiux543-chat-change-scope-list">
+        {scopeOptions.map((scope, index) => {
+          const previousScope = scopeOptions[index - 1] ?? null;
+          const showSeparator = Boolean(previousScope && previousScope.section !== scope.section);
+          return (
+            <Fragment key={scope.id}>
+              {showSeparator ? <span className="aiux543-chat-change-scope-separator" aria-hidden="true" /> : null}
+              <button
+                type="button"
+                className="aiux543-chat-change-scope-row"
+                title={CHAT_CHANGE_SCOPE_DESCRIPTIONS[scope.id] ?? scope.label}
+                onClick={() => openScope(scope)}
+              >
+                <Icon
+                  name={CHAT_CHANGE_SCOPE_ICONS[scope.id] ?? 'vcs/diff'}
+                  size={16}
+                  className="aiux543-chat-change-scope-row-icon"
+                />
+                <span className="aiux543-chat-change-scope-row-label">{scope.label}</span>
+                <span className="aiux543-chat-change-scope-counts" aria-label={`${scope.added} lines added, ${scope.removed} lines removed`}>
+                  <span className="is-added">+{scope.added}</span>
+                  <span className="is-removed">-{scope.removed}</span>
+                </span>
+              </button>
+            </Fragment>
+          );
+        })}
+      </div>
+    </aside>
+  );
+
+  return (
+    <div ref={anchorRef} className="aiux543-chat-change-scope-control">
+      <button
+        type="button"
+        aria-label="Change scopes"
+        aria-haspopup={collapsed ? 'menu' : undefined}
+        aria-expanded={collapsed ? popupVisible : pinnedPanelVisible}
+        className={`aiux543-chat-change-scope-button${pinnedPanelVisible || popupVisible ? ' is-open' : ''}`}
+        title={pinnedPanelVisible ? 'Hide change scopes' : 'Show change scopes'}
+        onClick={() => {
+          if (collapsed) {
+            setPopupOpen((open) => !open);
+            return;
+          }
+          onExpandedChange?.(!expanded);
+        }}
+      >
+        <ChatChangeScopeInspectionGlyph />
+      </button>
+      {pinnedPanelVisible ? panel : null}
+      <FinalAnchoredPopup
+        align="end"
+        anchorRef={anchorRef}
+        ariaLabel="Change scopes"
+        className="aiux543-chat-change-scope-popup"
+        estimatedHeight={scopeOptions.length * 42 + 66}
+        onClose={() => setPopupOpen(false)}
+        open={popupVisible}
+        width={304}
+      >
+        {panel}
+      </FinalAnchoredPopup>
+    </div>
+  );
+}
+
 function AiReviewEditorSplit({
   chatLabel,
   reviewLabel,
@@ -19078,6 +19192,10 @@ function AiChatTabView({
   onSendMessage = null,
   onAgentChange = null,
   onOpenDiffTab = null,
+  onOpenChangeScope = null,
+  changeScopePanelExpanded = false,
+  changeScopePanelCollapsed = false,
+  onChangeScopePanelExpandedChange = null,
   onOpenAttachment = null,
   composerDiffAttachments = [],
   onRemoveComposerAttachment = null,
@@ -19230,6 +19348,7 @@ function AiChatTabView({
     && !readyReviewMessage
     && Boolean(onRunAiReview);
   const reviewPromptFiles = getChatChangeCards(scenario);
+  const chatChangeScopeOptions = buildChatReviewScopePreviewOptions(scenario);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const defaultModelLabel = initialSessionModel ?? 'GPT-5.6-Sol';
   const selectedModelLabel = selectedModelOverride ?? defaultModelLabel;
@@ -19743,8 +19862,19 @@ function AiChatTabView({
     return false;
   };
 
+  const pinnedChangeScopePanelVisible = changeScopePanelExpanded && !changeScopePanelCollapsed;
+
   return (
-    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
+    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${pinnedChangeScopePanelVisible ? ' is-change-scope-panel-open' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
+      <div className="aiux543-chat-change-scope-entry">
+        <ChatChangeScopeMenu
+          scopeOptions={chatChangeScopeOptions}
+          expanded={changeScopePanelExpanded}
+          collapsed={changeScopePanelCollapsed}
+          onExpandedChange={(expanded) => onChangeScopePanelExpandedChange?.(chatId, expanded)}
+          onOpenScope={(scope) => onOpenChangeScope?.(chatId, scope.id)}
+        />
+      </div>
       <div ref={scrollRef} className="aiux543-conversation-scroll">
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
@@ -19975,6 +20105,7 @@ function AiChatTabView({
             <ChatUserCard
               key={message.id}
               messageId={message.id}
+              appearance="sent"
               attachments={message.attachments}
               attachmentsFirst={Boolean(message.attachmentsFirst)}
               contentParts={message.contentParts}
@@ -20950,6 +21081,7 @@ export default function App() {
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
   const [aiChatComposerDraftByChatId, setAiChatComposerDraftByChatId] = useState({});
+  const [aiChatChangeScopePanelExpandedByChatId, setAiChatChangeScopePanelExpandedByChatId] = useState({});
   const [pendingReviewLaunchByChatId, setPendingReviewLaunchByChatId] = useState({});
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
   const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
@@ -20983,6 +21115,13 @@ export default function App() {
     diffCommentsOptionIsNew && aiChatContextPopupOpenCount < 6;
   const handleAiChatAddContextPopupOpen = useCallback(() => {
     setAiChatContextPopupOpenCount((count) => Math.min(6, count + 1));
+  }, []);
+  const handleAiChatChangeScopePanelExpandedChange = useCallback((chatId, expanded) => {
+    if (!chatId) return;
+    setAiChatChangeScopePanelExpandedByChatId((current) => ({
+      ...current,
+      [chatId]: Boolean(expanded),
+    }));
   }, []);
   const handleAiChatComposerDraftChange = useCallback((chatId, draft) => {
     if (!chatId) return;
@@ -26923,16 +27062,6 @@ export default function App() {
     const meta = resolveTerminalSessionMeta();
     ensureTerminalSession(meta);
   }, [ensureTerminalSession, resolveTerminalSessionMeta]);
-  const editorTabsMorePortal = editorTabsHost ? createPortal(
-    <div className="editor-tabs-more-slot">
-      <IconButton
-        icon="general/moreVertical"
-        aria-label="More"
-        className="editor-tabs-more-button"
-      />
-    </div>,
-        editorTabsHost
-  ) : null;
   const terminalOutputHost = typeof document !== 'undefined'
     ? document.querySelector('.main-window .terminal-window .terminal-output-area')
     : null;
@@ -32123,6 +32252,22 @@ export default function App() {
     if (stripe instanceof HTMLElement) stripe.click();
   }, []);
 
+  const openChatChangeScope = useCallback((chatId, scopeId) => (
+    openLatestChangedFilesReviewScope(chatId, {
+      initialScopeId: scopeId,
+    })
+  ), [openLatestChangedFilesReviewScope]);
+  const editorTabsMorePortal = editorTabsHost ? createPortal(
+    <div className="editor-tabs-more-slot">
+      <IconButton
+        icon="general/moreVertical"
+        aria-label="More"
+        className="editor-tabs-more-button"
+      />
+    </div>,
+    editorTabsHost,
+  ) : null;
+
   // Stream a short assistant message into a chat (used for agent actions like
   // applying a quick fix / resolving a review comment).
   const streamAssistantMessage = useCallback((chatId, fullText) => {
@@ -33079,6 +33224,10 @@ export default function App() {
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
                       onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, reviewSplitChatId)}
+                      onOpenChangeScope={openChatChangeScope}
+                      changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
+                      changeScopePanelCollapsed
+                      onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -33224,6 +33373,9 @@ export default function App() {
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
                   onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, activeAiChatTabChatId)}
+                  onOpenChangeScope={openChatChangeScope}
+                  changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId])}
+                  onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
                   onOpenAttachment={handleOpenChatAttachment}
                   composerDiffAttachments={aiChatComposerDiffAttachments}
                   onRemoveComposerAttachment={handleRemoveComposerAttachment}

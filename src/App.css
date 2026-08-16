@@ -2303,6 +2303,7 @@ body {
   z-index: 2;
   display: flex;
   align-items: center;
+  gap: 0;
   pointer-events: none;
 }
 
@@ -13396,6 +13397,9 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .aiux543-conversation {
 
+  --aiux543-change-scope-rail-width: 0px;
+
+  position: relative;
   box-sizing: border-box;
   display: flex;
   width: 100%;
@@ -13408,6 +13412,207 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   font-family: Inter, system-ui, sans-serif;
 }
 
+.aiux543-chat-change-scope-entry {
+  position: absolute;
+  top: 10px;
+  right: 16px;
+  z-index: 10;
+  display: inline-flex;
+}
+
+.aiux543-chat-change-scope-control {
+  position: relative;
+  display: inline-flex;
+  width: 32px;
+  height: 26px;
+  align-items: center;
+}
+
+.aiux543-chat-change-scope-button {
+  all: unset;
+  position: relative;
+  display: inline-flex;
+  width: 32px;
+  height: 26px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(255 255 255 / 4%);
+  border-radius: 6px;
+  background: var(--tool-window-bg, #1e1f22);
+  color: var(--icon-secondary-stroke, #9da0a8);
+  cursor: pointer;
+}
+
+.aiux543-chat-change-scope-button:hover,
+.aiux543-chat-change-scope-button:focus-visible {
+  border-color: #45474e;
+  background: #34363b;
+  color: var(--text-default, #d1d3d9);
+  outline: none;
+}
+
+.aiux543-chat-change-scope-button.is-open {
+  color: var(--text-default, #d1d3d9);
+}
+
+.aiux543-chat-change-scope-trigger-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aiux543-chat-change-scope-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  width: 304px;
+  box-sizing: border-box;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid var(--popup-border, #3a3c42);
+  border-radius: 10px;
+  background: var(--popup-bg, #2a2b2f);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 14%);
+}
+
+.aiux543-chat-change-scope-header {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 8px 4px;
+  color: var(--text-secondary, #9da0a8);
+  font: 500 14px/20px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-change-scope-title {
+  color: var(--text-secondary, #9da0a8);
+}
+
+.aiux543-chat-change-scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.aiux543-chat-change-scope-row {
+  display: grid;
+  width: 100%;
+  min-height: 40px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: default;
+  font: 500 14px/20px Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.aiux543-chat-change-scope-row-icon {
+  color: var(--icon-secondary-stroke, #a3a6ad);
+}
+
+.aiux543-chat-change-scope-row:hover,
+.aiux543-chat-change-scope-row:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 4%);
+  outline: none;
+}
+
+.aiux543-chat-change-scope-row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-change-scope-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  font: 500 12px/16px "JetBrains Mono", monospace;
+}
+
+.aiux543-chat-change-scope-counts .is-added {
+  color: #5fad65;
+}
+
+.aiux543-chat-change-scope-counts .is-removed {
+  color: #f75464;
+}
+
+.aiux543-chat-change-scope-separator {
+  height: 1px;
+  margin: 6px 8px;
+  background: var(--popup-border, #3a3c42);
+}
+
+.aiux543-chat-change-scope-popup.aiux550f4-final-final-anchored-popup {
+  padding: 0;
+  border-color: var(--popup-border, #3a3c42);
+  background: var(--popup-bg, #2a2b2f);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 16%);
+  overflow: visible;
+}
+
+.aiux543-chat-change-scope-popup .aiux543-chat-change-scope-panel {
+  position: static;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  box-shadow: none;
+}
+
+.aiux543-conversation.is-change-scope-panel-open {
+  --aiux543-change-scope-rail-width: 320px;
+}
+
+/* In split view the control behaves like the editor inspection widget: it
+   occupies a narrow, reserved rail instead of floating over chat content. */
+.aiux543-conversation.is-change-scope-control-compact {
+  --aiux543-change-scope-rail-width: 32px;
+}
+
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-entry {
+  top: 6px;
+  right: 8px;
+}
+
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-control {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  justify-content: center;
+  padding: 2px;
+  border: 1px solid rgb(255 255 255 / 3%);
+  border-radius: 6px;
+  background: var(--tool-window-bg, #1e1f22);
+  contain: layout paint;
+}
+
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-button {
+  width: 22px;
+  height: 22px;
+  border-color: transparent;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-button:hover,
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-button:focus-visible,
+.aiux543-conversation.is-change-scope-control-compact .aiux543-chat-change-scope-button.is-open {
+  border-color: transparent;
+  background: var(--icon-button-hover-bg, rgb(255 255 255 / 8%));
+}
+
 .aiux543-conversation-scroll {
 
   scrollbar-gutter: stable both-edges;
@@ -13417,8 +13622,9 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   flex-direction: column;
   gap: 12px;
   overflow: hidden auto;
-  padding: 8px 24px 36px;
+  padding: 8px calc(24px + var(--aiux543-change-scope-rail-width)) 36px 24px;
   position: relative;
+  transition: padding-right 120ms ease-out;
 }
 
 .aiux543-conversation.is-review-decision-ready .aiux543-conversation-scroll {
@@ -13456,37 +13662,36 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 
 .aiux543-user-message {
-
   z-index: 2;
   box-sizing: border-box;
   display: flex;
-  position: sticky;
-  top: 0;
-  width: min(750px, 100%);
-  min-height: 56px;
+  position: relative;
+  width: fit-content;
+  max-width: min(750px, 78%);
+  min-height: auto;
   align-items: flex-start;
-  gap: 12px;
-  margin: 0 auto;
-  padding: 8px 10px 8px 16px;
-  border-radius: 6px;
-  background: #393b40;
-  box-shadow: 0 -16px 0 16px #191a1c, 0 8px 12px #191a1c;
+  margin: 8px max(0px, calc((100% - 750px) / 2)) 14px auto;
+  padding: 9px 14px;
+  border-radius: 18px;
+  background: #26282c;
+  box-shadow: none;
 }
 
 
 .aiux543-user-message p {
-
-  flex: 1;
   margin: 0;
   color: #dfe1e5;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+.aiux543-user-message .aiux543-kebab {
+  display: none;
 }
 
 
 .aiux543-user-message.aiux543-thread-user-message {
-
   position: relative;
   top: auto;
   z-index: 1;
@@ -13825,9 +14030,10 @@ button.aiux543-answer-change-card:focus-visible {
   width: 100%;
   flex-direction: column;
   align-items: center;
-  padding: 0 24px clamp(8px, 1.5vh, 12px);
+  padding: 0 calc(24px + var(--aiux543-change-scope-rail-width)) clamp(8px, 1.5vh, 12px) 24px;
   background: #191a1c;
   box-shadow: 0 -12px 14px #191a1c;
+  transition: padding-right 120ms ease-out;
 }
 
 .aiux543-ai-review-prompt {
@@ -18355,6 +18561,29 @@ button.aiux543-answer-change-card:focus-visible {
   width: min(750px, 100%);
   margin-left: auto;
   margin-right: auto;
+}
+
+.ai-chat-user-card.is-sent-message {
+  width: fit-content;
+  max-width: min(750px, 78%);
+  margin: 8px 20px 14px auto;
+  padding: 9px 14px;
+  border-radius: 18px;
+  background: #26282c;
+}
+
+.ai-chat-user-card.is-sent-message .ai-chat-user-card-content {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ai-chat-user-card.is-sent-message .ai-chat-card-menu {
+  display: none;
+}
+
+.aiux543-conversation-scroll .ai-chat-user-card.is-sent-message {
+  margin-left: auto;
+  margin-right: max(0px, calc((100% - 750px) / 2));
 }
 
 /* === Approval activity dot + hover preview popup (ported from aia-design gleb/AIUX-543) === */
