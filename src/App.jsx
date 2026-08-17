@@ -19912,19 +19912,8 @@ function AiChatTabView({
     return false;
   };
 
-  const pinnedChangeScopePanelVisible = changeScopePanelExpanded && !changeScopePanelCollapsed;
-
   return (
-    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${pinnedChangeScopePanelVisible ? ' is-change-scope-panel-open' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
-      <div className="aiux543-chat-change-scope-entry">
-        <ChatChangeScopeMenu
-          scopeOptions={chatChangeScopeOptions}
-          expanded={changeScopePanelExpanded}
-          collapsed={changeScopePanelCollapsed}
-          onExpandedChange={(expanded) => onChangeScopePanelExpandedChange?.(chatId, expanded)}
-          onOpenScope={(scope) => onOpenChangeScope?.(chatId, scope.id)}
-        />
-      </div>
+    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
       <div ref={scrollRef} className="aiux543-conversation-scroll">
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
