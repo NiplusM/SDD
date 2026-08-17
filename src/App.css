@@ -14276,6 +14276,13 @@ button.aiux543-answer-change-card:focus-visible {
   line-height: 16px;
 }
 
+/* Two classes to out-specificity .aiux543-chat-local-card's own -10px
+   margin-bottom, which otherwise pulls this flush against the composer
+   below with no visible gap. */
+.aiux543-chat-local-card.aiux543-chat-vcs-summary {
+  margin-bottom: 8px;
+}
+
 .aiux543-chat-vcs-summary-label {
   display: inline-flex;
   align-items: center;
@@ -14317,22 +14324,25 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
+  height: 24px;
   margin-left: auto;
-  padding: 3px 6px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
+  padding: 0 8px;
+  border: 1px solid #45484f;
+  border-radius: 6px;
+  background: #33353a;
   cursor: pointer;
   font: 500 12px/16px Inter, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
 }
 
 .aiux543-chat-vcs-summary-counts:hover:not(:disabled) {
-  background: var(--icon-button-hover-bg);
+  border-color: #53565e;
+  background: #3a3c42;
 }
 
 .aiux543-chat-vcs-summary-counts:disabled {
   cursor: default;
+  opacity: 0.5;
 }
 
 .aiux543-chat-vcs-summary-counts .is-added {

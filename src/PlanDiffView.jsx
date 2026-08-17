@@ -803,16 +803,16 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
 const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
   { id: 'last-turn', label: 'Last Turn', section: 'session' },
   { id: 'session-changes', label: 'Session Changes', section: 'session' },
-  { id: 'all-agent-changes', label: 'All Agent Changes', section: 'project' },
-  { id: 'unassigned-changes', label: 'Unassigned Changes', section: 'project' },
+  { id: 'all-project-changes', label: 'All Project Changes', section: 'project' },
 ];
 
 const PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS = {
   'last-turn': 'Changes made in the agent\'s latest response in the current session.',
   'session-changes': 'All current changes made across every turn of the current session.',
+  'all-project-changes': 'Every change in the project: all agent-session changes plus manual or external edits that aren\'t attributed to a session.',
+  // Legacy descriptions stay available for archived links that still carry an old scope id.
   'all-agent-changes': 'All current changes made by agents across every session in this project.',
   'unassigned-changes': 'Manual or external changes that cannot be attributed to an agent session.',
-  // Legacy descriptions stay available for archived links that still carry an old scope id.
   'all-chat-changes': 'All current changes made across every turn of the current chat.',
   uncommitted: 'All working tree changes that are not committed, including staged, unstaged, and new files.',
   unassigned: 'Changes that are not associated with a chat or agent turn, such as manual or external edits.',

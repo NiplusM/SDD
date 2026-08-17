@@ -114,10 +114,12 @@ import './App.css';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'Code-review';
-const BRANCH_NAME = 'Code-review';
+// Single source of truth for the project/branch labels shown across the top
+// toolbar, Chat History, and the VCS summary — previously each surface had
+// its own hardcoded string and they drifted out of sync with each other.
+const PROJECT_NAME = 'spring-petclinic';
 const REVIEW_BASE_BRANCH_NAME = 'main';
-const REVIEW_CURRENT_BRANCH_NAME = 'code-notes-v1';
+const REVIEW_CURRENT_BRANCH_NAME = 'code-notes-v2';
 const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
@@ -1487,7 +1489,7 @@ const MY_PROJECT_TREE = [
 
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
-const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: BRANCH_NAME };
+const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: REVIEW_CURRENT_BRANCH_NAME };
 const TERMINAL_RUN_VISIBLE_DELAY_MS = 110;
 const TERMINAL_RUN_INITIAL_DELAY_MS = 160;
 const TERMINAL_RUN_STEP_DELAY_MS = 240;
@@ -15539,20 +15541,19 @@ function buildChatChangedFilesScopeOptions(entries = []) {
   const chatFiles = files.filter((file) => !file.isCommitToolWindow);
   const commitFiles = files.filter((file) => file.isCommitToolWindow);
   const lastTurnFiles = chatFiles.filter((file) => !file.allChangesOnly);
-  const unassignedFiles = commitFiles.filter((file) => file.commitCategory === 'unassigned');
-  const otherSessionFiles = commitFiles.filter((file) => file.commitCategory !== 'unassigned');
   /* Previous Git-state definitions are intentionally disabled for now:
-     Uncommitted, Unassigned, Unstaged, Staged, Committed, and Branch. */
+     Uncommitted, Unstaged, Staged, Committed, and Branch. All Agent Changes and
+     Unassigned Changes are merged into one All Project Changes scope so the
+     dropdown stays at three options. */
   const definitions = [
     { id: 'last-turn', label: 'Last Turn', section: 'session', files: lastTurnFiles },
     { id: 'session-changes', label: 'Session Changes', section: 'session', files: chatFiles },
     {
-      id: 'all-agent-changes',
-      label: 'All Agent Changes',
+      id: 'all-project-changes',
+      label: 'All Project Changes',
       section: 'project',
-      files: [...chatFiles, ...otherSessionFiles],
+      files: [...chatFiles, ...commitFiles],
     },
-    { id: 'unassigned-changes', label: 'Unassigned Changes', section: 'project', files: unassignedFiles },
   ].filter((definition) => definition.files.length > 0);
 
   return definitions.map(({ files: scopeFiles, ...definition }) => {
@@ -15824,27 +15825,15 @@ public Vet getVet() {
   ...buildSpecStatusScenarioEntries('spec-visit-booking', 'Visit-Booking.md'),
 };
 
-// Sums the +added/-removed line counts across every agent-session scenario's
-// change card(s), so the branch-level VCS summary reflects real cumulative
-// changes instead of a hand-picked number.
-function sumScenarioLineChanges(scenarios = AI_CHAT_SCENARIOS) {
-  const parseCount = (value) => {
-    const match = typeof value === 'string' ? value.match(/-?\d+/) : null;
-    return match ? Math.abs(Number(match[0])) : 0;
-  };
-  let added = 0;
-  let removed = 0;
-  Object.values(scenarios).forEach((scenario) => {
-    const cards = [
-      ...(scenario?.changeCard ? [scenario.changeCard] : []),
-      ...(Array.isArray(scenario?.changeCards) ? scenario.changeCards : []),
-    ];
-    cards.forEach((card) => {
-      added += parseCount(card?.added);
-      removed += parseCount(card?.removed);
-    });
-  });
-  return { added, removed };
+// Reads the +added/-removed totals for the merged All Project Changes scope
+// from the same builder that computes the diff toolbar's own scope options
+// (buildChatReviewScopePreviewOptions), so the VCS summary button always
+// shows the exact number the diff opens to — never a separately hand-summed
+// total that can drift out of sync with it.
+function getAllProjectChangesLineCounts(scenario) {
+  const option = buildChatReviewScopePreviewOptions(scenario)
+    .find((candidate) => candidate.id === 'all-project-changes');
+  return { added: option?.added ?? 0, removed: option?.removed ?? 0 };
 }
 
 function ChatListRow({ item, selected = false, active = false, onSelect = null, nested = false, hideMeta = false, showActiveBadge = true }) {
@@ -18024,15 +18013,13 @@ function ReviewBranchFlyout({ onClose = null, uncommittedFileCount = 0 }) {
 const CHAT_CHANGE_SCOPE_DESCRIPTIONS = {
   'last-turn': 'Changes made in the agent\'s latest response in the current session.',
   'session-changes': 'All current changes made across every turn of the current session.',
-  'all-agent-changes': 'All current changes made by agents across every session in this project.',
-  'unassigned-changes': 'Manual or external changes that cannot be attributed to an agent session.',
+  'all-project-changes': 'Every change in the project: all agent-session changes plus manual or external edits that aren\'t attributed to a session.',
 };
 
 const CHAT_CHANGE_SCOPE_ICONS = {
   'last-turn': 'general/history',
   'session-changes': 'vcs/diff',
-  'all-agent-changes': 'toolwindows/changes',
-  'unassigned-changes': 'general/groups',
+  'all-project-changes': 'toolwindows/changes',
 };
 
 function ChatChangeScopeInspectionGlyph() {
@@ -19265,6 +19252,7 @@ function AiChatTabView({
   onSendMessage = null,
   onAgentChange = null,
   onOpenDiffTab = null,
+  onOpenAllProjectChanges = null,
   onOpenChangeScope = null,
   changeScopePanelExpanded = false,
   changeScopePanelCollapsed = false,
@@ -20188,7 +20176,7 @@ function AiChatTabView({
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
         {!vcsSummaryDismissed && (() => {
-          const { added, removed } = sumScenarioLineChanges(scenarios);
+          const { added, removed } = getAllProjectChangesLineCounts(scenario);
           return (
             <div className="aiux543-chat-local-card aiux543-chat-vcs-summary">
               <span className="aiux543-chat-vcs-summary-label">
@@ -20200,9 +20188,9 @@ function AiChatTabView({
               <button
                 type="button"
                 className="aiux543-chat-vcs-summary-counts"
-                aria-label={`Open diff. ${added} lines added, ${removed} lines removed across every session`}
-                onClick={() => onOpenDiffTab?.(scenario?.diffRequest)}
-                disabled={!scenario?.diffRequest}
+                aria-label={`Open All Project Changes. ${added} lines added, ${removed} lines removed across every session`}
+                onClick={() => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest))}
+                disabled={!onOpenAllProjectChanges && !scenario?.diffRequest}
               >
                 <span className="is-added">+{added.toLocaleString()}</span>
                 <span className="is-removed">-{removed.toLocaleString()}</span>
@@ -27866,9 +27854,9 @@ export default function App() {
         }).filter((entry) => entry.tabId);
         const nextScopeOptions = buildChatChangedFilesScopeOptions(scopeEntries);
         const defaultScopeId = diffRequest?.reviewCommitCategory === 'unassigned'
-          ? 'unassigned-changes'
+          ? 'all-project-changes'
           : diffRequest?.reviewCommitScope
-            ? 'all-agent-changes'
+            ? 'all-project-changes'
           : diffRequest?.reviewAllChangesOnly
             ? 'session-changes'
             : 'last-turn';
@@ -32446,7 +32434,7 @@ export default function App() {
       selectedRequest,
       targetChatId,
       scopeRequests,
-      'unassigned-changes',
+      'all-project-changes',
     );
   }, [
     activeAiChatTabChatId,
@@ -33187,13 +33175,13 @@ export default function App() {
           projectName={PROJECT_NAME}
           projectIcon="SD"
           projectColor="blue"
-          branchName={BRANCH_NAME}
+          branchName={REVIEW_CURRENT_BRANCH_NAME}
           toolbar={(
             <MainToolbar
               projectName={PROJECT_NAME}
               projectIcon="SD"
               projectColor="blue"
-              branchName={BRANCH_NAME}
+              branchName={REVIEW_CURRENT_BRANCH_NAME}
               runConfig="Current File"
               rightActions={(
                 <>
@@ -33360,13 +33348,13 @@ export default function App() {
         projectName={PROJECT_NAME}
         projectIcon="SD"
         projectColor="blue"
-        branchName={BRANCH_NAME}
+        branchName={REVIEW_CURRENT_BRANCH_NAME}
         toolbar={(
           <MainToolbar
             projectName={PROJECT_NAME}
             projectIcon="SD"
             projectColor="blue"
-            branchName={BRANCH_NAME}
+            branchName={REVIEW_CURRENT_BRANCH_NAME}
             runConfig="Current File"
             onSettings={() => setIsSettingsDialogOpen(true)}
             rightActions={(
@@ -33438,6 +33426,7 @@ export default function App() {
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
                       onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, reviewSplitChatId)}
+                      onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes' })}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
                       changeScopePanelCollapsed
@@ -33587,6 +33576,7 @@ export default function App() {
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
                   onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, activeAiChatTabChatId)}
+                  onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes' })}
                   onOpenChangeScope={openChatChangeScope}
                   changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId])}
                   onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
