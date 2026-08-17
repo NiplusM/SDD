@@ -271,8 +271,8 @@ export function AiChatAttachmentStrip({
             <span className="ai-chat-attachment-name">{getAiChatAttachmentDisplayLabel(attachment)}</span>
             {inlineCount > 0 && (
               <span className="ai-chat-attachment-comment-count">
-                <Icon name="general/balloon" size={16} />
-                {inlineCount}
+                <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true">·</span>
+                <span className="ai-chat-attachment-comment-count-value">{inlineCount}</span>
                 {canShowCommentSources && (
                   <button
                     type="button"
@@ -313,8 +313,10 @@ export function AiChatAttachmentStrip({
                       <AiChatAttachmentIcon icon={source.icon ?? attachment.icon} />
                       <span className="ai-chat-attachment-source-name">{source.label}</span>
                       <span className="ai-chat-attachment-comment-count">
-                        <Icon name="general/balloon" size={16} />
-                        {Number.isFinite(source.count) ? source.count : 0}
+                        <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true">·</span>
+                        <span className="ai-chat-attachment-comment-count-value">
+                          {Number.isFinite(source.count) ? source.count : 0}
+                        </span>
                       </span>
                       {sourceComments.length > 0 && (
                         <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-row-comment-preview" role="tooltip">
