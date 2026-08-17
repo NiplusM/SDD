@@ -2027,26 +2027,6 @@ export function DiffInlineCommentPopup({
     ))?.reviewNoteNumber;
     return storedNumber ?? Math.max(1, Array.isArray(entries) ? entries.length : 1);
   };
-  const renderNotesHeader = (count = 1, pending = false) => (
-    <div className="spec-done-comment-popup-notes-header" aria-label={`Note ${count}`}>
-      {pending ? (
-        <Loader className="spec-done-comment-popup-context-loader" size={16} />
-      ) : (
-        <Icon
-          name="nodes/annotation"
-          size={16}
-          className="spec-done-comment-popup-notes-header-icon"
-        />
-      )}
-      <span className="spec-done-comment-popup-notes-header-label">
-        <span className="spec-done-comment-popup-notes-header-title">
-          Note
-        </span>
-        <span className="spec-done-comment-popup-notes-header-count">{count}</span>
-      </span>
-    </div>
-  );
-
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || !showCompose) return;
@@ -2561,6 +2541,7 @@ export function DiffInlineCommentPopup({
     Boolean(processingAgentReplies[getAgentReplyDraftKey(comment, index)])
   ));
   const showUngroupedHeader = !hasGroupedComments
+    && !normalizedComposeHeaderLabel
     && (!showCompose || hasComments)
     && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent'));
   const ungroupedHeaderComment = showUngroupedHeader && visibleUngroupedComments.length > 0
@@ -2584,12 +2565,7 @@ export function DiffInlineCommentPopup({
     <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
       {showUngroupedHeader && (
         <div className="spec-done-comment-popup-context-row">
-          {normalizedComposeHeaderLabel
-            ? renderNotesHeader(
-                getSavedNoteNumber(comments),
-                hasUngroupedPendingComments || hasProcessingUngroupedComments,
-              )
-            : renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
+          {renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
           {moveUngroupedCommentMenuToHeader && renderMoreButton(ungroupedHeaderActions)}
         </div>
       )}
@@ -2600,7 +2576,8 @@ export function DiffInlineCommentPopup({
             // severity + ⋯), so the chat context header is redundant for them.
             const isAgentOnlyGroup = group.comments.length > 0
               && group.comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent');
-            const showGroupHeader = !group.hideHeader && !isAgentOnlyGroup && (group.comments.length > 0 || group.showHeaderWhenEmpty);
+            const showGroupHeader = !group.hideHeader && !isAgentOnlyGroup && !normalizedComposeHeaderLabel
+              && (group.comments.length > 0 || group.showHeaderWhenEmpty);
             const hasPendingGroupComments = group.comments.some((comment) => Boolean(comment && typeof comment === 'object' && comment.pending));
             const hasProcessingGroupComments = group.comments.some((comment, index) => (
               Boolean(processingAgentReplies[getAgentReplyDraftKey(comment, comment?.localIndex ?? index)])
@@ -2645,18 +2622,13 @@ export function DiffInlineCommentPopup({
 
             return (
             <div
-              className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}`}
+              className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}${normalizedComposeHeaderLabel ? ' is-headerless' : ''}`}
               key={`${group.chatId || group.label}-${group.messageId || group.label}`}
               onClick={handleGroupClick}
             >
               {showGroupHeader && (
                 <div className="spec-done-comment-popup-context-row">
-                  {normalizedComposeHeaderLabel
-                    ? renderNotesHeader(
-                        getSavedNoteNumber(group.comments),
-                        hasPendingGroupComments || hasProcessingGroupComments,
-                      )
-                    : renderCommentContextHeader({ ...group, pending: hasPendingGroupComments || hasProcessingGroupComments })}
+                  {renderCommentContextHeader({ ...group, pending: hasPendingGroupComments || hasProcessingGroupComments })}
                   {moveCommentMenuToHeader && renderMoreButton(headerCommentActions)}
                 </div>
               )}
@@ -2681,6 +2653,17 @@ export function DiffInlineCommentPopup({
                         <div className="spec-done-comment-popup-item-body">
                           {!isAgentAuthored && (
                             <>
+                              {entryLineLabel.length > 0 && (
+                                <div className="spec-done-comment-popup-item-meta text-ui-small">
+                                  {normalizedComposeHeaderLabel.length > 0 && (
+                                    <span className="spec-done-comment-popup-footer-note-number">
+                                      {normalizedComposeHeaderLabel} {getSavedNoteNumber([commentEntry])}
+                                      <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true" />
+                                    </span>
+                                  )}
+                                  {entryLineLabel}
+                                </div>
+                              )}
                               <div
                                 className={`spec-done-comment-popup-item-text text-ui-default${commentEntry.editable ? ' is-editable' : ''}`}
                                 role={commentEntry.editable ? 'button' : undefined}
@@ -2690,9 +2673,6 @@ export function DiffInlineCommentPopup({
                               >
                                 {commentEntry.text}
                               </div>
-                              {entryLineLabel.length > 0 && (
-                                <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
-                              )}
                             </>
                           )}
                           {renderAgentResolution(commentEntry, commentEntry.localIndex ?? i, commentActionContext, {
@@ -2768,19 +2748,7 @@ export function DiffInlineCommentPopup({
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
           }}
         >
-          {!isEditing && normalizedComposeHeaderLabel.length > 0 ? (
-            <div className="spec-done-comment-popup-compose-header">
-              <Icon
-                name="nodes/annotation"
-                size={16}
-                className="spec-done-comment-popup-compose-title-icon"
-              />
-              <span className="spec-done-comment-popup-notes-header-label">
-                <span className="spec-done-comment-popup-compose-title">{normalizedComposeHeaderLabel}</span>
-                <span className="spec-done-comment-popup-notes-header-count">{composeNoteOrdinal}</span>
-              </span>
-            </div>
-          ) : showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
+          {normalizedComposeHeaderLabel.length === 0 && showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
             <div className="spec-done-comment-popup-compose-header">
               {renderSubmitTargetButton()}
             </div>
@@ -2799,6 +2767,12 @@ export function DiffInlineCommentPopup({
           <div className="spec-done-comment-popup-footer">
             {normalizedFooterMetaLabel.length > 0 && (
               <div className="spec-done-comment-popup-footer-meta text-ui-small">
+                {!isEditing && normalizedComposeHeaderLabel.length > 0 && (
+                  <span className="spec-done-comment-popup-footer-note-number">
+                    {normalizedComposeHeaderLabel} {composeNoteOrdinal}
+                    <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true" />
+                  </span>
+                )}
                 {normalizedFooterMetaLabel}
               </div>
             )}
