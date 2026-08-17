@@ -12021,7 +12021,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 .ai-chat-attachment-comment-count {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   flex: 0 0 auto;
   color: #73767C;
   font-size: 11px;
@@ -12030,10 +12030,10 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .ai-chat-attachment-comment-count-separator {
   flex: 0 0 auto;
-  width: 3px;
-  height: 3px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: #5A5D66;
+  background: #6E727A;
   font-size: 0;
   line-height: 0;
 }
@@ -18107,8 +18107,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .ai-chat-attachment-comment-count {
-  gap: 4px;
-  margin-left: 1px;
+  gap: 5px;
   color: #8B8E96;
   font-size: 11px;
   line-height: 16px;
@@ -18117,10 +18116,10 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-chat-attachment-comment-count-separator {
   flex: 0 0 auto;
-  width: 3px;
-  height: 3px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: #6B6E76;
+  background: #85888F;
   font-size: 0;
   line-height: 0;
 }

@@ -2033,7 +2033,7 @@ export function DiffInlineCommentPopup({
         <Loader className="spec-done-comment-popup-context-loader" size={16} />
       ) : (
         <Icon
-          name="general/balloon"
+          name="nodes/annotation"
           size={16}
           className="spec-done-comment-popup-notes-header-icon"
         />
@@ -2771,7 +2771,7 @@ export function DiffInlineCommentPopup({
           {!isEditing && normalizedComposeHeaderLabel.length > 0 ? (
             <div className="spec-done-comment-popup-compose-header">
               <Icon
-                name="general/balloon"
+                name="nodes/annotation"
                 size={16}
                 className="spec-done-comment-popup-compose-title-icon"
               />
