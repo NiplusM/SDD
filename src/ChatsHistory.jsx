@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Loader, ToolWindow } from '@jetbrains/int-ui-kit';
+import { Alert, Icon, Loader, Popup, PopupCell, PositionedPopup, ToolWindow } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon, AiChatCodexIcon } from './AiChatListParts.jsx';
 
 // Severity status icon from the shared JetBrains icon registry.
@@ -118,7 +118,12 @@ function ChatsHistoryToolWindow({
   onOpenUnassignedChanges = null,
   onOpenCommit = null,
   onOpenFile = null,
+  onOpenFileInNewTab = null,
+  onJumpToFileSource = null,
+  onAddFileToAgentContext = null,
+  onRollbackSessionFile = null,
   unassignedChangesFiles = [],
+  rolledBackSessionFileLabelsByChatId = {},
   vetSchedulesLineCount = 0,
 }) {
   // Everything collapsed by default except the refactoring chat, which is
@@ -127,6 +132,8 @@ function ChatsHistoryToolWindow({
   const [expandedRows, setExpandedRows] = useState({
     'refactor-time-slots': true,
   });
+  const [fileContextMenu, setFileContextMenu] = useState(null);
+  const [rollbackRequest, setRollbackRequest] = useState(null);
   // Selection follows the active chat editor tab. When no chat tab is active
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;
@@ -174,6 +181,38 @@ function ChatsHistoryToolWindow({
     }
     // Standalone chats open as their own editor tab in the center.
     onOpenChatInTab?.(chatId);
+  };
+
+  const openFileContextMenu = (event, file, { chatId = null } = {}) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setFileContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      file,
+      chatId,
+    });
+  };
+
+  const handleFileContextAction = (action, menu) => {
+    const file = menu?.file ?? null;
+    const context = { chatId: menu?.chatId ?? null };
+    if (!file) return;
+
+    if (action === 'jump-source') onJumpToFileSource?.(file, context);
+    if (action === 'show-diff') {
+      if (context.chatId) onOpenFile?.(file, context);
+      else onOpenUnassignedChanges?.(file);
+    }
+    if (action === 'show-diff-new-tab') onOpenFileInNewTab?.(file, context);
+    if (action === 'add-context') onAddFileToAgentContext?.(file, context);
+    if (action === 'copy-reference') {
+      const reference = String(file.path ?? file.sourcePath ?? file.label ?? '').trim();
+      if (reference && typeof navigator !== 'undefined') {
+        navigator.clipboard?.writeText(reference).catch(() => {});
+      }
+    }
+    if (action === 'rollback') setRollbackRequest(menu);
   };
 
   return (
@@ -266,7 +305,9 @@ function ChatsHistoryToolWindow({
                       <AgentSessionChanges
                         files={AGENT_SESSION_ACTIVE_CHANGES}
                         chatId={row.id}
+                        rolledBackFileLabels={rolledBackSessionFileLabelsByChatId[row.id] ?? []}
                         onOpenFile={onOpenFile}
+                        onContextMenu={openFileContextMenu}
                         vetSchedulesLineCount={vetSchedulesLineCount}
                       />
                     ) : null}
@@ -303,6 +344,7 @@ function ChatsHistoryToolWindow({
                       <AgentSessionChanges
                         files={unassignedChangesFiles}
                         onOpenFile={(file) => onOpenUnassignedChanges?.(file)}
+                        onContextMenu={openFileContextMenu}
                       />
                     ) : null}
                   </>
@@ -318,6 +360,19 @@ function ChatsHistoryToolWindow({
           <span>Settings &amp; Accounts</span>
         </button>
       </div>
+      <AgentSessionFileContextMenu
+        menu={fileContextMenu}
+        onAction={handleFileContextAction}
+        onClose={() => setFileContextMenu(null)}
+      />
+      <AgentSessionRollbackConfirmation
+        request={rollbackRequest}
+        onCancel={() => setRollbackRequest(null)}
+        onConfirm={(request) => {
+          onRollbackSessionFile?.(request.file, { chatId: request.chatId });
+          setRollbackRequest(null);
+        }}
+      />
     </ToolWindow>
   );
 }
@@ -351,16 +406,26 @@ function AgentSessionsFilterIcon() {
   );
 }
 
-function AgentSessionChanges({ files, chatId = null, onOpenFile, vetSchedulesLineCount = 0 }) {
+function AgentSessionChanges({
+  files,
+  chatId = null,
+  onOpenFile,
+  onContextMenu = null,
+  rolledBackFileLabels = [],
+  vetSchedulesLineCount = 0,
+}) {
+  const hiddenLabels = new Set(Array.isArray(rolledBackFileLabels) ? rolledBackFileLabels : []);
+  const visibleFiles = files.filter((file) => !hiddenLabels.has(file.label));
   return (
     <div className="agent-sessions-changes aiux543-chat-row-children" aria-label="Changed files">
-      {files.map((file) => (
+      {visibleFiles.map((file) => (
         <div className="aiux543-chat-tree-item" key={file.label}>
           <button
             type="button"
             className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux543-chat-tree-leaf-modified"
             style={{ '--tree-level': 3 }}
             onClick={() => onOpenFile?.(file, { chatId })}
+            onContextMenu={(event) => onContextMenu?.(event, file, { chatId })}
           >
             <span className="aiux543-chat-tree-chevron-spacer" />
             {file.type === 'markdown'
@@ -376,6 +441,89 @@ function AgentSessionChanges({ files, chatId = null, onOpenFile, vetSchedulesLin
         </div>
       ))}
     </div>
+  );
+}
+
+function AgentSessionFileContextMenu({ menu = null, onAction = null, onClose = null }) {
+  useEffect(() => {
+    if (!menu) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menu, onClose]);
+
+  if (!menu || typeof document === 'undefined') return null;
+  const x = menu.x ?? 8;
+  const y = menu.y ?? 8;
+  const triggerRect = { top: y, bottom: y, left: x, right: x, x, y };
+  const runAction = (action) => {
+    onClose?.();
+    onAction?.(action, menu);
+  };
+  const canShowDiff = Boolean(menu.file?.diffRequest || menu.file?.diff);
+  const canRollbackSessionChanges = Boolean(menu.chatId && menu.file?.diff);
+
+  return createPortal(
+    <div className="theme-dark">
+      <PositionedPopup triggerRect={triggerRect} onDismiss={onClose} gap={4}>
+        <Popup visible className="agent-session-file-context-popup" style={{ position: 'static' }}>
+          <PopupCell icon="general/edit" shortcut="⌘↓" onClick={() => runAction('jump-source')}>Jump to Source</PopupCell>
+          <PopupCell icon="vcs/diff" shortcut="⌘D" disabled={!canShowDiff} onClick={() => runAction('show-diff')}>Show Diff</PopupCell>
+          <PopupCell icon="general/openNewTab" disabled={!canShowDiff} onClick={() => runAction('show-diff-new-tab')}>Show Diff in New Tab</PopupCell>
+          <PopupCell type="separator" />
+          <PopupCell iconGap onClick={() => runAction('add-context')}>Add to Agent Context</PopupCell>
+          <PopupCell iconGap onClick={() => runAction('copy-reference')}>Copy Path/Reference…</PopupCell>
+          {canRollbackSessionChanges ? (
+            <>
+              <PopupCell type="separator" />
+              <PopupCell icon="vcs/revert" onClick={() => runAction('rollback')}>Rollback Session Changes…</PopupCell>
+            </>
+          ) : null}
+        </Popup>
+      </PositionedPopup>
+    </div>,
+    document.body,
+  );
+}
+
+function AgentSessionRollbackConfirmation({ request = null, onCancel = null, onConfirm = null }) {
+  useEffect(() => {
+    if (!request) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onCancel?.();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel, request]);
+
+  if (!request || typeof document === 'undefined') return null;
+  const fileLabel = request.file?.label ?? 'this file';
+  return createPortal(
+    <div
+      className="theme-dark agent-session-rollback-overlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel?.();
+      }}
+    >
+      <Alert
+        type="question"
+        title={`Rollback changes in ${fileLabel}?`}
+        body="Only the changes attributed to this agent session will be reverted. Later manual edits and changes from other sessions will be kept."
+        buttons={[
+          { children: 'Rollback', type: 'primary' },
+          { children: 'Cancel', type: 'secondary' },
+        ]}
+        onButtonClick={(_button, index) => {
+          if (index === 0) onConfirm?.(request);
+          else onCancel?.();
+        }}
+      />
+    </div>,
+    document.body,
   );
 }
 

@@ -13497,6 +13497,11 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   gap: 2px;
 }
 
+.aiux543-chat-change-scope-row-hover {
+  display: block;
+  width: 100%;
+}
+
 .aiux543-chat-change-scope-row {
   display: grid;
   width: 100%;
@@ -22790,6 +22795,34 @@ button.aiux543-answer-change-card:focus-visible {
   color: #d1d3d9;
   text-align: left;
   cursor: pointer;
+}
+
+.agent-session-file-context-popup > .popup-content > .popup-options {
+  padding: 8px;
+}
+
+.agent-session-file-context-popup .popup-cell-separator {
+  box-sizing: content-box;
+  width: auto;
+  height: 1px;
+  gap: 0;
+  margin: 4px 0;
+  padding: 0 6px;
+}
+
+.agent-session-file-context-popup .popup-cell-separator-line {
+  flex: 0 0 1px;
+}
+
+.agent-session-rollback-overlay {
+  position: fixed;
+  z-index: 10100;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.36);
 }
 
 .spec-done-overlay .spec-done-inline-code {

@@ -15547,8 +15547,8 @@ function buildChatChangedFilesScopeOptions(entries = []) {
     { id: 'last-turn', label: 'Last Turn', section: 'session', files: lastTurnFiles },
     { id: 'session-changes', label: 'Session Changes', section: 'session', files: chatFiles },
     {
-      id: 'all-sessions-changes',
-      label: 'All Sessions Changes',
+      id: 'all-agent-changes',
+      label: 'All Agent Changes',
       section: 'project',
       files: [...chatFiles, ...otherSessionFiles],
     },
@@ -18001,14 +18001,14 @@ function ReviewBranchFlyout({ onClose = null, uncommittedFileCount = 0 }) {
 const CHAT_CHANGE_SCOPE_DESCRIPTIONS = {
   'last-turn': 'Changes made in the agent\'s latest response in the current session.',
   'session-changes': 'All current changes made across every turn of the current session.',
-  'all-sessions-changes': 'All current changes made across every agent session in this project.',
+  'all-agent-changes': 'All current changes made by agents across every session in this project.',
   'unassigned-changes': 'Manual or external changes that cannot be attributed to an agent session.',
 };
 
 const CHAT_CHANGE_SCOPE_ICONS = {
   'last-turn': 'general/history',
   'session-changes': 'vcs/diff',
-  'all-sessions-changes': 'toolwindows/changes',
+  'all-agent-changes': 'toolwindows/changes',
   'unassigned-changes': 'general/groups',
 };
 
@@ -18017,6 +18017,72 @@ function ChatChangeScopeInspectionGlyph() {
     <span className="aiux543-chat-change-scope-trigger-glyph" aria-hidden="true">
       <Icon name="toolwindows/changes" size={16} />
     </span>
+  );
+}
+
+function ChatChangeScopeOption({ scope, onOpen = null }) {
+  const hoverRef = useRef(null);
+  const [hoverRect, setHoverRect] = useState(null);
+  const description = CHAT_CHANGE_SCOPE_DESCRIPTIONS[scope.id] ?? scope.label;
+  const tooltipWidth = 320;
+  const opensLeft = Boolean(
+    hoverRect
+      && typeof window !== 'undefined'
+      && hoverRect.right + tooltipWidth + 16 > window.innerWidth,
+  );
+  const tooltipStyle = hoverRect ? {
+    left: opensLeft ? Math.max(8, hoverRect.left - tooltipWidth - 8) : hoverRect.right + 8,
+    top: Math.max(
+      8,
+      Math.min(
+        hoverRect.top - 8,
+        (typeof window !== 'undefined' ? window.innerHeight : 900) - 112,
+      ),
+    ),
+    width: tooltipWidth,
+  } : undefined;
+
+  return (
+    <div
+      ref={hoverRef}
+      className="aiux543-chat-change-scope-row-hover"
+      onMouseEnter={() => setHoverRect(hoverRef.current?.getBoundingClientRect() ?? null)}
+      onMouseLeave={() => setHoverRect(null)}
+      onFocus={() => setHoverRect(hoverRef.current?.getBoundingClientRect() ?? null)}
+      onBlur={() => setHoverRect(null)}
+    >
+      <button
+        type="button"
+        className="aiux543-chat-change-scope-row"
+        aria-label={`${scope.label}. ${description}`}
+        onClick={() => onOpen?.(scope)}
+      >
+        <Icon
+          name={CHAT_CHANGE_SCOPE_ICONS[scope.id] ?? 'vcs/diff'}
+          size={16}
+          className="aiux543-chat-change-scope-row-icon"
+        />
+        <span className="aiux543-chat-change-scope-row-label">{scope.label}</span>
+        <span className="aiux543-chat-change-scope-counts" aria-label={`${scope.added} lines added, ${scope.removed} lines removed`}>
+          <span className="is-added">+{scope.added}</span>
+          <span className="is-removed">-{scope.removed}</span>
+        </span>
+      </button>
+      {hoverRect && typeof document !== 'undefined' && createPortal(
+        <div
+          className="theme-dark plan-diff-change-scope-hover-card"
+          style={tooltipStyle}
+          role="tooltip"
+        >
+          <TooltipHelp
+            className="plan-diff-change-scope-tooltip"
+            header={scope.label}
+            body={description}
+          />
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
@@ -18052,23 +18118,7 @@ function ChatChangeScopeMenu({
           return (
             <Fragment key={scope.id}>
               {showSeparator ? <span className="aiux543-chat-change-scope-separator" aria-hidden="true" /> : null}
-              <button
-                type="button"
-                className="aiux543-chat-change-scope-row"
-                title={CHAT_CHANGE_SCOPE_DESCRIPTIONS[scope.id] ?? scope.label}
-                onClick={() => openScope(scope)}
-              >
-                <Icon
-                  name={CHAT_CHANGE_SCOPE_ICONS[scope.id] ?? 'vcs/diff'}
-                  size={16}
-                  className="aiux543-chat-change-scope-row-icon"
-                />
-                <span className="aiux543-chat-change-scope-row-label">{scope.label}</span>
-                <span className="aiux543-chat-change-scope-counts" aria-label={`${scope.added} lines added, ${scope.removed} lines removed`}>
-                  <span className="is-added">+{scope.added}</span>
-                  <span className="is-removed">-{scope.removed}</span>
-                </span>
-              </button>
+              <ChatChangeScopeOption scope={scope} onOpen={openScope} />
             </Fragment>
           );
         })}
@@ -21085,6 +21135,8 @@ export default function App() {
   const [pendingReviewLaunchByChatId, setPendingReviewLaunchByChatId] = useState({});
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
   const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
+  const [aiChatExplicitFileContextByChatId, setAiChatExplicitFileContextByChatId] = useState({});
+  const [rolledBackSessionFileLabelsByChatId, setRolledBackSessionFileLabelsByChatId] = useState({});
   const [chatSelectionCommentRequest, setChatSelectionCommentRequest] = useState(null);
   const [chatSelectionCommentValue, setChatSelectionCommentValue] = useState('');
   // Per-chat review lifecycle: queued → processing/updating → open/updated → completed/cancelled.
@@ -21263,10 +21315,26 @@ export default function App() {
         icon: typeof item.icon === 'string' && item.icon.length > 0 ? item.icon : 'claude',
       }));
   }, [aiChatRecentItems]);
-  const getAiChatScenarioById = useCallback(
-    (chatId) => aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'],
-    [aiChatScenarios],
-  );
+  const getAiChatScenarioById = useCallback((chatId) => {
+    const scenario = aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
+    const rolledBackLabels = new Set(
+      Array.isArray(rolledBackSessionFileLabelsByChatId[chatId])
+        ? rolledBackSessionFileLabelsByChatId[chatId]
+        : [],
+    );
+    if (rolledBackLabels.size === 0) return scenario;
+    const isRolledBackCard = (card) => {
+      const label = String(card?.name ?? card?.diffRequest?.source?.label ?? '').trim();
+      return label.length > 0 && rolledBackLabels.has(label);
+    };
+    return {
+      ...scenario,
+      changeCard: isRolledBackCard(scenario?.changeCard) ? null : scenario?.changeCard,
+      changeCards: Array.isArray(scenario?.changeCards)
+        ? scenario.changeCards.filter((card) => !isRolledBackCard(card))
+        : scenario?.changeCards,
+    };
+  }, [aiChatScenarios, rolledBackSessionFileLabelsByChatId]);
   const getAiChatListItemById = useCallback(
     (chatId) => [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS].find((item) => item.id === chatId) ?? null,
     [aiChatRecentItems],
@@ -27776,7 +27844,7 @@ export default function App() {
         const defaultScopeId = diffRequest?.reviewCommitCategory === 'unassigned'
           ? 'unassigned-changes'
           : diffRequest?.reviewCommitScope
-            ? 'all-sessions-changes'
+            ? 'all-agent-changes'
           : diffRequest?.reviewAllChangesOnly
             ? 'session-changes'
             : 'last-turn';
@@ -27847,8 +27915,13 @@ export default function App() {
   ]);
   const openLatestChangedFilesReviewScope = useCallback((chatId, { initialScopeId = 'last-turn' } = {}) => {
     if (!chatId) return null;
-    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(chatId));
-    const firstDiffRequest = scopeRequests[0] ?? null;
+    const scenario = getAiChatScenarioById(chatId);
+    const scopeRequests = buildChatReviewScopeRequests(scenario);
+    const requestedScope = buildChatReviewScopePreviewOptions(scenario)
+      .find((scope) => scope.id === initialScopeId) ?? null;
+    const firstDiffRequest = scopeRequests.find((request) => (
+      requestedScope?.tabIds.includes(request?.source?.tabId)
+    )) ?? scopeRequests[0] ?? null;
     if (!firstDiffRequest) return null;
     return openPlanDiffInReviewSplit(firstDiffRequest, chatId, scopeRequests, initialScopeId);
   }, [getAiChatScenarioById, openPlanDiffInReviewSplit]);
@@ -29160,6 +29233,9 @@ export default function App() {
       && Array.isArray(selectedAiChatScenario.attachments)
         ? selectedAiChatScenario.attachments
         : [];
+    const explicitFileContextAttachments = Array.isArray(aiChatExplicitFileContextByChatId[selectedAiChatId])
+      ? aiChatExplicitFileContextByChatId[selectedAiChatId]
+      : [];
     const attachments = persistentScenarioAttachments.map((attachment) => (
       attachment?.isSddDocument
         ? {
@@ -29168,6 +29244,10 @@ export default function App() {
           }
         : attachment
     ));
+    explicitFileContextAttachments.forEach((attachment) => {
+      if (!attachment?.id || attachments.some((candidate) => candidate?.id === attachment.id)) return;
+      attachments.push(attachment);
+    });
 
     for (const [diffTabId, tabContent] of orderedDiffEntries) {
       const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
@@ -29326,6 +29406,7 @@ export default function App() {
   }, [
     aiChatComposerDiffTabByChatId,
     aiChatAnnotationsByChatId,
+    aiChatExplicitFileContextByChatId,
     aiChatSelectionContextByChatId,
     getAiChatListItemById,
     ideTabContents,
@@ -30045,6 +30126,20 @@ export default function App() {
     const targetChatId = typeof context?.chatId === 'string' && context.chatId.trim().length > 0
       ? context.chatId
       : selectedAiChatId;
+
+    if (attachment.isAgentFileContext) {
+      setAiChatExplicitFileContextByChatId((prev) => {
+        const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+        const nextAttachments = currentAttachments.filter((candidate) => candidate?.id !== attachment.id);
+        if (nextAttachments.length === currentAttachments.length) return prev;
+        if (nextAttachments.length === 0) {
+          const { [targetChatId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [targetChatId]: nextAttachments };
+      });
+      return;
+    }
 
     if (attachment.isSelectionContext) {
       const removedSelectionIds = new Set(getSelectionContextItems(attachment).map((selection) => selection.id).filter(Boolean));
@@ -31267,6 +31362,27 @@ export default function App() {
       targetChatId,
     );
 
+    const sentExplicitFileContextIds = new Set(
+      messageAttachments
+        .filter((attachment) => attachment?.isAgentFileContext)
+        .map((attachment) => attachment.id)
+        .filter(Boolean),
+    );
+    if (sentExplicitFileContextIds.size > 0) {
+      setAiChatExplicitFileContextByChatId((prev) => {
+        const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+        const nextAttachments = currentAttachments.filter(
+          (attachment) => !sentExplicitFileContextIds.has(attachment?.id),
+        );
+        if (nextAttachments.length === currentAttachments.length) return prev;
+        if (nextAttachments.length === 0) {
+          const { [targetChatId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [targetChatId]: nextAttachments };
+      });
+    }
+
     if (transientContextAttachments.length > 0) {
       handleClearAllComposerDiffAttachments({
         chatId: targetChatId,
@@ -32211,6 +32327,90 @@ export default function App() {
     selectedAiChatId,
   ]);
 
+  const resolveHistoryFileDiffRequest = useCallback((file, chatId = null) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    if (!file || !targetChatId) return null;
+    const fileLabel = String(
+      file?.label
+      ?? file?.sourceLabel
+      ?? file?.diffRequest?.source?.label
+      ?? '',
+    ).trim();
+    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
+    return scopeRequests.find((request) => (
+      String(request?.source?.label ?? '').trim() === fileLabel
+    )) ?? file?.diffRequest ?? null;
+  }, [getAiChatScenarioById, selectedAiChatId]);
+
+  const jumpHistoryFileToSource = useCallback((file) => {
+    if (!file) return;
+    if (file.agentTaskId) {
+      handleAgentTaskSelect(file.agentTaskId);
+      return;
+    }
+    const sourceLabel = file?.diffRequest?.source?.label ?? file?.sourceLabel ?? file?.label;
+    if (sourceLabel) openEditorTabByLabel(sourceLabel);
+  }, [handleAgentTaskSelect, openEditorTabByLabel]);
+
+  const openHistoryChangedFileInNewTab = useCallback((file, { chatId = null } = {}) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    const diffRequest = resolveHistoryFileDiffRequest(file, targetChatId);
+    if (!diffRequest) {
+      jumpHistoryFileToSource(file);
+      return null;
+    }
+    return openPlanDiffTab({
+      ...diffRequest,
+      contextChatId: targetChatId,
+      registerEditorTab: true,
+      activateTab: true,
+    });
+  }, [jumpHistoryFileToSource, openPlanDiffTab, resolveHistoryFileDiffRequest, selectedAiChatId]);
+
+  const addHistoryFileToAgentContext = useCallback((file, { chatId = null } = {}) => {
+    const targetChatId = activeAiChatTabChatId ?? chatId ?? selectedAiChatId;
+    if (!file || !targetChatId) return;
+    const diffRequest = resolveHistoryFileDiffRequest(file, chatId ?? targetChatId);
+    const sourceLabel = String(
+      diffRequest?.source?.label
+      ?? file?.sourceLabel
+      ?? file?.label
+      ?? 'File',
+    ).trim();
+    const sourceTabId = diffRequest?.source?.tabId ?? file?.sourceTabId ?? null;
+    const normalizedKey = (sourceTabId ?? sourceLabel).replace(/[^a-z0-9_-]+/giu, '-').toLowerCase();
+    const attachment = {
+      id: `agent-file-context-${targetChatId}-${normalizedKey}`,
+      composerSequenceKey: `agent-file-context-${targetChatId}-${normalizedKey}`,
+      label: sourceLabel,
+      icon: agentRunFileIconName(sourceLabel),
+      sourceTabId,
+      sourceLabel,
+      diffRequest,
+      commentCount: 0,
+      isAgentFileContext: true,
+      isPlainFile: !diffRequest,
+    };
+    setAiChatExplicitFileContextByChatId((prev) => {
+      const currentAttachments = Array.isArray(prev[targetChatId]) ? prev[targetChatId] : [];
+      const existingIndex = currentAttachments.findIndex((candidate) => candidate?.id === attachment.id);
+      const nextAttachments = existingIndex >= 0
+        ? currentAttachments.map((candidate, index) => (index === existingIndex ? attachment : candidate))
+        : [...currentAttachments, attachment];
+      return { ...prev, [targetChatId]: nextAttachments };
+    });
+  }, [activeAiChatTabChatId, resolveHistoryFileDiffRequest, selectedAiChatId]);
+
+  const rollbackHistorySessionFile = useCallback((file, { chatId = null } = {}) => {
+    const fileLabel = String(file?.label ?? file?.diffRequest?.source?.label ?? '').trim();
+    if (!chatId || !fileLabel) return;
+    setRolledBackSessionFileLabelsByChatId((prev) => {
+      const currentLabels = Array.isArray(prev[chatId]) ? prev[chatId] : [];
+      if (currentLabels.includes(fileLabel)) return prev;
+      return { ...prev, [chatId]: [...currentLabels, fileLabel] };
+    });
+  }, []);
+
   const openHistoryChangesListInReviewScope = useCallback((chatId) => {
     if (!chatId) return null;
     openChatInEditorTab(chatId);
@@ -33013,7 +33213,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} onRollbackSessionFile={rollbackHistorySessionFile} rolledBackSessionFileLabelsByChatId={rolledBackSessionFileLabelsByChatId} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
             return defaultLeftPanelContent(id, ctx);
           }}
 	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -33560,7 +33760,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} onRollbackSessionFile={rollbackHistorySessionFile} rolledBackSessionFileLabelsByChatId={rolledBackSessionFileLabelsByChatId} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => {
