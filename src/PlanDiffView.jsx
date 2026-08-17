@@ -5465,7 +5465,7 @@ export function PlanDiffOverlay({
                           showSendToAgentAction={!reviewNoteComposer}
                           showSubmitActionMenu={!reviewNoteComposer}
                           inputPlaceholder="Write a note"
-                          composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
+                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -5558,7 +5558,7 @@ export function PlanDiffOverlay({
                         showSendToAgentAction={!reviewNoteComposer}
                         showSubmitActionMenu={!reviewNoteComposer}
                         inputPlaceholder="Write a note"
-                        composeHeaderLabel={reviewNoteComposer ? 'Notes' : ''}
+                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
