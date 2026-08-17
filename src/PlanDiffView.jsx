@@ -1030,40 +1030,14 @@ function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
   selectedScopeId = 'new',
-  selectedChangeScopeId = null,
-  onChangeScope = null,
-  changeScopeOptions = null,
   files = null,
   currentFileIndex = 0,
   onSelectFile = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
-  selectedCompareBranch = null,
-  onCompareBranchChange = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
-  const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
-    ? changeScopeOptions
-    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
-  const selectedChangeScope = resolvedChangeScopeOptions.find((option) => option.id === selectedChangeScopeId)
-    ?? resolvedChangeScopeOptions[0]
-    ?? null;
-  const activeCompareBranch = selectedCompareBranch || selectedChangeScope?.compareBranch || null;
-  const activeComparison = (selectedChangeScope?.compareBranchOptions ?? [])
-    .map((option) => (typeof option === 'string' ? { id: option, label: option } : option))
-    .find((option) => option?.id === activeCompareBranch);
-  const effectiveChangeScopeOptions = resolvedChangeScopeOptions.map((option) => (
-    option.id === 'branch' && activeComparison
-      ? {
-          ...option,
-          added: Number.isFinite(activeComparison.added) ? activeComparison.added : option.added,
-          removed: Number.isFinite(activeComparison.removed) ? activeComparison.removed : option.removed,
-        }
-      : option
-  ));
-  const effectiveSelectedChangeScope = effectiveChangeScopeOptions.find((option) => option.id === selectedChangeScope?.id)
-    ?? selectedChangeScope;
   const scopeOptions = buildPlanDiffScopeOptions(fileCount, currentFileLabel);
   const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
   const providedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
@@ -1090,18 +1064,6 @@ function PlanDiffViewingScopeControl({
 
   return (
     <div className="plan-diff-review-scope-controls">
-      <PlanDiffChangeScopeControl
-        selectedScopeId={selectedChangeScopeId}
-        onScopeChange={onChangeScope}
-        options={effectiveChangeScopeOptions}
-      />
-      {effectiveSelectedChangeScope?.id === 'branch' && (
-        <PlanDiffBranchComparisonControl
-          scope={effectiveSelectedChangeScope}
-          value={activeCompareBranch}
-          onChange={onCompareBranchChange}
-        />
-      )}
       <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}

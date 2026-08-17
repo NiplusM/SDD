@@ -27905,7 +27905,7 @@ export default function App() {
       request === diffRequest
       || (sourceTabId && request?.source?.tabId === sourceTabId)
     )) ?? diffRequest;
-    return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, 'last-turn');
+    return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, 'session-changes');
   }, [getAiChatScenarioById, openPlanDiffInReviewSplit, selectedAiChatId]);
   const requestReviewFeedback = useCallback((chatId) => {
     if (!chatId) return;
