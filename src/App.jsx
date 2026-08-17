@@ -20190,15 +20190,23 @@ function AiChatTabView({
         {!vcsSummaryDismissed && (() => {
           const { added, removed } = sumScenarioLineChanges(scenarios);
           return (
-            <div className="aiux543-chat-vcs-summary">
-              <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
-              <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
-              <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
-              <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
-              <span className="aiux543-chat-vcs-summary-counts" aria-label={`${added} lines added, ${removed} lines removed across every session`}>
+            <div className="aiux543-chat-local-card aiux543-chat-vcs-summary">
+              <span className="aiux543-chat-vcs-summary-label">
+                <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
+                <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
+                <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
+                <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
+              </span>
+              <button
+                type="button"
+                className="aiux543-chat-vcs-summary-counts"
+                aria-label={`Open diff. ${added} lines added, ${removed} lines removed across every session`}
+                onClick={() => onOpenDiffTab?.(scenario?.diffRequest)}
+                disabled={!scenario?.diffRequest}
+              >
                 <span className="is-added">+{added.toLocaleString()}</span>
                 <span className="is-removed">-{removed.toLocaleString()}</span>
-              </span>
+              </button>
               <IconButton
                 icon="general/close"
                 tooltip="Dismiss"
