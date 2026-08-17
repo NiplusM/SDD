@@ -2315,8 +2315,6 @@ export function DiffInlineCommentPopup({
 
   const getEditableCommentActions = (index, source = 'diff', context = null) => [
     { label: 'Edit', icon: 'general/edit', onSelect: () => onStartEdit?.(index, source, context) },
-    { label: 'Hide', icon: 'general/hide', onSelect: () => onHide?.(index, source, context) },
-    { label: 'Hide all', icon: 'general/collapseAll', onSelect: () => onHideAll?.(source, context) },
     { label: 'Delete', icon: 'general/delete', onSelect: () => onDelete?.(index, source, context) },
   ];
 

@@ -9695,7 +9695,11 @@ body .aiux543-chat-input::placeholder {
   line-height: 22px;
 }
 
-body .ai-chat-inline-input-content > .aiux543-chat-input:placeholder-shown {
+/* Only stretch to full width when the composer is truly empty (textarea is the
+   only child). With an attachment chip present, :placeholder-shown still matches
+   (placeholder is set to '' but the value is still empty), which forced the input
+   onto its own full-width row below the chip instead of continuing that line. */
+body .ai-chat-inline-input-content > .aiux543-chat-input:placeholder-shown:only-child {
   width: 100%;
   flex: 1 1 100%;
 }
