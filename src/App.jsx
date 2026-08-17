@@ -15824,6 +15824,29 @@ public Vet getVet() {
   ...buildSpecStatusScenarioEntries('spec-visit-booking', 'Visit-Booking.md'),
 };
 
+// Sums the +added/-removed line counts across every agent-session scenario's
+// change card(s), so the branch-level VCS summary reflects real cumulative
+// changes instead of a hand-picked number.
+function sumScenarioLineChanges(scenarios = AI_CHAT_SCENARIOS) {
+  const parseCount = (value) => {
+    const match = typeof value === 'string' ? value.match(/-?\d+/) : null;
+    return match ? Math.abs(Number(match[0])) : 0;
+  };
+  let added = 0;
+  let removed = 0;
+  Object.values(scenarios).forEach((scenario) => {
+    const cards = [
+      ...(scenario?.changeCard ? [scenario.changeCard] : []),
+      ...(Array.isArray(scenario?.changeCards) ? scenario.changeCards : []),
+    ];
+    cards.forEach((card) => {
+      added += parseCount(card?.added);
+      removed += parseCount(card?.removed);
+    });
+  });
+  return { added, removed };
+}
+
 function ChatListRow({ item, selected = false, active = false, onSelect = null, nested = false, hideMeta = false, showActiveBadge = true }) {
   return (
     <button className={`ai-chat-list-row${nested ? ' is-nested' : ''}${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
@@ -19280,6 +19303,7 @@ function AiChatTabView({
   onCommitChanges = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
+  const [vcsSummaryDismissed, setVcsSummaryDismissed] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -20163,6 +20187,27 @@ function AiChatTabView({
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
+        {!vcsSummaryDismissed && (() => {
+          const { added, removed } = sumScenarioLineChanges(scenarios);
+          return (
+            <div className="aiux543-chat-vcs-summary">
+              <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
+              <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
+              <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
+              <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
+              <span className="aiux543-chat-vcs-summary-counts" aria-label={`${added} lines added, ${removed} lines removed across every session`}>
+                <span className="is-added">+{added.toLocaleString()}</span>
+                <span className="is-removed">-{removed.toLocaleString()}</span>
+              </span>
+              <IconButton
+                icon="general/close"
+                tooltip="Dismiss"
+                className="aiux543-chat-vcs-summary-close"
+                onClick={() => setVcsSummaryDismissed(true)}
+              />
+            </div>
+          );
+        })()}
         {false && showAiReviewPrompt && reviewPromptFiles.length > 0 && (
           <AiReviewComposerPrompt
             onCreateSpec={onCreateSpec}
