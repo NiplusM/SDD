@@ -22818,17 +22818,6 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 1px;
 }
 
-.agent-session-rollback-overlay {
-  position: fixed;
-  z-index: 10100;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.36);
-}
-
 .spec-done-overlay .spec-done-inline-code {
   display: inline-block;
   max-width: 100%;

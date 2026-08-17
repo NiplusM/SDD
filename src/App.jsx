@@ -21136,7 +21136,6 @@ export default function App() {
   const [aiChatAnnotationsByChatId, setAiChatAnnotationsByChatId] = useState({});
   const [aiChatSelectionContextByChatId, setAiChatSelectionContextByChatId] = useState({});
   const [aiChatExplicitFileContextByChatId, setAiChatExplicitFileContextByChatId] = useState({});
-  const [rolledBackSessionFileLabelsByChatId, setRolledBackSessionFileLabelsByChatId] = useState({});
   const [chatSelectionCommentRequest, setChatSelectionCommentRequest] = useState(null);
   const [chatSelectionCommentValue, setChatSelectionCommentValue] = useState('');
   // Per-chat review lifecycle: queued → processing/updating → open/updated → completed/cancelled.
@@ -21315,26 +21314,9 @@ export default function App() {
         icon: typeof item.icon === 'string' && item.icon.length > 0 ? item.icon : 'claude',
       }));
   }, [aiChatRecentItems]);
-  const getAiChatScenarioById = useCallback((chatId) => {
-    const scenario = aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes'];
-    const rolledBackLabels = new Set(
-      Array.isArray(rolledBackSessionFileLabelsByChatId[chatId])
-        ? rolledBackSessionFileLabelsByChatId[chatId]
-        : [],
-    );
-    if (rolledBackLabels.size === 0) return scenario;
-    const isRolledBackCard = (card) => {
-      const label = String(card?.name ?? card?.diffRequest?.source?.label ?? '').trim();
-      return label.length > 0 && rolledBackLabels.has(label);
-    };
-    return {
-      ...scenario,
-      changeCard: isRolledBackCard(scenario?.changeCard) ? null : scenario?.changeCard,
-      changeCards: Array.isArray(scenario?.changeCards)
-        ? scenario.changeCards.filter((card) => !isRolledBackCard(card))
-        : scenario?.changeCards,
-    };
-  }, [aiChatScenarios, rolledBackSessionFileLabelsByChatId]);
+  const getAiChatScenarioById = useCallback((chatId) => (
+    aiChatScenarios[chatId] ?? AI_CHAT_SCENARIOS['visit-model-attributes']
+  ), [aiChatScenarios]);
   const getAiChatListItemById = useCallback(
     (chatId) => [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS].find((item) => item.id === chatId) ?? null,
     [aiChatRecentItems],
@@ -32401,16 +32383,6 @@ export default function App() {
     });
   }, [activeAiChatTabChatId, resolveHistoryFileDiffRequest, selectedAiChatId]);
 
-  const rollbackHistorySessionFile = useCallback((file, { chatId = null } = {}) => {
-    const fileLabel = String(file?.label ?? file?.diffRequest?.source?.label ?? '').trim();
-    if (!chatId || !fileLabel) return;
-    setRolledBackSessionFileLabelsByChatId((prev) => {
-      const currentLabels = Array.isArray(prev[chatId]) ? prev[chatId] : [];
-      if (currentLabels.includes(fileLabel)) return prev;
-      return { ...prev, [chatId]: [...currentLabels, fileLabel] };
-    });
-  }, []);
-
   const openHistoryChangesListInReviewScope = useCallback((chatId) => {
     if (!chatId) return null;
     openChatInEditorTab(chatId);
@@ -33213,7 +33185,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} onRollbackSessionFile={rollbackHistorySessionFile} rolledBackSessionFileLabelsByChatId={rolledBackSessionFileLabelsByChatId} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
             return defaultLeftPanelContent(id, ctx);
           }}
 	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -33760,7 +33732,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} onRollbackSessionFile={rollbackHistorySessionFile} rolledBackSessionFileLabelsByChatId={rolledBackSessionFileLabelsByChatId} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => {
