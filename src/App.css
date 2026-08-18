@@ -4703,6 +4703,12 @@ body {
   line-height: 16px;
 }
 
+.spec-done-comment-popup-footer-note-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .spec-done-comment-popup-footer-note-number {
   display: inline-flex;
   align-items: center;
