@@ -1626,7 +1626,16 @@ export function DiffInlineCommentPopup({
   // (hidden flag) unless reopened individually or revealed via the "Resolved"
   // filter; open comments follow the severity filter and manual hide flag.
   const isCommentVisibleForRender = (comment) => {
-    if (forceShowHiddenComments && getCommentEntryText(comment).trim().length > 0) {
+    // "Expanded row" (forceShowHiddenComments) only guarantees your own new note
+    // isn't hidden by the severity filter — it must NOT resurrect an unrelated
+    // resolved/agent-answered thread that was deliberately collapsed on this same
+    // row. Leaving a note on a row that already carries old resolved history
+    // (e.g. from a prior AI Review pass) was popping that agent reply back open.
+    if (
+      forceShowHiddenComments
+      && !isReviewFindingDecided(comment)
+      && getCommentEntryText(comment).trim().length > 0
+    ) {
       return true;
     }
     const filterValues = normalizePlanDiffSeverityFilter(severityFilter);
