@@ -19276,6 +19276,7 @@ function AiChatTabView({
   onAgentChange = null,
   onOpenDiffTab = null,
   onOpenAllProjectChanges = null,
+  onOpenFileInAllProjectChanges = null,
   onOpenChangeScope = null,
   changeScopePanelExpanded = false,
   changeScopePanelCollapsed = false,
@@ -20244,18 +20245,18 @@ function AiChatTabView({
                     <button
                       key={file.tabId}
                       type="button"
-                      className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux543-chat-tree-leaf-modified aiux543-chat-vcs-summary-file"
-                      onClick={() => onOpenDiffTab?.(file.diffRequest)}
+                      className="aiux543-chat-vcs-summary-file"
+                      onClick={() => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
                     >
                       <Icon
                         name={file.label?.endsWith('.md') ? 'fileTypes/markdown' : 'fileTypes/java'}
                         size={16}
-                        className="icon aiux543-chat-tree-icon"
+                        className="icon aiux543-chat-vcs-summary-file-icon"
                       />
-                      <span className="aiux543-chat-tree-leaf-label">{file.label}</span>
-                      <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
-                        <span className="added">+{file.added}</span>
-                        <span className="deleted">-{file.removed}</span>
+                      <span className="aiux543-chat-vcs-summary-file-label">{file.label}</span>
+                      <span className="aiux543-chat-vcs-summary-file-counts" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
+                        <span className="is-added">+{file.added}</span>
+                        <span className="is-removed">-{file.removed}</span>
                       </span>
                     </button>
                   ))}
@@ -28008,6 +28009,20 @@ export default function App() {
     )) ?? diffRequest;
     return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, 'last-turn');
   }, [getAiChatScenarioById, openPlanDiffInReviewSplit, selectedAiChatId]);
+  // Same as openChangedFileInReviewScope, but for a file picked from the VCS
+  // summary's expanded file list: that file becomes the active diff, while
+  // the scope stays the full All Project Changes set (every other file).
+  const openFileInAllProjectChangesScope = useCallback((diffRequest, chatId = null) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    if (!diffRequest || !targetChatId) return null;
+    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
+    const sourceTabId = diffRequest?.source?.tabId ?? null;
+    const scopedDiffRequest = scopeRequests.find((request) => (
+      request === diffRequest
+      || (sourceTabId && request?.source?.tabId === sourceTabId)
+    )) ?? diffRequest;
+    return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, 'all-project-changes');
+  }, [getAiChatScenarioById, openPlanDiffInReviewSplit, selectedAiChatId]);
   const requestReviewFeedback = useCallback((chatId) => {
     if (!chatId) return;
     setReviewFeedbackRequestByChatId((current) => ({
@@ -33487,6 +33502,7 @@ export default function App() {
                       onAgentChange={handleAiChatAgentChange}
                       onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, reviewSplitChatId)}
                       onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes' })}
+                      onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, reviewSplitChatId)}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
                       changeScopePanelCollapsed
@@ -33637,6 +33653,7 @@ export default function App() {
                   onAgentChange={handleAiChatAgentChange}
                   onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, activeAiChatTabChatId)}
                   onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes' })}
+                  onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, activeAiChatTabChatId)}
                   onOpenChangeScope={openChatChangeScope}
                   changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId])}
                   onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}

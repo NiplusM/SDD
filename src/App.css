@@ -14403,8 +14403,53 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .aiux543-chat-vcs-summary-file {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
   width: 100%;
+  height: 24px;
+  padding: 0 4px 0 6px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #c4c6cc;
+  cursor: pointer;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.aiux543-chat-vcs-summary-file:hover {
+  background: #34363b6b;
+}
+
+.aiux543-chat-vcs-summary-file-icon {
+  flex: 0 0 auto;
+  color: #6ca7ff;
+}
+
+.aiux543-chat-vcs-summary-file-label {
+  overflow: hidden;
+  min-width: 0;
+  color: #6ca7ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-vcs-summary-file-counts {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.aiux543-chat-vcs-summary-file-counts .is-added {
+  color: #67B180;
+}
+
+.aiux543-chat-vcs-summary-file-counts .is-removed {
+  color: #F77D83;
 }
 
 
