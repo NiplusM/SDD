@@ -23632,9 +23632,16 @@ export default function App() {
   // back onto that file's tab, so drilling into the full diff reflects them.
   const persistReviewFileComments = useCallback((tabId, comments, reviewChatId = null, metadata = {}) => {
     if (!tabId) return;
+    // This same file-comments-change handler backs both the actual AI Review
+    // split view and the plain multi-file browser opened from an ordinary
+    // "Edited <file>" turn (they share the split-editor plumbing) — so
+    // `reviewChatId` alone doesn't mean a review is running. Without this
+    // guard, any note left while just browsing changed files got silently
+    // stamped "review feedback" and an instant canned agent reply.
+    const hasActiveReviewRun = agentRunByChatId[reviewChatId]?.kind === 'review';
     const normalized = Object.entries(normalizeStoredDiffCommentsState(comments)).reduce((acc, [rowId, rowComments]) => {
       acc[rowId] = rowComments.map((comment) => {
-        if (!reviewChatId || comment?.reviewChatId) return comment;
+        if (!reviewChatId || !hasActiveReviewRun || comment?.reviewChatId) return comment;
         const base = comment && typeof comment === 'object'
           ? comment
           : { text: getStoredCommentText(comment) };
@@ -23768,7 +23775,7 @@ export default function App() {
         return changed ? next : prev;
       });
     }
-  }, [applyReviewOwnedFindingPatches]);
+  }, [agentRunByChatId, applyReviewOwnedFindingPatches]);
 
   // Full Review uses the same chat attachment model as a regular diff. A note
   // is persisted in the review first, then copied into the selected chat's
