@@ -4710,15 +4710,22 @@ body {
   gap: 4px;
 }
 
-.spec-done-comment-popup-footer-note-loader {
-  display: inline-flex;
-  flex: 0 0 12px;
-  width: 12px;
-  height: 12px;
-  align-items: center;
-  justify-content: center;
-  color: currentColor;
-  opacity: 0.8;
+.spec-done-comment-popup-footer-note-ellipsis span {
+  opacity: 0;
+  animation: at-ellipsis-blink 1.4s infinite;
+}
+
+.spec-done-comment-popup-footer-note-ellipsis span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.spec-done-comment-popup-footer-note-ellipsis span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes at-ellipsis-blink {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
 }
 
 .spec-done-comment-popup-item-actions {
@@ -8296,17 +8303,18 @@ body {
   animation-play-state: running !important;
 }
 
-/* The blanket `animation: none` above also froze the "Loading…" spinner shown
+/* The blanket `animation: none` above also froze the animated ellipsis shown
    on a comment right after it's sent, while the agent hasn't replied yet. */
-.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader,
-.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader svg {
-  animation: at-loader-spin 0.9s linear infinite !important;
-  transform-origin: center;
-  transform-box: fill-box;
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-ellipsis span {
+  animation: at-ellipsis-blink 1.4s infinite !important;
 }
 
-.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader * {
-  animation-play-state: running !important;
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-ellipsis span:nth-child(2) {
+  animation-delay: 0.2s !important;
+}
+
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-ellipsis span:nth-child(3) {
+  animation-delay: 0.4s !important;
 }
 
 /* The blanket `animation: none` above also froze the agent-reply avatar spinner

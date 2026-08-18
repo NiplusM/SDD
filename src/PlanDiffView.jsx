@@ -2450,8 +2450,10 @@ export function DiffInlineCommentPopup({
                                 <div className="spec-done-comment-popup-item-meta text-ui-small">
                                   {commentEntry.pending ? (
                                     <span className="spec-done-comment-popup-footer-note-status">
-                                      <Loader className="spec-done-comment-popup-footer-note-loader" size={12} />
-                                      Loading…
+                                      Comment is being processed
+                                      <span className="spec-done-comment-popup-footer-note-ellipsis" aria-hidden="true">
+                                        <span>.</span><span>.</span><span>.</span>
+                                      </span>
                                     </span>
                                   ) : entryLineLabel}
                                 </div>
