@@ -8322,6 +8322,19 @@ body {
   animation-play-state: running !important;
 }
 
+/* The blanket `animation: none` above also froze the "Loading…" spinner shown
+   on a comment right after it's sent, while the agent hasn't replied yet. */
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader,
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader svg {
+  animation: at-loader-spin 0.9s linear infinite !important;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.plan-diff-inline-comment .spec-done-comment-popup-footer-note-loader * {
+  animation-play-state: running !important;
+}
+
 /* The blanket `animation: none` above also froze the agent-reply avatar spinner
    (shown while a quick fix / resolve is processing). Re-enable it. */
 .plan-diff-inline-comment .spec-done-comment-agent-reply-avatar.is-processing .loader-spinner,
