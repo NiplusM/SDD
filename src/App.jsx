@@ -20217,7 +20217,6 @@ function AiChatTabView({
                     size={16}
                     className={`aiux543-chat-vcs-summary-chevron${vcsSummaryExpanded ? ' is-expanded' : ''}`}
                   />
-                  <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
                   <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
                   <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
                   <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
@@ -20241,25 +20240,29 @@ function AiChatTabView({
               </div>
               {vcsSummaryExpanded && (
                 <div className="aiux543-chat-vcs-summary-files" aria-label="All Project Changes files">
-                  {files.map((file) => (
-                    <button
-                      key={file.tabId}
-                      type="button"
-                      className="aiux543-chat-vcs-summary-file"
-                      onClick={() => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
-                    >
-                      <Icon
-                        name={file.label?.endsWith('.md') ? 'fileTypes/markdown' : 'fileTypes/java'}
-                        size={16}
-                        className="icon aiux543-chat-vcs-summary-file-icon"
-                      />
-                      <span className="aiux543-chat-vcs-summary-file-label">{file.label}</span>
-                      <span className="aiux543-chat-vcs-summary-file-counts" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
-                        <span className="is-added">+{file.added}</span>
-                        <span className="is-removed">-{file.removed}</span>
-                      </span>
-                    </button>
-                  ))}
+                  {files.map((file, index) => {
+                    const isMarkdown = file.label?.endsWith('.md');
+                    return (
+                      <button
+                        key={file.tabId}
+                        type="button"
+                        className="aiux543-chat-vcs-summary-file"
+                        onClick={() => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
+                      >
+                        <span className="aiux543-chat-vcs-summary-file-index" title={`${index + 1} of ${files.length} files`}>{index + 1}</span>
+                        <Icon
+                          name={isMarkdown ? 'fileTypes/markdown' : 'fileTypes/java'}
+                          size={16}
+                          className={`icon aiux543-chat-vcs-summary-file-icon${isMarkdown ? ' is-markdown' : ''}`}
+                        />
+                        <span className="aiux543-chat-vcs-summary-file-label">{file.label}</span>
+                        <span className="aiux543-chat-vcs-summary-file-counts" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
+                          <span className="is-added">+{file.added}</span>
+                          <span className="is-removed">-{file.removed}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
