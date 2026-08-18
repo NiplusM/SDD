@@ -14306,10 +14306,15 @@ button.aiux543-answer-change-card:focus-visible {
    leaving a gap. The extra 8px is added to height/padding-bottom (not
    just the margin) so that overlap eats into the new filler space, not
    into the row's own bottom padding — keeping it visually even with the
-   top padding. */
-.aiux543-chat-local-card.aiux543-chat-vcs-summary {
+   top padding. Scoped to :not(.is-expanded) — the fixed height would
+   otherwise beat the expanded state's `height: auto` (same specificity,
+   declared first) and clip the file list down to the header row. */
+.aiux543-chat-local-card.aiux543-chat-vcs-summary:not(.is-expanded) {
   height: 52px;
   padding-bottom: 13px;
+}
+
+.aiux543-chat-local-card.aiux543-chat-vcs-summary {
   margin-bottom: -8px;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
