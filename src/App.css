@@ -14283,10 +14283,18 @@ button.aiux543-answer-change-card:focus-visible {
   overflow: hidden;
 }
 
-/* Sit flush against the composer below (zero gap, no overlap) — each box
-   keeps its own full corner radius, like two stacked, touching cards. */
+/* Sit flush against the composer below with zero gap and flattened facing
+   corners, so the two read as one connected control instead of two
+   separately-rounded cards with a pinched seam between them. */
 .aiux543-chat-local-card.aiux543-chat-vcs-summary {
   margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.aiux543-composer-sticky:has(> .aiux543-chat-vcs-summary) .aiux543-chat-composer {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 .aiux543-chat-vcs-summary-row {
