@@ -14307,8 +14307,13 @@ button.aiux543-answer-change-card:focus-visible {
    with a pinched seam between them. The composer below keeps its own
    rounded top corners — extend this card behind them (negative margin,
    lower z-index) so its background fills the curved corners instead of
-   leaving a gap. */
+   leaving a gap. The extra 8px is added to height/padding-bottom (not
+   just the margin) so that overlap eats into the new filler space, not
+   into the row's own bottom padding — keeping it visually even with the
+   top padding. */
 .aiux543-chat-local-card.aiux543-chat-vcs-summary {
+  height: 52px;
+  padding-bottom: 13px;
   margin-bottom: -8px;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
