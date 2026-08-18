@@ -4707,7 +4707,8 @@ body {
 .spec-done-comment-popup-footer-note-status {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 1px;
+  font-size: 11px;
 }
 
 .spec-done-comment-popup-footer-note-ellipsis span {
