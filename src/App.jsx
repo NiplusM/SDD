@@ -15493,6 +15493,43 @@ function getChatChangeCards(scenario) {
   }];
 }
 
+// Builds "Edited <file>" cards for an assistant reply that only processed diff
+// comments (no /review run). Reusing a scenario's known change-card counters
+// when the commented file matches one makes the reply read as if the agent
+// actually revised the file, not just discussed it.
+function resolveEditedFileCardsFromAttachments(attachments = [], scenario = null) {
+  const knownCards = getChatChangeCards(scenario);
+  const seen = new Set();
+  return (Array.isArray(attachments) ? attachments : []).reduce((result, attachment) => {
+    const tabId = attachment?.diffTabId ?? attachment?.diffRequest?.source?.tabId ?? null;
+    const label = attachment?.label ?? '';
+    const key = tabId ?? label;
+    if (!key || seen.has(key)) return result;
+    seen.add(key);
+    const matchedCard = knownCards.find((card) => (
+      (tabId && card?.diffRequest?.source?.tabId === tabId) || card?.name === label
+    ));
+    result.push(matchedCard
+      ? {
+          id: matchedCard.id ?? tabId,
+          name: matchedCard.name,
+          icon: matchedCard.icon,
+          added: matchedCard.added,
+          removed: matchedCard.removed,
+          diffRequest: matchedCard.diffRequest,
+        }
+      : {
+          id: tabId ?? attachment?.id,
+          name: label.replace(/^diff\s+/iu, '').trim() || label,
+          icon: attachment?.icon && attachment.icon !== 'vcs/diff'
+            ? attachment.icon
+            : agentRunFileIconName(label),
+          diffRequest: attachment?.diffRequest ?? null,
+        });
+    return result;
+  }, []);
+}
+
 function buildChatReviewScopeRequests(scenario) {
   const recentCards = getChatChangeCards(scenario).slice(-3);
   return [
@@ -31868,6 +31905,24 @@ export default function App() {
             targetChatId,
           );
           renameChatAfterReview(targetChatId, reviewFeatureTitle);
+        } else if (shouldStreamCommentResponse) {
+          // A comment-only run still touched a file in scope — attach the same
+          // "Edited <file>" card the agent uses for real edits, so the reply
+          // reads as a change, not just a discussion.
+          const editedFiles = resolveEditedFileCardsFromAttachments(
+            commentAttachments,
+            getAiChatScenarioById(targetChatId),
+          );
+          if (editedFiles.length > 0) {
+            handleSelectedAiChatSentMessagesChange(
+              (prev) => prev.map((message) => (
+                message.id === assistantMessageId
+                  ? { ...message, kind: 'file-edit', editedFiles }
+                  : message
+              )),
+              targetChatId,
+            );
+          }
         }
       };
       const streamNextChunk = () => {
