@@ -5886,15 +5886,6 @@ export function PlanDiffEditorToolbar({
       <div className="plan-diff-content-labels">
         <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
         <PlanDiffContentLabel>New content</PlanDiffContentLabel>
-        {diffData?.modifiedAfterSession && (
-          <span
-            className="plan-diff-session-snapshot-notice"
-            title="This historical session diff does not include later manual changes."
-          >
-            <Icon name="general/edit" size={16} />
-            Modified after session
-          </span>
-        )}
       </div>
     </div>
   );

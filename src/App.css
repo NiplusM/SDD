@@ -7213,21 +7213,6 @@ body {
   flex-shrink: 0;
 }
 
-.plan-diff-session-snapshot-notice {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: max-content;
-  margin-top: 3px;
-  color: #c7a86b;
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.plan-diff-session-snapshot-notice svg {
-  color: #c7a86b;
-}
-
 .plan-diff-viewer-popup {
   position: fixed;
   z-index: 40;
