@@ -15482,6 +15482,47 @@ function getChatChangeCards(scenario) {
   }];
 }
 
+// Builds "Edited <file>" cards for an assistant reply that only processed diff
+// comments (no /review run). Reusing a scenario's known change-card counters
+// when the commented file matches one makes the reply read as if the agent
+// actually revised the file, not just discussed it.
+function resolveEditedFileCardsFromAttachments(attachments = [], scenario = null) {
+  const knownCards = getChatChangeCards(scenario);
+  const seen = new Set();
+  return (Array.isArray(attachments) ? attachments : []).reduce((result, attachment) => {
+    // The composer's own diffTabId is a synthesized tab key (e.g. "diff-1"),
+    // not the source file's tabId — match against the diffRequest's source
+    // tabId instead, which is what a scenario's change cards carry.
+    const sourceTabId = attachment?.diffRequest?.source?.tabId ?? attachment?.diffTabId ?? null;
+    const label = attachment?.label ?? '';
+    const strippedLabel = label.replace(/^diff\s+/iu, '').trim();
+    const key = sourceTabId ?? strippedLabel ?? label;
+    if (!key || seen.has(key)) return result;
+    seen.add(key);
+    const matchedCard = knownCards.find((card) => (
+      (sourceTabId && card?.diffRequest?.source?.tabId === sourceTabId) || card?.name === strippedLabel
+    ));
+    result.push(matchedCard
+      ? {
+          id: matchedCard.id ?? sourceTabId,
+          name: matchedCard.name,
+          icon: matchedCard.icon,
+          added: matchedCard.added,
+          removed: matchedCard.removed,
+          diffRequest: matchedCard.diffRequest,
+        }
+      : {
+          id: sourceTabId ?? attachment?.id,
+          name: strippedLabel || label,
+          icon: attachment?.icon && attachment.icon !== 'vcs/diff'
+            ? attachment.icon
+            : agentRunFileIconName(strippedLabel || label),
+          diffRequest: attachment?.diffRequest ?? null,
+        });
+    return result;
+  }, []);
+}
+
 function buildChatReviewScopeRequests(scenario) {
   const recentCards = getChatChangeCards(scenario).slice(-3);
   return [
@@ -20100,6 +20141,21 @@ function AiChatTabView({
               <AiChatProgressIcon />
               <span>Running...</span>
             </div>
+          ) : message.role === 'assistant' && message.kind === 'file-edit' && message.editedFiles?.length > 0 ? (
+            <ChatChangedFilesCard
+              key={message.id}
+              files={message.editedFiles}
+              onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+            >
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
+              </p>
+            </ChatChangedFilesCard>
           ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
@@ -23472,9 +23528,16 @@ export default function App() {
   // back onto that file's tab, so drilling into the full diff reflects them.
   const persistReviewFileComments = useCallback((tabId, comments, reviewChatId = null, metadata = {}) => {
     if (!tabId) return;
+    // This same file-comments-change handler backs both the actual AI Review
+    // split view and the plain multi-file browser opened from an ordinary
+    // "Edited <file>" turn (they share the split-editor plumbing) — so
+    // `reviewChatId` alone doesn't mean a review is running. Without this
+    // guard, any note left while just browsing changed files got silently
+    // stamped "review feedback" and an instant canned agent reply.
+    const hasActiveReviewRun = agentRunByChatId[reviewChatId]?.kind === 'review';
     const normalized = Object.entries(normalizeStoredDiffCommentsState(comments)).reduce((acc, [rowId, rowComments]) => {
       acc[rowId] = rowComments.map((comment) => {
-        if (!reviewChatId || comment?.reviewChatId) return comment;
+        if (!reviewChatId || !hasActiveReviewRun || comment?.reviewChatId) return comment;
         const base = comment && typeof comment === 'object'
           ? comment
           : { text: getStoredCommentText(comment) };
@@ -23608,7 +23671,7 @@ export default function App() {
         return changed ? next : prev;
       });
     }
-  }, [applyReviewOwnedFindingPatches]);
+  }, [agentRunByChatId, applyReviewOwnedFindingPatches]);
 
   // Full Review uses the same chat attachment model as a regular diff. A note
   // is persisted in the review first, then copied into the selected chat's
@@ -31722,6 +31785,24 @@ export default function App() {
             targetChatId,
           );
           renameChatAfterReview(targetChatId, reviewFeatureTitle);
+        } else if (shouldStreamCommentResponse) {
+          // A comment-only run still touched a file in scope — attach the same
+          // "Edited <file>" card the agent uses for real edits, so the reply
+          // reads as a change, not just a discussion.
+          const editedFiles = resolveEditedFileCardsFromAttachments(
+            commentAttachments,
+            getAiChatScenarioById(targetChatId),
+          );
+          if (editedFiles.length > 0) {
+            handleSelectedAiChatSentMessagesChange(
+              (prev) => prev.map((message) => (
+                message.id === assistantMessageId
+                  ? { ...message, kind: 'file-edit', editedFiles }
+                  : message
+              )),
+              targetChatId,
+            );
+          }
         }
       };
       const streamNextChunk = () => {
