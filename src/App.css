@@ -14269,18 +14269,26 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux543-chat-vcs-summary {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 12px;
   line-height: 16px;
 }
 
-/* Two classes to out-specificity .aiux543-chat-local-card's own -10px
-   margin-bottom, which otherwise pulls this flush against the composer
-   below with no visible gap. */
-.aiux543-chat-local-card.aiux543-chat-vcs-summary {
-  margin-bottom: 8px;
+/* The card's fixed 44px height only fits the header row; let it grow to
+   hold the file list once expanded. */
+.aiux543-chat-vcs-summary.is-expanded {
+  height: auto;
+  max-height: 220px;
+  overflow: hidden;
+}
+
+.aiux543-chat-vcs-summary-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
 }
 
 .aiux543-chat-vcs-summary-label {
@@ -14288,8 +14296,10 @@ button.aiux543-answer-change-card:focus-visible {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 3px 6px;
-  color: #9fa2a8;
+}
+
+.aiux543-chat-dropdown.aiux543-chat-vcs-summary-label {
+  cursor: pointer;
 }
 
 .aiux543-chat-vcs-summary-icon {
@@ -14317,6 +14327,16 @@ button.aiux543-answer-change-card:focus-visible {
   color: #9fa2a8;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.aiux543-chat-vcs-summary-chevron {
+  flex: 0 0 auto;
+  color: #9fa2a8;
+  transition: transform 120ms ease;
+}
+
+.aiux543-chat-vcs-summary-chevron.is-expanded {
+  transform: rotate(180deg);
 }
 
 .aiux543-chat-vcs-summary-counts {
@@ -14356,6 +14376,20 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-chat-vcs-summary-close {
   flex: 0 0 auto;
   color: #9fa2a8;
+}
+
+.aiux543-chat-vcs-summary-files {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+  overflow-y: auto;
+}
+
+.aiux543-chat-vcs-summary-file {
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 

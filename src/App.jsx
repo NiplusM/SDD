@@ -15836,6 +15836,29 @@ function getAllProjectChangesLineCounts(scenario) {
   return { added: option?.added ?? 0, removed: option?.removed ?? 0 };
 }
 
+// Per-file breakdown for the same All Project Changes scope, built the same
+// way buildChatReviewScopePreviewOptions aggregates it (card counts take
+// priority over the request's own review* fields), so expanding the VCS
+// summary lists exactly the files that make up its total.
+function getAllProjectChangesFiles(scenario) {
+  const changedFileCards = getChatChangeCards(scenario);
+  const requests = buildChatReviewScopeRequests(scenario);
+  return requests.map((request, index) => {
+    const requestSourceTabId = request?.source?.tabId ?? null;
+    const card = changedFileCards.find((candidate) => (
+      candidate?.diffRequest === request
+      || (requestSourceTabId && candidate?.diffRequest?.source?.tabId === requestSourceTabId)
+    )) ?? null;
+    return {
+      tabId: requestSourceTabId ?? `all-project-changes-${index}`,
+      label: request?.source?.label ?? card?.name ?? 'File',
+      added: card ? getChatChangedFileLineCount(card.added) : getChatChangedFileLineCount(request?.reviewAdded),
+      removed: card ? getChatChangedFileLineCount(card.removed) : getChatChangedFileLineCount(request?.reviewRemoved),
+      diffRequest: request,
+    };
+  });
+}
+
 function ChatListRow({ item, selected = false, active = false, onSelect = null, nested = false, hideMeta = false, showActiveBadge = true }) {
   return (
     <button className={`ai-chat-list-row${nested ? ' is-nested' : ''}${selected ? ' is-selected' : ''}`} type="button" onClick={() => onSelect?.(item.id)}>
@@ -19292,6 +19315,7 @@ function AiChatTabView({
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const [vcsSummaryDismissed, setVcsSummaryDismissed] = useState(false);
+  const [vcsSummaryExpanded, setVcsSummaryExpanded] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -20177,30 +20201,66 @@ function AiChatTabView({
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
         {!vcsSummaryDismissed && (() => {
           const { added, removed } = getAllProjectChangesLineCounts(scenario);
+          const files = vcsSummaryExpanded ? getAllProjectChangesFiles(scenario) : [];
           return (
-            <div className="aiux543-chat-local-card aiux543-chat-vcs-summary">
-              <span className="aiux543-chat-vcs-summary-label">
-                <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
-                <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
-                <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
-                <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
-              </span>
-              <button
-                type="button"
-                className="aiux543-chat-vcs-summary-counts"
-                aria-label={`Open All Project Changes. ${added} lines added, ${removed} lines removed across every session`}
-                onClick={() => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest))}
-                disabled={!onOpenAllProjectChanges && !scenario?.diffRequest}
-              >
-                <span className="is-added">+{added.toLocaleString()}</span>
-                <span className="is-removed">-{removed.toLocaleString()}</span>
-              </button>
-              <IconButton
-                icon="general/close"
-                tooltip="Dismiss"
-                className="aiux543-chat-vcs-summary-close"
-                onClick={() => setVcsSummaryDismissed(true)}
-              />
+            <div className={`aiux543-chat-local-card aiux543-chat-vcs-summary${vcsSummaryExpanded ? ' is-expanded' : ''}`}>
+              <div className="aiux543-chat-vcs-summary-row">
+                <button
+                  type="button"
+                  className="aiux543-chat-dropdown aiux543-chat-vcs-summary-label"
+                  aria-expanded={vcsSummaryExpanded}
+                  onClick={() => setVcsSummaryExpanded((expanded) => !expanded)}
+                >
+                  <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
+                  <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
+                  <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
+                  <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
+                  <Icon
+                    name="general/chevronDown"
+                    size={16}
+                    className={`aiux543-chat-vcs-summary-chevron${vcsSummaryExpanded ? ' is-expanded' : ''}`}
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="aiux543-chat-vcs-summary-counts"
+                  aria-label={`Open All Project Changes. ${added} lines added, ${removed} lines removed across every session`}
+                  onClick={() => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest))}
+                  disabled={!onOpenAllProjectChanges && !scenario?.diffRequest}
+                >
+                  <span className="is-added">+{added.toLocaleString()}</span>
+                  <span className="is-removed">-{removed.toLocaleString()}</span>
+                </button>
+                <IconButton
+                  icon="general/close"
+                  tooltip="Dismiss"
+                  className="aiux543-chat-vcs-summary-close"
+                  onClick={() => setVcsSummaryDismissed(true)}
+                />
+              </div>
+              {vcsSummaryExpanded && (
+                <div className="aiux543-chat-vcs-summary-files" aria-label="All Project Changes files">
+                  {files.map((file) => (
+                    <button
+                      key={file.tabId}
+                      type="button"
+                      className="aiux543-chat-tree-row aiux543-chat-tree-leaf aiux543-chat-tree-leaf-openable aiux543-chat-tree-leaf-modified aiux543-chat-vcs-summary-file"
+                      onClick={() => onOpenDiffTab?.(file.diffRequest)}
+                    >
+                      <Icon
+                        name={file.label?.endsWith('.md') ? 'fileTypes/markdown' : 'fileTypes/java'}
+                        size={16}
+                        className="icon aiux543-chat-tree-icon"
+                      />
+                      <span className="aiux543-chat-tree-leaf-label">{file.label}</span>
+                      <span className="aiux543-chat-change-summary" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
+                        <span className="added">+{file.added}</span>
+                        <span className="deleted">-{file.removed}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })()}
