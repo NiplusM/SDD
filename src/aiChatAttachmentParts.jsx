@@ -159,11 +159,10 @@ export function AttachmentCommentHoverCard({
             <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
               {renderMessage(
                 [
-                  Number.isInteger(item.noteNumber) && item.noteNumber > 0 ? `Note ${item.noteNumber}` : null,
                   foreignSourceLabel(item),
                   item.lineLabel,
                   (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
-                  (!item.lineLabel && !item.isSelectionContextPreview && !item.noteNumber) ? (items.length === 1 ? resolvedItemLabel : `${resolvedItemLabelPlural} ${index + 1}`) : null,
+                  (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
                 ].filter(Boolean).join(' · '),
                 item.text,
                 `hover-note-${index}-user`,
