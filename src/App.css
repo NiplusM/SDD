@@ -14283,6 +14283,12 @@ button.aiux543-answer-change-card:focus-visible {
   overflow: hidden;
 }
 
+/* Sit flush against the composer below (zero gap, no overlap) — each box
+   keeps its own full corner radius, like two stacked, touching cards. */
+.aiux543-chat-local-card.aiux543-chat-vcs-summary {
+  margin-bottom: 0;
+}
+
 .aiux543-chat-vcs-summary-row {
   display: flex;
   flex: 0 0 auto;
@@ -14332,11 +14338,12 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-chat-vcs-summary-chevron {
   flex: 0 0 auto;
   color: #9fa2a8;
+  transform: rotate(-90deg);
   transition: transform 120ms ease;
 }
 
 .aiux543-chat-vcs-summary-chevron.is-expanded {
-  transform: rotate(180deg);
+  transform: rotate(0deg);
 }
 
 .aiux543-chat-vcs-summary-counts {

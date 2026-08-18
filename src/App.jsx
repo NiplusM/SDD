@@ -20211,15 +20211,15 @@ function AiChatTabView({
                   aria-expanded={vcsSummaryExpanded}
                   onClick={() => setVcsSummaryExpanded((expanded) => !expanded)}
                 >
-                  <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
-                  <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
-                  <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
-                  <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
                   <Icon
                     name="general/chevronDown"
                     size={16}
                     className={`aiux543-chat-vcs-summary-chevron${vcsSummaryExpanded ? ' is-expanded' : ''}`}
                   />
+                  <Icon name="vcs/branch" size={16} className="aiux543-chat-vcs-summary-icon" />
+                  <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
+                  <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
+                  <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
                 </button>
                 <button
                   type="button"
