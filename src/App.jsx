@@ -15501,17 +15501,21 @@ function resolveEditedFileCardsFromAttachments(attachments = [], scenario = null
   const knownCards = getChatChangeCards(scenario);
   const seen = new Set();
   return (Array.isArray(attachments) ? attachments : []).reduce((result, attachment) => {
-    const tabId = attachment?.diffTabId ?? attachment?.diffRequest?.source?.tabId ?? null;
+    // The composer's own diffTabId is a synthesized tab key (e.g. "diff-1"),
+    // not the source file's tabId — match against the diffRequest's source
+    // tabId instead, which is what a scenario's change cards carry.
+    const sourceTabId = attachment?.diffRequest?.source?.tabId ?? attachment?.diffTabId ?? null;
     const label = attachment?.label ?? '';
-    const key = tabId ?? label;
+    const strippedLabel = label.replace(/^diff\s+/iu, '').trim();
+    const key = sourceTabId ?? strippedLabel ?? label;
     if (!key || seen.has(key)) return result;
     seen.add(key);
     const matchedCard = knownCards.find((card) => (
-      (tabId && card?.diffRequest?.source?.tabId === tabId) || card?.name === label
+      (sourceTabId && card?.diffRequest?.source?.tabId === sourceTabId) || card?.name === strippedLabel
     ));
     result.push(matchedCard
       ? {
-          id: matchedCard.id ?? tabId,
+          id: matchedCard.id ?? sourceTabId,
           name: matchedCard.name,
           icon: matchedCard.icon,
           added: matchedCard.added,
@@ -15519,11 +15523,11 @@ function resolveEditedFileCardsFromAttachments(attachments = [], scenario = null
           diffRequest: matchedCard.diffRequest,
         }
       : {
-          id: tabId ?? attachment?.id,
-          name: label.replace(/^diff\s+/iu, '').trim() || label,
+          id: sourceTabId ?? attachment?.id,
+          name: strippedLabel || label,
           icon: attachment?.icon && attachment.icon !== 'vcs/diff'
             ? attachment.icon
-            : agentRunFileIconName(label),
+            : agentRunFileIconName(strippedLabel || label),
           diffRequest: attachment?.diffRequest ?? null,
         });
     return result;
@@ -20202,6 +20206,21 @@ function AiChatTabView({
               <AiChatProgressIcon />
               <span>Running...</span>
             </div>
+          ) : message.role === 'assistant' && message.kind === 'file-edit' && message.editedFiles?.length > 0 ? (
+            <ChatChangedFilesCard
+              key={message.id}
+              files={message.editedFiles}
+              onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+            >
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
+              </p>
+            </ChatChangedFilesCard>
           ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
