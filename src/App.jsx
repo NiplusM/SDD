@@ -14502,19 +14502,10 @@ function ChatToolWindow({
       attachment && !attachments.slice(index + 1).some((candidate) => candidate?.id === attachment.id)
     ))
     .filter((attachment) => !(attachment?.id in dismissedAttachmentIds));
-  let composerReviewNoteNumber = 0;
-  const numberedComposerPreviewItemsByAttachmentId = new Map(
+  const composerPreviewItemsByAttachmentId = new Map(
     visibleComposerAttachments.map((attachment, index) => {
       const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
-      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
-        if (item?.isSelectionContextPreview) return item;
-        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
-          composerReviewNoteNumber = Math.max(composerReviewNoteNumber, item.noteNumber);
-          return item;
-        }
-        return { ...item, noteNumber: ++composerReviewNoteNumber };
-      });
-      return [attachmentId, numberedItems];
+      return [attachmentId, getAiChatAttachmentCommentPreviewItems(attachment)];
     }),
   );
   const hasComposerAttachmentOverflow = visibleComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
@@ -15172,7 +15163,7 @@ function ChatToolWindow({
                   expandedSourceId={expandedAttachmentSourceId}
                   onExpandedSourceIdChange={setExpandedAttachmentSourceId}
                   getCommentPreviewItems={(attachment) => (
-                    numberedComposerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(attachment))
+                    composerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(attachment))
                     ?? getAiChatAttachmentCommentPreviewItems(attachment)
                   )}
                   onOpen={(attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment, { archived: false })}
@@ -16084,19 +16075,10 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
   const hasOrderedContent = hasExplicitContentOrder || attachmentsFirst || attachments.some((attachment) => (
     attachment?.inputPlacement === 'before' || attachment?.inputPlacement === 'after'
   ));
-  let sentReviewNoteNumber = 0;
-  const numberedSentPreviewItemsByAttachmentId = new Map(
+  const sentPreviewItemsByAttachmentId = new Map(
     attachments.map((attachment, index) => {
       const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
-      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
-        if (item?.isSelectionContextPreview) return item;
-        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
-          sentReviewNoteNumber = Math.max(sentReviewNoteNumber, item.noteNumber);
-          return item;
-        }
-        return { ...item, noteNumber: ++sentReviewNoteNumber };
-      });
-      return [attachmentId, numberedItems];
+      return [attachmentId, getAiChatAttachmentCommentPreviewItems(attachment)];
     }),
   );
 
@@ -16119,7 +16101,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
             ))
           : (hasMessageText && <span className="ai-chat-user-card-text">{children}</span>)}
         {attachments.map((attachment, attachmentIndex) => {
-                const commentPreviewItems = numberedSentPreviewItemsByAttachmentId.get(
+                const commentPreviewItems = sentPreviewItemsByAttachmentId.get(
                   getAiChatAttachmentSequenceKey(attachment, attachmentIndex),
                 ) ?? getAiChatAttachmentCommentPreviewItems(attachment);
                 const sourcePreviewItems = getAiChatAttachmentSourcePreviewItems(attachment);
@@ -16150,8 +16132,8 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                     <span className="ai-chat-attachment-name">{attachment.label}</span>
                     {getAiChatAttachmentInlineCount(attachment) > 0 && (
                       <span className="ai-chat-attachment-comment-count">
-                        <Icon name="general/balloon" size={16} />
-                        {getAiChatAttachmentInlineCount(attachment)}
+                        <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true">·</span>
+                        <span className="ai-chat-attachment-comment-count-value">{getAiChatAttachmentInlineCount(attachment)}</span>
                       </span>
                     )}
                     {commentPreviewItems.length > 0 ? (
@@ -19564,7 +19546,6 @@ function AiChatTabView({
       text: item?.text ?? '',
       sourceLabel: item?.sourceLabel ?? '',
       lineLabel: item?.lineLabel ?? '',
-      noteNumber: item?.noteNumber ?? null,
       isSelectionContextPreview: Boolean(item?.isSelectionContextPreview),
     }));
     return `${attachmentId}\u0000${JSON.stringify(previewFingerprint)}`;
@@ -19698,19 +19679,10 @@ function AiChatTabView({
     getAiChatAttachmentSequenceKey(attachment, index),
     attachment,
   ]));
-  let editorComposerReviewNoteNumber = 0;
-  const numberedEditorComposerPreviewItemsByAttachmentId = new Map(
+  const editorComposerPreviewItemsByAttachmentId = new Map(
     editorComposerAttachments.map((attachment, index) => {
       const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
-      const numberedItems = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => {
-        if (item?.isSelectionContextPreview) return item;
-        if (Number.isInteger(item?.noteNumber) && item.noteNumber > 0) {
-          editorComposerReviewNoteNumber = Math.max(editorComposerReviewNoteNumber, item.noteNumber);
-          return item;
-        }
-        return { ...item, noteNumber: ++editorComposerReviewNoteNumber };
-      });
-      return [attachmentId, numberedItems];
+      return [attachmentId, getAiChatAttachmentCommentPreviewItems(attachment)];
     }),
   );
   const dismissSentComposerAttachments = () => {
@@ -19852,7 +19824,7 @@ function AiChatTabView({
       expanded={composerAttachmentsExpanded}
       onExpandedChange={setComposerAttachmentsExpanded}
       getCommentPreviewItems={(itemAttachment) => (
-        numberedEditorComposerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(itemAttachment))
+        editorComposerPreviewItemsByAttachmentId.get(getAiChatAttachmentSequenceKey(itemAttachment))
         ?? getAiChatAttachmentCommentPreviewItems(itemAttachment)
       )}
       onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
@@ -19986,8 +19958,8 @@ function AiChatTabView({
                       <span className="ai-chat-attachment-name">{attachment.label}</span>
                       {getAiChatAttachmentInlineCount(attachment) > 0 && (
                         <span className="ai-chat-attachment-comment-count">
-                          <Icon name="general/balloon" size={16} />
-                          {getAiChatAttachmentInlineCount(attachment)}
+                          <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true">·</span>
+                          <span className="ai-chat-attachment-comment-count-value">{getAiChatAttachmentInlineCount(attachment)}</span>
                         </span>
                       )}
                       {previewItems.length > 0 && (

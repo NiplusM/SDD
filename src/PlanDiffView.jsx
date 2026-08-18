@@ -4,7 +4,6 @@ import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Pop
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
-import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCounts.js';
 import openAiIconUrl from './assets/openAI.svg';
 
@@ -316,69 +315,12 @@ export function DiffTabIcon() {
   return <Icon name="vcs/diff" size={16} />;
 }
 
-export function PlanDiffCommentBadge({ count, previewComments = [], onAdd = null }) {
-  const previewTriggerRef = useRef(null);
-  const [previewRect, setPreviewRect] = useState(null);
-  const visiblePreviewComments = Array.isArray(previewComments)
-    ? previewComments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0).slice(0, 3)
-    : [];
-  const hiddenPreviewCount = Array.isArray(previewComments)
-    ? Math.max(0, previewComments.filter((comment) => typeof comment === 'string' && comment.trim().length > 0).length - visiblePreviewComments.length)
-    : 0;
-  const hasPreview = visiblePreviewComments.length > 0;
-
-  const updatePreviewRect = useCallback(() => {
-    if (!hasPreview) return;
-    const rect = previewTriggerRef.current?.getBoundingClientRect();
-    setPreviewRect(rect ?? null);
-  }, [hasPreview]);
-
-  const hidePreview = useCallback(() => {
-    setPreviewRect(null);
-  }, []);
-
-  useEffect(() => {
-    if (!previewRect) return undefined;
-
-    window.addEventListener('resize', updatePreviewRect);
-    window.addEventListener('scroll', hidePreview, true);
-
-    return () => {
-      window.removeEventListener('resize', updatePreviewRect);
-      window.removeEventListener('scroll', hidePreview, true);
-    };
-  }, [hidePreview, previewRect, updatePreviewRect]);
-
-  const previewStyle = (() => {
-    if (!previewRect || typeof window === 'undefined') return null;
-
-    const viewportPadding = 8;
-    const estimatedWidth = Math.min(300, window.innerWidth - (viewportPadding * 2));
-    const estimatedHeight = 112;
-    const gap = 8;
-    const rightSideLeft = previewRect.right + gap;
-    const leftSideLeft = previewRect.left - gap - estimatedWidth;
-    const left = rightSideLeft + estimatedWidth <= window.innerWidth - viewportPadding
-      ? rightSideLeft
-      : Math.max(viewportPadding, leftSideLeft);
-    const belowTop = previewRect.bottom + gap;
-    const aboveTop = previewRect.top - gap - estimatedHeight;
-    const top = belowTop + estimatedHeight <= window.innerHeight - viewportPadding
-      ? belowTop
-      : Math.max(viewportPadding, aboveTop);
-
-    return { left, top, width: estimatedWidth };
-  })();
-
+// The hidden-comments hover preview (a portal-based tooltip) was removed as
+// gutter noise, same call as the "Add a note to this line" hint — the badge
+// stays a plain count + add-button.
+export function PlanDiffCommentBadge({ count, onAdd = null }) {
   return (
-    <span
-      ref={previewTriggerRef}
-      className={`plan-diff-comment-badge${onAdd ? ' can-add' : ''}`}
-      onMouseEnter={hasPreview ? updatePreviewRect : undefined}
-      onMouseLeave={hasPreview ? hidePreview : undefined}
-      onFocus={hasPreview ? updatePreviewRect : undefined}
-      onBlur={hasPreview ? hidePreview : undefined}
-    >
+    <span className={`plan-diff-comment-badge${onAdd ? ' can-add' : ''}`}>
       <span className="plan-diff-comment-badge-main">
         <Icon name="general/balloon" size={16} />
         <span className="plan-diff-comment-count">{count}</span>
@@ -391,141 +333,29 @@ export function PlanDiffCommentBadge({ count, previewComments = [], onAdd = null
         onClick={onAdd ? (event) => {
           event.preventDefault();
           event.stopPropagation();
-          hidePreview();
           onAdd(event);
         } : undefined}
         onKeyDown={onAdd ? (event) => {
           if (event.key !== 'Enter' && event.key !== ' ') return;
           event.preventDefault();
           event.stopPropagation();
-          hidePreview();
           onAdd(event);
         } : undefined}
       >
         <Icon name="general/add" size={16} />
       </span>
-      {hasPreview && previewRect && previewStyle && typeof document !== 'undefined' && createPortal(
-        <span
-          className="ai-chat-attachment-comment-preview plan-diff-hidden-comment-preview is-visible"
-          role="tooltip"
-          style={previewStyle}
-        >
-          <span className="ai-chat-attachment-comment-preview-title">
-            {previewComments.length === 1 ? 'Note' : `Notes · ${previewComments.length}`}
-          </span>
-          {visiblePreviewComments.map((comment, index) => (
-            <span key={`hidden-comment-preview-${index}`} className="ai-chat-attachment-comment-preview-item">
-              {comment}
-            </span>
-          ))}
-          {hiddenPreviewCount > 0 && (
-            <span className="ai-chat-attachment-comment-preview-more">
-              {`+${hiddenPreviewCount} more`}
-            </span>
-          )}
-        </span>,
-        document.body,
-      )}
     </span>
   );
 }
 
-function PlanDiffGutterAiNoteTooltip({ text, disabled = false, children }) {
-  const triggerRef = useRef(null);
-  const [triggerRect, setTriggerRect] = useState(null);
-  const showTimerRef = useRef(null);
-
-  const updateTriggerRect = useCallback(() => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    setTriggerRect(rect ?? null);
-  }, []);
-
-  const showTooltip = useCallback(() => {
-    if (disabled) return;
-    if (showTimerRef.current) {
-      window.clearTimeout(showTimerRef.current);
-    }
-    showTimerRef.current = window.setTimeout(() => {
-      showTimerRef.current = null;
-      updateTriggerRect();
-    }, 650);
-  }, [disabled, updateTriggerRect]);
-
-  const hideTooltip = useCallback(() => {
-    if (showTimerRef.current) {
-      window.clearTimeout(showTimerRef.current);
-      showTimerRef.current = null;
-    }
-    setTriggerRect(null);
-  }, []);
-
-  useEffect(() => () => {
-    if (showTimerRef.current) {
-      window.clearTimeout(showTimerRef.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!triggerRect) return undefined;
-
-    const hideOnInteraction = () => hideTooltip();
-
-    window.addEventListener('resize', updateTriggerRect);
-    window.addEventListener('scroll', hideOnInteraction, true);
-    document.addEventListener('pointerdown', hideOnInteraction, true);
-    document.addEventListener('keydown', hideOnInteraction, true);
-
-    return () => {
-      window.removeEventListener('resize', updateTriggerRect);
-      window.removeEventListener('scroll', hideOnInteraction, true);
-      document.removeEventListener('pointerdown', hideOnInteraction, true);
-      document.removeEventListener('keydown', hideOnInteraction, true);
-    };
-  }, [hideTooltip, triggerRect, updateTriggerRect]);
-
-  const tooltipStyle = (() => {
-    if (!triggerRect || typeof window === 'undefined') return null;
-
-    const gap = 4;
-    const viewportPadding = 8;
-    const estimatedTooltipHeight = 30;
-    const left = Math.min(
-      window.innerWidth - viewportPadding,
-      Math.max(viewportPadding, triggerRect.right + gap),
-    );
-    const top = Math.min(
-      window.innerHeight - viewportPadding - estimatedTooltipHeight,
-      Math.max(viewportPadding, triggerRect.top + (triggerRect.height / 2) - (estimatedTooltipHeight / 2)),
-    );
-
-    return { top, left };
-  })();
-
+// The gutter's "Add Note" affordance used to carry a hover tooltip explaining
+// itself; removed as noise now that the icon and aria-label speak for
+// themselves. Kept as a plain wrapper (rather than deleting the call sites)
+// so the gutter layout class stays intact.
+function PlanDiffGutterAiNoteTooltip({ children }) {
   return (
-    <span
-      ref={triggerRef}
-      className="plan-diff-gutter-ai-note-tooltip-trigger"
-      onMouseEnter={showTooltip}
-      onMouseLeave={hideTooltip}
-      onMouseDown={hideTooltip}
-      onClick={hideTooltip}
-      onKeyDown={hideTooltip}
-      onFocus={showTooltip}
-      onBlur={hideTooltip}
-    >
+    <span className="plan-diff-gutter-ai-note-tooltip-trigger">
       {children}
-      {!disabled && triggerRect && tooltipStyle && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <div
-            className="tooltip text-ui-default tooltip-right ai-note-tooltip plan-diff-ai-note-tooltip"
-            role="tooltip"
-            style={tooltipStyle}
-          >
-            <span className="tooltip-text">{text}</span>
-          </div>
-        </div>,
-        document.body,
-      )}
     </span>
   );
 }
@@ -1870,15 +1700,6 @@ export function DiffInlineCommentPopup({
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const normalizedComposeHeaderLabel = typeof composeHeaderLabel === 'string' ? composeHeaderLabel.trim() : '';
-  const existingComposeNoteCount = hasGroupedComments
-    ? normalizedCommentGroups.reduce((total, group) => (
-        total + (Array.isArray(group?.comments) ? group.comments.length : 0)
-      ), 0)
-    : comments.length;
-  const normalizedReviewScopeNoteCount = Number.isFinite(reviewScopeNoteCount)
-    ? Math.max(0, Math.trunc(reviewScopeNoteCount))
-    : null;
-  const composeNoteOrdinal = (normalizedReviewScopeNoteCount ?? existingComposeNoteCount) + 1;
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save Note' : 'Add Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
       ? submitActionOptions
@@ -1980,14 +1801,6 @@ export function DiffInlineCommentPopup({
           </button>
         )
       : null
-  };
-  const getSavedNoteNumber = (entries = []) => {
-    const storedNumber = (Array.isArray(entries) ? entries : []).find((comment) => (
-      comment && typeof comment === 'object'
-      && Number.isInteger(comment.reviewNoteNumber)
-      && comment.reviewNoteNumber > 0
-    ))?.reviewNoteNumber;
-    return storedNumber ?? Math.max(1, Array.isArray(entries) ? entries.length : 1);
   };
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -2615,17 +2428,6 @@ export function DiffInlineCommentPopup({
                         <div className="spec-done-comment-popup-item-body">
                           {!isAgentAuthored && (
                             <>
-                              {entryLineLabel.length > 0 && (
-                                <div className="spec-done-comment-popup-item-meta text-ui-small">
-                                  {normalizedComposeHeaderLabel.length > 0 && (
-                                    <span className="spec-done-comment-popup-footer-note-number">
-                                      {normalizedComposeHeaderLabel} {getSavedNoteNumber([commentEntry])}
-                                      <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true" />
-                                    </span>
-                                  )}
-                                  {entryLineLabel}
-                                </div>
-                              )}
                               <div
                                 className={`spec-done-comment-popup-item-text text-ui-default${commentEntry.editable ? ' is-editable' : ''}`}
                                 role={commentEntry.editable ? 'button' : undefined}
@@ -2635,6 +2437,16 @@ export function DiffInlineCommentPopup({
                               >
                                 {commentEntry.text}
                               </div>
+                              {(entryLineLabel.length > 0 || commentEntry.pending) && (
+                                <div className="spec-done-comment-popup-item-meta text-ui-small">
+                                  {commentEntry.pending ? (
+                                    <span className="spec-done-comment-popup-footer-note-status">
+                                      <Loader className="spec-done-comment-popup-footer-note-loader" size={12} />
+                                      Loading…
+                                    </span>
+                                  ) : entryLineLabel}
+                                </div>
+                              )}
                             </>
                           )}
                           {renderAgentResolution(commentEntry, commentEntry.localIndex ?? i, commentActionContext, {
@@ -2729,12 +2541,6 @@ export function DiffInlineCommentPopup({
           <div className="spec-done-comment-popup-footer">
             {normalizedFooterMetaLabel.length > 0 && (
               <div className="spec-done-comment-popup-footer-meta text-ui-small">
-                {!isEditing && normalizedComposeHeaderLabel.length > 0 && (
-                  <span className="spec-done-comment-popup-footer-note-number">
-                    {normalizedComposeHeaderLabel} {composeNoteOrdinal}
-                    <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true" />
-                  </span>
-                )}
                 {normalizedFooterMetaLabel}
               </div>
             )}
@@ -4720,9 +4526,6 @@ export function PlanDiffOverlay({
                 .map(getCommentEntryText)
             ));
             const hiddenRowCommentCount = hiddenRowCommentTexts.length;
-            const aiNoteHint = reviewNoteComposer
-              ? 'Add a note to this line'
-              : (singleLineNumbers ? AI_NOTE_FILE_HINT : AI_NOTE_DIFF_HINT);
             const isCommentComposeOpen = commentRowId === row.id;
             const isCommentSelectionHighlighted =
               commentTargetHasSelection
@@ -4821,13 +4624,6 @@ export function PlanDiffOverlay({
                   text,
                   ...(lineLabel.length > 0 ? { lineLabel } : {}),
                   rowIds: targetRowIds,
-                  ...(
-                    reviewNoteComposer
-                    && !previousComment
-                    && Number.isFinite(reviewScopeNoteCount)
-                      ? { reviewNoteNumber: Math.max(0, Math.trunc(reviewScopeNoteCount)) + 1 }
-                      : {}
-                  ),
                 };
                 if (!isDocumentAttachMode && typeof targetChatId === 'string' && targetChatId.trim().length > 0) {
                   commentMetadata.chatId = targetChatId.trim();
@@ -5261,7 +5057,7 @@ export function PlanDiffOverlay({
 	                  <span className="plan-diff-line-number">{lineNumber ?? ''}</span>
 	                  {!singleLineNumbers && !isSplitSide && <span className="plan-diff-line-number">{row.newNumber ?? ''}</span>}
 	                  {shouldRenderGutterCommentControl ? (
-                    <PlanDiffGutterAiNoteTooltip text={aiNoteHint} disabled={hiddenRowCommentTexts.length > 0}>
+                    <PlanDiffGutterAiNoteTooltip>
 	                      <span
 	                        className={`plan-diff-gutter-icon-slot${isCommentComposeOpen ? ' is-open' : ''}${hasVisibleRowComments ? ' has-comments' : ''}${hasRenderableRowComments ? ' has-renderable-comments' : ''}${hiddenRowCommentTexts.length > 0 ? ' has-hidden-comments' : ''}`}
                         data-demo-id={`diff-comment-toggle-${row.id}`}
@@ -5318,7 +5114,6 @@ export function PlanDiffOverlay({
                         {hasVisibleRowComments ? (
                           <PlanDiffCommentBadge
                             count={visibleRowCommentCount}
-                            previewComments={hiddenRowCommentTexts}
                             onAdd={canCreateInlineComments && hasRenderableRowComments ? () => {
                               openAdditionalCommentForRow(row.id);
                             } : null}
