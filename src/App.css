@@ -14424,14 +14424,6 @@ button.aiux543-answer-change-card:focus-visible {
   background: #34363b6b;
 }
 
-.aiux543-chat-vcs-summary-file-index {
-  flex: 0 0 auto;
-  width: 14px;
-  color: #6e727a;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
 .aiux543-chat-vcs-summary-file-icon {
   flex: 0 0 auto;
   color: #6ca7ff;

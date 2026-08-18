@@ -20240,7 +20240,7 @@ function AiChatTabView({
               </div>
               {vcsSummaryExpanded && (
                 <div className="aiux543-chat-vcs-summary-files" aria-label="All Project Changes files">
-                  {files.map((file, index) => {
+                  {files.map((file) => {
                     const isMarkdown = file.label?.endsWith('.md');
                     return (
                       <button
@@ -20249,7 +20249,6 @@ function AiChatTabView({
                         className="aiux543-chat-vcs-summary-file"
                         onClick={() => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
                       >
-                        <span className="aiux543-chat-vcs-summary-file-index" title={`${index + 1} of ${files.length} files`}>{index + 1}</span>
                         <Icon
                           name={isMarkdown ? 'fileTypes/markdown' : 'fileTypes/java'}
                           size={16}
