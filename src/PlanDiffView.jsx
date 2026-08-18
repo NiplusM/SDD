@@ -2450,7 +2450,7 @@ export function DiffInlineCommentPopup({
                                 <div className="spec-done-comment-popup-item-meta text-ui-small">
                                   {commentEntry.pending ? (
                                     <span className="spec-done-comment-popup-footer-note-status">
-                                      Comment is being processed
+                                      Processed
                                       <span className="spec-done-comment-popup-footer-note-ellipsis" aria-hidden="true">
                                         <span>.</span><span>.</span><span>.</span>
                                       </span>
