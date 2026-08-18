@@ -157,16 +157,18 @@ export function AttachmentCommentHoverCard({
         <>
           {visible.map((item, index) => (
             <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
-              {renderMessage(
-                [
-                  foreignSourceLabel(item),
-                  item.lineLabel,
-                  (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
-                  (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
-                ].filter(Boolean).join(' · '),
-                item.text,
-                `hover-note-${index}-user`,
-              )}
+              {item.isAgentAuthored
+                ? renderMessage('Claude Agent', item.text, `hover-note-${index}-agent-standalone`)
+                : renderMessage(
+                    [
+                      foreignSourceLabel(item),
+                      item.lineLabel,
+                      (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
+                      (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
+                    ].filter(Boolean).join(' · '),
+                    item.text,
+                    `hover-note-${index}-user`,
+                  )}
               {item.agentReply
                 ? renderMessage('Claude Agent', item.agentReply, `hover-note-${index}-agent`)
                 : null}

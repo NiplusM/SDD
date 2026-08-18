@@ -11532,6 +11532,17 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   white-space: normal;
 }
 
+/* A chip embedded in flowing message text (sent-message history, editor-tab
+   answers) can land anywhere along the line, unlike a composer's attachment
+   row which starts at the left edge. Left-anchoring there routinely pushed
+   the popup past the panel's right edge, where it got hard-clipped by the
+   message list's own scroll clipping — right-anchor it instead. */
+.ai-chat-sent-attachment-chip .ai-chat-attachment-comment-preview,
+.aiux543-user-attachment-chip .ai-chat-attachment-comment-preview {
+  left: auto;
+  right: 0;
+}
+
 .ai-chat-attachment-comment-preview-item {
   display: -webkit-box;
   overflow: hidden;

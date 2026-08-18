@@ -237,7 +237,7 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
         .trim()
       : ''
   );
-  const addComment = (items, comment, sourceLabel = '') => {
+  const addComment = (items, comment, sourceLabel = '', identityKey = null) => {
     const agentUserReply = comment && typeof comment === 'object' && comment.author === 'agent' && typeof comment.userReply === 'string'
       ? comment.userReply.trim()
       : '';
@@ -252,7 +252,11 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
     const agentReply = comment && typeof comment === 'object' && typeof comment.agentReply === 'string'
       ? comment.agentReply.trim()
       : '';
-    const normalizedComment = `${normalizedSourceLabel.toLowerCase()}|${trimmedComment.toLowerCase()}`;
+    // Dedup by row identity when available (falls back to source label) so two
+    // different lines that happen to carry the same text don't collapse into
+    // one preview item — only a genuine repeat of the same note on the same
+    // row/source should be dropped.
+    const normalizedComment = `${identityKey ?? normalizedSourceLabel.toLowerCase()}|${trimmedComment.toLowerCase()}`;
     if (seenComments.has(normalizedComment)) return items;
     seenComments.add(normalizedComment);
     items.push({
@@ -269,7 +273,7 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
   // of two shapes: as an `agentReply` field on the note (live composer chip), or
   // as a separate { author: 'agent' } entry right after it (sent-message
   // snapshot). Handle both so hover shows the reply everywhere.
-  Object.values(normalizeStoredDiffCommentsState(attachment.diffComments)).forEach((rowComments) => {
+  Object.entries(normalizeStoredDiffCommentsState(attachment.diffComments)).forEach(([rowId, rowComments]) => {
     let lastItem = null;
     (Array.isArray(rowComments) ? rowComments : []).forEach((comment) => {
       const isAgentReplyEntry = comment && typeof comment === 'object'
@@ -277,11 +281,26 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
         && !(typeof comment.userReply === 'string' && comment.userReply.trim().length > 0);
       if (isAgentReplyEntry) {
         const replyText = getStoredCommentText(comment).trim();
-        if (lastItem && replyText && !lastItem.agentReply) lastItem.agentReply = replyText;
+        if (lastItem && replyText && !lastItem.agentReply) {
+          lastItem.agentReply = replyText;
+        } else if (replyText) {
+          // No preceding note in this row to attach to (e.g. a standalone
+          // AI-review finding) — surface it as its own item instead of
+          // silently dropping it, which left the thread-message badge count
+          // ahead of the number of preview items actually shown.
+          items.push({
+            text: replyText,
+            sourceLabel: normalizePreviewSourceLabel(attachment.label),
+            lineLabel: getStoredCommentLineLabel(comment),
+            agentReply: '',
+            isAgentAuthored: true,
+          });
+          lastItem = items[items.length - 1];
+        }
         return;
       }
       const before = items.length;
-      addComment(items, comment, attachment.label);
+      addComment(items, comment, attachment.label, rowId);
       if (items.length > before) lastItem = items[items.length - 1];
     });
   });
