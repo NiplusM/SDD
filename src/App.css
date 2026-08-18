@@ -8069,10 +8069,6 @@ body {
   opacity: 1;
 }
 
-.plan-diff-gutter-icon-slot.is-open {
-  background: var(--icon-button-pressed-bg, var(--toolbar-bg-pressed, rgba(255, 255, 255, 0.12)));
-}
-
 .plan-diff-gutter-icon-slot.has-comments {
   color: #A8ADB7;
 }
