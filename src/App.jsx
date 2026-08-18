@@ -31359,8 +31359,19 @@ export default function App() {
       contentParts: Array.isArray(contentParts) ? contentParts : null,
     };
     const assistantMessageId = `${targetChatId}-assistant-${stamp}-${baseCount}`;
+    // Show the "Edited <file>" card immediately so it appears before the
+    // streamed text, not tacked on once the reply finishes.
+    const initialEditedFiles = shouldStreamCommentResponse
+      ? resolveEditedFileCardsFromAttachments(commentAttachments, getAiChatScenarioById(targetChatId))
+      : [];
     const assistantMessage = shouldRunAgent
-      ? { id: assistantMessageId, role: 'assistant', text: '', streaming: true }
+      ? {
+          id: assistantMessageId,
+          role: 'assistant',
+          text: '',
+          streaming: true,
+          ...(initialEditedFiles.length > 0 ? { kind: 'file-edit', editedFiles: initialEditedFiles } : {}),
+        }
       : null;
 
     handleSelectedAiChatSentMessagesChange(
@@ -31785,24 +31796,6 @@ export default function App() {
             targetChatId,
           );
           renameChatAfterReview(targetChatId, reviewFeatureTitle);
-        } else if (shouldStreamCommentResponse) {
-          // A comment-only run still touched a file in scope — attach the same
-          // "Edited <file>" card the agent uses for real edits, so the reply
-          // reads as a change, not just a discussion.
-          const editedFiles = resolveEditedFileCardsFromAttachments(
-            commentAttachments,
-            getAiChatScenarioById(targetChatId),
-          );
-          if (editedFiles.length > 0) {
-            handleSelectedAiChatSentMessagesChange(
-              (prev) => prev.map((message) => (
-                message.id === assistantMessageId
-                  ? { ...message, kind: 'file-edit', editedFiles }
-                  : message
-              )),
-              targetChatId,
-            );
-          }
         }
       };
       const streamNextChunk = () => {
