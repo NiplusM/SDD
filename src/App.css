@@ -6242,6 +6242,14 @@ body {
   max-width: 284px;
 }
 
+/* The kit's default popup-cell hover reuses the same blue as the selected-item
+   background (--popup-cell-bg-hover: var(--selection-bg-active)), so hovering
+   a different file was indistinguishable from the currently open one. Give
+   hover its own neutral gray here so the two states read apart. */
+.plan-diff-files-popup .popup-cell:hover:not(.popup-cell-selected) {
+  background-color: #34363b !important;
+}
+
 .plan-diff-toolbar-separator {
   display: inline-flex;
   width: 1px;
