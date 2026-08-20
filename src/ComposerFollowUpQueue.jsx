@@ -453,10 +453,6 @@ export function ComposerFollowUpQueue({
                 <>
                   <span className="ij-air-follow-up-queue__title">{vcsTab.label}</span>
                   <span className="ij-air-follow-up-queue__count">{vcsTab.branch}</span>
-                  <span className="ij-air-follow-up-queue__tab-counts" aria-hidden="true">
-                    <span className="is-added">+{vcsTab.added}</span>
-                    <span className="is-removed">-{vcsTab.removed}</span>
-                  </span>
                 </>
               )}
             </button>

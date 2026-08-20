@@ -73,14 +73,6 @@
   opacity: 1;
 }
 
-.ij-air-follow-up-queue__tab-counts {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font: 500 12px/16px Inter, system-ui, sans-serif;
-  font-variant-numeric: tabular-nums;
-}
-
 .ij-air-follow-up-queue__vcs-actions {
   display: inline-flex;
   min-width: 0;
@@ -135,12 +127,10 @@
   background: #4c82f3;
 }
 
-.ij-air-follow-up-queue__tab-counts .is-added,
 .ij-air-follow-up-queue__vcs-file-counts .is-added {
   color: #67B180;
 }
 
-.ij-air-follow-up-queue__tab-counts .is-removed,
 .ij-air-follow-up-queue__vcs-file-counts .is-removed {
   color: #F77D83;
 }

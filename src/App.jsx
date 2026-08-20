@@ -20266,19 +20266,16 @@ function AiChatTabView({
         )}
         {(() => {
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
-          const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
           return (
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
               vcsTab={vcsSummaryDismissed ? null : {
-                // "All Sessions" makes it explicit these files were touched
-                // across every chat in the project, not just this one.
-                label: 'All Sessions',
-                branch: `${vcsFiles.length} file${vcsFiles.length === 1 ? '' : 's'}`,
-                added: vcsAdded,
-                removed: vcsRemoved,
+                // Short and action-oriented — matches the "Queue N" pill's
+                // label + count shape instead of spelling out project/branch.
+                label: 'Review',
+                branch: `${vcsFiles.length}`,
                 files: vcsFiles,
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
                 onRunReview: () => onRunAiReview?.(chatId),
