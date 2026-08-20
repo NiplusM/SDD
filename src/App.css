@@ -13399,6 +13399,98 @@ body {
   color: #878A90;
 }
 
+/* Agent-turn transcript blocks (paragraph / collapsible tool-use group /
+   collapsible terminal-command group), ported from the Figma reference.
+   Scoped entirely under .ai-chat-transcript-* so they can't collide with
+   any other chat message styling. */
+.ai-chat-transcript-paragraph {
+  box-sizing: border-box;
+  width: min(750px, 100%);
+  margin: 0 auto 8px;
+  color: #DFE1E5;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.ai-chat-transcript-group {
+  width: min(750px, 100%);
+  margin: 0 auto 8px;
+}
+
+.ai-chat-transcript-toggle-row {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  color: #6F737A;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.ai-chat-transcript-toggle-row:hover {
+  color: #9198A1;
+}
+
+.ai-chat-transcript-group-body {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  padding-left: 4px;
+}
+
+.ai-chat-transcript-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: #767676;
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.ai-chat-transcript-tool-label {
+  flex: 0 0 auto;
+}
+
+.ai-chat-transcript-code-chip {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(180, 184, 191, 0.14);
+  color: #B4B8BF;
+  font-family: "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-transcript-terminal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  color: #CED0D6;
+}
+
+.ai-chat-transcript-terminal-row.is-failed {
+  color: #4C4F56;
+}
+
+.ai-chat-transcript-terminal-command {
+  overflow: hidden;
+  font-family: "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .aiux543-answer-result-list {
   box-sizing: border-box;
   width: min(750px, 100%);

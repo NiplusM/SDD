@@ -15564,6 +15564,33 @@ const AI_CHAT_SCENARIOS = {
     title: 'Refactor VisitController.java time slots',
     userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
     workedForLabel: '10m 16s',
+    transcriptBlocks: [
+      {
+        type: 'paragraph',
+        text: 'I\'ll refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
+      },
+      {
+        type: 'toolGroup',
+        collapsedLabel: 'Worked briefly',
+        items: [
+          { icon: 'general/search', label: 'Search', detail: 'populateTimeSlots() usages' },
+          { icon: 'nodes/folder', label: 'Listing directory', detail: '"src/main/java/.../web"' },
+          { icon: 'fileTypes/java', label: 'Read', detail: 'VisitController.java' },
+        ],
+      },
+      {
+        type: 'paragraph',
+        text: 'populateTimeSlots() rebuilt the same 9:00-16:00 range on every request; moving that into the constructor lets @ModelAttribute("timeSlots") keep returning the same prepared list instead of recomputing it.',
+      },
+      {
+        type: 'terminalGroup',
+        collapsedLabel: 'Worked for 20s',
+        items: [
+          { command: './gradlew compileJava', status: 'done' },
+          { command: './gradlew test --tests VisitControllerTests', status: 'done' },
+        ],
+      },
+    ],
     assistantHeading: 'Done:',
     assistantParagraphs: [
       'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
@@ -19520,22 +19547,9 @@ function AiChatTabView({
               </div>
             )}
 
-            {hasChatChangedFilesList(scenario) && scenario.workedForLabel ? (
-              <>
-                <div className="ai-chat-edited-files-worked-for">{`Worked for ${scenario.workedForLabel}`}</div>
-                <ChatEditedFilesCard
-                  files={getChatChangeCards(scenario)}
-                  onOpenFile={onOpenChangedFile}
-                  onOpenReview={onOpenDiffTab ? () => {
-                    const firstDiffRequest = getChatChangeCards(scenario)
-                      .map((card) => card?.diffRequest)
-                      .find(Boolean);
-                    if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
-                  } : null}
-                />
-                <hr className="ai-chat-edited-files-divider" />
-              </>
-            ) : null}
+            {Array.isArray(scenario?.transcriptBlocks) && scenario.transcriptBlocks.map((block, idx) => (
+              <AiChatTranscriptBlock key={`transcript-${idx}`} block={block} />
+            ))}
 
             {scenario?.assistantParagraphs?.length > 0 && (
               <article className="aiux543-answer">
@@ -19631,6 +19645,23 @@ function AiChatTabView({
             </section>
           )
         )}
+
+        {hasChatChangedFilesList(scenario) && scenario.workedForLabel ? (
+          <>
+            <div className="ai-chat-edited-files-worked-for">{`Worked for ${scenario.workedForLabel}`}</div>
+            <ChatEditedFilesCard
+              files={getChatChangeCards(scenario)}
+              onOpenFile={onOpenChangedFile}
+              onOpenReview={onOpenDiffTab ? () => {
+                const firstDiffRequest = getChatChangeCards(scenario)
+                  .map((card) => card?.diffRequest)
+                  .find(Boolean);
+                if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
+              } : null}
+            />
+            <hr className="ai-chat-edited-files-divider" />
+          </>
+        ) : null}
 
         {sentMessages.map((message) => (
           message.kind === 'review-command' ? null : message.role === 'assistant' && message.kind === 'review-summary' ? (
@@ -20669,6 +20700,96 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
       </div>
     </section>
   );
+}
+
+// Collapsible "Worked briefly" tool-use step group, ported from the Figma
+// reference's agent-step box. Collapsed by default — only the toggle row
+// shows until the user expands it to see the individual search/read/list
+// steps, each with an icon and an inline monospace detail chip.
+function AiChatTranscriptToolGroup({ items = [], collapsedLabel = 'Worked briefly' }) {
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="ai-chat-transcript-group">
+      <button
+        type="button"
+        className="ai-chat-transcript-toggle-row"
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        <span>{collapsedLabel}</span>
+      </button>
+      {expanded && (
+        <div className="ai-chat-transcript-group-body">
+          {items.map((item, index) => (
+            <div key={`${item.label}-${index}`} className="ai-chat-transcript-tool-row">
+              <Icon name={item.icon ?? 'general/search'} size={16} />
+              <span className="ai-chat-transcript-tool-label">{item.label}</span>
+              {item.detail ? (
+                <span className="ai-chat-transcript-code-chip">{item.detail}</span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same collapsible shell as AiChatTranscriptToolGroup, for terminal command
+// rows instead of tool-use steps. Each row shows a terminal icon, a status
+// glyph (done/failed/running), and the truncated command text.
+function AiChatTranscriptTerminalGroup({ items = [], collapsedLabel = 'Worked for a few seconds' }) {
+  const [expanded, setExpanded] = useState(false);
+  if (items.length === 0) return null;
+
+  return (
+    <div className="ai-chat-transcript-group">
+      <button
+        type="button"
+        className="ai-chat-transcript-toggle-row"
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <Icon name={expanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+        <span>{collapsedLabel}</span>
+      </button>
+      {expanded && (
+        <div className="ai-chat-transcript-group-body">
+          {items.map((item, index) => (
+            <div
+              key={`${item.command}-${index}`}
+              className={`ai-chat-transcript-terminal-row${item.status === 'failed' ? ' is-failed' : ''}`}
+            >
+              <Icon className="ai-chat-terminal-icon" name="toolwindows/terminal" size={16} />
+              {item.status === 'running' ? (
+                <IconLoaderSpinner />
+              ) : (
+                <Icon name={item.status === 'failed' ? 'general/close' : 'general/checkmark'} size={16} />
+              )}
+              <span className="ai-chat-transcript-terminal-command">{item.command}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dispatches a single scenario.transcriptBlocks entry to its renderer.
+function AiChatTranscriptBlock({ block }) {
+  if (!block || typeof block !== 'object') return null;
+
+  switch (block.type) {
+    case 'paragraph':
+      return <p className="ai-chat-transcript-paragraph">{block.text}</p>;
+    case 'toolGroup':
+      return <AiChatTranscriptToolGroup items={block.items} collapsedLabel={block.collapsedLabel} />;
+    case 'terminalGroup':
+      return <AiChatTranscriptTerminalGroup items={block.items} collapsedLabel={block.collapsedLabel} />;
+    default:
+      return null;
+  }
 }
 
 function getAiChatBlockAnnotations(annotations = [], messageId = '', blockId = '') {
