@@ -472,14 +472,16 @@ export function ComposerFollowUpQueue({
             </button>
             <button
               type="button"
-              className="ij-air-follow-up-queue__vcs-review"
+              className="ij-air-follow-up-queue__vcs-counts"
               disabled={Boolean(vcsTab.reviewDisabled)}
+              aria-label={`Open All Project Changes. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
               onClick={(event) => {
                 event.stopPropagation();
                 vcsTab.onRunReview?.();
               }}
             >
-              Review
+              <span className="is-added">+{vcsTab.added}</span>
+              <span className="is-removed">-{vcsTab.removed}</span>
             </button>
           </span>
         )}

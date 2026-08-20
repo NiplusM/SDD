@@ -20266,6 +20266,7 @@ function AiChatTabView({
         )}
         {(() => {
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
+          const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
           return (
             <ComposerFollowUpQueue
@@ -20276,6 +20277,8 @@ function AiChatTabView({
                 // label + count shape instead of spelling out project/branch.
                 label: 'Review',
                 branch: `${vcsFiles.length}`,
+                added: vcsAdded,
+                removed: vcsRemoved,
                 files: vcsFiles,
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
                 onRunReview: () => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest)),
