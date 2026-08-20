@@ -70,7 +70,6 @@
   height: 24px;
   align-items: center;
   flex: 0 0 auto;
-  margin-left: auto;
   padding: 0 12px;
   border: 1px solid #3574f0;
   border-radius: 4px;
@@ -87,9 +86,25 @@
   cursor: default;
 }
 
-.ij-air-vcs-banner__dismiss {
+.ij-air-vcs-banner__skip {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
   flex: 0 0 auto;
-  margin-left: 4px;
+  margin-left: auto;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #9fa2a8;
+  cursor: pointer;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.ij-air-vcs-banner__skip:hover {
+  color: #ced0d6;
+  text-decoration-color: currentColor;
 }
 
 .ij-air-vcs-banner__review:hover:not(:disabled) {
