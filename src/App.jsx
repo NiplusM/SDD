@@ -15402,6 +15402,22 @@ const AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST = {
   reviewModifiedAfterSession: true,
 };
 
+// Vet-Schedules.md has no editor tab of its own (it opens in the spec split
+// view via agentTaskId instead), but it still needs a diffRequest so review
+// scope-building (buildChatReviewScopeRequests) can include it alongside the
+// other three files instead of silently dropping it.
+const AI_CHAT_VET_SCHEDULES_DIFF_REQUEST = {
+  text: 'Vet-Schedules.md — include the parallel scheduling specification changes',
+  statusItem: { status: 'passed' },
+  source: { tabId: 'agent-task-t2', label: 'Vet-Schedules.md' },
+  reviewAdded: 25,
+  reviewRemoved: 0,
+  // Not reviewAllChangesOnly: this is one of refactor-time-slots' own Done
+  // card files, so it belongs in that chat's Last Turn / Session Changes
+  // scopes too, not just All Project Changes.
+  reviewAttribution: 'session',
+};
+
 // The generated change is shown as one card per touched file, each opening its own diff.
 const AI_CHAT_GENERATED_DIFF_CARDS = [
   {
@@ -15478,19 +15494,12 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
     added: '+25',
     removed: '',
     agentTaskId: 't2',
+    diffRequest: AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
   },
 ];
 
 const AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS = [
-  {
-    text: 'Vet-Schedules.md — include the parallel scheduling specification changes',
-    statusItem: { status: 'passed' },
-    source: { tabId: 'agent-task-t2', label: 'Vet-Schedules.md' },
-    reviewAdded: 25,
-    reviewRemoved: 0,
-    reviewAllChangesOnly: true,
-    reviewAttribution: 'session',
-  },
+  AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
 ];
 
 // A multi-file change is summarized as one "Changed Files" card (file + counters
@@ -15556,10 +15565,18 @@ function resolveEditedFileCardsFromAttachments(attachments = [], scenario = null
 }
 
 function buildChatReviewScopeRequests(scenario) {
-  const recentCards = getChatChangeCards(scenario).slice(-3);
+  // All of this chat's own changed-file cards belong in its "last turn"
+  // scope — no recency cap, since a single turn can (and here does) touch
+  // more than 3 files and every one of them needs to stay reviewable.
+  const chatDiffRequests = getChatChangeCards(scenario).map((card) => card?.diffRequest).filter(Boolean);
+  const seenDiffRequests = new Set(chatDiffRequests);
+  // Project-wide extras (e.g. Vet-Schedules.md when it isn't already one of
+  // this chat's own cards) fill out the "All Project Changes" scope without
+  // duplicating a request the chat already contributed.
+  const extraDiffRequests = AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS.filter((request) => !seenDiffRequests.has(request));
   return [
-    ...recentCards.map((card) => card?.diffRequest).filter(Boolean),
-    ...AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS,
+    ...chatDiffRequests,
+    ...extraDiffRequests,
     ...buildCommitReviewScopeRequests(),
   ];
 }
@@ -20265,7 +20282,7 @@ function AiChatTabView({
             <div className="ai-chat-edited-files-worked-for">{`Worked for ${scenario.workedForLabel}`}</div>
             <ChatEditedFilesCard
               files={getChatChangeCards(scenario)}
-              onOpenFile={onOpenChangedFile}
+              onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
               onOpenReview={onOpenDiffTab ? () => {
                 const firstDiffRequest = getChatChangeCards(scenario)
                   .map((card) => card?.diffRequest)
