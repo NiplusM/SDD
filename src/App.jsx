@@ -45,6 +45,7 @@ import {
 } from './aiChatAttachmentParts.jsx';
 import { ChatsHistoryToolWindow, AiNotesSeverityIcon } from './ChatsHistory.jsx';
 import { ComposerFollowUpQueue } from './ComposerFollowUpQueue.jsx';
+import { ComposerVcsBanner } from './ComposerVcsBanner.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { textLooksLikeQuestion, countCommentThreadMessages } from './commentCounts.js';
 import {
@@ -20264,43 +20265,44 @@ function AiChatTabView({
           </div>
         )}
         {(() => {
-          const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
           const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
           return (
-            <ComposerFollowUpQueue
-              items={showQueueContent ? queuedFollowUps : []}
-              scopeItems={showQueueContent ? reviewScopeQueueItems : []}
-              vcsTab={{
-                // "All Sessions" makes it explicit these files were touched
-                // across every chat in the project, not just this one.
-                label: 'All Sessions',
-                branch: `${vcsFiles.length} file${vcsFiles.length === 1 ? '' : 's'}`,
-                added: vcsAdded,
-                removed: vcsRemoved,
-                files: vcsFiles,
-                onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
-                onRunReview: () => onRunAiReview?.(chatId),
-                reviewDisabled: isAgentRunProcessing,
-              }}
-              onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
-              onReorderItems={setQueuedFollowUps}
-              onSendNowItem={(itemId) => {
-                // Move the item to the front and stop the current run — the
-                // drain effect below picks up the new head of the queue as
-                // soon as `isAgentRunProcessing` flips back to false, so there
-                // is only ever one place that actually calls `onSendMessage`.
-                setQueuedFollowUps((items) => {
-                  const target = items.find((entry) => entry.id === itemId);
-                  if (!target) return items;
-                  return [target, ...items.filter((entry) => entry.id !== itemId)];
-                });
-                onStopMessage?.(chatId);
-              }}
-              revealSendNowOnHover
+            <ComposerVcsBanner
+              // "All Sessions" makes it explicit these files were touched
+              // across every chat in the project, not just this one.
+              label="All Sessions"
+              branch={`${vcsFiles.length} file${vcsFiles.length === 1 ? '' : 's'}`}
+              added={vcsAdded}
+              removed={vcsRemoved}
+              files={vcsFiles}
+              onOpenFile={(file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
+              onRunReview={() => onRunAiReview?.(chatId)}
+              reviewDisabled={isAgentRunProcessing}
             />
           );
         })()}
+        {!isReviewDecisionReady && isAgentRunProcessing && (
+          <ComposerFollowUpQueue
+            items={queuedFollowUps}
+            scopeItems={reviewScopeQueueItems}
+            onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
+            onReorderItems={setQueuedFollowUps}
+            onSendNowItem={(itemId) => {
+              // Move the item to the front and stop the current run — the
+              // drain effect below picks up the new head of the queue as
+              // soon as `isAgentRunProcessing` flips back to false, so there
+              // is only ever one place that actually calls `onSendMessage`.
+              setQueuedFollowUps((items) => {
+                const target = items.find((entry) => entry.id === itemId);
+                if (!target) return items;
+                return [target, ...items.filter((entry) => entry.id !== itemId)];
+              });
+              onStopMessage?.(chatId);
+            }}
+            revealSendNowOnHover
+          />
+        )}
         {!isReviewDecisionReady && (
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {showSlashCommandMenu && (
