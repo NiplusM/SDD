@@ -41,7 +41,7 @@
   display: flex;
   min-height: 24px;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
 }
 
 .ij-air-follow-up-queue__tab {

@@ -378,15 +378,15 @@ export function ComposerFollowUpQueue({
         aria-label={collapsed ? `Expand ${resolvedLabel}` : `Collapse ${resolvedLabel}`}
         onKeyDown={handleHeaderKeyDown}
       >
+        <span className="ij-air-follow-up-queue__tab">
+          <span className="ij-air-follow-up-queue__title">{resolvedLabel}</span>
+          <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
+        </span>
         <span
           className={`ij-air-follow-up-queue__collapse ${collapsed ? 'collapsed' : ''}`}
           aria-hidden="true"
         >
           <Icon name="general/chevronDown" size={16} />
-        </span>
-        <span className="ij-air-follow-up-queue__tab">
-          <span className="ij-air-follow-up-queue__title">{resolvedLabel}</span>
-          <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
         </span>
       </header>
       <div className="ij-air-follow-up-queue__body" style={{ height: bodyHeight }}>
