@@ -58,25 +58,6 @@ function ReviewScopeQueueRow({ item }) {
   );
 }
 
-// Row for a plain-chat file-edit run's "Files" tab — unlike
-// ReviewScopeQueueRow (which walks queued -> processing -> done with a
-// spinner), these files simply materialize into the list already carrying
-// their final change counts; there's no separate "processing" state to show.
-function EditedFileQueueRow({ item }) {
-  return (
-    <li className="ij-air-follow-up-queue__edited-item">
-      <span className="ij-air-follow-up-queue__scope-item-icon" aria-hidden="true">
-        <Icon name={item.icon ?? 'fileTypes/text'} size={16} />
-      </span>
-      <span className="ij-air-follow-up-queue__edited-item-text">{item.text}</span>
-      <span className="ij-air-follow-up-queue__files-counts">
-        {item.added ? <span className="is-added">{item.added}</span> : null}
-        {item.removed ? <span className="is-removed">{item.removed}</span> : null}
-      </span>
-    </li>
-  );
-}
-
 function VcsSummaryFileRow({ file, onOpenFile }) {
   const isMarkdown = file.label?.endsWith('.md');
   return (
@@ -262,7 +243,6 @@ export function ComposerFollowUpQueue({
   items = [],
   scopeItems = [],
   label,
-  filesTab = null,
   vcsTab = null,
   onDeleteItem,
   onReorderItems,
@@ -271,18 +251,15 @@ export function ComposerFollowUpQueue({
   collapsed: collapsedProp,
   onCollapsedChange,
 }) {
-  const resolvedLabel = label ?? 'Queue';
-  const hasFilesTab = scopeItems.length > 0;
-  const hasQueueTab = items.length > 0;
+  const resolvedLabel = label ?? (scopeItems.length > 0 ? 'AI Review' : 'Queue');
+  const hasQueueContent = scopeItems.length > 0 || items.length > 0;
   const hasVcsTab = Boolean(vcsTab);
-  // Files-in-progress is the most time-sensitive surface (it's live, mid-run
-  // work), so it takes the leftmost tab slot; the follow-up queue is next
-  // most urgent, then the VCS summary occupies whatever's left.
-  const tabOrder = [
-    hasFilesTab ? 'files' : null,
-    hasQueueTab ? 'queue' : null,
-    hasVcsTab ? 'vcs' : null,
-  ].filter(Boolean);
+  // The queue is the more time-sensitive surface, so it takes the leftmost
+  // tab slot whenever it has anything to show; the VCS summary otherwise
+  // occupies that first slot on its own.
+  const tabOrder = hasQueueContent
+    ? (hasVcsTab ? ['queue', 'vcs'] : ['queue'])
+    : (hasVcsTab ? ['vcs'] : []);
   const [activeTab, setActiveTab] = useState(tabOrder[0] ?? 'queue');
   const resolvedActiveTab = tabOrder.includes(activeTab) ? activeTab : (tabOrder[0] ?? 'queue');
   const [collapsedInternal, setCollapsedInternal] = useState(true);
@@ -309,7 +286,7 @@ export function ComposerFollowUpQueue({
     }
     const measured = bodyContentRef.current?.scrollHeight ?? 0;
     setBodyHeight(Math.min(measured, QUEUE_BODY_MAX_HEIGHT));
-  }, [collapsed, resolvedActiveTab, items, scopeItems, filesTab, vcsTab, openMenuItemId, draggingId, dragOverId]);
+  }, [collapsed, resolvedActiveTab, items, scopeItems, vcsTab, openMenuItemId, draggingId, dragOverId]);
 
   const applyCollapsed = (next) => {
     if (isCollapseControlled) {
@@ -340,34 +317,15 @@ export function ComposerFollowUpQueue({
 
   // As soon as the queue has something to show, bring it to the front tab
   // and reveal it — it's more urgent than a lingering VCS summary.
-  const hadQueueContentRef = useRef(hasQueueTab);
+  const hadQueueContentRef = useRef(hasQueueContent);
   useEffect(() => {
-    if (hasQueueTab && !hadQueueContentRef.current) {
+    if (hasQueueContent && !hadQueueContentRef.current) {
       setActiveTab('queue');
       applyCollapsed(false);
     }
-    hadQueueContentRef.current = hasQueueTab;
+    hadQueueContentRef.current = hasQueueContent;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasQueueTab]);
-
-  // Same promotion behavior for files-in-progress — run after the queue's
-  // own effect so files wins the active tab if both appear in the same tick
-  // (it outranks queue in tabOrder too). The moment the run finishes and the
-  // files tab disappears, collapse right back down instead of leaving the
-  // panel sitting open on whatever tab is left (typically an unrelated,
-  // already-stale VCS summary) — the Done card is what should draw the eye
-  // next, not a lingering expanded panel above it.
-  const hadFilesTabRef = useRef(hasFilesTab);
-  useEffect(() => {
-    if (hasFilesTab && !hadFilesTabRef.current) {
-      setActiveTab('files');
-      applyCollapsed(false);
-    } else if (!hasFilesTab && hadFilesTabRef.current) {
-      applyCollapsed(true);
-    }
-    hadFilesTabRef.current = hasFilesTab;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasFilesTab]);
+  }, [hasQueueContent]);
 
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
@@ -486,18 +444,10 @@ export function ComposerFollowUpQueue({
                 selectTab(tabId);
               }}
             >
-              {tabId === 'files' ? (
-                <>
-                  <span className="ij-air-follow-up-queue__title">{filesTab?.label ?? 'Files'}</span>
-                  <span className="ij-air-follow-up-queue__files-counts">
-                    <span className="is-added">+{filesTab?.addedTotal ?? 0}</span>
-                    <span className="is-removed">-{filesTab?.removedTotal ?? 0}</span>
-                  </span>
-                </>
-              ) : tabId === 'queue' ? (
+              {tabId === 'queue' ? (
                 <>
                   <span className="ij-air-follow-up-queue__title">{resolvedLabel}</span>
-                  <span className="ij-air-follow-up-queue__count">{items.length}</span>
+                  <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
                 </>
               ) : (
                 <>
@@ -550,19 +500,11 @@ export function ComposerFollowUpQueue({
                 <VcsSummaryFileRow key={file.tabId} file={file} onOpenFile={vcsTab.onOpenFile} />
               ))}
             </div>
-          ) : resolvedActiveTab === 'files' ? (
-            <ul className="ij-air-follow-up-queue__list">
-              {filesTab?.variant === 'edit'
-                // Not-yet-revealed files aren't rendered as placeholders —
-                // they simply aren't in the list yet, so the list grows as
-                // each one materializes with its final change count.
-                ? scopeItems
-                    .filter((item) => item.status !== 'queued')
-                    .map((item) => <EditedFileQueueRow key={item.id} item={item} />)
-                : scopeItems.map((item) => <ReviewScopeQueueRow key={item.id} item={item} />)}
-            </ul>
           ) : (
             <ul className="ij-air-follow-up-queue__list">
+              {scopeItems.map((item) => (
+                <ReviewScopeQueueRow key={item.id} item={item} />
+              ))}
               {items.map((item) => (
                 <QueueItemRow
                   key={item.id}

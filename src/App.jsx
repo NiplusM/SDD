@@ -19525,16 +19525,19 @@ function AiChatTabView({
     .map((file) => `${file.id}:${file.sourceLabel}`)
     .join('|');
   useEffect(() => {
-    setProcessedReviewScopeFileCount(0);
-    if (!isAgentRunProcessing || reviewScopeQueueFiles.length === 0) return undefined;
+    const isReview = agentRun?.kind === 'review';
+    if (!isAgentRunProcessing || reviewScopeQueueFiles.length === 0) {
+      setProcessedReviewScopeFileCount(0);
+      return undefined;
+    }
+    // A plain file-edit run's live card appears together with its first
+    // file already visible, not empty — the rest arrive one at a time.
+    setProcessedReviewScopeFileCount(isReview ? 0 : 1);
+    if (!isReview && reviewScopeQueueFiles.length <= 1) return undefined;
 
-    // A review's file queue is meant to read as real per-file work happening
-    // (hence the slower, spinner-driven sweep); a plain file-edit run's
-    // "Files" tab is just announcing what's about to land in the Done card,
-    // so it should feel closer to instant.
-    const stepDuration = agentRun?.kind === 'review'
+    const stepDuration = isReview
       ? Math.max(700, Math.floor(3600 / reviewScopeQueueFiles.length))
-      : Math.max(60, Math.floor(360 / reviewScopeQueueFiles.length));
+      : 380;
     const intervalId = window.setInterval(() => {
       setProcessedReviewScopeFileCount((count) => Math.min(reviewScopeQueueFiles.length, count + 1));
     }, stepDuration);
@@ -20285,22 +20288,10 @@ function AiChatTabView({
           <p className="aiux543-answer-command-plain">{scenario.command}</p>
         )}
 
-        {hasChatChangedFilesList(scenario) && scenario.workedForLabel ? (
-          <>
-            <div className="ai-chat-edited-files-worked-for">{`Worked for ${scenario.workedForLabel}`}</div>
-            <ChatEditedFilesCard
-              files={getChatChangeCards(scenario)}
-              onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
-              onOpenReview={onOpenDiffTab ? () => {
-                const firstDiffRequest = getChatChangeCards(scenario)
-                  .map((card) => card?.diffRequest)
-                  .find(Boolean);
-                if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
-              } : null}
-            />
-            <hr className="ai-chat-edited-files-divider" />
-          </>
-        ) : null}
+        {/* The workedForLabel scenario's Done card no longer renders here
+            unconditionally on load — it only ever appears as the result of
+            an actual send (see the live/'file-edit-done' message branches
+            below), matching a fresh chat that hasn't produced anything yet. */}
 
         {sentMessages.map((message) => (
           message.kind === 'review-command' ? null : message.role === 'assistant' && message.kind === 'review-summary' ? (
@@ -20359,6 +20350,19 @@ function AiChatTabView({
                 } : null}
               />
             </div>
+          ) : message.role === 'assistant'
+            && message.streaming
+            && agentRun?.kind === 'file-edit'
+            && reviewScopeQueueFiles.length > 0 ? (
+            <ChatEditedFilesCard
+              key={message.id}
+              variant="live"
+              // Reveals the same files that will land in the Done card, in
+              // the same order — starts with the first file already visible
+              // rather than an empty card, then grows as more arrive.
+              files={getChatChangeCards(scenario).slice(0, Math.max(1, processedReviewScopeFileCount))}
+              totalCount={reviewScopeQueueFiles.length}
+            />
           ) : message.role === 'assistant' && message.streaming ? (
             <div key={message.id} className="aiux550-review-running" role="status" aria-label="Agent running">
               <AiChatProgressIcon />
@@ -20416,24 +20420,17 @@ function AiChatTabView({
         )}
         {(() => {
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
+          // Plain file-edit runs show their progress inline in the message
+          // thread (see the live Done-card render branch below), not here —
+          // this composer queue's own "scope items" tab stays reserved for
+          // an actual /review run's file queue, as it always was.
+          const showReviewScopeQueue = showQueueContent && agentRun?.kind === 'review';
           const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
-          const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
-            (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
-          );
-          const filesTabRemovedTotal = reviewScopeQueueFiles.reduce(
-            (sum, file) => sum + getChatChangedFileLineCount(file.removed), 0,
-          );
           return (
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
-              scopeItems={showQueueContent ? reviewScopeQueueItems : []}
-              filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
-                label: agentRun?.kind === 'review' ? 'AI Review' : 'Files',
-                variant: agentRun?.kind === 'review' ? 'review' : 'edit',
-                addedTotal: filesTabAddedTotal,
-                removedTotal: filesTabRemovedTotal,
-              } : null}
+              scopeItems={showReviewScopeQueue ? reviewScopeQueueItems : []}
               vcsTab={vcsSummaryDismissed ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
@@ -21254,21 +21251,49 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // Used for scenarios that report a "Worked for" duration — that caption
 // renders above this card (see the call site), not inside its header, since
 // we have no "since last turn" concept to put there instead.
-function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '' }) {
+// variant 'done' (default) is the completed, page-matching outline card;
+// variant 'live' is the still-updating state (filled panel, no checkmark,
+// "N files updated +X -Y" header, files still arriving) that a run's own
+// message shows while it's in progress, before flipping to 'done'.
+function ChatEditedFilesCard({
+  files = [],
+  onOpenFile = null,
+  onOpenReview = null,
+  className = '',
+  variant = 'done',
+  totalCount = null,
+}) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
+  const isLive = variant === 'live';
 
   const visibleFiles = expanded ? files : files.slice(0, EDITED_FILES_CARD_VISIBLE_LIMIT);
   const hiddenCount = files.length - visibleFiles.length;
+  const addedTotal = isLive
+    ? files.reduce((sum, file) => sum + getChatChangedFileLineCount(file.added), 0)
+    : null;
+  const removedTotal = isLive
+    ? files.reduce((sum, file) => sum + getChatChangedFileLineCount(file.removed), 0)
+    : null;
 
   return (
-    <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
+    <section
+      className={`ai-chat-changed-files-card ai-chat-edited-files-card${isLive ? ' ai-chat-edited-files-card--live' : ''}${className ? ` ${className}` : ''}`}
+    >
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
-          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
-            <Icon name="general/checkmark" size={16} />
-          </span>
-          <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
+          {isLive ? null : (
+            <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
+              <Icon name="general/checkmark" size={16} />
+            </span>
+          )}
+          <span>{`${totalCount ?? files.length} file${(totalCount ?? files.length) === 1 ? '' : 's'} ${isLive ? 'updated' : 'changed'}`}</span>
+          {isLive && (
+            <span className="ai-chat-edited-files-live-counts">
+              <span className="is-added">+{addedTotal}</span>
+              <span className="is-removed">-{removedTotal}</span>
+            </span>
+          )}
         </span>
         <span className="ai-chat-changed-files-actions">
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">
@@ -21295,7 +21320,7 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
             <button
               key={file.id ?? file.name}
               type="button"
-              className="ai-chat-changed-files-row"
+              className={`ai-chat-changed-files-row${isLive ? ' ai-chat-changed-files-row--appear' : ''}`}
               onClick={openFile ?? undefined}
               disabled={!openFile}
             >
@@ -32162,7 +32187,7 @@ export default function App() {
       // run's "Files" tab only exists to announce what's about to land in
       // the Done card, so it gets a much shorter floor than a real review or
       // a comment-response run.
-      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 2200 : 18000);
+      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 1400 + plainRunChangeCards.length * 380 : 18000);
       const runStartedAt = Date.now();
       let index = 0;
       const finishRun = () => {
