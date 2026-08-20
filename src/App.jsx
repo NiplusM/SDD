@@ -19338,6 +19338,7 @@ function AiChatTabView({
   onCommitChanges = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
+  const [vcsSummaryDismissed, setVcsSummaryDismissed] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -20271,7 +20272,7 @@ function AiChatTabView({
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
-              vcsTab={{
+              vcsTab={vcsSummaryDismissed ? null : {
                 // "All Sessions" makes it explicit these files were touched
                 // across every chat in the project, not just this one.
                 label: 'All Sessions',
@@ -20282,6 +20283,7 @@ function AiChatTabView({
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
                 onRunReview: () => onRunAiReview?.(chatId),
                 reviewDisabled: isAgentRunProcessing,
+                onDismiss: () => setVcsSummaryDismissed(true),
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}

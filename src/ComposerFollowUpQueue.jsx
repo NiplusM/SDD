@@ -466,6 +466,16 @@ export function ComposerFollowUpQueue({
           <span className="ij-air-follow-up-queue__vcs-actions">
             <button
               type="button"
+              className="ij-air-follow-up-queue__vcs-skip"
+              onClick={(event) => {
+                event.stopPropagation();
+                vcsTab.onDismiss?.();
+              }}
+            >
+              Skip
+            </button>
+            <button
+              type="button"
               className="ij-air-follow-up-queue__vcs-review"
               disabled={Boolean(vcsTab.reviewDisabled)}
               onClick={(event) => {

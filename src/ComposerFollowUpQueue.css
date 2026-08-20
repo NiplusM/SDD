@@ -87,8 +87,28 @@
   flex: 1 1 auto;
   align-items: center;
   justify-content: flex-end;
-  gap: 2px;
+  gap: 8px;
   margin-right: 16px;
+}
+
+.ij-air-follow-up-queue__vcs-skip {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #9fa2a8;
+  cursor: pointer;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.ij-air-follow-up-queue__vcs-skip:hover {
+  color: #ced0d6;
+  text-decoration-color: currentColor;
 }
 
 .ij-air-follow-up-queue__vcs-review {
