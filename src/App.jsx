@@ -19338,8 +19338,6 @@ function AiChatTabView({
   onCommitChanges = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
-  const [vcsSummaryDismissed, setVcsSummaryDismissed] = useState(false);
-  const [vcsSummaryExpanded, setVcsSummaryExpanded] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -19427,9 +19425,26 @@ function AiChatTabView({
   const isReviewDecisionReady = Boolean(
     !isReviewFinal && readyReviewMessage && readyReviewMessage.id !== resolvedReviewDecisionId,
   );
+  const queuedFollowUpsRef = useRef(queuedFollowUps);
   useEffect(() => {
-    if (!isAgentRunProcessing) setQueuedFollowUps([]);
-  }, [isAgentRunProcessing]);
+    queuedFollowUpsRef.current = queuedFollowUps;
+  }, [queuedFollowUps]);
+  const wasAgentRunProcessingRef = useRef(isAgentRunProcessing);
+  useEffect(() => {
+    const wasProcessing = wasAgentRunProcessingRef.current;
+    wasAgentRunProcessingRef.current = isAgentRunProcessing;
+    if (isAgentRunProcessing || !wasProcessing) return;
+    const pending = queuedFollowUpsRef.current;
+    if (pending.length === 0) return;
+    // Only one run can be active per chat at a time, so drain the queue one
+    // item per turn: sending this one kicks off a new run, whose own
+    // completion re-triggers this effect to send the next item.
+    const [next, ...rest] = pending;
+    setQueuedFollowUps(rest);
+    window.setTimeout(() => {
+      onSendMessage?.(chatId, next.text, [], { contentParts: [{ id: 'live-text', type: 'text', text: next.text }] });
+    }, 0);
+  }, [isAgentRunProcessing, chatId, onSendMessage]);
   const reviewScopeQueueFiles = Array.isArray(agentRun?.files) ? agentRun.files : [];
   const reviewScopeQueueSignature = reviewScopeQueueFiles
     .map((file) => `${file.id}:${file.sourceLabel}`)
@@ -19803,10 +19818,10 @@ function AiChatTabView({
     if (isAgentRunProcessing) {
       if (!messageText) return;
       queuedFollowUpIdRef.current += 1;
-      setQueuedFollowUps((items) => [{
+      setQueuedFollowUps((items) => [...items, {
         id: `review-follow-up-${queuedFollowUpIdRef.current}`,
         text: messageText,
-      }, ...items]);
+      }]);
       setComposerText('');
       setComposerContentParts([]);
       focusComposerAtEnd();
@@ -20193,6 +20208,11 @@ function AiChatTabView({
                 {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
               </p>
             </ChatChangedFilesCard>
+          ) : message.role === 'assistant' && message.streaming ? (
+            <div key={message.id} className="aiux550-review-running" role="status" aria-label="Agent running">
+              <AiChatProgressIcon />
+              <span>Thinking...</span>
+            </div>
           ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
@@ -20202,7 +20222,6 @@ function AiChatTabView({
                 data-ai-chat-block-id={`sent-${message.id}`}
               >
                 {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
-                {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
               </p>
             </article>
           ) : (
@@ -20228,73 +20247,6 @@ function AiChatTabView({
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
-        {!vcsSummaryDismissed && (() => {
-          const { added, removed } = getAllProjectChangesLineCounts(scenario);
-          const files = vcsSummaryExpanded ? getAllProjectChangesFiles(scenario) : [];
-          return (
-            <div className={`aiux543-chat-local-card aiux543-chat-vcs-summary${vcsSummaryExpanded ? ' is-expanded' : ''}`}>
-              <div className="aiux543-chat-vcs-summary-row">
-                <button
-                  type="button"
-                  className="aiux543-chat-dropdown aiux543-chat-vcs-summary-label"
-                  aria-expanded={vcsSummaryExpanded}
-                  onClick={() => setVcsSummaryExpanded((expanded) => !expanded)}
-                >
-                  <Icon
-                    name="general/chevronDown"
-                    size={16}
-                    className={`aiux543-chat-vcs-summary-chevron${vcsSummaryExpanded ? ' is-expanded' : ''}`}
-                  />
-                  <span className="aiux543-chat-vcs-summary-project">{PROJECT_NAME}</span>
-                  <span className="aiux543-chat-vcs-summary-divider" aria-hidden="true" />
-                  <span className="aiux543-chat-vcs-summary-branch">{REVIEW_CURRENT_BRANCH_NAME}</span>
-                </button>
-                <button
-                  type="button"
-                  className="aiux543-chat-vcs-summary-counts"
-                  aria-label={`Open All Project Changes. ${added} lines added, ${removed} lines removed across every session`}
-                  onClick={() => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest))}
-                  disabled={!onOpenAllProjectChanges && !scenario?.diffRequest}
-                >
-                  <span className="is-added">+{added.toLocaleString()}</span>
-                  <span className="is-removed">-{removed.toLocaleString()}</span>
-                </button>
-                <IconButton
-                  icon="general/close"
-                  tooltip="Dismiss"
-                  className="aiux543-chat-vcs-summary-close"
-                  onClick={() => setVcsSummaryDismissed(true)}
-                />
-              </div>
-              {vcsSummaryExpanded && (
-                <div className="aiux543-chat-vcs-summary-files" aria-label="All Project Changes files">
-                  {files.map((file) => {
-                    const isMarkdown = file.label?.endsWith('.md');
-                    return (
-                      <button
-                        key={file.tabId}
-                        type="button"
-                        className="aiux543-chat-vcs-summary-file"
-                        onClick={() => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
-                      >
-                        <Icon
-                          name={isMarkdown ? 'fileTypes/markdown' : 'fileTypes/java'}
-                          size={16}
-                          className={`icon aiux543-chat-vcs-summary-file-icon${isMarkdown ? ' is-markdown' : ''}`}
-                        />
-                        <span className="aiux543-chat-vcs-summary-file-label">{file.label}</span>
-                        <span className="aiux543-chat-vcs-summary-file-counts" aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}>
-                          <span className="is-added">+{file.added}</span>
-                          <span className="is-removed">-{file.removed}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })()}
         {false && showAiReviewPrompt && reviewPromptFiles.length > 0 && (
           <AiReviewComposerPrompt
             onCreateSpec={onCreateSpec}
@@ -20311,16 +20263,44 @@ function AiChatTabView({
             </button>
           </div>
         )}
-        {!isReviewDecisionReady && isAgentRunProcessing && (
-          <ComposerFollowUpQueue
-            items={queuedFollowUps}
-            scopeItems={reviewScopeQueueItems}
-            onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
-            onReorderItems={setQueuedFollowUps}
-            onSendNowItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
-            revealSendNowOnHover
-          />
-        )}
+        {(() => {
+          const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
+          const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
+          const vcsFiles = getAllProjectChangesFiles(scenario);
+          return (
+            <ComposerFollowUpQueue
+              items={showQueueContent ? queuedFollowUps : []}
+              scopeItems={showQueueContent ? reviewScopeQueueItems : []}
+              vcsTab={{
+                // "All Sessions" makes it explicit these files were touched
+                // across every chat in the project, not just this one.
+                label: 'All Sessions',
+                branch: `${vcsFiles.length} file${vcsFiles.length === 1 ? '' : 's'}`,
+                added: vcsAdded,
+                removed: vcsRemoved,
+                files: vcsFiles,
+                onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
+                onRunReview: () => onRunAiReview?.(chatId),
+                reviewDisabled: isAgentRunProcessing,
+              }}
+              onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
+              onReorderItems={setQueuedFollowUps}
+              onSendNowItem={(itemId) => {
+                // Move the item to the front and stop the current run — the
+                // drain effect below picks up the new head of the queue as
+                // soon as `isAgentRunProcessing` flips back to false, so there
+                // is only ever one place that actually calls `onSendMessage`.
+                setQueuedFollowUps((items) => {
+                  const target = items.find((entry) => entry.id === itemId);
+                  if (!target) return items;
+                  return [target, ...items.filter((entry) => entry.id !== itemId)];
+                });
+                onStopMessage?.(chatId);
+              }}
+              revealSendNowOnHover
+            />
+          );
+        })()}
         {!isReviewDecisionReady && (
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {showSlashCommandMenu && (
@@ -31461,7 +31441,8 @@ export default function App() {
       || (!REVIEW_PLACEHOLDER_CHAT_TITLES.includes(sessionTitle) ? sessionTitle : '')
       || (attachmentFeatureTitle ? `Changes in ${attachmentFeatureTitle}` : 'Current changes');
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
-    const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
+    const isPlainChatMessage = !isReviewCommand && commentAttachments.length === 0 && messageText.length > 0;
+    const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand || isPlainChatMessage;
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
     const isReviewFeedbackSubmission = isReviewCommand
@@ -31748,11 +31729,13 @@ export default function App() {
       const commentRunCommentCount = noteItems.length || commentAttachments.length;
       const fullResponse = isReviewCommand
         ? `Reviewed ${reviewFileCount} file${reviewFileCount === 1 ? '' : 's'} and found ${scopedReviewFindings.length} issue${scopedReviewFindings.length === 1 ? '' : 's'} — see the synchronized result in Review Preview or Full Review.`
-        : `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the AI Review folder.`;
+        : commentAttachments.length > 0
+          ? `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the AI Review folder.`
+          : 'Got it — let me know if you need anything else.';
       const timerKey = `${targetChatId}:${assistantMessageId}`;
       // Keep the busy UI on screen long enough to read the appearing comments
       // before the run resolves and the card collapses.
-      const runFloorMs = isReviewCommand ? 5600 : 4400;
+      const runFloorMs = isReviewCommand ? 25000 : 18000;
       const runStartedAt = Date.now();
       let index = 0;
       const finishRun = () => {
@@ -31914,6 +31897,18 @@ export default function App() {
             targetChatId,
           );
           renameChatAfterReview(targetChatId, reviewFeatureTitle);
+        } else {
+          // The text finished typing well before the run's floor duration
+          // elapses (see streamNextChunk) — only clear the busy/streaming
+          // state once the run actually finishes, so the "Thinking…" state
+          // and the rest of the busy UI (Stop button, queue draining) stay
+          // in sync with how long the run visually takes.
+          handleSelectedAiChatSentMessagesChange(
+            (prev) => prev.map((message) => (
+              message.id === assistantMessageId ? { ...message, streaming: false } : message
+            )),
+            targetChatId,
+          );
         }
       };
       const streamNextChunk = () => {
@@ -31924,7 +31919,7 @@ export default function App() {
         handleSelectedAiChatSentMessagesChange(
           (prev) => prev.map((message) => (
             message.id === assistantMessageId
-              ? { ...message, text: nextText, streaming: !isComplete }
+              ? { ...message, text: nextText }
               : message
           )),
           targetChatId,

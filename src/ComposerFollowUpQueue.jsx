@@ -5,6 +5,7 @@ import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
 
 const QUEUE_ITEM_MENU_WIDTH = 231;
+const QUEUE_BODY_MAX_HEIGHT = 176;
 
 const QUEUE_ITEM_MENU_ITEMS = [
   { id: 'edit', label: 'Edit Message', icon: 'general/edit' },
@@ -54,6 +55,31 @@ function ReviewScopeQueueRow({ item }) {
       </span>
       <span className="ij-air-follow-up-queue__scope-item-text">{item.text}</span>
     </li>
+  );
+}
+
+function VcsSummaryFileRow({ file, onOpenFile }) {
+  const isMarkdown = file.label?.endsWith('.md');
+  return (
+    <button
+      type="button"
+      className="ij-air-follow-up-queue__vcs-file"
+      onClick={() => onOpenFile?.(file)}
+    >
+      <Icon
+        name={isMarkdown ? 'fileTypes/markdown' : 'fileTypes/java'}
+        size={16}
+        className={`icon ij-air-follow-up-queue__vcs-file-icon${isMarkdown ? ' is-markdown' : ''}`}
+      />
+      <span className="ij-air-follow-up-queue__vcs-file-label">{file.label}</span>
+      <span
+        className="ij-air-follow-up-queue__vcs-file-counts"
+        aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}
+      >
+        <span className="is-added">+{file.added}</span>
+        <span className="is-removed">-{file.removed}</span>
+      </span>
+    </button>
   );
 }
 
@@ -216,6 +242,8 @@ function QueueItemRow({
 export function ComposerFollowUpQueue({
   items = [],
   scopeItems = [],
+  label,
+  vcsTab = null,
   onDeleteItem,
   onReorderItems,
   onSendNowItem,
@@ -223,7 +251,18 @@ export function ComposerFollowUpQueue({
   collapsed: collapsedProp,
   onCollapsedChange,
 }) {
-  const [collapsedInternal, setCollapsedInternal] = useState(false);
+  const resolvedLabel = label ?? (scopeItems.length > 0 ? 'AI Review' : 'Queue');
+  const hasQueueContent = scopeItems.length > 0 || items.length > 0;
+  const hasVcsTab = Boolean(vcsTab);
+  // The queue is the more time-sensitive surface, so it takes the leftmost
+  // tab slot whenever it has anything to show; the VCS summary otherwise
+  // occupies that first slot on its own.
+  const tabOrder = hasQueueContent
+    ? (hasVcsTab ? ['queue', 'vcs'] : ['queue'])
+    : (hasVcsTab ? ['vcs'] : []);
+  const [activeTab, setActiveTab] = useState(tabOrder[0] ?? 'queue');
+  const resolvedActiveTab = tabOrder.includes(activeTab) ? activeTab : (tabOrder[0] ?? 'queue');
+  const [collapsedInternal, setCollapsedInternal] = useState(true);
   const [collapsedOverride, setCollapsedOverride] = useState(null);
   const isCollapseControlled = onCollapsedChange != null;
   const collapsed = isCollapseControlled
@@ -234,6 +273,32 @@ export function ComposerFollowUpQueue({
   const [dragOverId, setDragOverId] = useState(null);
   const dragStateRef = useRef({ activeId: null, overId: null });
   const itemsRef = useRef(items);
+  const bodyContentRef = useRef(null);
+  const [bodyHeight, setBodyHeight] = useState(0);
+
+  // Switching tabs (or the queue growing/shrinking) swaps in content of a
+  // different natural height. Measure it and animate the wrapper's height
+  // instead of letting the box snap to the new size.
+  useLayoutEffect(() => {
+    if (collapsed) {
+      setBodyHeight(0);
+      return;
+    }
+    const measured = bodyContentRef.current?.scrollHeight ?? 0;
+    setBodyHeight(Math.min(measured, QUEUE_BODY_MAX_HEIGHT));
+  }, [collapsed, resolvedActiveTab, items, scopeItems, vcsTab, openMenuItemId, draggingId, dragOverId]);
+
+  const applyCollapsed = (next) => {
+    if (isCollapseControlled) {
+      onCollapsedChange(next);
+      return;
+    }
+    if (collapsedProp !== undefined) {
+      setCollapsedOverride(next);
+      return;
+    }
+    setCollapsedInternal(next);
+  };
 
   useEffect(() => {
     itemsRef.current = items;
@@ -250,6 +315,18 @@ export function ComposerFollowUpQueue({
     if (!itemStillExists) setOpenMenuItemId(null);
   }, [items, openMenuItemId]);
 
+  // As soon as the queue has something to show, bring it to the front tab
+  // and reveal it — it's more urgent than a lingering VCS summary.
+  const hadQueueContentRef = useRef(hasQueueContent);
+  useEffect(() => {
+    if (hasQueueContent && !hadQueueContentRef.current) {
+      setActiveTab('queue');
+      applyCollapsed(false);
+    }
+    hadQueueContentRef.current = hasQueueContent;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasQueueContent]);
+
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
     if (!dragState) return;
@@ -262,7 +339,7 @@ export function ComposerFollowUpQueue({
 
   useEffect(() => () => clearDragListeners(), []);
 
-  if (scopeItems.length === 0 && items.length === 0) return null;
+  if (tabOrder.length === 0) return null;
 
   const finishDrag = () => {
     const { activeId, overId } = dragStateRef.current;
@@ -311,23 +388,17 @@ export function ComposerFollowUpQueue({
     document.body.style.userSelect = 'none';
   };
 
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    if (isCollapseControlled) {
-      onCollapsedChange(next);
-      return;
-    }
-    if (collapsedProp !== undefined) {
-      setCollapsedOverride(next);
-      return;
-    }
-    setCollapsedInternal(next);
+  const toggleCollapsed = () => applyCollapsed(!collapsed);
+
+  const selectTab = (tabId) => {
+    setActiveTab(tabId);
+    if (collapsed) applyCollapsed(false);
   };
 
   const handleQueueToggle = (event) => {
     if (
       event.target.closest(
-        '.ij-air-follow-up-queue__list, .ij-air-follow-up-queue__item-actions, .ij-air-follow-up-queue__more, .ij-air-follow-up-queue__drag-handle',
+        '.ij-air-follow-up-queue__list, .ij-air-follow-up-queue__vcs-files, .ij-air-follow-up-queue__item-actions, .ij-air-follow-up-queue__more, .ij-air-follow-up-queue__drag-handle, .ij-air-follow-up-queue__tab, .ij-air-follow-up-queue__vcs-actions',
       )
     ) {
       return;
@@ -342,6 +413,8 @@ export function ComposerFollowUpQueue({
     toggleCollapsed();
   };
 
+  const activeTabLabel = resolvedActiveTab === 'vcs' ? (vcsTab?.label ?? resolvedLabel) : resolvedLabel;
+
   return (
     <section
       className={[
@@ -349,7 +422,7 @@ export function ComposerFollowUpQueue({
         collapsed ? 'ij-air-follow-up-queue--collapsed' : '',
         revealSendNowOnHover ? 'ij-air-follow-up-queue--reveal-send-on-hover' : '',
       ].filter(Boolean).join(' ')}
-      aria-label="AI Review"
+      aria-label={activeTabLabel}
       onClick={handleQueueToggle}
     >
       <header
@@ -357,13 +430,53 @@ export function ComposerFollowUpQueue({
         role="button"
         tabIndex={0}
         aria-expanded={!collapsed}
-        aria-label={collapsed ? 'Expand AI Review' : 'Collapse AI Review'}
+        aria-label={collapsed ? `Expand ${activeTabLabel}` : `Collapse ${activeTabLabel}`}
         onKeyDown={handleHeaderKeyDown}
       >
-        <span className="ij-air-follow-up-queue__tab">
-          <span className="ij-air-follow-up-queue__title">AI Review</span>
-          <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
+        <span className="ij-air-follow-up-queue__tabstrip">
+          {tabOrder.map((tabId) => (
+            <button
+              key={tabId}
+              type="button"
+              className={`ij-air-follow-up-queue__tab${tabId === resolvedActiveTab ? ' is-active' : ''}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                selectTab(tabId);
+              }}
+            >
+              {tabId === 'queue' ? (
+                <>
+                  <span className="ij-air-follow-up-queue__title">{resolvedLabel}</span>
+                  <span className="ij-air-follow-up-queue__count">{scopeItems.length || items.length}</span>
+                </>
+              ) : (
+                <>
+                  <span className="ij-air-follow-up-queue__title">{vcsTab.label}</span>
+                  <span className="ij-air-follow-up-queue__count">{vcsTab.branch}</span>
+                  <span className="ij-air-follow-up-queue__tab-counts" aria-hidden="true">
+                    <span className="is-added">+{vcsTab.added}</span>
+                    <span className="is-removed">-{vcsTab.removed}</span>
+                  </span>
+                </>
+              )}
+            </button>
+          ))}
         </span>
+        {resolvedActiveTab === 'vcs' && vcsTab && (
+          <span className="ij-air-follow-up-queue__vcs-actions">
+            <button
+              type="button"
+              className="ij-air-follow-up-queue__vcs-review"
+              disabled={Boolean(vcsTab.reviewDisabled)}
+              onClick={(event) => {
+                event.stopPropagation();
+                vcsTab.onRunReview?.();
+              }}
+            >
+              Review
+            </button>
+          </span>
+        )}
         <span
           className={`ij-air-follow-up-queue__collapse ${collapsed ? 'collapsed' : ''}`}
           aria-hidden="true"
@@ -371,26 +484,36 @@ export function ComposerFollowUpQueue({
           <Icon name="general/chevronDown" size={16} />
         </span>
       </header>
-      {collapsed ? null : (
-        <ul className="ij-air-follow-up-queue__list">
-          {scopeItems.map((item) => (
-            <ReviewScopeQueueRow key={item.id} item={item} />
-          ))}
-          {items.map((item) => (
-            <QueueItemRow
-              key={item.id}
-              item={item}
-              isDragging={draggingId === item.id}
-              isDragOver={dragOverId === item.id && draggingId !== item.id}
-              isMenuOpen={openMenuItemId === item.id}
-              onToggleMenu={setOpenMenuItemId}
-              onDeleteItem={onDeleteItem}
-              onSendNowItem={onSendNowItem}
-              onDragStart={handleDragStart}
-            />
-          ))}
-        </ul>
-      )}
+      <div className="ij-air-follow-up-queue__body" style={{ height: bodyHeight }}>
+        <div ref={bodyContentRef} className="ij-air-follow-up-queue__body-inner">
+          {resolvedActiveTab === 'vcs' ? (
+            <div className="ij-air-follow-up-queue__vcs-files" aria-label="All Project Changes files">
+              {(vcsTab?.files ?? []).map((file) => (
+                <VcsSummaryFileRow key={file.tabId} file={file} onOpenFile={vcsTab.onOpenFile} />
+              ))}
+            </div>
+          ) : (
+            <ul className="ij-air-follow-up-queue__list">
+              {scopeItems.map((item) => (
+                <ReviewScopeQueueRow key={item.id} item={item} />
+              ))}
+              {items.map((item) => (
+                <QueueItemRow
+                  key={item.id}
+                  item={item}
+                  isDragging={draggingId === item.id}
+                  isDragOver={dragOverId === item.id && draggingId !== item.id}
+                  isMenuOpen={openMenuItemId === item.id}
+                  onToggleMenu={setOpenMenuItemId}
+                  onDeleteItem={onDeleteItem}
+                  onSendNowItem={onSendNowItem}
+                  onDragStart={handleDragStart}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
