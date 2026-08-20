@@ -10308,6 +10308,19 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     ), 0) + 1
   ), [rowComments]);
 
+  // Document-wide ordinal for plain "Attach AI Note" comments (the
+  // isVetSchedulesDocument case) — same counting shape as annotations above,
+  // just over contextType:'chat' comments instead of annotation ones.
+  const getNextVetNoteOrder = useCallback(() => (
+    Object.values(rowComments).reduce((count, comments) => (
+      count + (Array.isArray(comments)
+        ? comments.filter((comment) => (
+            comment && typeof comment === 'object' && comment.contextType === 'chat' && !comment.annotation
+          )).length
+        : 0)
+    ), 0) + 1
+  ), [rowComments]);
+
   const handleSelectionToolbarAction = useCallback((actionId, triggerRect, toolbarState = null) => {
     if (!triggerRect) return;
 
@@ -10549,6 +10562,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       }
 
       if (isVetSchedulesDocument && boundChatId) {
+        const order = getNextVetNoteOrder();
         return {
           text,
           hidden: false,
@@ -10556,6 +10570,8 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           contextType: 'chat',
           contextLabel: defaultVetCommentChatTarget?.title ?? 'Chat Session',
           contextIcon: defaultVetCommentChatTarget?.icon ?? 'claude',
+          order,
+          lineLabel: `Note ${order}`,
         };
       }
 
@@ -10570,7 +10586,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     }
 
     closeCommentPopup(rowIndex);
-  }, [closeCommentPopup, commentPopup, defaultVetCommentChatTarget, getNextSpecAnnotationOrder, isVetSchedulesDocument, onAddSelectionToChat, rowMetaByKey, updateRowComments]);
+  }, [closeCommentPopup, commentPopup, defaultVetCommentChatTarget, getNextSpecAnnotationOrder, getNextVetNoteOrder, isVetSchedulesDocument, onAddSelectionToChat, rowMetaByKey, updateRowComments]);
 
   const handleCommentDelete = useCallback((rowKey, rowCommentKey, commentIndex) => {
     updateRowComments(rowCommentKey, (comments) => comments.filter((_, index) => index !== commentIndex));
@@ -11860,7 +11876,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   comments: displayedThreadedCommentsForRow.map(({ comment, commentIndex }) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
                     text: getStoredCommentText(comment),
-                    lineLabel: '',
+                    lineLabel: (comment && typeof comment === 'object' && comment.lineLabel) || '',
                     editable: true,
                     localIndex: commentIndex,
                   })),
@@ -11888,7 +11904,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                         text: getStoredCommentText(comment),
                         lineLabel: activeCommentPopupForRow.isAnnotation
                           ? (getStoredCommentLineLabel(comment) || activeCommentPopupForRow.footerMetaLabel || '')
-                          : '',
+                          : ((comment && typeof comment === 'object' && comment.lineLabel) || ''),
                         editable: true,
                         localIndex: Number.isInteger(comment?.localIndex) ? comment.localIndex : index,
                       })),
@@ -12148,7 +12164,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       secondarySubmitAction={null}
                       preserveEditorSelection={false}
                       preservedEditorSelectionSnapshot={activeCommentPopupForRow?.selectionSnapshot ?? null}
-                      footerMetaLabel=""
+                      footerMetaLabel={isVetSchedulesDocument && activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation
+                        ? (Number.isInteger(activeCommentPopupForRow.editingIndex)
+                          ? (commentsForRow[activeCommentPopupForRow.editingIndex]?.lineLabel || '')
+                          : `Note ${getNextVetNoteOrder()}`)
+                        : ''}
                       onChange={(nextValue) => {
                         setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
                       }}
@@ -18781,11 +18801,20 @@ function AiChatTabView({
   const persistedComposerContentParts = Array.isArray(composerDraft?.contentParts)
     ? composerDraft.contentParts
     : [];
+  const persistedDismissedAttachmentKeys = Array.isArray(composerDraft?.dismissedAttachmentKeys)
+    ? composerDraft.dismissedAttachmentKeys.filter((key) => typeof key === 'string' && key.length > 0)
+    : [];
   const initialSessionModel = typeof scenario?.initialModel === 'string' ? scenario.initialModel : null;
   const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
   const [composerText, setComposerText] = useState(persistedComposerText);
   const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
+  // Attachments (diff/comment/spec chips) the user has already sent from this
+  // composer. Keyed by content, not just id, so a chip that gets new comments
+  // after being dismissed resurfaces instead of staying hidden forever.
+  const [dismissedComposerAttachmentKeys, setDismissedComposerAttachmentKeys] = useState(
+    () => new Set(persistedDismissedAttachmentKeys),
+  );
   const scenarioAgentId = AI_CHAT_AGENTS.some((agent) => agent.id === scenario?.icon)
     ? scenario.icon
     : 'claude';
@@ -18929,6 +18958,9 @@ function AiChatTabView({
     const savedDraft = composerDraftRef.current;
     setComposerText(typeof savedDraft?.text === 'string' ? savedDraft.text : initialComposerText);
     setComposerContentParts(Array.isArray(savedDraft?.contentParts) ? savedDraft.contentParts : []);
+    setDismissedComposerAttachmentKeys(new Set(
+      Array.isArray(savedDraft?.dismissedAttachmentKeys) ? savedDraft.dismissedAttachmentKeys : [],
+    ));
     setSelectedAgentId(scenarioAgentId);
     setSelectedModelOverride(initialSessionModel);
     setIsAgentMenuOpen(false);
@@ -18943,8 +18975,9 @@ function AiChatTabView({
     onComposerDraftChange?.(chatId, {
       text: composerText,
       contentParts: composerContentParts,
+      dismissedAttachmentKeys: [...dismissedComposerAttachmentKeys],
     });
-  }, [chatId, composerContentParts, composerText, onComposerDraftChange]);
+  }, [chatId, composerContentParts, composerText, dismissedComposerAttachmentKeys, onComposerDraftChange]);
 
   useEffect(() => {
     setResolvedReviewDecisionId(null);
@@ -19059,11 +19092,36 @@ function AiChatTabView({
     };
   }, [chatId, scrollTarget?.annotationId, scrollTarget?.chatId, scrollTarget?.messageId, scrollTarget?.nonce]);
 
-  const hasComposerCommentAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+  const rawEditorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
+  const getEditorComposerAttachmentDraftKey = (attachment, index = 0) => {
+    const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+    const previewFingerprint = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => ({
+      text: item?.text ?? '',
+      sourceLabel: item?.sourceLabel ?? '',
+      lineLabel: item?.lineLabel ?? '',
+      isSelectionContextPreview: Boolean(item?.isSelectionContextPreview),
+    }));
+    return `${attachmentId} ${JSON.stringify(previewFingerprint)}`;
+  };
+  const rawEditorComposerAttachmentDraftKeys = rawEditorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
+  const rawEditorComposerAttachmentDraftSignature = rawEditorComposerAttachmentDraftKeys.join('\n');
+  useEffect(() => {
+    // Once a dismissed attachment's underlying content changes (e.g. a new
+    // comment gets added to a note that was already sent), it should resurface
+    // instead of staying hidden under its now-stale dismissal key forever.
+    const liveKeys = new Set(rawEditorComposerAttachmentDraftKeys);
+    setDismissedComposerAttachmentKeys((current) => {
+      const next = new Set([...current].filter((key) => liveKeys.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [chatId, rawEditorComposerAttachmentDraftSignature]);
+  const editorComposerAttachments = rawEditorComposerAttachments.filter((attachment, index) => (
+    !dismissedComposerAttachmentKeys.has(getEditorComposerAttachmentDraftKey(attachment, index))
+  ));
+  const hasComposerCommentAttachment = editorComposerAttachments
     .some((attachment) => Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0);
-  const hasSelectionContextAttachment = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+  const hasSelectionContextAttachment = editorComposerAttachments
     .some((attachment) => attachment?.isSelectionContext);
-  const editorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
   const editorComposerAttachmentIds = editorComposerAttachments.map(getAiChatAttachmentSequenceKey);
   const editorComposerAttachmentSignature = editorComposerAttachmentIds.join('\n');
   const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
@@ -19176,19 +19234,28 @@ function AiChatTabView({
     getAiChatAttachmentSequenceKey(attachment, index),
     attachment,
   ]));
+  const editorComposerAttachmentDraftKeys = editorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
+  const dismissSentComposerAttachments = () => {
+    if (editorComposerAttachmentDraftKeys.length === 0) return;
+    setDismissedComposerAttachmentKeys((current) => new Set([
+      ...current,
+      ...editorComposerAttachmentDraftKeys,
+    ]));
+  };
   const sendReviewFeedback = (messageText = '', contentParts = []) => {
     if (!readyReviewMessage || isReviewFinal) return;
     const submittedMessageText = String(messageText || '').trim() || reviewFeedbackMessage;
     setResolvedReviewDecisionId(readyReviewMessage.id);
     setReviewFeedbackMessageId(null);
     if (onReviseReview) {
-      onReviseReview(chatId, submittedMessageText, composerDiffAttachments);
+      onReviseReview(chatId, submittedMessageText, editorComposerAttachments);
     } else {
-      onSendMessage?.(chatId, submittedMessageText, composerDiffAttachments, {
+      onSendMessage?.(chatId, submittedMessageText, editorComposerAttachments, {
         contentParts,
         forceReview: true,
       });
     }
+    dismissSentComposerAttachments();
     setComposerText('');
     setComposerContentParts([]);
   };
@@ -19222,7 +19289,7 @@ function AiChatTabView({
       return;
     }
     const startsReview = /(^\/review\b)|(^review\b)|(\breview this\b)/i.test(messageText);
-    onSendMessage?.(chatId, messageText, composerDiffAttachments, {
+    onSendMessage?.(chatId, messageText, editorComposerAttachments, {
       contentParts: contentParts.map((part) => (part.type === 'attachment'
         ? { type: 'attachment', attachmentId: part.attachmentId }
         : { type: 'text', text: part.text })),
@@ -19234,11 +19301,12 @@ function AiChatTabView({
         dedicatedSession: false,
         modelLabel: selectedModelLabel,
         effortLabel: selectedEffort,
-        scopeId: composerDiffAttachments.length > 0 ? 'current' : 'all',
+        scopeId: editorComposerAttachments.length > 0 ? 'current' : 'all',
         launchSource: 'current-chat',
         instructions: messageText.replace(/^\/review\b/iu, '').trim(),
       } : null,
     });
+    dismissSentComposerAttachments();
     setComposerText('');
     setComposerContentParts([]);
   };

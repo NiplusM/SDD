@@ -4542,6 +4542,14 @@ body {
   padding-top: 10px;
 }
 
+/* The note-only popup's single item supplies its own equal padding on every
+   side (below); let it own that fully instead of stacking an uneven
+   top/bottom padding on top of it here. !important beats the more specific
+   .plan-diff-row-comment/.spec-done-row-comment padding-top overrides below. */
+.spec-done-comment-popup-groups:has(.spec-done-comment-popup-group.is-headerless) {
+  padding: 0 !important;
+}
+
 .spec-done-comment-popup-header {
   display: flex;
   align-items: center;
@@ -4588,6 +4596,16 @@ body {
   width: 100%;
   max-width: 100%;
   padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 26px);
+}
+
+/* The extra left indent above hangs the item body under a header icon.
+   Groups with no header (the note-only popup, header removed) have nothing
+   to hang it from, so it just reads as a lopsided empty gutter — drop back
+   to a plain, generous inset on every side instead. */
+.spec-done-comment-popup-group.is-headerless .spec-done-comment-popup-item {
+  /* Beats the higher-specificity :last-child bottom-padding reset below,
+     which otherwise pins this side back to 4px. */
+  padding: 10px 14px !important;
 }
 
 .spec-done-comment-popup-group .spec-done-comment-popup-item.is-agent-authored {
