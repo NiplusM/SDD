@@ -15591,18 +15591,12 @@ const AI_CHAT_SCENARIOS = {
         ],
       },
     ],
-    assistantHeading: 'Done:',
-    assistantParagraphs: [
-      'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
-      'This removes the repeated ArrayList construction from populateTimeSlots(), keeps the 9:00-16:00 range in one place, and preserves the existing @ModelAttribute("timeSlots") contract for the view.',
-    ],
     changeCard: null,
     changeCards: AI_CHAT_GENERATED_DIFF_CARDS,
     result: [
       'VisitController.java now prepares the hourly visit slots once in the controller constructor and reuses that list when Spring populates the timeSlots model attribute.',
       'No template changes were required.',
     ],
-    command: 'Ran ./gradlew test',
     attachmentLabel: 'Diff VisitController.java',
     diffRequest: AI_CHAT_VISIT_CONTROLLER_DIFF_REQUEST,
   },
