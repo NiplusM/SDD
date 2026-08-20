@@ -20276,8 +20276,7 @@ function AiChatTabView({
               removed={vcsRemoved}
               files={vcsFiles}
               onOpenFile={(file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
-              onRunReview={() => onRunAiReview?.(chatId)}
-              reviewDisabled={isAgentRunProcessing}
+              onRunReview={() => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest))}
               onDismiss={() => setVcsBannerDismissed(true)}
             />
           );
