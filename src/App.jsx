@@ -20331,13 +20331,30 @@ function AiChatTabView({
             </ChatChangedFilesCard>
           ) : message.role === 'assistant' && message.kind === 'file-edit-done' && message.editedFiles?.length > 0 ? (
             <div key={message.id}>
-              <p
-                data-ai-chat-annotatable="true"
-                data-ai-chat-message-id={message.id}
-                data-ai-chat-block-id={`sent-${message.id}`}
-              >
-                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
-              </p>
+              <article className="aiux543-answer">
+                <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
+                <p
+                  data-ai-chat-annotatable="true"
+                  data-ai-chat-message-id={message.id}
+                  data-ai-chat-block-id={`sent-${message.id}`}
+                >
+                  {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                </p>
+                {Array.isArray(scenario?.result) && scenario.result.length > 0 && (
+                  <ul>
+                    {scenario.result.map((paragraph, idx) => (
+                      <li
+                        key={`live-result-${idx}`}
+                        data-ai-chat-annotatable="true"
+                        data-ai-chat-message-id={message.id}
+                        data-ai-chat-block-id={`live-result-${idx}`}
+                      >
+                        {renderAnnotatedParagraph(paragraph, `live-result-${idx}`)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </article>
               <ChatEditedFilesCard
                 className="ai-chat-edited-files-card--live-entrance"
                 files={message.editedFiles}
@@ -20350,19 +20367,6 @@ function AiChatTabView({
                 } : null}
               />
             </div>
-          ) : message.role === 'assistant'
-            && message.streaming
-            && agentRun?.kind === 'file-edit'
-            && reviewScopeQueueFiles.length > 0 ? (
-            <ChatEditedFilesCard
-              key={message.id}
-              variant="live"
-              // Reveals the same files that will land in the Done card, in
-              // the same order — starts with the first file already visible
-              // rather than an empty card, then grows as more arrive.
-              files={getChatChangeCards(scenario).slice(0, Math.max(1, processedReviewScopeFileCount))}
-              totalCount={reviewScopeQueueFiles.length}
-            />
           ) : message.role === 'assistant' && message.streaming ? (
             <div key={message.id} className="aiux550-review-running" role="status" aria-label="Agent running">
               <AiChatProgressIcon />
@@ -20420,17 +20424,24 @@ function AiChatTabView({
         )}
         {(() => {
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
-          // Plain file-edit runs show their progress inline in the message
-          // thread (see the live Done-card render branch below), not here —
-          // this composer queue's own "scope items" tab stays reserved for
-          // an actual /review run's file queue, as it always was.
-          const showReviewScopeQueue = showQueueContent && agentRun?.kind === 'review';
           const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
+          const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
+            (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
+          );
+          const filesTabRemovedTotal = reviewScopeQueueFiles.reduce(
+            (sum, file) => sum + getChatChangedFileLineCount(file.removed), 0,
+          );
           return (
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
-              scopeItems={showReviewScopeQueue ? reviewScopeQueueItems : []}
+              scopeItems={showQueueContent ? reviewScopeQueueItems : []}
+              filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
+                label: agentRun?.kind === 'review' ? 'AI Review' : 'Files',
+                variant: agentRun?.kind === 'review' ? 'review' : 'edit',
+                addedTotal: filesTabAddedTotal,
+                removedTotal: filesTabRemovedTotal,
+              } : null}
               vcsTab={vcsSummaryDismissed ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
@@ -21251,49 +21262,21 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // Used for scenarios that report a "Worked for" duration — that caption
 // renders above this card (see the call site), not inside its header, since
 // we have no "since last turn" concept to put there instead.
-// variant 'done' (default) is the completed, page-matching outline card;
-// variant 'live' is the still-updating state (filled panel, no checkmark,
-// "N files updated +X -Y" header, files still arriving) that a run's own
-// message shows while it's in progress, before flipping to 'done'.
-function ChatEditedFilesCard({
-  files = [],
-  onOpenFile = null,
-  onOpenReview = null,
-  className = '',
-  variant = 'done',
-  totalCount = null,
-}) {
+function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '' }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
-  const isLive = variant === 'live';
 
   const visibleFiles = expanded ? files : files.slice(0, EDITED_FILES_CARD_VISIBLE_LIMIT);
   const hiddenCount = files.length - visibleFiles.length;
-  const addedTotal = isLive
-    ? files.reduce((sum, file) => sum + getChatChangedFileLineCount(file.added), 0)
-    : null;
-  const removedTotal = isLive
-    ? files.reduce((sum, file) => sum + getChatChangedFileLineCount(file.removed), 0)
-    : null;
 
   return (
-    <section
-      className={`ai-chat-changed-files-card ai-chat-edited-files-card${isLive ? ' ai-chat-edited-files-card--live' : ''}${className ? ` ${className}` : ''}`}
-    >
+    <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
-          {isLive ? null : (
-            <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
-              <Icon name="general/checkmark" size={16} />
-            </span>
-          )}
-          <span>{`${totalCount ?? files.length} file${(totalCount ?? files.length) === 1 ? '' : 's'} ${isLive ? 'updated' : 'changed'}`}</span>
-          {isLive && (
-            <span className="ai-chat-edited-files-live-counts">
-              <span className="is-added">+{addedTotal}</span>
-              <span className="is-removed">-{removedTotal}</span>
-            </span>
-          )}
+          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
+            <Icon name="general/checkmark" size={16} />
+          </span>
+          <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
         </span>
         <span className="ai-chat-changed-files-actions">
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">
@@ -21320,7 +21303,7 @@ function ChatEditedFilesCard({
             <button
               key={file.id ?? file.name}
               type="button"
-              className={`ai-chat-changed-files-row${isLive ? ' ai-chat-changed-files-row--appear' : ''}`}
+              className="ai-chat-changed-files-row"
               onClick={openFile ?? undefined}
               disabled={!openFile}
             >
