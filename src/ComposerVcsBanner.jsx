@@ -82,6 +82,12 @@ export function ComposerVcsBanner({
         aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`}
         onKeyDown={handleHeaderKeyDown}
       >
+        <span
+          className={`ij-air-vcs-banner__collapse ${collapsed ? 'collapsed' : ''}`}
+          aria-hidden="true"
+        >
+          <Icon name="general/chevronDown" size={16} />
+        </span>
         <span className="ij-air-vcs-banner__label">
           <span className="ij-air-vcs-banner__title">{label}</span>
           <span className="ij-air-vcs-banner__count">{branch}</span>
@@ -101,12 +107,6 @@ export function ComposerVcsBanner({
         >
           Review
         </button>
-        <span
-          className={`ij-air-vcs-banner__collapse ${collapsed ? 'collapsed' : ''}`}
-          aria-hidden="true"
-        >
-          <Icon name="general/chevronDown" size={16} />
-        </span>
       </header>
       <div className="ij-air-vcs-banner__body" style={{ height: bodyHeight }}>
         <div ref={bodyContentRef} className="ij-air-vcs-banner__body-inner">
