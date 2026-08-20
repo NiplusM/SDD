@@ -11662,11 +11662,27 @@ body {
 .ai-chat-attachment-comment-count {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 5px;
   flex: 0 0 auto;
   color: #73767C;
   font-size: 11px;
   line-height: 16px;
+}
+
+.ai-chat-attachment-comment-count-separator {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6E727A;
+  font-size: 0;
+  line-height: 0;
+}
+
+.ai-chat-attachment-comment-count-value {
+  color: #CED0D6;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 /* "Updated" flag on a composer attachment chip — the agent replied, so the
@@ -13237,6 +13253,109 @@ body {
 
 .ai-chat-changed-files-remove {
   color: #E56068;
+}
+
+/* Flat "Edited <file> +N -N" rows (no card/border) for scenarios that report
+   a "Worked for" duration instead of the boxed Changed Files card. */
+.ai-chat-edited-files-list {
+  display: flex;
+  flex-direction: column;
+  width: min(750px, 100%);
+  margin: 0 auto;
+}
+
+.ai-chat-edited-file-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.ai-chat-edited-file-row:disabled {
+  cursor: default;
+}
+
+.ai-chat-edited-file-row:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ai-chat-edited-file-row:focus-visible {
+  outline: 2px solid var(--control-focus-border-brand);
+}
+
+.ai-chat-edited-file-icon {
+  flex: 0 0 auto;
+  color: #9298A1;
+}
+
+.ai-chat-edited-file-label {
+  flex: 0 0 auto;
+  color: #D1D3D9;
+}
+
+.ai-chat-edited-file-name {
+  flex: 0 0 auto;
+  color: #6FA7FF;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-edited-file-added {
+  flex: 0 0 auto;
+  color: #79A978;
+  font-weight: 600;
+}
+
+.ai-chat-edited-file-removed {
+  flex: 0 0 auto;
+  color: #E56068;
+  font-weight: 600;
+}
+
+.ai-chat-edited-files-worked-for {
+  width: min(750px, 100%);
+  margin: 6px auto 0;
+  color: #7F838D;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.ai-chat-edited-files-divider {
+  width: min(750px, 100%);
+  height: 1px;
+  margin: 14px auto;
+  border: none;
+  background: #33353A;
+}
+
+.aiux543-answer-result-list {
+  box-sizing: border-box;
+  width: min(750px, 100%);
+  margin: 0 auto 8px;
+  padding-left: 18px;
+  color: #dfe1e5;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.aiux543-answer-command-plain {
+  box-sizing: border-box;
+  width: min(750px, 100%);
+  margin: 0 auto 8px;
+  color: #dfe1e5;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
 }
 
 .aiux543-code-card {
@@ -17523,11 +17642,27 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .ai-chat-attachment-comment-count {
-  gap: 2px;
+  gap: 5px;
   margin-left: 1px;
   color: #8B8E96;
   font-size: 11px;
   line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-chat-attachment-comment-count-separator {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #85888F;
+  font-size: 0;
+  line-height: 0;
+}
+
+.ai-chat-attachment-comment-count-value {
+  color: #DFE1E5;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 
@@ -20016,6 +20151,21 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-review-editor-split-body > .aiux543-chat-editor-host {
   flex: 1 1 auto;
+}
+
+.ai-review-editor-split-body > .ai-spec-split-editor-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* `.editor:has(.ai-review-editor-split) .editor-body` (above) blanket-hides
+   every .editor-body nested anywhere inside the outer editor while a split
+   is active — including this local one used as AgentTaskEditorArea's portal
+   target. Force it back on; !important is needed to beat that :has() rule's
+   specificity regardless of source order. */
+.ai-spec-split-editor-host .editor-body {
+  display: flex !important;
 }
 
 .ai-review-editor-split-body.is-review .aiux-review-overview {

@@ -1491,6 +1491,7 @@ export function DiffInlineCommentPopup({
   submitActionOptions = null,
   secondarySubmitAction = null,
   inputPlaceholder = 'Write an AI Note',
+  composeHeaderLabel = '',
   renderSubmitTargetPicker = null,
   commentContextLabel = '',
   commentContextIcon = 'claude',
@@ -1593,6 +1594,9 @@ export function DiffInlineCommentPopup({
     : '';
   const commentAgentLabel = getAiReviewAgentLabel(commentContextIcon);
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
+  // Non-empty in the simplified "review note" mode — suppresses the chat/doc
+  // context header and target picker in favor of just the line reference.
+  const normalizedComposeHeaderLabel = typeof composeHeaderLabel === 'string' ? composeHeaderLabel.trim() : '';
   const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save AI Note' : 'Attach AI Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
@@ -1715,6 +1719,34 @@ export function DiffInlineCommentPopup({
       scheduleSelectionSnapshotRestore(preservedEditorSelectionSnapshot);
     }
   }, [hasComments, isEditing, preserveEditorSelection, preservedEditorSelectionSnapshot, showCompose]);
+
+  // Defensive backup for the compose textarea's very first keystroke: some
+  // unrelated state update elsewhere in the document can slip in a re-render
+  // between the native `input` event and React's own synthetic dispatch,
+  // which then re-asserts the (still stale) controlled `value` and wipes out
+  // whatever the user just typed. A native listener bound directly to this
+  // element sees the DOM's true current value and re-syncs it one tick later
+  // if React's own onChange didn't already win that race.
+  useEffect(() => {
+    if (!showCompose) return undefined;
+    const input = textareaRef.current;
+    if (!input) return undefined;
+
+    const handleNativeInput = () => {
+      const domValue = input.value;
+      if (!domValue) return;
+      window.setTimeout(() => {
+        if (textareaRef.current !== input) return;
+        // React's own onChange already applied this value (or something
+        // newer) — nothing to recover.
+        if (input.value !== '') return;
+        onChange?.(domValue);
+      }, 0);
+    };
+
+    input.addEventListener('input', handleNativeInput);
+    return () => input.removeEventListener('input', handleNativeInput);
+  }, [showCompose, value, onChange]);
 
   useEffect(() => {
     if (!normalizedSubmitAttachModes.includes(submitAttachMode)) {
@@ -2213,6 +2245,7 @@ export function DiffInlineCommentPopup({
     Boolean(processingAgentReplies[getAgentReplyDraftKey(comment, index)])
   ));
   const showUngroupedHeader = !hasGroupedComments
+    && !normalizedComposeHeaderLabel
     && (!showCompose || hasComments)
     && !(comments.length > 0 && comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent'));
   const ungroupedHeaderComment = showUngroupedHeader && visibleUngroupedComments.length > 0
@@ -2247,7 +2280,8 @@ export function DiffInlineCommentPopup({
             // severity + ⋯), so the chat context header is redundant for them.
             const isAgentOnlyGroup = group.comments.length > 0
               && group.comments.every((comment) => comment && typeof comment === 'object' && comment.author === 'agent');
-            const showGroupHeader = !group.hideHeader && !isAgentOnlyGroup && (group.comments.length > 0 || group.showHeaderWhenEmpty);
+            const showGroupHeader = !group.hideHeader && !isAgentOnlyGroup && !normalizedComposeHeaderLabel
+              && (group.comments.length > 0 || group.showHeaderWhenEmpty);
             const hasPendingGroupComments = group.comments.some((comment) => Boolean(comment && typeof comment === 'object' && comment.pending));
             const hasProcessingGroupComments = group.comments.some((comment, index) => (
               Boolean(processingAgentReplies[getAgentReplyDraftKey(comment, comment?.localIndex ?? index)])
@@ -2292,7 +2326,7 @@ export function DiffInlineCommentPopup({
 
             return (
             <div
-              className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}`}
+              className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}${normalizedComposeHeaderLabel ? ' is-headerless' : ''}`}
               key={`${group.chatId || group.label}-${group.messageId || group.label}`}
               onClick={handleGroupClick}
             >
@@ -2410,7 +2444,7 @@ export function DiffInlineCommentPopup({
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
           }}
         >
-          {showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
+          {normalizedComposeHeaderLabel.length === 0 && showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
             <div className="spec-done-comment-popup-compose-header">
               {renderSubmitTargetButton()}
             </div>
@@ -2880,6 +2914,9 @@ export function PlanDiffOverlay({
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
+  // Simplified note mode: no chat-picker header, no send-to-agent action —
+  // just a plain "Write a note" / line reference / Cancel / Add Note.
+  reviewNoteComposer = false,
   viewMode = 'unified',
   // In 'comments' mode, clicking a card calls this with the row id so a host
   // can scroll the corresponding code overlay and highlight the target row(s).
@@ -5019,7 +5056,14 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={renderSubmitTargetPicker}
+                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                          submitButtonLabel={reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : ''}
+                          showSubmitTargetLabel={!reviewNoteComposer}
+                          showSendToAgentAction={!reviewNoteComposer}
+                          showSubmitActionMenu={!reviewNoteComposer}
+                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                          inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -5104,7 +5148,14 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={renderSubmitTargetPicker}
+                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                        submitButtonLabel={reviewNoteComposer ? 'Add Note' : ''}
+                        showSubmitTargetLabel={!reviewNoteComposer}
+                        showSendToAgentAction={!reviewNoteComposer}
+                        showSubmitActionMenu={!reviewNoteComposer}
+                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                        inputPlaceholder={reviewNoteComposer ? 'Write a note' : 'Write an AI Note'}
+                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -5928,6 +5979,7 @@ export function PlanDiffEditorArea({
           severityFilter={severityFilter}
           resolveKeepsComment={resolveKeepsComment}
           allowInlineCommentCompose={allowInlineCommentCompose}
+          reviewNoteComposer
           viewMode={effectiveViewMode}
           onCommentNavigate={onCommentNavigate}
           inlineCommentRowIdOnly={inlineCommentRowIdOnly}

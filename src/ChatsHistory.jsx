@@ -255,7 +255,7 @@ function ChatsHistoryToolWindow({
                     {row.id === 'refactor-time-slots' && expanded ? (
                       <AgentSessionChanges
                         files={AGENT_SESSION_ACTIVE_CHANGES}
-                        onOpenFile={onOpenFile}
+                        onOpenFile={(file) => onOpenFile?.(file, row.id)}
                         vetSchedulesLineCount={vetSchedulesLineCount}
                       />
                     ) : null}

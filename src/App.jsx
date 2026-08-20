@@ -115,8 +115,8 @@ import './App.css';
 
 // ─── Data ────────────────────────────────────────────────────────────────────
 
-const PROJECT_NAME = 'Code-review';
-const BRANCH_NAME = 'Code-review';
+const PROJECT_NAME = 'spring-petclinic';
+const BRANCH_NAME = 'refactor-time-slots';
 const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
@@ -12099,6 +12099,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 <div className="spec-done-row-content spec-done-comment-thread-content">
                   <div className="plan-diff-inline-comment spec-done-inline-comment-thread">
                     <DiffInlineCommentPopup
+                      key={stableKey}
                       comments={[]}
                       commentGroups={inlineCommentPopupGroups}
                       value={activeCommentPopupForRow ? activeCommentPopupForRow.value : ''}
@@ -12113,14 +12114,19 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       commentContextSessionLabel={isVetSchedulesDocument ? 'Active' : commentContextSessionLabel}
                       submitButtonLabel={activeCommentPopupForRow?.isAnnotation
                         ? (Number.isInteger(activeCommentPopupForRow.editingIndex) ? 'Save Annotation' : 'Add Annotation')
-                        : (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save AI Note' : 'Attach AI Note')}
-                      inputPlaceholder={activeCommentPopupForRow?.isAnnotation ? 'Write an Annotation' : 'Write an AI Note'}
+                        : (isVetSchedulesDocument
+                          ? (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save Note' : 'Add Note')
+                          : (Number.isInteger(activeCommentPopupForRow?.editingIndex) ? 'Save AI Note' : 'Attach AI Note'))}
+                      inputPlaceholder={activeCommentPopupForRow?.isAnnotation
+                        ? 'Write an Annotation'
+                        : (isVetSchedulesDocument ? 'Write a note' : 'Write an AI Note')}
+                      composeHeaderLabel={!activeCommentPopupForRow?.isAnnotation && isVetSchedulesDocument ? 'Note' : ''}
                       defaultSubmitAttachMode={activeCommentPopupForRow?.isAnnotation
                         ? 'document'
                         : (isVetSchedulesDocument ? 'current' : 'document')}
                       submitAttachModes={activeCommentPopupForRow?.isAnnotation
                         ? ['document']
-                        : (isVetSchedulesDocument ? ['current', 'new'] : ['document', 'current', 'new'])}
+                        : (isVetSchedulesDocument ? ['current'] : ['document', 'current', 'new'])}
                       defaultSubmitTargetLabel={isVetSchedulesDocument
                         ? (defaultVetCommentChatTarget?.title ?? 'Chat Session')
                         : commentContextLabel}
@@ -12133,12 +12139,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       activeChatTargetKey={isVetSchedulesDocument
                         ? (defaultVetCommentChatTarget?.id ?? '')
                         : (chatTargets[0]?.id ?? '')}
-                      renderSubmitTargetPicker={isVetSchedulesDocument && renderSubmitTargetPicker
-                        ? (pickerProps) => renderSubmitTargetPicker({ ...pickerProps, includeDocuments: false })
+                      renderSubmitTargetPicker={isVetSchedulesDocument
+                        ? null
                         : renderSubmitTargetPicker}
-                      showSubmitTargetLabel={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation)}
+                      showSubmitTargetLabel={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation && !isVetSchedulesDocument)}
                       showSubmitActionMenu={false}
-                      showSendToAgentAction={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation)}
+                      showSendToAgentAction={Boolean(activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation && !isVetSchedulesDocument)}
                       secondarySubmitAction={null}
                       preserveEditorSelection={false}
                       preservedEditorSelectionSnapshot={activeCommentPopupForRow?.selectionSnapshot ?? null}
@@ -15351,7 +15357,7 @@ public List<LocalTime> populateTimeSlots() {
     name: 'VisitRepository.java',
     icon: 'fileTypes/java',
     added: '+2',
-    removed: '-0',
+    removed: '',
     code: `public interface VisitRepository extends CrudRepository<Visit, Integer> {
 
     boolean existsByVetIdAndDateAndTime(Integer vetId, LocalDate date, LocalTime time);
@@ -15386,6 +15392,14 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
       issueTarget: { kind: 'plan', index: 6 },
       source: { tabId: '5', label: 'VisitControllerTests.java' },
     },
+  },
+  {
+    id: 'generated-diff-vet-schedules',
+    name: 'Vet-Schedules.md',
+    icon: 'fileTypes/markdown',
+    added: '+25',
+    removed: '',
+    agentTaskId: 't2',
   },
 ];
 
@@ -15529,6 +15543,8 @@ const AI_CHAT_SCENARIOS = {
   'refactor-time-slots': {
     title: 'Refactor VisitController.java time slots',
     userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
+    workedForLabel: '10m 16s',
+    assistantHeading: 'Done:',
     assistantParagraphs: [
       'I moved the time slot generation into VisitController initialization and kept the MVC model attribute method focused on returning the prepared list.',
       'This removes the repeated ArrayList construction from populateTimeSlots(), keeps the 9:00-16:00 range in one place, and preserves the existing @ModelAttribute("timeSlots") contract for the view.',
@@ -17798,6 +17814,7 @@ function AiReviewSplitFileView({
           allowCommentReplies={!readOnly}
           commentsReadOnly={readOnly}
           viewMode={file.isPlain ? 'unified' : viewMode}
+          reviewNoteComposer
           highlightedCommentRowIds={focusedRows}
           onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(file.tabId, comments, metadata)}
           onReviewAction={onReviewAction}
@@ -18741,6 +18758,7 @@ function AiChatTabView({
   onCreateSpec = null,
   onRunAiReview = null,
   onCommitChanges = null,
+  onOpenChangedFile = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
@@ -19434,6 +19452,14 @@ function AiChatTabView({
               </div>
             )}
 
+            {hasChatChangedFilesList(scenario) && scenario.workedForLabel ? (
+              <ChatEditedFilesSummary
+                files={getChatChangeCards(scenario)}
+                workedForLabel={scenario.workedForLabel}
+                onOpenFile={onOpenChangedFile}
+              />
+            ) : null}
+
             {scenario?.assistantParagraphs?.length > 0 && (
               <article className="aiux543-answer">
                 <h3>{scenario.assistantHeading || 'What changed'}</h3>
@@ -19452,7 +19478,7 @@ function AiChatTabView({
           </>
         )}
 
-        {hasChatChangedFilesList(scenario) ? (
+        {!scenario.workedForLabel && (hasChatChangedFilesList(scenario) ? (
           <ChatChangedFilesCard
             files={getChatChangeCards(scenario)}
             onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
@@ -19483,31 +19509,50 @@ function AiChatTabView({
               <SyntaxCode code={card.code} />
             </section>
           );
-        })}
+        }))}
 
         {Array.isArray(scenario?.result) && scenario.result.length > 0 && (
-          <article className="aiux543-answer">
-            <h3>Result</h3>
-            {scenario.result.map((paragraph, idx) => (
-              <p
-                key={`result-${idx}`}
-                data-ai-chat-annotatable="true"
-                data-ai-chat-message-id={messageId}
-                data-ai-chat-block-id={`result-${idx}`}
-              >
-                {renderAnnotatedParagraph(paragraph, `result-${idx}`)}
-              </p>
-            ))}
-          </article>
+          scenario.workedForLabel ? (
+            <ul className="aiux543-answer-result-list">
+              {scenario.result.map((paragraph, idx) => (
+                <li
+                  key={`result-${idx}`}
+                  data-ai-chat-annotatable="true"
+                  data-ai-chat-message-id={messageId}
+                  data-ai-chat-block-id={`result-${idx}`}
+                >
+                  {renderAnnotatedParagraph(paragraph, `result-${idx}`)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <article className="aiux543-answer">
+              <h3>Result</h3>
+              {scenario.result.map((paragraph, idx) => (
+                <p
+                  key={`result-${idx}`}
+                  data-ai-chat-annotatable="true"
+                  data-ai-chat-message-id={messageId}
+                  data-ai-chat-block-id={`result-${idx}`}
+                >
+                  {renderAnnotatedParagraph(paragraph, `result-${idx}`)}
+                </p>
+              ))}
+            </article>
+          )
         )}
 
         {scenario?.command && (
-          <section className="aiux543-detail-trail">
-            <article className="aiux543-detail-card">
-              <h3>How to verify</h3>
-              <p>{scenario.command}</p>
-            </article>
-          </section>
+          scenario.workedForLabel ? (
+            <p className="aiux543-answer-command-plain">{scenario.command}</p>
+          ) : (
+            <section className="aiux543-detail-trail">
+              <article className="aiux543-detail-card">
+                <h3>How to verify</h3>
+                <p>{scenario.command}</p>
+              </article>
+            </section>
+          )
         )}
 
         {sentMessages.map((message) => (
@@ -20437,6 +20482,42 @@ function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null
   );
 }
 
+// Flat "Edited <file> +N -N" rows (no card/border), used for scenarios that
+// report a "Worked for" duration instead of the boxed Changed Files card.
+function ChatEditedFilesSummary({ files = [], workedForLabel = '', onOpenFile = null }) {
+  if (files.length === 0) return null;
+
+  return (
+    <>
+      <div className="ai-chat-edited-files-list">
+        {files.map((file) => {
+          const openFile = onOpenFile && (file.diffRequest || file.agentTaskId) ? () => onOpenFile(file) : null;
+
+          return (
+            <button
+              key={file.id ?? file.name}
+              type="button"
+              className="ai-chat-edited-file-row"
+              onClick={openFile ?? undefined}
+              disabled={!openFile}
+            >
+              <Icon className="ai-chat-edited-file-icon" name="general/edit" size={16} />
+              <span className="ai-chat-edited-file-label">Edited</span>
+              <span className="ai-chat-edited-file-name">{file.name}</span>
+              {file.added ? <span className="ai-chat-edited-file-added">{file.added}</span> : null}
+              {file.removed ? <span className="ai-chat-edited-file-removed">{file.removed}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      {workedForLabel ? (
+        <div className="ai-chat-edited-files-worked-for">{`Worked for ${workedForLabel}`}</div>
+      ) : null}
+      <hr className="ai-chat-edited-files-divider" />
+    </>
+  );
+}
+
 function getAiChatBlockAnnotations(annotations = [], messageId = '', blockId = '') {
   return (Array.isArray(annotations) ? annotations : []).filter((annotation) => (
     annotation?.messageId === messageId
@@ -20635,6 +20716,10 @@ export default function App() {
   const [reviewSplitFileTabIds, setReviewSplitFileTabIds] = useState([]);
   const [reviewSplitActiveTabId, setReviewSplitActiveTabId] = useState(REVIEW_DIFF_TAB_ID);
   const [reviewSplitFileFocusByTabId, setReviewSplitFileFocusByTabId] = useState({});
+  // Mirrors reviewSplit* above but for opening a spec (agent-task tab) in a
+  // split next to a chat, driven by openSpecInSplitView/closeSpecSplitView.
+  const [specSplitChatId, setSpecSplitChatId] = useState(null);
+  const [specSplitTabId, setSpecSplitTabId] = useState(null);
   const [reviewFeedbackRequestByChatId, setReviewFeedbackRequestByChatId] = useState({});
   // Synchronous mirror of review-owned fixture patches. The canonical copy is
   // also stored on each run; this ref covers Apply → immediate Cancel in one UI tick.
@@ -27257,6 +27342,16 @@ export default function App() {
         || activeTabId === `ai-chat-${reviewSplitChatId}`
       ),
   );
+  const specSplitChatScenario = specSplitChatId ? getAiChatScenarioById(specSplitChatId) : null;
+  const specSplitChatListItem = specSplitChatId ? getAiChatListItemById(specSplitChatId) : null;
+  const specSplitChatLabel = String(
+    specSplitChatScenario?.title || specSplitChatListItem?.title || 'AI Chat',
+  ).trim();
+  // Mirrors isReviewEditorSplitActive: the split only renders while the real
+  // agent-task tab (specSplitTabId) is the active outer tab.
+  const isSpecEditorSplitActive = Boolean(
+    specSplitChatId && specSplitTabId && activeTabId === specSplitTabId,
+  );
   // Single-file tabs still need to know when they belong to an explicit review
   // run so review comments keep their review-specific resolve behavior.
   const hasReviewRun = useMemo(
@@ -28664,13 +28759,34 @@ export default function App() {
       };
     });
 
+    // Vet-Schedules.md routes its "Attach AI Note" comments to the default
+    // open chat instead of a dedicated "Specified" chat (see
+    // isVetSchedulesDocument/defaultVetCommentChatTarget in
+    // DoneMarkdownOverlay), so — unlike every other spec — it never goes
+    // through ensureSpecStatusChat. Surface it the same way that flow would:
+    // reuse buildSpecStatusAttachment for the same isSddDocument shape
+    // (comment preview, click-to-open, removal) the rest of the app already
+    // knows how to render.
+    if (selectedAiChatId === DEFAULT_OPEN_CHAT_ID) {
+      ideTabs
+        .filter((tab) => typeof tab?.id === 'string' && isVetSchedulesSpecSource(tab.id))
+        .forEach((tab) => {
+          const attachment = buildSpecStatusAttachment('Specified', tab.id);
+          if (attachment.commentCount === 0) return;
+          attachments.push(attachment);
+        });
+    }
+
     return attachments;
   }, [
     aiChatComposerDiffTabByChatId,
     aiChatAnnotationsByChatId,
     aiChatSelectionContextByChatId,
+    buildSpecStatusAttachment,
     getAiChatListItemById,
     ideTabContents,
+    ideTabs,
+    isVetSchedulesSpecSource,
     selectedAiChatId,
     selectedAiChatScenario?.attachments,
     selectedAiChatScenario?.diffRequest,
@@ -31473,16 +31589,38 @@ export default function App() {
     renameChatAfterReview(chatId, stoppedSummary.featureTitle);
   }, [agentRunByChatId, handleSelectedAiChatSentMessagesChange, renameChatAfterReview]);
 
+  // Open an agent-task spec tab in a split next to the given chat, mirroring
+  // openReviewDiffTab: keep the real tab (agent-task-*) active so its
+  // activeAgentTask*-derived props resolve normally — the split shell just
+  // renders the chat alongside it (see isSpecEditorSplitActive).
+  const openSpecInSplitView = useCallback((agentTaskId, chatId = null) => {
+    if (!agentTaskId) return;
+    handleAgentTaskSelect(agentTaskId);
+    const preset = getPresetAgentTaskDefinition(agentTaskId);
+    const tabId = preset?.tab?.id ?? getAgentTaskTabId(agentTaskId) ?? agentTaskId;
+    setSpecSplitTabId(tabId);
+    setSpecSplitChatId(chatId ?? null);
+  }, [handleAgentTaskSelect]);
+
+  // Collapse the spec split — the agent-task tab stays open (just no longer
+  // shown as a split), and focus returns to the chat that was on the left.
+  const closeSpecSplitView = useCallback(() => {
+    const chatId = specSplitChatId;
+    setSpecSplitChatId(null);
+    setSpecSplitTabId(null);
+    if (chatId) openChatInEditorTab(chatId);
+  }, [openChatInEditorTab, specSplitChatId]);
+
   // Navigate to the file/diff a comment lives in — shared by the Chats-History
   // "AI Review" folder and the review card above the composer.
-  const openCommentTarget = useCallback((target) => {
+  const openCommentTarget = useCallback((target, chatId = null) => {
     if (!target) return;
-    if (target.agentTaskId) { handleAgentTaskSelect(target.agentTaskId); return; }
+    if (target.agentTaskId) { openSpecInSplitView(target.agentTaskId, chatId); return; }
     const openIdx = target.diffTabId ? ideTabs.findIndex((t) => t.id === target.diffTabId) : -1;
     if (openIdx >= 0) { setScreen('ide'); setActiveEditorTab(openIdx); return; }
     if (target.sourceLabel) { openEditorTabByLabel(target.sourceLabel); return; }
     if (target.diffRequest) openPlanDiffTab(target.diffRequest);
-  }, [handleAgentTaskSelect, ideTabs, openEditorTabByLabel, openPlanDiffTab]);
+  }, [ideTabs, openEditorTabByLabel, openPlanDiffTab, openSpecInSplitView]);
 
   // Switch the left tool window to the Commit panel. MainWindow's active left
   // window is uncontrolled (driven by stripe clicks), so we activate it the same
@@ -32188,13 +32326,13 @@ export default function App() {
           width={1100}
           height={800}
           projectName={PROJECT_NAME}
-          projectIcon="SD"
+          projectIcon="SP"
           projectColor="blue"
           branchName={BRANCH_NAME}
           toolbar={(
             <MainToolbar
               projectName={PROJECT_NAME}
-              projectIcon="SD"
+              projectIcon="SP"
               projectColor="blue"
               branchName={BRANCH_NAME}
               runConfig="Current File"
@@ -32358,16 +32496,16 @@ export default function App() {
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideDefaultOpenToolWindows.join('-')}`}
-        className={isReviewEditorSplitActive ? 'ai-review-editor-split-active' : ''}
+        className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'ai-review-editor-split-active' : ''}
         height={865}
         projectName={PROJECT_NAME}
-        projectIcon="SD"
+        projectIcon="SP"
         projectColor="blue"
         branchName={BRANCH_NAME}
         toolbar={(
           <MainToolbar
             projectName={PROJECT_NAME}
-            projectIcon="SD"
+            projectIcon="SP"
             projectColor="blue"
             branchName={BRANCH_NAME}
             runConfig="Current File"
@@ -32471,6 +32609,7 @@ export default function App() {
                       ]}
                       scrollTarget={chatScrollTarget}
                       onEditAnnotation={null}
+                      onOpenChangedFile={(file) => openCommentTarget(file, reviewSplitChatId)}
                     />
                   </div>
                 )}
@@ -32531,6 +32670,94 @@ export default function App() {
                 )}
               />
             )
+            : isSpecEditorSplitActive
+            ? (
+              <AiReviewEditorSplit
+                chatLabel={specSplitChatLabel}
+                chatIcon={<AiChatAgentIcon icon={specSplitChatListItem?.icon ?? specSplitChatScenario?.icon ?? 'claude'} title={specSplitChatLabel} />}
+                onCloseReview={closeSpecSplitView}
+                showReviewTab={false}
+                rightTabs={[{ label: 'Vet-Schedules.md', icon: 'fileTypes/markdown', closable: true }]}
+                activeRightTab={0}
+                onRightTabChange={() => {}}
+                onRightTabClose={closeSpecSplitView}
+                leftPane={(
+                  <div className="aiux543-chat-editor-host">
+                    <AiChatTabView
+                      key={`spec-split-${specSplitChatId}`}
+                      chatId={specSplitChatId}
+                      scenarios={aiChatScenarios}
+                      sentMessages={aiChatSentMessagesByChatId[specSplitChatId] ?? []}
+                      composerDraft={aiChatComposerDraftByChatId[specSplitChatId] ?? null}
+                      onComposerDraftChange={handleAiChatComposerDraftChange}
+                      fallbackTitle={specSplitChatLabel}
+                      onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
+                      onAgentChange={handleAiChatAgentChange}
+                      onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, specSplitChatId)}
+                      onOpenAttachment={handleOpenChatAttachment}
+                      composerDiffAttachments={aiChatComposerDiffAttachments}
+                      onRemoveComposerAttachment={handleRemoveComposerAttachment}
+                      onAddContextPopupOpen={handleAiChatAddContextPopupOpen}
+                      showNewContextOptionsIndicator={showNewContextOptionsIndicator}
+                      diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+                      onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
+                      diffCommentsOptionIsNew={diffCommentsOptionIsNew}
+                      onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
+                      agentRun={agentRunByChatId[specSplitChatId] ?? null}
+                      onStopMessage={handleAiChatTabStop}
+                      onOpenReviewDiff={openReviewDiffTab}
+                      onCompleteReview={handleCompleteReviewDecision}
+                      onCancelReview={cancelReview}
+                      onReviseReview={handleReviseReviewDecision}
+                      reviewFeedbackRequestKey={reviewFeedbackRequestByChatId[specSplitChatId] ?? 0}
+                      onReviewFeedbackRequestHandled={handleReviewFeedbackRequestHandled}
+                      reviewFiles={reviewDiffFiles}
+                      onReviewFileCommentsChange={(tabId, comments, metadata) => (
+                        persistReviewFileCommentsWithChatAttachment(tabId, comments, specSplitChatId, metadata)
+                      )}
+                      onApplyReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'applied', status, specSplitChatId)}
+                      onDismissReviewFile={(tabId, filter, status) => handleAllReviewFileComments(tabId, filter, 'dismissed', status, specSplitChatId)}
+                      chatAnnotations={[
+                        ...(aiChatAnnotationsByChatId[specSplitChatId] ?? []),
+                        ...getChatSelectionContextHighlights(aiChatComposerDiffAttachments),
+                      ]}
+                      scrollTarget={chatScrollTarget}
+                      onEditAnnotation={null}
+                      onOpenChangedFile={(file) => openCommentTarget(file, specSplitChatId)}
+                      onCreateSpec={() => {
+                        setCommitReviewContext(null);
+                        setGlobalReviewTargetChatId(specSplitChatId);
+                        setGlobalReviewLaunchSource('chat-spec');
+                        setGlobalReviewDialogOpen(true);
+                      }}
+                      onRunAiReview={(targetChatId) => {
+                        handleAiChatTabSend(targetChatId, '/review', aiChatComposerDiffAttachments, { forceReview: true });
+                      }}
+                      onCommitChanges={(targetChatId) => {
+                        setCommitReviewContext(null);
+                        setGlobalReviewTargetChatId(targetChatId);
+                        setGlobalReviewLaunchSource('chat-commit');
+                        setGlobalReviewDialogOpen(true);
+                      }}
+                    />
+                  </div>
+                )}
+                rightPane={(
+                  // AgentTaskEditorArea's "done" document body isn't a normal
+                  // child — it portals into the nearest ancestor .editor's
+                  // .editor-body (see doneOverlayHost). The real outer
+                  // .editor-body is CSS-hidden while any split is active
+                  // (.editor:has(.ai-review-editor-split) .editor-body), so
+                  // give it a local .editor/.editor-body pair to portal into
+                  // instead, scoped to this pane.
+                  <div className="editor ai-spec-split-editor-host">
+                    <div className="editor-body">
+                      <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+                    </div>
+                  </div>
+                )}
+              />
+            )
             : isAgentsCatalogueTab
             ? (
               <div className="aiux550f4-final-agent-catalogue-host">
@@ -32580,6 +32807,7 @@ export default function App() {
                   ]}
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
+                  onOpenChangedFile={(file) => openCommentTarget(file, activeAiChatTabChatId)}
                   onCreateSpec={() => {
                     setCommitReviewContext(null);
                     setGlobalReviewTargetChatId(activeAiChatTabChatId);
