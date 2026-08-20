@@ -13910,6 +13910,30 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   line-height: 20px;
 }
 
+/* Entrance for a live turn's Done card — plays once on mount, right as the
+   composer's "Files" tab (which was tracking the same files while the run
+   processed) disappears, so the handoff reads as one continuous motion. */
+@keyframes ai-chat-edited-files-card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ai-chat-edited-files-card--live-entrance {
+  animation: ai-chat-edited-files-card-in 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-edited-files-card--live-entrance {
+    animation-duration: 1ms;
+  }
+}
+
 .ai-chat-changed-files-header {
   display: flex;
   align-items: center;

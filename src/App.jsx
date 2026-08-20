@@ -20330,6 +20330,27 @@ function AiChatTabView({
                 {message.streaming ? <span className="ai-chat-streaming-caret" aria-hidden="true" /> : null}
               </p>
             </ChatChangedFilesCard>
+          ) : message.role === 'assistant' && message.kind === 'file-edit-done' && message.editedFiles?.length > 0 ? (
+            <div key={message.id}>
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+              </p>
+              <ChatEditedFilesCard
+                className="ai-chat-edited-files-card--live-entrance"
+                files={message.editedFiles}
+                onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+                onOpenReview={onOpenDiffTab ? () => {
+                  const firstDiffRequest = message.editedFiles
+                    .map((card) => card?.diffRequest)
+                    .find(Boolean);
+                  if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
+                } : null}
+              />
+            </div>
           ) : message.role === 'assistant' && message.streaming ? (
             <div key={message.id} className="aiux550-review-running" role="status" aria-label="Agent running">
               <AiChatProgressIcon />
@@ -20389,10 +20410,21 @@ function AiChatTabView({
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
           const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
+          const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
+            (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
+          );
+          const filesTabRemovedTotal = reviewScopeQueueFiles.reduce(
+            (sum, file) => sum + getChatChangedFileLineCount(file.removed), 0,
+          );
           return (
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
+              filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
+                label: agentRun?.kind === 'review' ? 'AI Review' : 'Files',
+                addedTotal: filesTabAddedTotal,
+                removedTotal: filesTabRemovedTotal,
+              } : null}
               vcsTab={vcsSummaryDismissed ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
@@ -21213,7 +21245,7 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // Used for scenarios that report a "Worked for" duration — that caption
 // renders above this card (see the call site), not inside its header, since
 // we have no "since last turn" concept to put there instead.
-function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null }) {
+function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '' }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
 
@@ -21221,7 +21253,7 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
   const hiddenCount = files.length - visibleFiles.length;
 
   return (
-    <section className="ai-chat-changed-files-card ai-chat-edited-files-card">
+    <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
           <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
@@ -31803,6 +31835,29 @@ export default function App() {
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
     const isPlainChatMessage = !isReviewCommand && commentAttachments.length === 0 && messageText.length > 0;
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand || isPlainChatMessage;
+    // A plain message (no /review, no comment attachments) landing in a chat
+    // whose scenario already has its own changed-file cards (e.g.
+    // refactor-time-slots) gets the same "files updating" queue treatment as
+    // a review — reusing the exact cards that will end up in the Done card,
+    // never fabricated data for chats with no file changes of their own.
+    // Kept in the scenario's own card shape ({id, name, diffRequest, ...}) so
+    // it can be handed straight to ChatEditedFilesCard once the run finishes
+    // (see finishRun below) — mapped separately into the queue's
+    // {id, sourceLabel, openTarget} shape for the composer's live "Files" tab.
+    const plainRunChangeCards = isPlainChatMessage
+      ? getChatChangeCards(getAiChatScenarioById(targetChatId))
+      : [];
+    const plainRunFiles = plainRunChangeCards.map((card) => ({
+      id: card.id ?? card.name,
+      sourceLabel: card.name,
+      added: card.added,
+      removed: card.removed,
+      openTarget: {
+        diffTabId: card?.diffRequest?.source?.tabId ?? null,
+        sourceLabel: card.name,
+        diffRequest: card.diffRequest ?? null,
+      },
+    }));
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
     const isReviewFeedbackSubmission = isReviewCommand
@@ -32043,7 +32098,7 @@ export default function App() {
           return {
             ...(prev[targetChatId] ?? {}),
             status: isReviewCommand && iteration > 1 ? 'updating' : 'processing',
-            kind: isReviewCommand ? 'review' : undefined,
+            kind: isReviewCommand ? 'review' : (plainRunFiles.length > 0 ? 'file-edit' : undefined),
             agentIcon: isReviewCommand
               ? (prev[targetChatId]?.agentIcon ?? resolvedReviewAgentIcon)
               : prev[targetChatId]?.agentIcon,
@@ -32079,7 +32134,7 @@ export default function App() {
               : prev[targetChatId]?.configuration,
             files: isReviewCommand
               ? reviewScopeFiles
-              : prev[targetChatId]?.files,
+              : (plainRunFiles.length > 0 ? plainRunFiles : prev[targetChatId]?.files),
           };
         })(),
       }));
@@ -32265,7 +32320,21 @@ export default function App() {
           // in sync with how long the run visually takes.
           handleSelectedAiChatSentMessagesChange(
             (prev) => prev.map((message) => (
-              message.id === assistantMessageId ? { ...message, streaming: false } : message
+              message.id === assistantMessageId
+                ? {
+                    ...message,
+                    streaming: false,
+                    // The files-updating queue (composer-sticky) hands off to
+                    // the bordered Done card here, at completion — unlike the
+                    // comment-response path, this message intentionally
+                    // carries no editedFiles until the run actually finishes.
+                    // A distinct kind from the comment-response 'file-edit'
+                    // (which shows its flat card upfront, before streaming
+                    // finishes) — this one only exists once the run is
+                    // fully done, so it renders the bordered Done card.
+                    ...(plainRunChangeCards.length > 0 ? { kind: 'file-edit-done', editedFiles: plainRunChangeCards } : {}),
+                  }
+                : message
             )),
             targetChatId,
           );

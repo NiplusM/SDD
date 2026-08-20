@@ -138,6 +138,24 @@
   color: #F77D83;
 }
 
+/* Same signed-count pill as the VCS summary's, but sized to sit inline in
+   the "Files" tab button itself rather than in the header's action row. */
+.ij-air-follow-up-queue__files-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.ij-air-follow-up-queue__files-counts .is-added {
+  color: #67B180;
+}
+
+.ij-air-follow-up-queue__files-counts .is-removed {
+  color: #F77D83;
+}
+
 .ij-air-follow-up-queue__title {
   color: #fff;
   font: 500 13px/16px Inter, system-ui, sans-serif;
