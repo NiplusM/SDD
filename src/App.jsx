@@ -19526,7 +19526,12 @@ function AiChatTabView({
                 <ChatEditedFilesCard
                   files={getChatChangeCards(scenario)}
                   onOpenFile={onOpenChangedFile}
-                  onRunReview={() => onRunAiReview?.(chatId)}
+                  onOpenReview={onOpenDiffTab ? () => {
+                    const firstDiffRequest = getChatChangeCards(scenario)
+                      .map((card) => card?.diffRequest)
+                      .find(Boolean);
+                    if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
+                  } : null}
                 />
                 <hr className="ai-chat-edited-files-divider" />
               </>
@@ -20599,7 +20604,7 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // Used for scenarios that report a "Worked for" duration — that caption
 // renders above this card (see the call site), not inside its header, since
 // we have no "since last turn" concept to put there instead.
-function ChatEditedFilesCard({ files = [], onOpenFile = null, onRunReview = null }) {
+function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
 
@@ -20625,8 +20630,8 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onRunReview = null
           <button
             type="button"
             className="ai-chat-edited-files-review-pill"
-            onClick={onRunReview ?? undefined}
-            disabled={!onRunReview}
+            onClick={onOpenReview ?? undefined}
+            disabled={!onOpenReview}
           >
             Review
           </button>
