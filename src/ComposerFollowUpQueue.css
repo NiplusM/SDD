@@ -15,14 +15,10 @@
   width: min(726px, calc(100% - 24px));
   max-width: none;
   margin-bottom: 8px;
-  padding: 6px 6px 12px;
+  padding: 6px;
   border: 1px solid #40434a;
   border-radius: 8px;
   background: #26282c;
-}
-
-.ij-air-follow-up-queue--collapsed {
-  padding: 5px 6px 10px;
 }
 
 .ij-air-follow-up-queue__body {
