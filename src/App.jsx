@@ -19528,17 +19528,25 @@ function AiChatTabView({
     setProcessedReviewScopeFileCount(0);
     if (!isAgentRunProcessing || reviewScopeQueueFiles.length === 0) return undefined;
 
-    const stepDuration = Math.max(700, Math.floor(3600 / reviewScopeQueueFiles.length));
+    // A review's file queue is meant to read as real per-file work happening
+    // (hence the slower, spinner-driven sweep); a plain file-edit run's
+    // "Files" tab is just announcing what's about to land in the Done card,
+    // so it should feel closer to instant.
+    const stepDuration = agentRun?.kind === 'review'
+      ? Math.max(700, Math.floor(3600 / reviewScopeQueueFiles.length))
+      : Math.max(60, Math.floor(360 / reviewScopeQueueFiles.length));
     const intervalId = window.setInterval(() => {
       setProcessedReviewScopeFileCount((count) => Math.min(reviewScopeQueueFiles.length, count + 1));
     }, stepDuration);
 
     return () => window.clearInterval(intervalId);
-  }, [agentRun?.iteration, chatId, isAgentRunProcessing, reviewScopeQueueSignature]);
+  }, [agentRun?.iteration, agentRun?.kind, chatId, isAgentRunProcessing, reviewScopeQueueSignature]);
   const reviewScopeQueueItems = reviewScopeQueueFiles.map((file, index) => ({
     id: file.id,
     text: file.sourceLabel,
     icon: agentRunFileIconName(file.sourceLabel),
+    added: file.added,
+    removed: file.removed,
     status: index < processedReviewScopeFileCount
       ? 'done'
       : (index === processedReviewScopeFileCount ? 'processing' : 'queued'),
@@ -20422,6 +20430,7 @@ function AiChatTabView({
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
               filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
                 label: agentRun?.kind === 'review' ? 'AI Review' : 'Files',
+                variant: agentRun?.kind === 'review' ? 'review' : 'edit',
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
               } : null}
@@ -32149,8 +32158,11 @@ export default function App() {
           : 'Got it — let me know if you need anything else.';
       const timerKey = `${targetChatId}:${assistantMessageId}`;
       // Keep the busy UI on screen long enough to read the appearing comments
-      // before the run resolves and the card collapses.
-      const runFloorMs = isReviewCommand ? 25000 : 18000;
+      // before the run resolves and the card collapses. A plain file-edit
+      // run's "Files" tab only exists to announce what's about to land in
+      // the Done card, so it gets a much shorter floor than a real review or
+      // a comment-response run.
+      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 2200 : 18000);
       const runStartedAt = Date.now();
       let index = 0;
       const finishRun = () => {

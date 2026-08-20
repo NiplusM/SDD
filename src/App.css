@@ -13916,16 +13916,19 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 @keyframes ai-chat-edited-files-card-in {
   0% {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(16px) scale(0.97);
+  }
+  60% {
+    opacity: 1;
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
 .ai-chat-edited-files-card--live-entrance {
-  animation: ai-chat-edited-files-card-in 260ms ease-out both;
+  animation: ai-chat-edited-files-card-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

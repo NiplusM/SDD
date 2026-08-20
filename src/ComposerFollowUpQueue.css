@@ -280,6 +280,28 @@
   color: #8b8e96;
 }
 
+/* A plain-chat file-edit run's row — always "final", never a spinner state,
+   so unlike .ij-air-follow-up-queue__scope-item it keeps full-brightness
+   text and shows its change counts inline (mirrors the VCS file row). */
+.ij-air-follow-up-queue__edited-item {
+  display: flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  color: #ced0d6;
+}
+
+.ij-air-follow-up-queue__edited-item-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ij-air-follow-up-queue__scope-spinner {
   width: 14px;
   height: 14px;
