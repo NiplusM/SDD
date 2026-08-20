@@ -87,6 +87,11 @@
   cursor: default;
 }
 
+.ij-air-vcs-banner__dismiss {
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+
 .ij-air-vcs-banner__review:hover:not(:disabled) {
   background: #4c82f3;
 }

@@ -19339,6 +19339,7 @@ function AiChatTabView({
   onCommitChanges = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
+  const [vcsBannerDismissed, setVcsBannerDismissed] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -20264,7 +20265,7 @@ function AiChatTabView({
             </button>
           </div>
         )}
-        {(() => {
+        {!vcsBannerDismissed && (() => {
           const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsFiles = getAllProjectChangesFiles(scenario);
           return (
@@ -20279,6 +20280,7 @@ function AiChatTabView({
               onOpenFile={(file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest))}
               onRunReview={() => onRunAiReview?.(chatId)}
               reviewDisabled={isAgentRunProcessing}
+              onDismiss={() => setVcsBannerDismissed(true)}
             />
           );
         })()}

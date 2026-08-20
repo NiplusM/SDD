@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Icon } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton } from '@jetbrains/int-ui-kit';
 import './ComposerVcsBanner.css';
 
 const BANNER_BODY_MAX_HEIGHT = 176;
@@ -41,6 +41,7 @@ export function ComposerVcsBanner({
   onOpenFile,
   onRunReview,
   reviewDisabled = false,
+  onDismiss,
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const bodyContentRef = useRef(null);
@@ -58,7 +59,7 @@ export function ComposerVcsBanner({
   const toggleCollapsed = () => setCollapsed((current) => !current);
 
   const handleBannerClick = (event) => {
-    if (event.target.closest('.ij-air-vcs-banner__files, .ij-air-vcs-banner__review')) return;
+    if (event.target.closest('.ij-air-vcs-banner__files, .ij-air-vcs-banner__review, .ij-air-vcs-banner__dismiss')) return;
     toggleCollapsed();
   };
 
@@ -107,6 +108,15 @@ export function ComposerVcsBanner({
         >
           Review
         </button>
+        <IconButton
+          icon="general/close"
+          tooltip="Dismiss"
+          className="ij-air-vcs-banner__dismiss"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDismiss?.();
+          }}
+        />
       </header>
       <div className="ij-air-vcs-banner__body" style={{ height: bodyHeight }}>
         <div ref={bodyContentRef} className="ij-air-vcs-banner__body-inner">
