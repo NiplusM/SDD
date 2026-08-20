@@ -65,9 +65,6 @@ function ReviewScopeQueueRow({ item }) {
 function EditedFileQueueRow({ item }) {
   return (
     <li className="ij-air-follow-up-queue__edited-item">
-      <span className="ij-air-follow-up-queue__scope-item-icon" aria-hidden="true">
-        <Icon name={item.icon ?? 'fileTypes/text'} size={16} />
-      </span>
       <span className="ij-air-follow-up-queue__edited-item-text">{item.text}</span>
       <span className="ij-air-follow-up-queue__files-counts">
         {item.added ? <span className="is-added">{item.added}</span> : null}
