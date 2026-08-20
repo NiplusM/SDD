@@ -20270,10 +20270,8 @@ function AiChatTabView({
           const vcsFiles = getAllProjectChangesFiles(scenario);
           return (
             <ComposerVcsBanner
-              // "All Sessions" makes it explicit these files were touched
-              // across every chat in the project, not just this one.
-              label="All Sessions"
-              branch={`${vcsFiles.length} file${vcsFiles.length === 1 ? '' : 's'}`}
+              label={PROJECT_NAME}
+              branch={REVIEW_CURRENT_BRANCH_NAME}
               added={vcsAdded}
               removed={vcsRemoved}
               files={vcsFiles}
