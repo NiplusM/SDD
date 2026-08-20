@@ -13902,7 +13902,9 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   padding: 12px 8px 14px;
   border: 1px solid #33353A;
   border-radius: 6px;
-  background: #26282C;
+  /* Matches the surrounding chat background exactly (per reference) — the
+     card reads as an outline, not a raised/filled panel. */
+  background: #191A1C;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 20px;
