@@ -14,11 +14,16 @@
   z-index: 1;
   width: min(726px, calc(100% - 24px));
   max-width: none;
-  margin-bottom: 8px;
-  padding: 6px;
+  margin-bottom: -10px;
+  padding: 6px 6px 12px;
   border: 1px solid #40434a;
   border-radius: 8px;
   background: #26282c;
+}
+
+.ij-air-follow-up-queue--collapsed {
+  margin-bottom: -6px;
+  padding: 5px 6px 10px;
 }
 
 .ij-air-follow-up-queue__body {
