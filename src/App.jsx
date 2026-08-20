@@ -19521,11 +19521,15 @@ function AiChatTabView({
             )}
 
             {hasChatChangedFilesList(scenario) && scenario.workedForLabel ? (
-              <ChatEditedFilesSummary
-                files={getChatChangeCards(scenario)}
-                workedForLabel={scenario.workedForLabel}
-                onOpenFile={onOpenChangedFile}
-              />
+              <>
+                <div className="ai-chat-edited-files-worked-for">{`Worked for ${scenario.workedForLabel}`}</div>
+                <ChatEditedFilesCard
+                  files={getChatChangeCards(scenario)}
+                  onOpenFile={onOpenChangedFile}
+                  onRunReview={() => onRunAiReview?.(chatId)}
+                />
+                <hr className="ai-chat-edited-files-divider" />
+              </>
             ) : null}
 
             {scenario?.assistantParagraphs?.length > 0 && (
@@ -20583,6 +20587,82 @@ function ChatEditedFilesSummary({ files = [], workedForLabel = '', onOpenFile = 
       ) : null}
       <hr className="ai-chat-edited-files-divider" />
     </>
+  );
+}
+
+const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
+
+// Bordered "Done" card ported from the Figma reference: green check + "N
+// files changed" header (decorative revert/tree icons plus a functional
+// "Review" pill that reviews this turn's diff), then the file rows below,
+// collapsing past EDITED_FILES_CARD_VISIBLE_LIMIT behind a "Show N more" row.
+// Used for scenarios that report a "Worked for" duration — that caption
+// renders above this card (see the call site), not inside its header, since
+// we have no "since last turn" concept to put there instead.
+function ChatEditedFilesCard({ files = [], onOpenFile = null, onRunReview = null }) {
+  const [expanded, setExpanded] = useState(false);
+  if (files.length === 0) return null;
+
+  const visibleFiles = expanded ? files : files.slice(0, EDITED_FILES_CARD_VISIBLE_LIMIT);
+  const hiddenCount = files.length - visibleFiles.length;
+
+  return (
+    <section className="ai-chat-changed-files-card ai-chat-edited-files-card">
+      <header className="ai-chat-changed-files-header">
+        <span className="ai-chat-changed-files-status">
+          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
+            <Icon name="general/checkmark" size={16} />
+          </span>
+          <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
+        </span>
+        <span className="ai-chat-changed-files-actions">
+          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">
+            <Icon name="vcs/revert" size={16} />
+          </span>
+          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Group files">
+            <Icon name="general/groups" size={16} />
+          </span>
+          <button
+            type="button"
+            className="ai-chat-edited-files-review-pill"
+            onClick={onRunReview ?? undefined}
+            disabled={!onRunReview}
+          >
+            Review
+          </button>
+        </span>
+      </header>
+      <div className="ai-chat-changed-files-list">
+        {visibleFiles.map((file) => {
+          const openFile = onOpenFile && (file.diffRequest || file.agentTaskId) ? () => onOpenFile(file) : null;
+
+          return (
+            <button
+              key={file.id ?? file.name}
+              type="button"
+              className="ai-chat-changed-files-row"
+              onClick={openFile ?? undefined}
+              disabled={!openFile}
+            >
+              <span className="ai-chat-changed-files-name">{file.name}</span>
+              <span className="ai-chat-changed-files-counters">
+                {file.added ? <span className="ai-chat-changed-files-add">{file.added}</span> : null}
+                {file.removed ? <span className="ai-chat-changed-files-remove">{file.removed}</span> : null}
+              </span>
+            </button>
+          );
+        })}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            className="ai-chat-changed-files-row ai-chat-changed-files-show-more"
+            onClick={() => setExpanded(true)}
+          >
+            {`Show ${hiddenCount} more`}
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 

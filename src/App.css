@@ -13355,6 +13355,50 @@ body {
   background: #33353A;
 }
 
+/* Bordered "N files changed" card (ChatEditedFilesCard) — reuses the
+   ai-chat-changed-files-* row/header styling, adding only the decorative
+   revert/group icons and the functional "Review" pill in the header, plus
+   the collapsed "Show N more" row. */
+.ai-chat-edited-files-card {
+  margin-top: 6px;
+}
+
+.ai-chat-edited-files-decor-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9298A1;
+}
+
+.ai-chat-edited-files-review-pill {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid #43454A;
+  border-radius: 4px;
+  color: #D1D3D9;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.ai-chat-edited-files-review-pill:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ai-chat-edited-files-review-pill:disabled {
+  color: #6E7178;
+  cursor: default;
+}
+
+.ai-chat-changed-files-show-more {
+  color: #878A90;
+}
+
 .aiux543-answer-result-list {
   box-sizing: border-box;
   width: min(750px, 100%);
