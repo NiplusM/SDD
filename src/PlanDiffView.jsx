@@ -1736,8 +1736,10 @@ export function DiffInlineCommentPopup({
     : '';
   const commentAgentLabel = getAiReviewAgentLabel(commentContextIcon);
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
-  const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
+  // Non-empty in the simplified "review note" mode — suppresses the chat/doc
+  // context header and target picker in favor of just the line reference.
   const normalizedComposeHeaderLabel = typeof composeHeaderLabel === 'string' ? composeHeaderLabel.trim() : '';
+  const normalizedSubmitButtonLabel = typeof submitButtonLabel === 'string' ? submitButtonLabel.trim() : '';
   const primarySubmitButtonLabel = normalizedSubmitButtonLabel || (isEditing ? 'Save Note' : 'Add Note');
   const normalizedSubmitActionOptions = Array.isArray(submitActionOptions) && submitActionOptions.length > 0
       ? submitActionOptions
@@ -1858,6 +1860,34 @@ export function DiffInlineCommentPopup({
       scheduleSelectionSnapshotRestore(preservedEditorSelectionSnapshot);
     }
   }, [hasComments, isEditing, preserveEditorSelection, preservedEditorSelectionSnapshot, showCompose]);
+
+  // Defensive backup for the compose textarea's very first keystroke: some
+  // unrelated state update elsewhere in the document can slip in a re-render
+  // between the native `input` event and React's own synthetic dispatch,
+  // which then re-asserts the (still stale) controlled `value` and wipes out
+  // whatever the user just typed. A native listener bound directly to this
+  // element sees the DOM's true current value and re-syncs it one tick later
+  // if React's own onChange didn't already win that race.
+  useEffect(() => {
+    if (!showCompose) return undefined;
+    const input = textareaRef.current;
+    if (!input) return undefined;
+
+    const handleNativeInput = () => {
+      const domValue = input.value;
+      if (!domValue) return;
+      window.setTimeout(() => {
+        if (textareaRef.current !== input) return;
+        // React's own onChange already applied this value (or something
+        // newer) — nothing to recover.
+        if (input.value !== '') return;
+        onChange?.(domValue);
+      }, 0);
+    };
+
+    input.addEventListener('input', handleNativeInput);
+    return () => input.removeEventListener('input', handleNativeInput);
+  }, [showCompose, value, onChange]);
 
   useEffect(() => {
     if (!normalizedSubmitAttachModes.includes(submitAttachMode)) {
@@ -3032,6 +3062,9 @@ export function PlanDiffOverlay({
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
+  // Simplified note mode: no chat-picker header, no send-to-agent action —
+  // just a plain "Write a note" / line reference / Cancel / Add Note.
+  reviewNoteComposer = false,
   viewMode = 'unified',
   // In 'comments' mode, clicking a card calls this with the row id so a host
   // can scroll the corresponding code overlay and highlight the target row(s).
@@ -3051,7 +3084,6 @@ export function PlanDiffOverlay({
   highlightCommentRowId = null,
   highlightedCommentRowIds = [],
   allowCommentReplies = true,
-  reviewNoteComposer = false,
   reviewScopeNoteCount = null,
 }) {
   const scrollRef = useRef(null);
