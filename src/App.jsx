@@ -20278,8 +20278,7 @@ function AiChatTabView({
                 branch: `${vcsFiles.length}`,
                 files: vcsFiles,
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
-                onRunReview: () => onRunAiReview?.(chatId),
-                reviewDisabled: isAgentRunProcessing,
+                onRunReview: () => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest)),
                 onDismiss: () => setVcsSummaryDismissed(true),
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
