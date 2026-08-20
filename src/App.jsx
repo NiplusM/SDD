@@ -20273,9 +20273,9 @@ function AiChatTabView({
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
               vcsTab={vcsSummaryDismissed ? null : {
-                // Short and action-oriented — matches the "Queue N" pill's
-                // label + count shape instead of spelling out project/branch.
-                label: 'Review',
+                // Matches the name used everywhere else this scope is opened
+                // from (the diff view's own header, the old summary card).
+                label: 'All Project Changes',
                 branch: `${vcsFiles.length}`,
                 added: vcsAdded,
                 removed: vcsRemoved,
