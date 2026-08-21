@@ -533,22 +533,20 @@ export function ComposerFollowUpQueue({
               className="ij-air-follow-up-queue__vcs-skip"
               onClick={(event) => {
                 event.stopPropagation();
+                vcsTab.onDismissForever?.();
+              }}
+            >
+              Don't show again
+            </button>
+            <button
+              type="button"
+              className="ij-air-follow-up-queue__vcs-skip"
+              onClick={(event) => {
+                event.stopPropagation();
                 vcsTab.onDismiss?.();
               }}
             >
               Skip
-            </button>
-            <button
-              type="button"
-              className="ij-air-follow-up-queue__vcs-hide-forever"
-              title="Don't show again"
-              aria-label="Don't show again"
-              onClick={(event) => {
-                event.stopPropagation();
-                vcsTab.onDismissForever?.();
-              }}
-            >
-              <Icon name="general/hide" size={14} />
             </button>
             <button
               type="button"

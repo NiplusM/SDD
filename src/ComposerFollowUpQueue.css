@@ -83,12 +83,15 @@
   margin-right: 4px;
 }
 
+/* Shared by both text actions in this row — "Don't show again" (permanent)
+   and "Skip" (temporary, reappears on new changes). Same look for both:
+   they're peers, neither is a sub-option of the other. */
 .ij-air-follow-up-queue__vcs-skip {
   display: inline-flex;
   height: 24px;
   align-items: center;
   flex: 0 0 auto;
-  padding: 0 4px 0 8px;
+  padding: 0 8px;
   border: 0;
   background: transparent;
   color: #9fa2a8;
@@ -101,31 +104,6 @@
 .ij-air-follow-up-queue__vcs-skip:hover {
   color: #ced0d6;
   text-decoration-color: currentColor;
-}
-
-/* Standalone peer to Skip, not a sub-option of it — Skip is "wait for new
-   changes", this is "turn the tab off for good", two different kinds of
-   action rather than one being secondary to the other. */
-.ij-air-follow-up-queue__vcs-hide-forever {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #9fa2a8;
-  cursor: pointer;
-}
-
-.ij-air-follow-up-queue__vcs-hide-forever:hover,
-.ij-air-follow-up-queue__vcs-hide-forever:focus-visible {
-  border-radius: 4px;
-  background: rgb(255 255 255 / 8%);
-  color: #ced0d6;
-  outline: none;
 }
 
 .ij-air-follow-up-queue__vcs-counts {
