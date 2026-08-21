@@ -202,106 +202,6 @@ function QueueItemMoreMenu({ item, isOpen, onToggle, onDeleteItem }) {
   );
 }
 
-const VCS_SKIP_MENU_WIDTH = 200;
-
-// A second, permanent option next to Skip's own temporary dismiss (Skip
-// reappears once new changes land — see vcsSummaryDismissedAtCount in
-// App.jsx). Same trigger/portal/outside-click-close shape as
-// QueueItemMoreMenu above, just a single static item instead of a list —
-// this is the one other real dropdown in this file, not a new pattern.
-function VcsSkipMoreMenu({ onDismissForever }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const buttonRef = useRef(null);
-  const menuRef = useRef(null);
-  const [pos, setPos] = useState(null);
-
-  useLayoutEffect(() => {
-    if (!isOpen || !buttonRef.current) {
-      setPos(null);
-      return;
-    }
-
-    const rect = buttonRef.current.getBoundingClientRect();
-    const menuHeight = menuRef.current?.getBoundingClientRect().height ?? 0;
-    const gap = 4;
-    const estimatedHeight = menuHeight || 48;
-    let top = rect.bottom + gap;
-
-    if (top + estimatedHeight > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - gap - estimatedHeight);
-    }
-
-    let left = rect.right - VCS_SKIP_MENU_WIDTH;
-    if (left < 8) left = 8;
-
-    setPos({ top, left });
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-
-    const handleMouseDown = (event) => {
-      if (
-        buttonRef.current?.contains(event.target)
-        || menuRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setIsOpen(false);
-    };
-
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [isOpen]);
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`ij-air-follow-up-queue__vcs-skip-more${isOpen ? ' open' : ''}`}
-        aria-label="More dismiss options"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={(event) => {
-          event.stopPropagation();
-          setIsOpen((prev) => !prev);
-        }}
-      >
-        <Icon name="general/chevronDown" size={12} />
-      </button>
-      {isOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          ref={menuRef}
-          className="ij-air-follow-up-queue__menu-wrap"
-          style={{
-            position: 'fixed',
-            top: pos?.top ?? -9999,
-            left: pos?.left ?? 0,
-            visibility: pos ? 'visible' : 'hidden',
-          }}
-        >
-          <Popup
-            visible
-            className="ij-air-follow-up-queue__menu"
-            style={{ position: 'static', width: VCS_SKIP_MENU_WIDTH }}
-          >
-            <PopupCell
-              icon="general/hideToolWindow"
-              onClick={() => {
-                setIsOpen(false);
-                onDismissForever?.();
-              }}
-            >
-              Don't show again
-            </PopupCell>
-          </Popup>
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
 
 function QueueItemRow({
   item,
@@ -628,19 +528,28 @@ export function ComposerFollowUpQueue({
         </span>
         {resolvedActiveTab === 'vcs' && vcsTab && (
           <span className="ij-air-follow-up-queue__vcs-actions">
-            <span className="ij-air-follow-up-queue__vcs-skip-group">
-              <button
-                type="button"
-                className="ij-air-follow-up-queue__vcs-skip"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  vcsTab.onDismiss?.();
-                }}
-              >
-                Skip
-              </button>
-              <VcsSkipMoreMenu onDismissForever={vcsTab.onDismissForever} />
-            </span>
+            <button
+              type="button"
+              className="ij-air-follow-up-queue__vcs-skip"
+              onClick={(event) => {
+                event.stopPropagation();
+                vcsTab.onDismiss?.();
+              }}
+            >
+              Skip
+            </button>
+            <button
+              type="button"
+              className="ij-air-follow-up-queue__vcs-hide-forever"
+              title="Don't show again"
+              aria-label="Don't show again"
+              onClick={(event) => {
+                event.stopPropagation();
+                vcsTab.onDismissForever?.();
+              }}
+            >
+              <Icon name="general/hide" size={14} />
+            </button>
             <button
               type="button"
               className="ij-air-follow-up-queue__vcs-counts"

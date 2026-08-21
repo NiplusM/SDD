@@ -83,21 +83,12 @@
   margin-right: 4px;
 }
 
-.ij-air-follow-up-queue__vcs-skip-group {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-}
-
 .ij-air-follow-up-queue__vcs-skip {
   display: inline-flex;
   height: 24px;
   align-items: center;
   flex: 0 0 auto;
-  /* Asymmetric on purpose — less padding on the side facing the "more
-     dismiss options" trigger right after it, so the two read as one
-     group instead of floating apart. */
-  padding: 0 2px 0 8px;
+  padding: 0 4px 0 8px;
   border: 0;
   background: transparent;
   color: #9fa2a8;
@@ -107,9 +98,17 @@
   text-decoration-color: transparent;
 }
 
-.ij-air-follow-up-queue__vcs-skip-more {
+.ij-air-follow-up-queue__vcs-skip:hover {
+  color: #ced0d6;
+  text-decoration-color: currentColor;
+}
+
+/* Standalone peer to Skip, not a sub-option of it — Skip is "wait for new
+   changes", this is "turn the tab off for good", two different kinds of
+   action rather than one being secondary to the other. */
+.ij-air-follow-up-queue__vcs-hide-forever {
   display: inline-flex;
-  width: 20px;
+  width: 24px;
   height: 24px;
   align-items: center;
   justify-content: center;
@@ -121,18 +120,12 @@
   cursor: pointer;
 }
 
-.ij-air-follow-up-queue__vcs-skip-more:hover,
-.ij-air-follow-up-queue__vcs-skip-more:focus-visible,
-.ij-air-follow-up-queue__vcs-skip-more.open {
+.ij-air-follow-up-queue__vcs-hide-forever:hover,
+.ij-air-follow-up-queue__vcs-hide-forever:focus-visible {
   border-radius: 4px;
   background: rgb(255 255 255 / 8%);
   color: #ced0d6;
   outline: none;
-}
-
-.ij-air-follow-up-queue__vcs-skip:hover {
-  color: #ced0d6;
-  text-decoration-color: currentColor;
 }
 
 .ij-air-follow-up-queue__vcs-counts {
