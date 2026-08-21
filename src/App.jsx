@@ -19472,6 +19472,11 @@ function AiChatTabView({
   const handledReviewFeedbackRequestRef = useRef(0);
   const [queuedFollowUps, setQueuedFollowUps] = useState([]);
   const [processedReviewScopeFileCount, setProcessedReviewScopeFileCount] = useState(0);
+  // Accumulates on top of the scenario's baseline All Project Changes totals
+  // every time a plain file-edit run finishes, so that count (and the Last
+  // Run tab's own total) reads as a new, growing amount each send instead of
+  // the exact same static numbers replaying every time.
+  const [vcsRunExtraCounts, setVcsRunExtraCounts] = useState({ added: 0, removed: 0 });
   const queuedFollowUpIdRef = useRef(0);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
@@ -19520,6 +19525,20 @@ function AiChatTabView({
       onSendMessage?.(chatId, next.text, [], { contentParts: [{ id: 'live-text', type: 'text', text: next.text }] });
     }, 0);
   }, [isAgentRunProcessing, chatId, onSendMessage]);
+  const wasFileEditRunProcessingRef = useRef(false);
+  useEffect(() => {
+    const wasProcessing = wasFileEditRunProcessingRef.current;
+    const isFileEditRun = isAgentRunProcessing && agentRun?.kind === 'file-edit';
+    wasFileEditRunProcessingRef.current = isFileEditRun;
+    if (isFileEditRun || !wasProcessing) return;
+    // Draw a fresh increment on top of the running total each time a plain
+    // file-edit run finishes, so "All Project Changes" grows with every
+    // send instead of showing the exact same static baseline forever.
+    setVcsRunExtraCounts((current) => ({
+      added: current.added + Math.floor(Math.random() * 20) + 5,
+      removed: current.removed + Math.floor(Math.random() * 8),
+    }));
+  }, [isAgentRunProcessing, agentRun?.kind]);
   const reviewScopeQueueFiles = Array.isArray(agentRun?.files) ? agentRun.files : [];
   const reviewScopeQueueSignature = reviewScopeQueueFiles
     .map((file) => `${file.id}:${file.sourceLabel}`)
@@ -20424,8 +20443,13 @@ function AiChatTabView({
         )}
         {(() => {
           const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
-          const { added: vcsAdded, removed: vcsRemoved } = getAllProjectChangesLineCounts(scenario);
+          const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
+          const vcsAdded = vcsBaseAdded + vcsRunExtraCounts.added;
+          const vcsRemoved = vcsBaseRemoved + vcsRunExtraCounts.removed;
           const vcsFiles = getAllProjectChangesFiles(scenario);
+          // Hidden until the chat's second send — a brand-new chat shouldn't
+          // open straight into a project-wide changes summary.
+          const showVcsTab = !vcsSummaryDismissed && (agentRun?.iteration ?? 0) >= 2;
           const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
             (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
           );
@@ -20442,7 +20466,7 @@ function AiChatTabView({
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
               } : null}
-              vcsTab={vcsSummaryDismissed ? null : {
+              vcsTab={!showVcsTab ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
                 label: 'All Project Changes',
@@ -31861,8 +31885,15 @@ export default function App() {
     // it can be handed straight to ChatEditedFilesCard once the run finishes
     // (see finishRun below) — mapped separately into the queue's
     // {id, sourceLabel, openTarget} shape for the composer's live "Files" tab.
+    // Each send draws fresh +added/-removed counts per file (rather than
+    // reusing the same static demo numbers every time) so repeated sends in
+    // this scenario don't look like the exact same run playing on a loop.
     const plainRunChangeCards = isPlainChatMessage
-      ? getChatChangeCards(getAiChatScenarioById(targetChatId))
+      ? getChatChangeCards(getAiChatScenarioById(targetChatId)).map((card) => ({
+          ...card,
+          added: card.added ? `+${Math.floor(Math.random() * 25) + 1}` : card.added,
+          removed: card.removed ? `-${Math.floor(Math.random() * 10) + 1}` : card.removed,
+        }))
       : [];
     const plainRunFiles = plainRunChangeCards.map((card) => ({
       id: card.id ?? card.name,
