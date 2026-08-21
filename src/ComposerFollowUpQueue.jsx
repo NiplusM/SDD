@@ -6,6 +6,10 @@ import './ComposerFollowUpQueue.css';
 
 const QUEUE_ITEM_MENU_WIDTH = 231;
 const QUEUE_BODY_MAX_HEIGHT = 176;
+// All Project Changes can grow arbitrarily long (every session's files plus
+// unassigned commit changes) — cap it to 5 rows' worth so it never crowds
+// out the composer beneath it; anything past that scrolls.
+const VCS_BODY_MAX_HEIGHT = 5 * 24;
 
 const QUEUE_ITEM_MENU_ITEMS = [
   { id: 'edit', label: 'Edit Message', icon: 'general/edit' },
@@ -299,7 +303,8 @@ export function ComposerFollowUpQueue({
       return;
     }
     const measured = bodyContentRef.current?.scrollHeight ?? 0;
-    setBodyHeight(Math.min(measured, QUEUE_BODY_MAX_HEIGHT));
+    const maxHeight = resolvedActiveTab === 'vcs' ? VCS_BODY_MAX_HEIGHT : QUEUE_BODY_MAX_HEIGHT;
+    setBodyHeight(Math.min(measured, maxHeight));
   }, [collapsed, resolvedActiveTab, items, scopeItems, filesTab, vcsTab, openMenuItemId, draggingId, dragOverId]);
 
   const applyCollapsed = (next) => {
