@@ -19380,7 +19380,12 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   queuedFollowUps: [],
   isDrainPending: false,
   processedReviewScopeFileCount: 0,
-  vcsSummaryDismissed: false,
+  // Snapshot of completedFileEditRunCount at the moment Skip was last
+  // clicked, not a plain boolean — so dismissing is only ever temporary:
+  // the All Changes tab reappears as soon as a run finishes *after* that
+  // snapshot, i.e. as soon as there are new changes it hasn't shown yet.
+  // -1 (never dismissed) so it's satisfied by the very first completed run.
+  vcsSummaryDismissedAtCount: -1,
   completedFileEditRunCount: 0,
   vcsRunExtraCounts: { added: 0, removed: 0 },
 };
@@ -19504,7 +19509,7 @@ function AiChatTabView({
     queuedFollowUps,
     isDrainPending,
     processedReviewScopeFileCount,
-    vcsSummaryDismissed,
+    vcsSummaryDismissedAtCount,
     completedFileEditRunCount,
     vcsRunExtraCounts,
   } = resolvedComposerState;
@@ -19546,16 +19551,16 @@ function AiChatTabView({
       vcsRunExtraCounts: typeof updater === 'function' ? updater(current.vcsRunExtraCounts) : updater,
     }));
   }, [updateComposerState]);
-  // All Project Changes shouldn't appear the instant the 2nd send starts —
-  // only once that run has actually finished, same as the count above.
+  // All Changes shouldn't appear the instant the 1st send starts — only
+  // once that run has actually finished, same as the count above.
   const setCompletedFileEditRunCount = useCallback((updater) => {
     updateComposerState((current) => ({
       completedFileEditRunCount: typeof updater === 'function' ? updater(current.completedFileEditRunCount) : updater,
     }));
   }, [updateComposerState]);
-  const setVcsSummaryDismissed = useCallback((updater) => {
+  const setVcsSummaryDismissedAtCount = useCallback((updater) => {
     updateComposerState((current) => ({
-      vcsSummaryDismissed: typeof updater === 'function' ? updater(current.vcsSummaryDismissed) : updater,
+      vcsSummaryDismissedAtCount: typeof updater === 'function' ? updater(current.vcsSummaryDismissedAtCount) : updater,
     }));
   }, [updateComposerState]);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
@@ -20563,10 +20568,13 @@ function AiChatTabView({
           const vcsAdded = vcsBaseAdded + vcsRunExtraCounts.added;
           const vcsRemoved = vcsBaseRemoved + vcsRunExtraCounts.removed;
           const vcsFiles = getAllProjectChangesFiles(scenario);
-          // Hidden until the chat's second run has actually finished — not
-          // just started — so a brand-new chat doesn't open straight into a
-          // project-wide changes summary, and it doesn't pop in mid-run.
-          const showVcsTab = !vcsSummaryDismissed && completedFileEditRunCount >= 2;
+          // Hidden in a new/just-opened chat — absent until the first run has
+          // actually finished (not just started), so it doesn't pop in
+          // mid-run. Dismissing via Skip is only ever temporary: comparing
+          // against the count at the moment of dismissal means it reappears
+          // as soon as a later run adds changes it hasn't shown yet, rather
+          // than staying hidden forever.
+          const showVcsTab = completedFileEditRunCount >= 1 && completedFileEditRunCount > vcsSummaryDismissedAtCount;
           // Only count files that have actually appeared so far, so the
           // aggregate grows in step with the list below it instead of
           // showing the eventual total immediately.
@@ -20598,7 +20606,7 @@ function AiChatTabView({
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
                 onRunReview: () => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest)),
                 reviewDisabled: isAgentRunProcessing,
-                onDismiss: () => setVcsSummaryDismissed(true),
+                onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}
