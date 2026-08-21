@@ -352,6 +352,20 @@ export function ComposerFollowUpQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
 
+  // The queue tab is the one exception to "new tabs never steal anything":
+  // a follow-up only gets queued because a run was already busy, so its
+  // arrival forces the panel open (but doesn't switch the active tab —
+  // whatever's already showing stays showing) so the user actually sees
+  // what just got queued instead of it landing behind a collapsed pill.
+  const hadQueueTabRef = useRef(hasQueueTab);
+  useEffect(() => {
+    if (hasQueueTab && !hadQueueTabRef.current) {
+      applyCollapsed(false);
+    }
+    hadQueueTabRef.current = hasQueueTab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasQueueTab]);
+
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
     if (!dragState) return;
