@@ -19477,6 +19477,9 @@ function AiChatTabView({
   // Run tab's own total) reads as a new, growing amount each send instead of
   // the exact same static numbers replaying every time.
   const [vcsRunExtraCounts, setVcsRunExtraCounts] = useState({ added: 0, removed: 0 });
+  // All Project Changes shouldn't appear the instant the 2nd send starts —
+  // only once that run has actually finished, same as the count above.
+  const [completedFileEditRunCount, setCompletedFileEditRunCount] = useState(0);
   const queuedFollowUpIdRef = useRef(0);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
@@ -19538,6 +19541,7 @@ function AiChatTabView({
       added: current.added + Math.floor(Math.random() * 20) + 5,
       removed: current.removed + Math.floor(Math.random() * 8),
     }));
+    setCompletedFileEditRunCount((count) => count + 1);
   }, [isAgentRunProcessing, agentRun?.kind]);
   const reviewScopeQueueFiles = Array.isArray(agentRun?.files) ? agentRun.files : [];
   const reviewScopeQueueSignature = reviewScopeQueueFiles
@@ -20447,9 +20451,10 @@ function AiChatTabView({
           const vcsAdded = vcsBaseAdded + vcsRunExtraCounts.added;
           const vcsRemoved = vcsBaseRemoved + vcsRunExtraCounts.removed;
           const vcsFiles = getAllProjectChangesFiles(scenario);
-          // Hidden until the chat's second send — a brand-new chat shouldn't
-          // open straight into a project-wide changes summary.
-          const showVcsTab = !vcsSummaryDismissed && (agentRun?.iteration ?? 0) >= 2;
+          // Hidden until the chat's second run has actually finished — not
+          // just started — so a brand-new chat doesn't open straight into a
+          // project-wide changes summary, and it doesn't pop in mid-run.
+          const showVcsTab = !vcsSummaryDismissed && completedFileEditRunCount >= 2;
           const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
             (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
           );
