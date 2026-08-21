@@ -103,6 +103,41 @@
   text-decoration-color: currentColor;
 }
 
+/* Mirrors the Done card's own header actions (revert/group icons + Review
+   pill) so the "Last Run" tab reads as the same affordance mid-run, before
+   it hands off to the actual Done card. */
+.ij-air-follow-up-queue__files-decor-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: #9298A1;
+}
+
+.ij-air-follow-up-queue__files-review-pill {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid #45484f;
+  border-radius: 4px;
+  color: #ced0d6;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.ij-air-follow-up-queue__files-review-pill:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ij-air-follow-up-queue__files-review-pill:disabled {
+  color: #6E7178;
+  cursor: default;
+}
+
 .ij-air-follow-up-queue__vcs-counts {
   display: inline-flex;
   flex: 0 0 auto;
