@@ -13938,15 +13938,15 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 }
 
 
-/* "Last Turn" label for a live turn's card — takes the status row's own
-   headline slot (in place of the plain file-count text), with the file
-   count demoted to its own gray label right after it instead. */
-.ai-chat-changed-files-caption-label {
+/* Live turn's status row: bold file count, then a gray " · Since last
+   turn" suffix right after it (no leading space of its own — the " · "
+   is baked into the string so there's no double-gap if caption is empty). */
+.ai-chat-changed-files-count {
   color: #D1D3D9;
   font-weight: 600;
 }
 
-.ai-chat-changed-files-caption-count {
+.ai-chat-changed-files-since {
   color: #7F838D;
 }
 
@@ -13956,7 +13956,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   justify-content: space-between;
   gap: 12px;
   /* Matches .ai-chat-changed-files-row's own horizontal padding below, so
-     the header's left edge (checkmark or "Last Turn") lines up with the
+     the header's left edge (checkmark or file count) lines up with the
      file rows' names instead of sitting further left than they do. */
   padding: 0 8px;
 }
@@ -14035,6 +14035,10 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .ai-chat-changed-files-row:focus-visible {
   outline: 2px solid var(--control-focus-border-brand);
+}
+
+.ai-chat-changed-files-icon {
+  flex: 0 0 auto;
 }
 
 .ai-chat-changed-files-name {
@@ -14157,27 +14161,24 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   color: #9298A1;
 }
 
-.ai-chat-edited-files-review-pill {
+/* Plain text action, not a bordered pill — matches the revert/group icons
+   right next to it, which are also borderless. */
+.ai-chat-edited-files-review-link {
   all: unset;
-  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 10px;
-  border: 1px solid #43454A;
-  border-radius: 4px;
   color: #D1D3D9;
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 20px;
   cursor: pointer;
 }
 
-.ai-chat-edited-files-review-pill:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
+.ai-chat-edited-files-review-link:hover:not(:disabled) {
+  color: #FFFFFF;
 }
 
-.ai-chat-edited-files-review-pill:disabled {
+.ai-chat-edited-files-review-link:disabled {
   color: #6E7178;
   cursor: default;
 }

@@ -16824,6 +16824,12 @@ function applyAiNoteResolutionToSpecCommentEntries(commentEntries = []) {
 function agentRunFileIconName(fileName = '') {
   const lower = fileName.toLowerCase();
   if (lower.endsWith('.java')) return 'fileTypes/java';
+  if (lower.endsWith('.kt')) {
+    // Interface naming convention (IOrderRepository) gets the interface
+    // node icon; every other Kotlin file reads as a plain class.
+    const base = fileName.slice(0, -3);
+    return /^I[A-Z]/.test(base) ? 'nodes/interface' : 'nodes/class';
+  }
   if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'fileTypes/html';
   return 'fileTypes/text';
 }
@@ -20464,7 +20470,7 @@ function AiChatTabView({
               </article>
               <ChatEditedFilesCard
                 className="ai-chat-edited-files-card--live-entrance"
-                caption="Last Turn"
+                caption="Since last turn"
                 files={message.editedFiles}
                 onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
                 onOpenReview={onOpenDiffTab ? () => {
@@ -21397,11 +21403,10 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // files changed" header (decorative revert/tree icons plus a functional
 // "Review" pill that reviews this turn's diff), then the file rows below,
 // collapsing past EDITED_FILES_CARD_VISIBLE_LIMIT behind a "Show N more" row.
-// A live turn's card takes an optional `caption` ("Last Turn") that
-// replaces the plain white file-count label in the status row with the
-// caption itself (bold), pushing the file count out to its own gray label
-// right next to it — the green checkmark icon steps aside too, so the
-// caption sits flush with the left edge instead of indented past it.
+// A live turn's card takes an optional `caption` ("Since last turn") that
+// renders as a gray suffix after the (now bold/primary) file-count text,
+// separated by a middle dot — the green checkmark icon steps aside too, so
+// the count sits flush with the left edge instead of indented past it.
 // Scenarios that instead report a "Worked for" duration have no caption
 // prop and keep the plain file-count label plus the checkmark, since we
 // have no "since last turn" concept to put there for those.
@@ -21423,10 +21428,10 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
           )}
           {caption ? (
             <>
-              <span className="ai-chat-changed-files-caption-label">{caption}</span>
-              <span className="ai-chat-changed-files-caption-count">
+              <span className="ai-chat-changed-files-count">
                 {`${files.length} file${files.length === 1 ? '' : 's'} changed`}
               </span>
+              <span className="ai-chat-changed-files-since">{` · ${caption}`}</span>
             </>
           ) : (
             <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
@@ -21436,12 +21441,12 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">
             <Icon name="vcs/revert" size={16} />
           </span>
-          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Group files">
-            <Icon name="general/groups" size={16} />
+          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Group by package">
+            <Icon name="actions/groupByPackage" size={16} />
           </span>
           <button
             type="button"
-            className="ai-chat-edited-files-review-pill"
+            className="ai-chat-edited-files-review-link"
             onClick={onOpenReview ?? undefined}
             disabled={!onOpenReview}
           >
@@ -21461,6 +21466,7 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
               onClick={openFile ?? undefined}
               disabled={!openFile}
             >
+              <Icon className="ai-chat-changed-files-icon" name={agentRunFileIconName(file.name)} size={16} />
               <span className="ai-chat-changed-files-name">{file.name}</span>
               <span className="ai-chat-changed-files-counters">
                 {file.added ? <span className="ai-chat-changed-files-add">{file.added}</span> : null}
