@@ -536,7 +536,7 @@ export function ComposerFollowUpQueue({
                 vcsTab.onDismissForever?.();
               }}
             >
-              Don't show
+              Don't ask
             </button>
             <button
               type="button"
