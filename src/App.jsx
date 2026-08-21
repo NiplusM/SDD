@@ -20378,6 +20378,7 @@ function AiChatTabView({
                   </ul>
                 )}
               </article>
+              <div className="ai-chat-edited-files-worked-for">Last Run</div>
               <ChatEditedFilesCard
                 className="ai-chat-edited-files-card--live-entrance"
                 files={message.editedFiles}
