@@ -356,8 +356,10 @@ export function ComposerFollowUpQueue({
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
     if (hasFilesTab && !hadFilesTabRef.current) {
+      // Selected so it's what the user sees first if they do expand the
+      // pill, but collapsed by default — unlike the queue tab, this one
+      // isn't urgent enough to demand attention on its own.
       setActiveTab('files');
-      applyCollapsed(false);
     } else if (!hasFilesTab && hadFilesTabRef.current) {
       applyCollapsed(true);
     }

@@ -20455,10 +20455,14 @@ function AiChatTabView({
           // just started — so a brand-new chat doesn't open straight into a
           // project-wide changes summary, and it doesn't pop in mid-run.
           const showVcsTab = !vcsSummaryDismissed && completedFileEditRunCount >= 2;
-          const filesTabAddedTotal = reviewScopeQueueFiles.reduce(
+          // Only count files that have actually appeared so far, so the
+          // aggregate grows in step with the list below it instead of
+          // showing the eventual total immediately.
+          const revealedFilesTabFiles = reviewScopeQueueFiles.slice(0, processedReviewScopeFileCount);
+          const filesTabAddedTotal = revealedFilesTabFiles.reduce(
             (sum, file) => sum + getChatChangedFileLineCount(file.added), 0,
           );
-          const filesTabRemovedTotal = reviewScopeQueueFiles.reduce(
+          const filesTabRemovedTotal = revealedFilesTabFiles.reduce(
             (sum, file) => sum + getChatChangedFileLineCount(file.removed), 0,
           );
           return (
@@ -20466,7 +20470,7 @@ function AiChatTabView({
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
               filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
-                label: agentRun?.kind === 'review' ? 'AI Review' : 'Last Run',
+                label: agentRun?.kind === 'review' ? 'AI Review' : 'Current Changes',
                 variant: agentRun?.kind === 'review' ? 'review' : 'edit',
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
