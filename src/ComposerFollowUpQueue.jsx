@@ -329,44 +329,19 @@ export function ComposerFollowUpQueue({
     if (!itemStillExists) setOpenMenuItemId(null);
   }, [items, openMenuItemId]);
 
-  // Promotion behavior for files-in-progress — runs before the queue's own
-  // effect below so queue wins the active tab if both appear in the same
-  // tick (it outranks files in tabOrder too). The moment the run finishes
-  // and the files tab disappears, collapse right back down instead of
-  // leaving the panel sitting open on whatever tab is left (typically an
-  // unrelated, already-stale VCS summary) — the Done card is what should
-  // draw the eye next, not a lingering expanded panel above it. But if a
-  // follow-up got queued while this run was still going, the queue tab
-  // already claimed "active" and it must stay that way — don't yank the
-  // panel closed out from under it just because the run it was queued
-  // behind finished.
+  // New tabs never steal the active selection — they just take their slot
+  // in the strip and whatever tab you're already looking at stays put.
+  // The files tab still auto-collapses the panel once it disappears (and
+  // nothing else, i.e. no queue, needs it open) so a finished run doesn't
+  // leave an empty-feeling panel sitting open.
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
-    if (hasFilesTab && !hadFilesTabRef.current) {
-      // Selected so it's what the user sees first if they do expand the
-      // pill, but collapsed by default — unlike the queue tab, this one
-      // isn't urgent enough to demand attention on its own.
-      setActiveTab('files');
-    } else if (!hasFilesTab && hadFilesTabRef.current && !hasQueueTab) {
+    if (!hasFilesTab && hadFilesTabRef.current && !hasQueueTab) {
       applyCollapsed(true);
     }
     hadFilesTabRef.current = hasFilesTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
-
-  // As soon as the queue has something to show, bring it to the front tab
-  // and reveal it — it's the most urgent surface (a direct action the user
-  // just took), so it wins over files/VCS if it appears in the same tick as
-  // either of them.
-  const hadQueueContentRef = useRef(hasQueueTab);
-  useEffect(() => {
-    if (hasQueueTab && !hadQueueContentRef.current) {
-      setActiveTab('queue');
-      applyCollapsed(false);
-    }
-    hadQueueContentRef.current = hasQueueTab;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasQueueTab]);
 
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
