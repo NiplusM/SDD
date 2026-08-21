@@ -13938,6 +13938,17 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 }
 
 
+/* "Last Run" label for a live turn's card — sits inside the border, above
+   the status header, unlike the "Worked for" caption (which has no home
+   inside the card and renders above it instead). */
+.ai-chat-changed-files-caption {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  color: #7F838D;
+  font-size: 13px;
+  line-height: 16px;
+}
+
 .ai-chat-changed-files-header {
   display: flex;
   align-items: center;

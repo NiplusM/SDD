@@ -20397,9 +20397,9 @@ function AiChatTabView({
                   </ul>
                 )}
               </article>
-              <div className="ai-chat-edited-files-worked-for">Last Run</div>
               <ChatEditedFilesCard
                 className="ai-chat-edited-files-card--live-entrance"
+                caption="Last Run"
                 files={message.editedFiles}
                 onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
                 onOpenReview={onOpenDiffTab ? () => {
@@ -21315,10 +21315,12 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // files changed" header (decorative revert/tree icons plus a functional
 // "Review" pill that reviews this turn's diff), then the file rows below,
 // collapsing past EDITED_FILES_CARD_VISIBLE_LIMIT behind a "Show N more" row.
-// Used for scenarios that report a "Worked for" duration — that caption
-// renders above this card (see the call site), not inside its header, since
-// we have no "since last turn" concept to put there instead.
-function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '' }) {
+// A live turn's card takes an optional `caption` ("Last Run") that renders
+// as its own row inside the border, above the status header — scenarios
+// that instead report a "Worked for" duration render that caption above
+// this card at the call site (no caption prop), since we have no "since
+// last turn" concept to put inside this card for those.
+function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '', caption = null }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
 
@@ -21327,6 +21329,7 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
 
   return (
     <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
+      {caption ? <div className="ai-chat-changed-files-caption">{caption}</div> : null}
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
           <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
