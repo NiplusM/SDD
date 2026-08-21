@@ -20410,6 +20410,23 @@ function AiChatTabView({
                 } : null}
               />
             </div>
+          ) : message.role === 'assistant' && message.streaming && agentRun?.kind !== 'review' && message.text ? (
+            // The reply is already being typed out chunk-by-chunk behind the
+            // scenes (see streamNextChunk) — show it growing live instead of
+            // masking that behind "Thinking…" the whole time. Files/the Done
+            // card still only land once the run actually finishes; this is
+            // just the streamed text itself.
+            <article key={message.id} className="aiux543-answer">
+              <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                <span className="ai-chat-streaming-caret" aria-hidden="true" />
+              </p>
+            </article>
           ) : message.role === 'assistant' && message.streaming ? (
             <div key={message.id} className="aiux550-review-running" role="status" aria-label="Agent running">
               <AiChatProgressIcon />
