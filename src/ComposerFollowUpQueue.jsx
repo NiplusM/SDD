@@ -68,13 +68,13 @@ function ReviewScopeQueueRow({ item }) {
 // their final change counts; there's no separate "processing" state to show.
 function EditedFileQueueRow({ item }) {
   return (
-    <li className="ij-air-follow-up-queue__edited-item">
+    <div className="ij-air-follow-up-queue__edited-item">
       <span className="ij-air-follow-up-queue__edited-item-text">{item.text}</span>
       <span className="ij-air-follow-up-queue__files-counts">
         {item.added ? <span className="is-added">{item.added}</span> : null}
         {item.removed ? <span className="is-removed">{item.removed}</span> : null}
       </span>
-    </li>
+    </div>
   );
 }
 
@@ -561,16 +561,21 @@ export function ComposerFollowUpQueue({
                 <VcsSummaryFileRow key={file.tabId} file={file} onOpenFile={vcsTab.onOpenFile} />
               ))}
             </div>
+          ) : resolvedActiveTab === 'files' && filesTab?.variant === 'edit' ? (
+            // Same row metrics and gap as the All Changes tab's file list
+            // (.ij-air-follow-up-queue__vcs-files) so the two blocks read
+            // as one consistent rhythm.
+            <div className="ij-air-follow-up-queue__vcs-files">
+              {/* Not-yet-revealed files aren't rendered as placeholders —
+                  they simply aren't in the list yet, so the list grows as
+                  each one materializes with its final change count. */}
+              {scopeItems
+                .filter((item) => item.status !== 'queued')
+                .map((item) => <EditedFileQueueRow key={item.id} item={item} />)}
+            </div>
           ) : resolvedActiveTab === 'files' ? (
             <ul className="ij-air-follow-up-queue__list">
-              {filesTab?.variant === 'edit'
-                // Not-yet-revealed files aren't rendered as placeholders —
-                // they simply aren't in the list yet, so the list grows as
-                // each one materializes with its final change count.
-                ? scopeItems
-                    .filter((item) => item.status !== 'queued')
-                    .map((item) => <EditedFileQueueRow key={item.id} item={item} />)
-                : scopeItems.map((item) => <ReviewScopeQueueRow key={item.id} item={item} />)}
+              {scopeItems.map((item) => <ReviewScopeQueueRow key={item.id} item={item} />)}
             </ul>
           ) : (
             <ul className="ij-air-follow-up-queue__list">

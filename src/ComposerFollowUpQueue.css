@@ -310,11 +310,12 @@
    text and shows its change counts inline (mirrors the VCS file row). */
 .ij-air-follow-up-queue__edited-item {
   display: flex;
-  min-height: 30px;
+  height: 24px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  padding: 3px 6px;
+  gap: 6px;
+  width: 100%;
+  padding: 0 4px;
   color: #ced0d6;
 }
 
