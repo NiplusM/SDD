@@ -83,15 +83,21 @@
   margin-right: 4px;
 }
 
+.ij-air-follow-up-queue__vcs-skip-group {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .ij-air-follow-up-queue__vcs-skip {
   display: inline-flex;
   height: 24px;
   align-items: center;
   flex: 0 0 auto;
-  /* Asymmetric on purpose — less padding on the side facing the counts
-     pill, so "Skip" sits a bit closer to it instead of floating in the
-     middle of a wide gap. */
-  padding: 0 4px 0 8px;
+  /* Asymmetric on purpose — less padding on the side facing the "more
+     dismiss options" trigger right after it, so the two read as one
+     group instead of floating apart. */
+  padding: 0 2px 0 8px;
   border: 0;
   background: transparent;
   color: #9fa2a8;
@@ -99,6 +105,29 @@
   font: 500 12px/16px Inter, system-ui, sans-serif;
   text-decoration: underline;
   text-decoration-color: transparent;
+}
+
+.ij-air-follow-up-queue__vcs-skip-more {
+  display: inline-flex;
+  width: 20px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9fa2a8;
+  cursor: pointer;
+}
+
+.ij-air-follow-up-queue__vcs-skip-more:hover,
+.ij-air-follow-up-queue__vcs-skip-more:focus-visible,
+.ij-air-follow-up-queue__vcs-skip-more.open {
+  border-radius: 4px;
+  background: rgb(255 255 255 / 8%);
+  color: #ced0d6;
+  outline: none;
 }
 
 .ij-air-follow-up-queue__vcs-skip:hover {

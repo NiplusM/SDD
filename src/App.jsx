@@ -19386,6 +19386,11 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   // snapshot, i.e. as soon as there are new changes it hasn't shown yet.
   // -1 (never dismissed) so it's satisfied by the very first completed run.
   vcsSummaryDismissedAtCount: -1,
+  // Separate from the snapshot above — this one is a plain, permanent
+  // boolean. Skip alone only ever hides the tab until the next new
+  // change; picking "Don't show again" from its dropdown sets this
+  // instead, which no amount of new changes brings back.
+  vcsSummaryPermanentlyHidden: false,
   completedFileEditRunCount: 0,
   vcsRunExtraCounts: { added: 0, removed: 0 },
 };
@@ -19510,6 +19515,7 @@ function AiChatTabView({
     isDrainPending,
     processedReviewScopeFileCount,
     vcsSummaryDismissedAtCount,
+    vcsSummaryPermanentlyHidden,
     completedFileEditRunCount,
     vcsRunExtraCounts,
   } = resolvedComposerState;
@@ -19561,6 +19567,11 @@ function AiChatTabView({
   const setVcsSummaryDismissedAtCount = useCallback((updater) => {
     updateComposerState((current) => ({
       vcsSummaryDismissedAtCount: typeof updater === 'function' ? updater(current.vcsSummaryDismissedAtCount) : updater,
+    }));
+  }, [updateComposerState]);
+  const setVcsSummaryPermanentlyHidden = useCallback((updater) => {
+    updateComposerState((current) => ({
+      vcsSummaryPermanentlyHidden: typeof updater === 'function' ? updater(current.vcsSummaryPermanentlyHidden) : updater,
     }));
   }, [updateComposerState]);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
@@ -20572,9 +20583,12 @@ function AiChatTabView({
           // actually finished (not just started), so it doesn't pop in
           // mid-run. Dismissing via Skip is only ever temporary: comparing
           // against the count at the moment of dismissal means it reappears
-          // as soon as a later run adds changes it hasn't shown yet, rather
-          // than staying hidden forever.
-          const showVcsTab = completedFileEditRunCount >= 1 && completedFileEditRunCount > vcsSummaryDismissedAtCount;
+          // as soon as a later run adds changes it hasn't shown yet. The
+          // dropdown's "Don't show again" sets vcsSummaryPermanentlyHidden
+          // instead, which no amount of new changes brings back.
+          const showVcsTab = !vcsSummaryPermanentlyHidden
+            && completedFileEditRunCount >= 1
+            && completedFileEditRunCount > vcsSummaryDismissedAtCount;
           // Only count files that have actually appeared so far, so the
           // aggregate grows in step with the list below it instead of
           // showing the eventual total immediately.
@@ -20607,6 +20621,7 @@ function AiChatTabView({
                 onRunReview: () => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest)),
                 reviewDisabled: isAgentRunProcessing,
                 onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
+                onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}
