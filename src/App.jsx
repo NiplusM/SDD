@@ -21334,10 +21334,12 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // collapsing past EDITED_FILES_CARD_VISIBLE_LIMIT behind a "Show N more" row.
 // A live turn's card takes an optional `caption` ("Last Turn") that
 // replaces the plain white file-count label in the status row with the
-// caption itself, pushing the file count out to its own gray label right
-// next to it — scenarios that instead report a "Worked for" duration have
-// no caption prop and keep the plain white file-count label, since we have
-// no "since last turn" concept to put there for those.
+// caption itself (bold), pushing the file count out to its own gray label
+// right next to it — the green checkmark icon steps aside too, so the
+// caption sits flush with the left edge instead of indented past it.
+// Scenarios that instead report a "Worked for" duration have no caption
+// prop and keep the plain file-count label plus the checkmark, since we
+// have no "since last turn" concept to put there for those.
 function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '', caption = null }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
@@ -21349,9 +21351,11 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
     <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
-          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
-            <Icon name="general/checkmark" size={16} />
-          </span>
+          {caption ? null : (
+            <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
+              <Icon name="general/checkmark" size={16} />
+            </span>
+          )}
           {caption ? (
             <>
               <span className="ai-chat-changed-files-caption-label">{caption}</span>

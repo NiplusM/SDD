@@ -13943,6 +13943,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
    count demoted to its own gray label right after it instead. */
 .ai-chat-changed-files-caption-label {
   color: #D1D3D9;
+  font-weight: 600;
 }
 
 .ai-chat-changed-files-caption-count {
