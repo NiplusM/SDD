@@ -19471,6 +19471,13 @@ function AiChatTabView({
   const [reviewFeedbackMessageId, setReviewFeedbackMessageId] = useState(null);
   const handledReviewFeedbackRequestRef = useRef(0);
   const [queuedFollowUps, setQueuedFollowUps] = useState([]);
+  // Bridges the one-tick gap between a run finishing and the next queued
+  // item's run actually starting (the drain effect below pops the item and
+  // schedules its send via setTimeout, so isAgentRunProcessing is briefly
+  // false in between). Without this, the composer's files/queue tabs would
+  // flicker to empty and back on every drained item, force-collapsing the
+  // panel each time — see showQueueContent below.
+  const [isDrainPending, setIsDrainPending] = useState(false);
   const [processedReviewScopeFileCount, setProcessedReviewScopeFileCount] = useState(0);
   // Accumulates on top of the scenario's baseline All Project Changes totals
   // every time a plain file-edit run finishes, so that count (and the Last
@@ -19513,10 +19520,21 @@ function AiChatTabView({
     queuedFollowUpsRef.current = queuedFollowUps;
   }, [queuedFollowUps]);
   const wasAgentRunProcessingRef = useRef(isAgentRunProcessing);
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so isDrainPending commits in the same
+  // paint as isAgentRunProcessing flipping false — a passive useEffect here
+  // would let the browser paint the "nothing processing, nothing queued yet"
+  // in-between frame first, which briefly emptied both composer tabs at once
+  // and made the panel unmount/collapse for a frame on every drained item.
+  useLayoutEffect(() => {
     const wasProcessing = wasAgentRunProcessingRef.current;
     wasAgentRunProcessingRef.current = isAgentRunProcessing;
-    if (isAgentRunProcessing || !wasProcessing) return;
+    if (isAgentRunProcessing) {
+      // The next run (drained item or otherwise) is now actually under way —
+      // the gap isDrainPending was bridging is over.
+      if (isDrainPending) setIsDrainPending(false);
+      return;
+    }
+    if (!wasProcessing) return;
     const pending = queuedFollowUpsRef.current;
     if (pending.length === 0) return;
     // Only one run can be active per chat at a time, so drain the queue one
@@ -19524,10 +19542,11 @@ function AiChatTabView({
     // completion re-triggers this effect to send the next item.
     const [next, ...rest] = pending;
     setQueuedFollowUps(rest);
+    setIsDrainPending(true);
     window.setTimeout(() => {
       onSendMessage?.(chatId, next.text, [], { contentParts: [{ id: 'live-text', type: 'text', text: next.text }] });
     }, 0);
-  }, [isAgentRunProcessing, chatId, onSendMessage]);
+  }, [isAgentRunProcessing, chatId, onSendMessage, isDrainPending]);
   const wasFileEditRunProcessingRef = useRef(false);
   useEffect(() => {
     const wasProcessing = wasFileEditRunProcessingRef.current;
@@ -20447,7 +20466,10 @@ function AiChatTabView({
           </div>
         )}
         {(() => {
-          const showQueueContent = !isReviewDecisionReady && isAgentRunProcessing;
+          // isDrainPending bridges the one-tick gap between a run finishing
+          // and the next queued item's run starting, so the panel doesn't
+          // flicker closed and reopen between every queued item.
+          const showQueueContent = !isReviewDecisionReady && (isAgentRunProcessing || isDrainPending);
           const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
           const vcsAdded = vcsBaseAdded + vcsRunExtraCounts.added;
           const vcsRemoved = vcsBaseRemoved + vcsRunExtraCounts.removed;

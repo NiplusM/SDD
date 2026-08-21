@@ -334,12 +334,21 @@ export function ComposerFollowUpQueue({
   // The files tab still auto-collapses the panel once it disappears (and
   // nothing else, i.e. no queue, needs it open) so a finished run doesn't
   // leave an empty-feeling panel sitting open.
+  //
+  // Debounced on purpose: a run finishing and the next queued item's run
+  // starting both drive hasFilesTab/hasQueueTab through a single-commit dip
+  // to (false, false) before settling back to non-empty — collapsing right
+  // on that dip snapped the panel shut on every drained queue item even
+  // though nothing ever actually disappeared from the user's point of view.
+  // Waiting a beat and re-checking absorbs that dip; a real, sustained
+  // disappearance still collapses, just a little after the fact.
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
-    if (!hasFilesTab && hadFilesTabRef.current && !hasQueueTab) {
-      applyCollapsed(true);
-    }
+    const shouldCollapse = !hasFilesTab && hadFilesTabRef.current && !hasQueueTab;
     hadFilesTabRef.current = hasFilesTab;
+    if (!shouldCollapse) return undefined;
+    const timer = window.setTimeout(() => applyCollapsed(true), 200);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
 
