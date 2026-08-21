@@ -21329,7 +21329,14 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
 
   return (
     <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
-      {caption ? <div className="ai-chat-changed-files-caption">{caption}</div> : null}
+      {caption ? (
+        <div className="ai-chat-changed-files-caption">
+          <span className="ai-chat-changed-files-caption-label">{caption}</span>
+          <span className="ai-chat-changed-files-caption-count">
+            {`${files.length} file${files.length === 1 ? '' : 's'} changed`}
+          </span>
+        </div>
+      ) : null}
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
           <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
