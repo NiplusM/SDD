@@ -329,8 +329,11 @@ export function ComposerFollowUpQueue({
     if (!itemStillExists) setOpenMenuItemId(null);
   }, [items, openMenuItemId]);
 
-  // New tabs never steal the active selection — they just take their slot
-  // in the strip and whatever tab you're already looking at stays put.
+  // Priority order for stealing the active tab on arrival: queue > files >
+  // vcs. Queue always claims focus the instant it appears; files claims it
+  // right after (but only when queue isn't already the reason the panel is
+  // open); vcs never auto-claims — it's reachable by hand but stays third.
+  //
   // The files tab still auto-collapses the panel once it disappears (and
   // nothing else, i.e. no queue, needs it open) so a finished run doesn't
   // leave an empty-feeling panel sitting open.
@@ -352,19 +355,34 @@ export function ComposerFollowUpQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
 
-  // The queue tab is the one exception to "new tabs never steal anything":
-  // a follow-up only gets queued because a run was already busy, so its
-  // arrival forces the panel open (but doesn't switch the active tab —
-  // whatever's already showing stays showing) so the user actually sees
-  // what just got queued instead of it landing behind a collapsed pill.
+  // #1 priority: the queue tab claims focus and forces the panel open the
+  // instant it appears — a follow-up only gets queued because a run was
+  // already busy, so the user should see it land, not have it queue up
+  // behind whatever tab (or collapsed state) they happened to be on.
   const hadQueueTabRef = useRef(hasQueueTab);
   useEffect(() => {
     if (hasQueueTab && !hadQueueTabRef.current) {
+      setActiveTab('queue');
       applyCollapsed(false);
     }
     hadQueueTabRef.current = hasQueueTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasQueueTab]);
+
+  // #2 priority: files claims focus on arrival too, but only when queue
+  // isn't already the one claiming it this same tick (queue outranks it).
+  const hadFilesAppearRef = useRef(hasFilesTab);
+  useEffect(() => {
+    if (hasFilesTab && !hadFilesAppearRef.current && !hasQueueTab) {
+      setActiveTab('files');
+    }
+    hadFilesAppearRef.current = hasFilesTab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasFilesTab, hasQueueTab]);
+
+  // #3 priority: vcs (All Changes) never auto-claims focus on arrival —
+  // it's still reachable by clicking its tab, it just doesn't steal
+  // attention the way queue/files do.
 
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
