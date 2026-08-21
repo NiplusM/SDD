@@ -15629,7 +15629,7 @@ function buildChatChangedFilesScopeOptions(entries = []) {
     { id: 'session-changes', label: 'Session Changes', section: 'session', files: chatFiles },
     {
       id: 'all-project-changes',
-      label: 'All Project Changes',
+      label: 'All Changes',
       section: 'project',
       files: [...chatFiles, ...commitFiles],
     },
@@ -20474,7 +20474,7 @@ function AiChatTabView({
               vcsTab={!showVcsTab ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
-                label: 'All Project Changes',
+                label: 'All Changes',
                 branch: `${vcsFiles.length}`,
                 added: vcsAdded,
                 removed: vcsRemoved,

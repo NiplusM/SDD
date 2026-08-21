@@ -633,7 +633,7 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
 const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
   { id: 'last-turn', label: 'Last Turn', section: 'session' },
   { id: 'session-changes', label: 'Session Changes', section: 'session' },
-  { id: 'all-project-changes', label: 'All Project Changes', section: 'project' },
+  { id: 'all-project-changes', label: 'All Changes', section: 'project' },
 ];
 
 const PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS = {

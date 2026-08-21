@@ -520,7 +520,7 @@ export function ComposerFollowUpQueue({
               type="button"
               className="ij-air-follow-up-queue__vcs-counts"
               disabled={Boolean(vcsTab.reviewDisabled)}
-              aria-label={`Open All Project Changes. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
+              aria-label={`Open ${vcsTab.label}. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
               onClick={(event) => {
                 event.stopPropagation();
                 vcsTab.onRunReview?.();
@@ -554,7 +554,7 @@ export function ComposerFollowUpQueue({
       <div className="ij-air-follow-up-queue__body" style={{ height: bodyHeight }}>
         <div ref={bodyContentRef} className="ij-air-follow-up-queue__body-inner">
           {resolvedActiveTab === 'vcs' ? (
-            <div className="ij-air-follow-up-queue__vcs-files" aria-label="All Project Changes files">
+            <div className="ij-air-follow-up-queue__vcs-files" aria-label={`${vcsTab?.label ?? 'All Changes'} files`}>
               {(vcsTab?.files ?? []).map((file) => (
                 <VcsSummaryFileRow key={file.tabId} file={file} onOpenFile={vcsTab.onOpenFile} />
               ))}
