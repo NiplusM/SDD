@@ -334,9 +334,11 @@ export function ComposerFollowUpQueue({
   // right after (but only when queue isn't already the reason the panel is
   // open); vcs never auto-claims — it's reachable by hand but stays third.
   //
-  // The files tab still auto-collapses the panel once it disappears (and
-  // nothing else, i.e. no queue, needs it open) so a finished run doesn't
-  // leave an empty-feeling panel sitting open.
+  // The files tab still auto-collapses the panel once it disappears — but
+  // only when NOTHING else (queue or vcs) is left to show. Collapsing just
+  // because files went away, while the user is sitting on the All Changes
+  // tab (or a queue is still pending), would hide a tab that's still there
+  // in the strip and still worth looking at.
   //
   // Debounced on purpose: a run finishing and the next queued item's run
   // starting both drive hasFilesTab/hasQueueTab through a single-commit dip
@@ -347,13 +349,13 @@ export function ComposerFollowUpQueue({
   // disappearance still collapses, just a little after the fact.
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
-    const shouldCollapse = !hasFilesTab && hadFilesTabRef.current && !hasQueueTab;
+    const shouldCollapse = !hasFilesTab && hadFilesTabRef.current && !hasQueueTab && !hasVcsTab;
     hadFilesTabRef.current = hasFilesTab;
     if (!shouldCollapse) return undefined;
     const timer = window.setTimeout(() => applyCollapsed(true), 200);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasFilesTab, hasQueueTab]);
+  }, [hasFilesTab, hasQueueTab, hasVcsTab]);
 
   // #1 priority: the queue tab claims focus and forces the panel open the
   // instant it appears — a follow-up only gets queued because a run was
