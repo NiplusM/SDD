@@ -14041,6 +14041,15 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   flex: 0 0 auto;
 }
 
+/* Agent-authored markdown files (specs/plans the agent itself wrote, not
+   an existing project doc) get the same purple recolor as Chat History's
+   agent-sessions-markdown-icon, instead of the file type's default color. */
+.ai-chat-changed-files-markdown-icon,
+.ai-chat-changed-files-markdown-icon path {
+  color: #9b6bda;
+  fill: #9b6bda;
+}
+
 .ai-chat-changed-files-name {
   color: #878A90;
   overflow: hidden;

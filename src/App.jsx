@@ -21459,6 +21459,8 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
         {visibleFiles.map((file) => {
           const openFile = onOpenFile && (file.diffRequest || file.agentTaskId) ? () => onOpenFile(file) : null;
 
+          const fileIconName = agentRunFileIconName(file.name);
+
           return (
             <button
               key={file.id ?? file.name}
@@ -21467,7 +21469,11 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
               onClick={openFile ?? undefined}
               disabled={!openFile}
             >
-              <Icon className="ai-chat-changed-files-icon" name={agentRunFileIconName(file.name)} size={16} />
+              <Icon
+                className={`ai-chat-changed-files-icon${fileIconName === 'fileTypes/markdown' ? ' ai-chat-changed-files-markdown-icon' : ''}`}
+                name={fileIconName}
+                size={16}
+              />
               <span className="ai-chat-changed-files-name">{file.name}</span>
               <span className="ai-chat-changed-files-counters">
                 {file.added ? <span className="ai-chat-changed-files-add">{file.added}</span> : null}
