@@ -20399,7 +20399,7 @@ function AiChatTabView({
               </article>
               <ChatEditedFilesCard
                 className="ai-chat-edited-files-card--live-entrance"
-                caption="Last Run"
+                caption="Last Turn"
                 files={message.editedFiles}
                 onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
                 onOpenReview={onOpenDiffTab ? () => {
@@ -21315,11 +21315,12 @@ const EDITED_FILES_CARD_VISIBLE_LIMIT = 5;
 // files changed" header (decorative revert/tree icons plus a functional
 // "Review" pill that reviews this turn's diff), then the file rows below,
 // collapsing past EDITED_FILES_CARD_VISIBLE_LIMIT behind a "Show N more" row.
-// A live turn's card takes an optional `caption` ("Last Run") that renders
-// as its own row inside the border, above the status header — scenarios
-// that instead report a "Worked for" duration render that caption above
-// this card at the call site (no caption prop), since we have no "since
-// last turn" concept to put inside this card for those.
+// A live turn's card takes an optional `caption` ("Last Turn") that
+// replaces the plain white file-count label in the status row with the
+// caption itself, pushing the file count out to its own gray label right
+// next to it — scenarios that instead report a "Worked for" duration have
+// no caption prop and keep the plain white file-count label, since we have
+// no "since last turn" concept to put there for those.
 function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = null, className = '', caption = null }) {
   const [expanded, setExpanded] = useState(false);
   if (files.length === 0) return null;
@@ -21329,20 +21330,21 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
 
   return (
     <section className={`ai-chat-changed-files-card ai-chat-edited-files-card${className ? ` ${className}` : ''}`}>
-      {caption ? (
-        <div className="ai-chat-changed-files-caption">
-          <span className="ai-chat-changed-files-caption-label">{caption}</span>
-          <span className="ai-chat-changed-files-caption-count">
-            {`${files.length} file${files.length === 1 ? '' : 's'} changed`}
-          </span>
-        </div>
-      ) : null}
       <header className="ai-chat-changed-files-header">
         <span className="ai-chat-changed-files-status">
           <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
             <Icon name="general/checkmark" size={16} />
           </span>
-          <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
+          {caption ? (
+            <>
+              <span className="ai-chat-changed-files-caption-label">{caption}</span>
+              <span className="ai-chat-changed-files-caption-count">
+                {`${files.length} file${files.length === 1 ? '' : 's'} changed`}
+              </span>
+            </>
+          ) : (
+            <span>{`${files.length} file${files.length === 1 ? '' : 's'} changed`}</span>
+          )}
         </span>
         <span className="ai-chat-changed-files-actions">
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">

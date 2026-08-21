@@ -13938,22 +13938,9 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 }
 
 
-/* "Last Run" label for a live turn's card — sits inside the border, above
-   the status header, unlike the "Worked for" caption (which has no home
-   inside the card and renders above it instead). The label reads as the
-   headline (white); the file count on the right is secondary (gray) — the
-   status row below already restates the count next to the checkmark. */
-.ai-chat-changed-files-caption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 8px;
-  padding: 0 4px;
-  font-size: 13px;
-  line-height: 16px;
-}
-
+/* "Last Turn" label for a live turn's card — takes the status row's own
+   headline slot (in place of the plain file-count text), with the file
+   count demoted to its own gray label right after it instead. */
 .ai-chat-changed-files-caption-label {
   color: #D1D3D9;
 }
