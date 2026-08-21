@@ -19359,6 +19359,25 @@ function AiReviewComposerPrompt({ onCreateSpec = null, onRunReview = null, onCom
   );
 }
 
+// AiChatTabView mounts fresh (a different key, or a structurally different
+// parent slot) each time a chat switches between its normal tab render and
+// a review/spec split view — those are three separate JSX call sites, not
+// one component that gets reparented. Anything kept as local useState here
+// would reset on that transition (e.g. the queue emptying or the "All
+// Changes" tab's reveal count dropping below its show threshold, making the
+// composer's tabbed panel appear to vanish the moment a diff view opens).
+// composerState/onComposerStateChange lift the handful of pieces that drive
+// that panel's visibility up into a chatId-keyed map owned by the caller, so
+// the same data feeds whichever of the three call sites is mounted.
+const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
+  queuedFollowUps: [],
+  isDrainPending: false,
+  processedReviewScopeFileCount: 0,
+  vcsSummaryDismissed: false,
+  completedFileEditRunCount: 0,
+  vcsRunExtraCounts: { added: 0, removed: 0 },
+};
+
 function AiChatTabView({
   chatId,
   scenarios = {},
@@ -19407,9 +19426,10 @@ function AiChatTabView({
   onRunAiReview = null,
   onCommitChanges = null,
   onOpenChangedFile = null,
+  composerState = null,
+  onComposerStateChange = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
-  const [vcsSummaryDismissed, setVcsSummaryDismissed] = useState(false);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
   const scenario = scenarios?.[chatId] ?? {
     title: fallbackTitle,
@@ -19470,24 +19490,67 @@ function AiChatTabView({
   const [resolvedReviewDecisionId, setResolvedReviewDecisionId] = useState(null);
   const [reviewFeedbackMessageId, setReviewFeedbackMessageId] = useState(null);
   const handledReviewFeedbackRequestRef = useRef(0);
-  const [queuedFollowUps, setQueuedFollowUps] = useState([]);
+  // Lifted to the caller (see AI_CHAT_COMPOSER_STATE_DEFAULTS above) so it
+  // survives this component remounting under a different call site/key.
+  const resolvedComposerState = composerState ?? AI_CHAT_COMPOSER_STATE_DEFAULTS;
+  const {
+    queuedFollowUps,
+    isDrainPending,
+    processedReviewScopeFileCount,
+    vcsSummaryDismissed,
+    completedFileEditRunCount,
+    vcsRunExtraCounts,
+  } = resolvedComposerState;
+  const updateComposerState = useCallback((patch) => {
+    if (!onComposerStateChange || !chatId) return;
+    onComposerStateChange((prev) => {
+      const current = prev[chatId] ?? AI_CHAT_COMPOSER_STATE_DEFAULTS;
+      const nextPatch = typeof patch === 'function' ? patch(current) : patch;
+      return { ...prev, [chatId]: { ...current, ...nextPatch } };
+    });
+  }, [onComposerStateChange, chatId]);
+  const setQueuedFollowUps = useCallback((updater) => {
+    updateComposerState((current) => ({
+      queuedFollowUps: typeof updater === 'function' ? updater(current.queuedFollowUps) : updater,
+    }));
+  }, [updateComposerState]);
   // Bridges the one-tick gap between a run finishing and the next queued
   // item's run actually starting (the drain effect below pops the item and
   // schedules its send via setTimeout, so isAgentRunProcessing is briefly
   // false in between). Without this, the composer's files/queue tabs would
   // flicker to empty and back on every drained item, force-collapsing the
   // panel each time — see showQueueContent below.
-  const [isDrainPending, setIsDrainPending] = useState(false);
-  const [processedReviewScopeFileCount, setProcessedReviewScopeFileCount] = useState(0);
+  const setIsDrainPending = useCallback((updater) => {
+    updateComposerState((current) => ({
+      isDrainPending: typeof updater === 'function' ? updater(current.isDrainPending) : updater,
+    }));
+  }, [updateComposerState]);
+  const setProcessedReviewScopeFileCount = useCallback((updater) => {
+    updateComposerState((current) => ({
+      processedReviewScopeFileCount: typeof updater === 'function' ? updater(current.processedReviewScopeFileCount) : updater,
+    }));
+  }, [updateComposerState]);
   // Accumulates on top of the scenario's baseline All Project Changes totals
   // every time a plain file-edit run finishes, so that count (and the Last
   // Run tab's own total) reads as a new, growing amount each send instead of
   // the exact same static numbers replaying every time.
-  const [vcsRunExtraCounts, setVcsRunExtraCounts] = useState({ added: 0, removed: 0 });
+  const setVcsRunExtraCounts = useCallback((updater) => {
+    updateComposerState((current) => ({
+      vcsRunExtraCounts: typeof updater === 'function' ? updater(current.vcsRunExtraCounts) : updater,
+    }));
+  }, [updateComposerState]);
   // All Project Changes shouldn't appear the instant the 2nd send starts —
   // only once that run has actually finished, same as the count above.
-  const [completedFileEditRunCount, setCompletedFileEditRunCount] = useState(0);
-  const queuedFollowUpIdRef = useRef(0);
+  const setCompletedFileEditRunCount = useCallback((updater) => {
+    updateComposerState((current) => ({
+      completedFileEditRunCount: typeof updater === 'function' ? updater(current.completedFileEditRunCount) : updater,
+    }));
+  }, [updateComposerState]);
+  const setVcsSummaryDismissed = useCallback((updater) => {
+    updateComposerState((current) => ({
+      vcsSummaryDismissed: typeof updater === 'function' ? updater(current.vcsSummaryDismissed) : updater,
+    }));
+  }, [updateComposerState]);
   const conversationTurns = Array.isArray(scenario?.conversationTurns)
     ? scenario.conversationTurns
     : [];
@@ -19948,9 +20011,11 @@ function AiChatTabView({
       .trim();
     if (isAgentRunProcessing) {
       if (!messageText) return;
-      queuedFollowUpIdRef.current += 1;
       setQueuedFollowUps((items) => [...items, {
-        id: `review-follow-up-${queuedFollowUpIdRef.current}`,
+        // Timestamp + current length is enough uniqueness here — items is
+        // itself the source of truth for "does this id already exist", so
+        // there's no separate counter ref to keep in sync across remounts.
+        id: `review-follow-up-${Date.now()}-${items.length}`,
         text: messageText,
       }]);
       setComposerText('');
@@ -21704,6 +21769,11 @@ export default function App() {
   const [chatSelectionCommentValue, setChatSelectionCommentValue] = useState('');
   // Per-chat review lifecycle: queued → processing/updating → open/updated → completed/cancelled.
   const [agentRunByChatId, setAgentRunByChatId] = useState({});
+  // Keyed by chatId, not owned by AiChatTabView itself — a chat's normal tab
+  // render, review split, and spec split are three separate call sites (see
+  // AI_CHAT_COMPOSER_STATE_DEFAULTS), so this has to live up here to survive
+  // a chat moving between them.
+  const [aiChatComposerStateByChatId, setAiChatComposerStateByChatId] = useState({});
   const [reviewSplitChatId, setReviewSplitChatId] = useState(null);
   const [reviewSplitFileTabIds, setReviewSplitFileTabIds] = useState([]);
   const [reviewSplitActiveTabId, setReviewSplitActiveTabId] = useState(REVIEW_DIFF_TAB_ID);
@@ -34107,6 +34177,8 @@ export default function App() {
                       sentMessages={aiChatSentMessagesByChatId[reviewSplitChatId] ?? []}
                       composerDraft={aiChatComposerDraftByChatId[reviewSplitChatId] ?? null}
                       onComposerDraftChange={handleAiChatComposerDraftChange}
+                      composerState={aiChatComposerStateByChatId[reviewSplitChatId] ?? null}
+                      onComposerStateChange={setAiChatComposerStateByChatId}
                       fallbackTitle={reviewSplitChatLabel}
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
@@ -34263,6 +34335,8 @@ export default function App() {
                       sentMessages={aiChatSentMessagesByChatId[specSplitChatId] ?? []}
                       composerDraft={aiChatComposerDraftByChatId[specSplitChatId] ?? null}
                       onComposerDraftChange={handleAiChatComposerDraftChange}
+                      composerState={aiChatComposerStateByChatId[specSplitChatId] ?? null}
+                      onComposerStateChange={setAiChatComposerStateByChatId}
                       fallbackTitle={specSplitChatLabel}
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
@@ -34347,6 +34421,8 @@ export default function App() {
                   sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
                   composerDraft={aiChatComposerDraftByChatId[activeAiChatTabChatId] ?? null}
                   onComposerDraftChange={handleAiChatComposerDraftChange}
+                  composerState={aiChatComposerStateByChatId[activeAiChatTabChatId] ?? null}
+                  onComposerStateChange={setAiChatComposerStateByChatId}
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
