@@ -294,18 +294,18 @@ export function ComposerFollowUpQueue({
   const bodyContentRef = useRef(null);
   const [bodyHeight, setBodyHeight] = useState(0);
 
-  // Switching tabs (or the queue growing/shrinking) swaps in content of a
-  // different natural height. Measure it and animate the wrapper's height
-  // instead of letting the box snap to the new size.
+  // Expanded height is fixed per tab (not measured off content) so the
+  // panel doesn't resize as items are added/removed or as you switch
+  // tabs with a different item count — short of its cap, it just shows
+  // empty space rather than shrinking to fit.
   useLayoutEffect(() => {
     if (collapsed) {
       setBodyHeight(0);
       return;
     }
-    const measured = bodyContentRef.current?.scrollHeight ?? 0;
     const maxHeight = resolvedActiveTab === 'vcs' ? VCS_BODY_MAX_HEIGHT : QUEUE_BODY_MAX_HEIGHT;
-    setBodyHeight(Math.min(measured, maxHeight));
-  }, [collapsed, resolvedActiveTab, items, scopeItems, filesTab, vcsTab, openMenuItemId, draggingId, dragOverId]);
+    setBodyHeight(maxHeight);
+  }, [collapsed, resolvedActiveTab]);
 
   const applyCollapsed = (next) => {
     if (isCollapseControlled) {
