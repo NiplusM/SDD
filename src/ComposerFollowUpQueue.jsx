@@ -520,9 +520,6 @@ export function ComposerFollowUpQueue({
         )}
         {resolvedActiveTab === 'files' && filesTab?.variant === 'edit' && (
           <span className="ij-air-follow-up-queue__vcs-actions">
-            <span className="ij-air-follow-up-queue__files-decor-icon" aria-hidden="true" title="Revert">
-              <Icon name="vcs/revert" size={16} />
-            </span>
             <span className="ij-air-follow-up-queue__files-decor-icon" aria-hidden="true" title="Group files">
               <Icon name="general/groups" size={16} />
             </span>
