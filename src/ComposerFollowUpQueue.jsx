@@ -269,12 +269,13 @@ export function ComposerFollowUpQueue({
   const hasFilesTab = scopeItems.length > 0;
   const hasQueueTab = items.length > 0;
   const hasVcsTab = Boolean(vcsTab);
-  // Files-in-progress is the most time-sensitive surface (it's live, mid-run
-  // work), so it takes the leftmost tab slot; the follow-up queue is next
-  // most urgent, then the VCS summary occupies whatever's left.
+  // The follow-up queue is the most urgent surface — it's a direct action
+  // the user just took and must stay visible/active for — so it takes the
+  // leftmost tab slot; files-in-progress is next, then the VCS summary
+  // occupies whatever's left.
   const tabOrder = [
-    hasFilesTab ? 'files' : null,
     hasQueueTab ? 'queue' : null,
+    hasFilesTab ? 'files' : null,
     hasVcsTab ? 'vcs' : null,
   ].filter(Boolean);
   const [activeTab, setActiveTab] = useState(tabOrder[0] ?? 'queue');
@@ -328,28 +329,17 @@ export function ComposerFollowUpQueue({
     if (!itemStillExists) setOpenMenuItemId(null);
   }, [items, openMenuItemId]);
 
-  // As soon as the queue has something to show, bring it to the front tab
-  // and reveal it — it's more urgent than a lingering VCS summary.
-  const hadQueueContentRef = useRef(hasQueueTab);
-  useEffect(() => {
-    if (hasQueueTab && !hadQueueContentRef.current) {
-      setActiveTab('queue');
-      applyCollapsed(false);
-    }
-    hadQueueContentRef.current = hasQueueTab;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasQueueTab]);
-
-  // Same promotion behavior for files-in-progress — run after the queue's
-  // own effect so files wins the active tab if both appear in the same tick
-  // (it outranks queue in tabOrder too). The moment the run finishes and the
-  // files tab disappears, collapse right back down instead of leaving the
-  // panel sitting open on whatever tab is left (typically an unrelated,
-  // already-stale VCS summary) — the Done card is what should draw the eye
-  // next, not a lingering expanded panel above it. But if a follow-up got
-  // queued while this run was still going, the queue tab already claimed
-  // "active" and it must stay that way — don't yank the panel closed out
-  // from under it just because the run it was queued behind finished.
+  // Promotion behavior for files-in-progress — runs before the queue's own
+  // effect below so queue wins the active tab if both appear in the same
+  // tick (it outranks files in tabOrder too). The moment the run finishes
+  // and the files tab disappears, collapse right back down instead of
+  // leaving the panel sitting open on whatever tab is left (typically an
+  // unrelated, already-stale VCS summary) — the Done card is what should
+  // draw the eye next, not a lingering expanded panel above it. But if a
+  // follow-up got queued while this run was still going, the queue tab
+  // already claimed "active" and it must stay that way — don't yank the
+  // panel closed out from under it just because the run it was queued
+  // behind finished.
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
     if (hasFilesTab && !hadFilesTabRef.current) {
@@ -363,6 +353,20 @@ export function ComposerFollowUpQueue({
     hadFilesTabRef.current = hasFilesTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
+
+  // As soon as the queue has something to show, bring it to the front tab
+  // and reveal it — it's the most urgent surface (a direct action the user
+  // just took), so it wins over files/VCS if it appears in the same tick as
+  // either of them.
+  const hadQueueContentRef = useRef(hasQueueTab);
+  useEffect(() => {
+    if (hasQueueTab && !hadQueueContentRef.current) {
+      setActiveTab('queue');
+      applyCollapsed(false);
+    }
+    hadQueueContentRef.current = hasQueueTab;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasQueueTab]);
 
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
