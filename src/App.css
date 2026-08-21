@@ -13955,6 +13955,10 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* Matches .ai-chat-changed-files-row's own horizontal padding below, so
+     the header's left edge (checkmark or "Last Turn") lines up with the
+     file rows' names instead of sitting further left than they do. */
+  padding: 0 8px;
 }
 
 .ai-chat-changed-files-status {
