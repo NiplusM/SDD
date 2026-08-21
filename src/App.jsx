@@ -21442,8 +21442,8 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Revert">
             <Icon name="vcs/revert" size={16} />
           </span>
-          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Group by package">
-            <Icon name="actions/groupByPackage" size={16} />
+          <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Show as tree">
+            <Icon name="general/showAsTree" size={16} />
           </span>
           <button
             type="button"
