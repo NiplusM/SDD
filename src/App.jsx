@@ -19559,8 +19559,8 @@ function AiChatTabView({
     if (!isReview && reviewScopeQueueFiles.length <= 1) return undefined;
 
     const stepDuration = isReview
-      ? Math.max(700, Math.floor(3600 / reviewScopeQueueFiles.length))
-      : 380;
+      ? Math.max(1000, Math.floor(5200 / reviewScopeQueueFiles.length))
+      : 620;
     const intervalId = window.setInterval(() => {
       setProcessedReviewScopeFileCount((count) => Math.min(reviewScopeQueueFiles.length, count + 1));
     }, stepDuration);
@@ -32211,7 +32211,7 @@ export default function App() {
       // run's "Files" tab only exists to announce what's about to land in
       // the Done card, so it gets a much shorter floor than a real review or
       // a comment-response run.
-      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 1400 + plainRunChangeCards.length * 380 : 18000);
+      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 1400 + plainRunChangeCards.length * 620 : 18000);
       const runStartedAt = Date.now();
       let index = 0;
       const finishRun = () => {
