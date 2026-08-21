@@ -20437,7 +20437,7 @@ function AiChatTabView({
               items={showQueueContent ? queuedFollowUps : []}
               scopeItems={showQueueContent ? reviewScopeQueueItems : []}
               filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
-                label: agentRun?.kind === 'review' ? 'AI Review' : 'Files',
+                label: agentRun?.kind === 'review' ? 'AI Review' : 'Last Run',
                 variant: agentRun?.kind === 'review' ? 'review' : 'edit',
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
