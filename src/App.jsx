@@ -16831,6 +16831,7 @@ function agentRunFileIconName(fileName = '') {
     return /^I[A-Z]/.test(base) ? 'nodes/interface' : 'nodes/class';
   }
   if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'fileTypes/html';
+  if (lower.endsWith('.md')) return 'fileTypes/markdown';
   return 'fileTypes/text';
 }
 
