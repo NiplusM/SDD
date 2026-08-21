@@ -346,7 +346,10 @@ export function ComposerFollowUpQueue({
   // files tab disappears, collapse right back down instead of leaving the
   // panel sitting open on whatever tab is left (typically an unrelated,
   // already-stale VCS summary) — the Done card is what should draw the eye
-  // next, not a lingering expanded panel above it.
+  // next, not a lingering expanded panel above it. But if a follow-up got
+  // queued while this run was still going, the queue tab already claimed
+  // "active" and it must stay that way — don't yank the panel closed out
+  // from under it just because the run it was queued behind finished.
   const hadFilesTabRef = useRef(hasFilesTab);
   useEffect(() => {
     if (hasFilesTab && !hadFilesTabRef.current) {
@@ -354,12 +357,12 @@ export function ComposerFollowUpQueue({
       // pill, but collapsed by default — unlike the queue tab, this one
       // isn't urgent enough to demand attention on its own.
       setActiveTab('files');
-    } else if (!hasFilesTab && hadFilesTabRef.current) {
+    } else if (!hasFilesTab && hadFilesTabRef.current && !hasQueueTab) {
       applyCollapsed(true);
     }
     hadFilesTabRef.current = hasFilesTab;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasFilesTab]);
+  }, [hasFilesTab, hasQueueTab]);
 
   const clearDragListeners = () => {
     const dragState = dragStateRef.current.listeners;
