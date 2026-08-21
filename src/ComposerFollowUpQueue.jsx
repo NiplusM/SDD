@@ -75,18 +75,12 @@ function EditedFileQueueRow({ item }) {
 }
 
 function VcsSummaryFileRow({ file, onOpenFile }) {
-  const isMarkdown = file.label?.endsWith('.md');
   return (
     <button
       type="button"
       className="ij-air-follow-up-queue__vcs-file"
       onClick={() => onOpenFile?.(file)}
     >
-      <Icon
-        name={isMarkdown ? 'fileTypes/markdown' : 'fileTypes/java'}
-        size={16}
-        className={`icon ij-air-follow-up-queue__vcs-file-icon${isMarkdown ? ' is-markdown' : ''}`}
-      />
       <span className="ij-air-follow-up-queue__vcs-file-label">{file.label}</span>
       <span
         className="ij-air-follow-up-queue__vcs-file-counts"

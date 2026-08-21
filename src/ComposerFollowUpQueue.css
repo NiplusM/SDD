@@ -204,21 +204,11 @@
   background: #34363b6b;
 }
 
-.ij-air-follow-up-queue__vcs-file-icon {
-  flex: 0 0 auto;
-  color: #6ca7ff;
-}
-
-.ij-air-follow-up-queue__vcs-file-icon.is-markdown,
-.ij-air-follow-up-queue__vcs-file-icon.is-markdown path {
-  color: #9b6bda;
-  fill: #9b6bda;
-}
-
 .ij-air-follow-up-queue__vcs-file-label {
   overflow: hidden;
+  flex: 0 1 auto;
   min-width: 0;
-  color: #6ca7ff;
+  color: #878A90;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -295,8 +285,9 @@
 
 .ij-air-follow-up-queue__edited-item-text {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
+  color: #878A90;
   font: 500 12px/16px Inter, system-ui, sans-serif;
   text-overflow: ellipsis;
   white-space: nowrap;
