@@ -5,11 +5,10 @@ import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
 
 const QUEUE_ITEM_MENU_WIDTH = 231;
-const QUEUE_BODY_MAX_HEIGHT = 176;
-// All Project Changes can grow arbitrarily long (every session's files plus
-// unassigned commit changes) — cap it to 5 rows' worth so it never crowds
-// out the composer beneath it; anything past that scrolls.
-const VCS_BODY_MAX_HEIGHT = 5 * 24;
+// One fixed height for every tab's expanded body — it never changes based
+// on content (item count, or which tab is active); anything past 5 rows
+// worth just scrolls within it instead of growing the box.
+const QUEUE_BODY_MAX_HEIGHT = 5 * 24;
 
 const QUEUE_ITEM_MENU_ITEMS = [
   { id: 'edit', label: 'Edit Message', icon: 'general/edit' },
@@ -294,18 +293,13 @@ export function ComposerFollowUpQueue({
   const bodyContentRef = useRef(null);
   const [bodyHeight, setBodyHeight] = useState(0);
 
-  // Expanded height is fixed per tab (not measured off content) so the
-  // panel doesn't resize as items are added/removed or as you switch
-  // tabs with a different item count — short of its cap, it just shows
-  // empty space rather than shrinking to fit.
+  // Expanded height is the same fixed value regardless of content or which
+  // tab is active — it never grows/shrinks with item count, and switching
+  // tabs doesn't resize the box either; short content just leaves empty
+  // space, and anything past the cap scrolls within it.
   useLayoutEffect(() => {
-    if (collapsed) {
-      setBodyHeight(0);
-      return;
-    }
-    const maxHeight = resolvedActiveTab === 'vcs' ? VCS_BODY_MAX_HEIGHT : QUEUE_BODY_MAX_HEIGHT;
-    setBodyHeight(maxHeight);
-  }, [collapsed, resolvedActiveTab]);
+    setBodyHeight(collapsed ? 0 : QUEUE_BODY_MAX_HEIGHT);
+  }, [collapsed]);
 
   const applyCollapsed = (next) => {
     if (isCollapseControlled) {
