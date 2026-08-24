@@ -1266,7 +1266,6 @@ body {
 
 .aiux550f4-final-final-preset-group > .aiux550f4-final-final-preset-field {
   gap: 8px;
-  padding-left: 20px;
 }
 
 .aiux550f4-final-final-preset-field-hint {
@@ -3911,6 +3910,7 @@ body {
 }
 
 .spec-done-active-line .spec-done-gutter-line-number-run,
+.spec-done-gutter-cell:hover .spec-done-gutter-line-number-run,
 .spec-done-gutter-line-number-run:focus-visible {
   opacity: 1;
 }
@@ -8704,7 +8704,7 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex: 0 1 auto;
   font: inherit;
   box-sizing: border-box;
@@ -9275,7 +9275,7 @@ body {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   min-height: 22px;
   padding: 3px 8px;
   border-radius: 3px;
@@ -13301,8 +13301,8 @@ body {
   cursor: default;
 }
 
-.ai-chat-edited-file-row:not(:disabled):hover {
-  background: rgba(255, 255, 255, 0.06);
+.ai-chat-edited-file-row:not(:disabled):hover .ai-chat-edited-file-name {
+  text-decoration: underline;
 }
 
 .ai-chat-edited-file-row:focus-visible {
@@ -14196,6 +14196,8 @@ button.aiux543-answer-change-card:focus-visible {
 
   display: inline-flex;
   min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   align-items: center;
   gap: 8px;
 }
@@ -14498,6 +14500,7 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button {
   all: unset;
   display: inline-flex;
+  flex-shrink: 0;
   min-height: 26px;
   box-sizing: border-box;
   align-items: center;
@@ -14506,6 +14509,7 @@ button.aiux543-answer-change-card:focus-visible {
   border-radius: 5px;
   color: #8b8e96;
   cursor: pointer;
+  white-space: nowrap;
   font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -14528,6 +14532,7 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-new-session-setting-picker {
   position: relative;
   display: inline-flex;
+  flex-shrink: 0;
 }
 
 .aiux543-new-session-setting-menu {

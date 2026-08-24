@@ -244,7 +244,7 @@ function ChatsHistoryToolWindow({
                       </span>
                       <span className="agent-sessions-session-agent">
                         <AiChatAgentIcon
-                          icon={selectedId === row.id ? 'claude' : (row.agent || 'claude')}
+                          icon={row.agent || 'claude'}
                           title={row.title}
                         />
                       </span>
@@ -252,9 +252,15 @@ function ChatsHistoryToolWindow({
                       <span className="agent-sessions-session-time">{row.time || '1h'}</span>
                       {showCost ? <span className="agent-sessions-session-cost">$5.67</span> : null}
                     </button>
-                    {row.id === 'refactor-time-slots' && expanded ? (
+                    {expanded && row.id === 'refactor-time-slots' ? (
                       <AgentSessionChanges
                         files={AGENT_SESSION_ACTIVE_CHANGES}
+                        onOpenFile={(file) => onOpenFile?.(file, row.id)}
+                        vetSchedulesLineCount={vetSchedulesLineCount}
+                      />
+                    ) : expanded && row.changedFiles?.length > 0 ? (
+                      <AgentSessionChanges
+                        files={row.changedFiles}
                         onOpenFile={(file) => onOpenFile?.(file, row.id)}
                         vetSchedulesLineCount={vetSchedulesLineCount}
                       />

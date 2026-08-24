@@ -72,7 +72,7 @@ export function AiChatAgentIcon({ icon = 'claude', title = '' }) {
   const normalizedIcon = typeof icon === 'string' ? icon : '';
   const normalizedTitle = typeof title === 'string' ? title : '';
   if (normalizedIcon === 'junie') return <AiChatJunieIcon />;
-  if (normalizedIcon === 'codex') return <AiChatCodexIcon />;
+  if (normalizedIcon === 'codex' || normalizedIcon === 'sdd') return <AiChatCodexIcon />;
   if (normalizedIcon === 'gemini') return <AiChatGeminiIcon />;
   if (normalizedIcon === 'copilot') return <AiChatCopilotIcon />;
   if (normalizedIcon === 'fileTypes/markdown' || normalizedTitle.endsWith('.md')) return <AiChatMarkdownFileIcon />;

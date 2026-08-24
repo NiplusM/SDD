@@ -110,6 +110,10 @@ export function FinalPresetDialog({
   const modelOptions = getFinalModelOptions(draft.agentId);
   const effortOptions = getFinalEffortOptions(draft.agentId);
   const modeOptions = claudeSelected ? FINAL_CLAUDE_EDIT_OPTIONS : FINAL_ACCESS_OPTIONS;
+  const sddModeOptions = [
+    { id: 'on', label: 'On' },
+    { id: 'off', label: 'Off' },
+  ];
   // Figma 9882-205548 has a single "OK": it saves when there is something to save, else it closes.
   // The recommendation still goes through `onSave` — it has nothing to persist, but OK has to hand
   // the selected preset to the chat behind the dialog.
@@ -492,17 +496,28 @@ export function FinalPresetDialog({
                     <span className="aiux550f4-final-final-preset-group-rule" aria-hidden="true" />
                   </div>
                   {advancedOpen ? (
-                    <label className="aiux550f4-final-final-preset-field custom-prompt">
-                      <span>Injected instructions:</span>
-                      <textarea
-                        value={draft.customPrompt}
-                        placeholder="Prefill the input"
-                        onChange={(event) => update('customPrompt', event.target.value)}
-                      />
-                      <span className="aiux550f4-final-final-preset-field-hint">
-                        Sent before the first prompt and hidden from AIR’s editor, transcript, and session title
-                      </span>
-                    </label>
+                    <>
+                      <label className="aiux550f4-final-final-preset-field custom-prompt">
+                        <span>Injected instructions:</span>
+                        <textarea
+                          value={draft.customPrompt}
+                          placeholder="Prefill the input"
+                          onChange={(event) => update('customPrompt', event.target.value)}
+                        />
+                        <span className="aiux550f4-final-final-preset-field-hint">
+                          Sent before the first prompt and hidden from AIR’s editor, transcript, and session title
+                        </span>
+                      </label>
+                      <label className="aiux550f4-final-final-preset-field">
+                        <span>SDD:</span>
+                        <FinalSessionSelect
+                          ariaLabel="SDD mode"
+                          options={sddModeOptions}
+                          value={draft.sddMode ? 'on' : 'off'}
+                          onChange={(nextValue) => update('sddMode', nextValue === 'on')}
+                        />
+                      </label>
+                    </>
                   ) : null}
                 </div>
               </div>

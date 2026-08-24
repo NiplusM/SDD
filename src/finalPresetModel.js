@@ -25,6 +25,10 @@ export const FINAL_COPILOT_MODEL_OPTIONS = [
   { id: 'copilot-auto', label: 'Copilot Auto' },
 ];
 
+export const FINAL_CODEX_MODEL_OPTIONS = [
+  { id: 'gpt-5-6-sol', label: 'GPT-5.6-Sol' },
+];
+
 export const FINAL_MODE_OPTIONS = [
   { id: 'default', label: 'Default mode' },
   { id: 'plan', label: 'Plan mode' },
@@ -42,6 +46,13 @@ export const FINAL_CLAUDE_EFFORT_OPTIONS = [
   { id: 'low', label: 'Low effort' },
   { id: 'medium', label: 'Medium effort' },
   { id: 'high', label: 'High effort' },
+];
+
+export const FINAL_CODEX_EFFORT_OPTIONS = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'extra-high', label: 'Extra High' },
 ];
 
 export const FINAL_ACCESS_OPTIONS = [
@@ -99,6 +110,16 @@ export function getFinalAgentDefaults(agentId) {
     };
   }
 
+  if (agentId === 'codex') {
+    return {
+      modelId: 'gpt-5-6-sol',
+      modeId: 'default',
+      effortId: 'extra-high',
+      accessId: 'full',
+      planEffortId: 'default',
+    };
+  }
+
   return {
     modelId: 'luna-5-6',
     modeId: 'default',
@@ -149,14 +170,35 @@ export const FINAL_AI_REVIEW_PRESET = {
   lockedPreset: true,
 };
 
-export const FINAL_INITIAL_PRESETS = [FINAL_AI_REVIEW_PRESET];
+// SDD (AIUX-639): Codex in Chat on its defaults. Ships by default — unlike a user-added
+// preset, it does not require "Add Agents"/"Manage Presets".
+export const FINAL_SDD_PRESET = {
+  id: 'sdd',
+  label: 'SDD',
+  buttonLabel: 'SDD',
+  agentId: 'codex',
+  runInId: 'this-mac',
+  launchTarget: 'chat',
+  ...getFinalAgentDefaults('codex'),
+  customPrompt: '',
+  sddMode: true,
+  preset: true,
+  defaultPreset: false,
+  presetKind: 'custom',
+  autoUpdate: false,
+  lockedPreset: true,
+};
+
+export const FINAL_INITIAL_PRESETS = [FINAL_AI_REVIEW_PRESET, FINAL_SDD_PRESET];
 
 export function getFinalModelOptions(agentId) {
   if (agentId === 'copilot') return FINAL_COPILOT_MODEL_OPTIONS;
+  if (agentId === 'codex') return FINAL_CODEX_MODEL_OPTIONS;
   return agentId === 'claude' ? FINAL_CLAUDE_MODEL_OPTIONS : FINAL_MODEL_OPTIONS;
 }
 
 export function getFinalEffortOptions(agentId) {
+  if (agentId === 'codex') return FINAL_CODEX_EFFORT_OPTIONS;
   return agentId === 'claude' ? FINAL_CLAUDE_EFFORT_OPTIONS : FINAL_EFFORT_OPTIONS;
 }
 

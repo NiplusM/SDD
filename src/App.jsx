@@ -127,10 +127,14 @@ const COMPOSER_ATTACHMENT_COLLAPSED_LIMIT = 18;
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
   { id: 'claude', label: 'Claude Agent', buttonLabel: 'Claude Agent', model: 'Claude Sonnet 4.1', badge: 'New' },
-  { id: 'codex', label: 'Codex', buttonLabel: 'Codex', model: '5.6 Luna', badge: 'Free usage' },
+  { id: 'codex', label: 'Codex', buttonLabel: 'Codex', model: 'GPT-5.6-Sol', badge: 'Free usage' },
+  { id: 'sdd', label: 'SDD', buttonLabel: 'SDD', model: 'GPT-5.6-Sol' },
   { id: 'gemini', label: 'Gemini CLI', buttonLabel: 'Gemini CLI', model: 'Gemini 2.5 Pro' },
   { id: 'copilot', label: 'GitHub Copilot', buttonLabel: 'GitHub Copilot', model: 'GPT-5.2-Codex' },
 ];
+// Agents whose composer footer matches the real Codex layout: model + effort (up to
+// Extra High) + a mode pill + a Fast mode toggle, instead of the generic access pill.
+const CODEX_STYLE_AGENT_IDS = ['codex', 'sdd'];
 const AI_CHAT_SLASH_COMMANDS = [
   { command: '/review', description: 'Review current changes with the selected agent.' },
   { command: '/compact', description: 'Summarize conversation to free up context.' },
@@ -225,6 +229,10 @@ function FinalToolbarSessionPresetIcon({ agentId }) {
     return <img src={githubCopilotIconUrl} alt="" aria-hidden="true" data-agent="copilot" />;
   }
 
+  if (agentId === 'sdd') {
+    return <img src={openAiIconUrl} alt="" aria-hidden="true" data-agent="codex" />;
+  }
+
   return <AiChatAgentIcon icon={agentId} title="" />;
 }
 
@@ -281,7 +289,6 @@ function FinalToolbarSessionControl({
           <span className="aiux550f4-final-final-agent-button-icon">
             <FinalChoiceIcon option={selectedItem} size={16} />
           </span>
-          <span>New Session</span>
         </button>
         <button
           type="button"
@@ -9801,7 +9808,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, defaultSubmitTargetKey = '', acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, defaultSubmitTargetKey = '', acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -9856,9 +9863,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   );
   const showSuccessBanner = useMemo(
     () => !acWarningBanner
+      && commentContextLabel.trim().toLowerCase() !== 'vet-schedules.md'
       && areAllChecklistStatusesPassed(acRunResult)
       && areAllChecklistStatusesPassed(planRunResult),
-    [acRunResult, acWarningBanner, planRunResult]
+    [acRunResult, acWarningBanner, commentContextLabel, planRunResult]
   );
   const shouldRenderSuccessBanner = showSuccessBanner && !projectContextBannerDismissed;
   const [draftCode, setDraftCode] = useState(() => effectiveCode);
@@ -11799,7 +11807,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             const isCommentPopupOpen = commentPopup?.rowKey === stableKey;
             const isNavigatedIssueRow = navigatedIssueRowKey === stableKey;
             const isHoveredIssueRow = hoveredIssueRowKey === stableKey;
-            const showCommentsOnlyInGutter = isVetSchedulesDocument;
+            // Vet-Schedules.md now gets the same runnable gutter as Visit-Booking.md
+            // (Run/breakpoint/intention buttons) instead of AI-notes-only.
+            const showCommentsOnlyInGutter = false;
             const hasIssueBulb = Boolean(effectiveIssueSeverity);
             const showIssueBulb = !showCommentsOnlyInGutter && hasIssueBulb
               && (activeIssueRowKey === stableKey || isHoveredIssueRow || isNavigatedIssueRow || isIssuePopupOpen);
@@ -11968,36 +11978,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               }}
             >
               <div className={`editor-gutter-row spec-done-gutter-cell${showRunIcon ? ' spec-done-gutter-cell-section-run' : ''}${showCommentsOnlyInGutter ? ' is-comments-only' : ''}`}>
-                <button
-                  type="button"
-                  className={`spec-done-gutter-breakpoint-btn${breakpoints.has(stableKey) ? ' is-active' : ''}`}
-                  aria-label={breakpoints.has(stableKey) ? 'Remove breakpoint' : 'Add breakpoint'}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    toggleBreakpoint(stableKey);
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleBreakpoint(stableKey); } }}
-                >
-                  <span className="editor-breakpoint-dot" />
-                </button>
                 {hasRunnableGutterAction ? (
                   <DoneInlineRunButton
                     demoId={demoTargetId ? `spec-run-${demoTargetId}` : null}
-                    title={showRunIcon ? 'Open Terminal' : (effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item')}
-                    onRun={() => onOpenTerminal?.(showRunIcon
-                      ? {
-                          sectionTitle: headingTitle,
-                          commentEntries,
-                        }
-                      : {
-                          sectionTitle: currentSectionTitle,
-                          checkTarget: effectiveCheckTarget,
-                        })}
+                    title={showRunIcon ? 'Run section' : (effectiveCheckTarget?.kind === 'ac' ? 'Build acceptance criterion' : 'Build plan item')}
                   />
                 ) : (
                   <span className="spec-done-gutter-slot" aria-hidden="true" />
@@ -12462,15 +12446,15 @@ function AttachedFileChip({ label, onRemove, className = '' }) {
   );
 }
 
-function AgentTaskTopBarIcon({ style }) {
+function AgentTaskTopBarIcon({ style, icon = 'claude' }) {
   return (
     <span className="agent-task-top-bar-agent-icon" style={style} aria-hidden="true">
-      <AiChatClaudeIcon />
+      <AiChatAgentIcon icon={icon} />
     </span>
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active' }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -12513,7 +12497,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     ? topBarStatus
     : 'Specified';
   const relatedChat = commentContextLabel.trim().toLowerCase() === 'vet-schedules.md'
-    ? (chatTargets.find((chat) => chat.id === 'refactor-time-slots') ?? null)
+    ? (chatTargets.find((chat) => chat.id === (vetSchedulesRelatedChatId ?? 'refactor-time-slots')) ?? null)
     : null;
   const collapsedDoneToolbarText = relatedChat?.title
     ?? (hasToolbarText ? value.replace(/\s+/g, ' ').trim() : toolbarPlaceholder);
@@ -13003,7 +12987,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   }
 
   function handleTopBarTitleOpenChat() {
-    if (relatedChat) return;
     onTopBarAction?.(topBarDisplayStatus, relatedChat?.id ? { relatedChatId: relatedChat.id } : undefined);
   }
 
@@ -13216,7 +13199,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} />,
           doneOverlayHost
         )}
       </>
@@ -13231,7 +13214,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} />,
           doneOverlayHost
         )}
       </>
@@ -13242,7 +13225,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state={genState}>
-          <div className="agent-task-toolbar" ref={toolbarRef} hidden>
+          <div className="agent-task-toolbar" ref={toolbarRef}>
             <div className="agent-task-toolbar-gradient" />
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
@@ -13266,7 +13249,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     aria-label={relatedChat ? collapsedDoneToolbarText : `Open ${collapsedDoneToolbarText} chat`}
                     onClick={handleTopBarTitleOpenChat}
                   >
-                    <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
+                    <AgentTaskTopBarIcon style={{ flexShrink: 0 }} icon={relatedChat?.icon} />
                     {renderToolbarInput({ collapsibleInDone: true })}
                   </button>
                 </>)}
@@ -13343,7 +13326,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} />,
           doneOverlayHost
         )}
       </>
@@ -13384,7 +13367,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           </> : <>
             {/* Default state — left */}
             <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
-              <AgentTaskTopBarIcon style={{ flexShrink: 0 }} />
+              <AgentTaskTopBarIcon style={{ flexShrink: 0 }} icon={relatedChat?.icon} />
               {renderToolbarInput()}
             </div>
 
@@ -18807,6 +18790,7 @@ function AiChatTabView({
   onRunAiReview = null,
   onCommitChanges = null,
   onOpenChangedFile = null,
+  onOpenAgentTaskTab = null,
 }) {
   const [addContextPopupRect, setAddContextPopupRect] = useState(null);
   const isAgentRunProcessing = ['queued', 'processing', 'updating'].includes(agentRun?.status);
@@ -18833,7 +18817,9 @@ function AiChatTabView({
     ? composerDraft.dismissedAttachmentKeys.filter((key) => typeof key === 'string' && key.length > 0)
     : [];
   const initialSessionModel = typeof scenario?.initialModel === 'string' ? scenario.initialModel : null;
-  const initialSessionEffort = typeof scenario?.initialEffort === 'string' ? scenario.initialEffort : 'Medium effort';
+  const initialSessionEffort = typeof scenario?.initialEffort === 'string'
+    ? scenario.initialEffort
+    : (CODEX_STYLE_AGENT_IDS.includes(scenario?.icon) ? 'Extra High' : 'Medium effort');
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full access';
   const [composerText, setComposerText] = useState(persistedComposerText);
   const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
@@ -18856,6 +18842,9 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [selectedEditMode, setSelectedEditMode] = useState('Accepts Edits');
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
+  // SDD mode: On by default (AIUX-639) — a Codex-style-agent-only toggle shown at the
+  // bottom-right of the composer footer, next to the model/effort/mode pills.
+  const [sddModeOn, setSddModeOn] = useState(true);
   const composerRef = useRef(null);
   const composerDraftRef = useRef(composerDraft);
   composerDraftRef.current = composerDraft;
@@ -18937,6 +18926,10 @@ function AiChatTabView({
     && Boolean(onRunAiReview);
   const reviewPromptFiles = getChatChangeCards(scenario);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
+  const isCodexStyleAgent = CODEX_STYLE_AGENT_IDS.includes(selectedAgentId);
+  const composerEffortOptions = isCodexStyleAgent
+    ? ['Low', 'Medium', 'High', 'Extra High']
+    : ['Low effort', 'Medium effort', 'High effort'];
   const selectedModelLabel = selectedModelOverride ?? selectedAgent.model;
   const newSessionModelOptions = [
     selectedModelLabel,
@@ -19685,6 +19678,31 @@ function AiChatTabView({
               <AiChatProgressIcon />
               <span>Running...</span>
             </div>
+          ) : message.role === 'assistant' && message.kind === 'sdd-spec-generated' && !message.streaming ? (
+            <Fragment key={message.id}>
+              {Array.isArray(message.result) && message.result.length > 0 && (
+                <ul className="aiux543-answer-result-list">
+                  {message.result.map((paragraph, idx) => (
+                    <li
+                      key={`sdd-result-${message.id}-${idx}`}
+                      data-ai-chat-annotatable="true"
+                      data-ai-chat-message-id={message.id}
+                      data-ai-chat-block-id={`sdd-result-${idx}`}
+                    >
+                      {renderAnnotatedParagraph(paragraph, `sdd-result-${idx}`, message.id)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <ChatEditedFilesSummary
+                files={message.changeCards ?? []}
+                workedForLabel={message.workedForLabel}
+                // Opens the generated spec as its own editor tab. Split view
+                // (openCommentTarget → openSpecInSplitView) is deliberately
+                // skipped here for now — revisit later.
+                onOpenFile={(file) => (file.agentTaskId ? onOpenAgentTaskTab?.(file.agentTaskId) : onOpenChangedFile?.(file))}
+              />
+            </Fragment>
           ) : message.role === 'assistant' ? (
             <article key={message.id} className="aiux543-answer">
               <h3>{selectedAgent.buttonLabel ?? selectedAgent.label}</h3>
@@ -19753,6 +19771,7 @@ function AiChatTabView({
                     onClick={() => {
                       setSelectedAgentId(agent.id);
                       setSelectedModelOverride(null);
+                      setSelectedEffort(CODEX_STYLE_AGENT_IDS.includes(agent.id) ? 'Extra High' : 'Medium effort');
                       setIsAgentMenuOpen(false);
                       onAgentChange?.(chatId, agent.id);
                       requestAnimationFrame(() => composerRef.current?.focus());
@@ -20015,33 +20034,64 @@ function AiChatTabView({
               <NewSessionFooterPicker
                 id="effort"
                 label={selectedEffort}
-                options={['Low effort', 'Medium effort', 'High effort']}
+                options={composerEffortOptions}
                 open={newSessionSettingsMenu === 'effort'}
                 onOpenChange={setNewSessionSettingsMenu}
                 onSelect={setSelectedEffort}
               />
-              <NewSessionFooterPicker
-                id="access"
-                label={selectedAccess}
-                options={['Read only', 'Ask before changes', 'Full access']}
-                open={newSessionSettingsMenu === 'access'}
-                onOpenChange={setNewSessionSettingsMenu}
-                onSelect={setSelectedAccess}
-              />
+              {isCodexStyleAgent ? (
+                <>
+                  <NewSessionFooterPicker
+                    id="mode"
+                    label="Agent"
+                    options={['Agent']}
+                    open={newSessionSettingsMenu === 'mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={() => {}}
+                  />
+                  <NewSessionFooterPicker
+                    id="fast-mode"
+                    label="Fast mode · Off"
+                    options={['Fast mode · Off']}
+                    open={newSessionSettingsMenu === 'fast-mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={() => {}}
+                  />
+                  <NewSessionFooterPicker
+                    id="sdd-mode"
+                    label={sddModeOn ? 'SDD mode: On' : 'SDD mode: Off'}
+                    options={['SDD mode: On', 'SDD mode: Off']}
+                    open={newSessionSettingsMenu === 'sdd-mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={(option) => setSddModeOn(option === 'SDD mode: On')}
+                  />
+                </>
+              ) : (
+                <NewSessionFooterPicker
+                  id="access"
+                  label={selectedAccess}
+                  options={['Read only', 'Ask before changes', 'Full access']}
+                  open={newSessionSettingsMenu === 'access'}
+                  onOpenChange={setNewSessionSettingsMenu}
+                  onSelect={setSelectedAccess}
+                />
+              )}
             </span>
-            {isAgentRunProcessing && <span>Feedback <Icon name="ide/externalLink" size={16} /></span>}
+            {isAgentRunProcessing && !isCodexStyleAgent && <span>Feedback <Icon name="ide/externalLink" size={16} /></span>}
           </footer>
         ) : (
           <footer className="aiux543-editor-footer aiux543-new-session-settings aiux543-chat-session-settings" ref={newSessionSettingsRef}>
             <span className="aiux543-editor-footer-left">
-              <NewSessionFooterPicker
-                id="edit-mode"
-                label={selectedEditMode}
-                options={['Accepts Edits', 'Ask Before Edits', 'Read Only']}
-                open={newSessionSettingsMenu === 'edit-mode'}
-                onOpenChange={setNewSessionSettingsMenu}
-                onSelect={setSelectedEditMode}
-              />
+              {!isCodexStyleAgent && (
+                <NewSessionFooterPicker
+                  id="edit-mode"
+                  label={selectedEditMode}
+                  options={['Accepts Edits', 'Ask Before Edits', 'Read Only']}
+                  open={newSessionSettingsMenu === 'edit-mode'}
+                  onOpenChange={setNewSessionSettingsMenu}
+                  onSelect={setSelectedEditMode}
+                />
+              )}
               <NewSessionFooterPicker
                 id="chat-model"
                 label={selectedModelLabel}
@@ -20053,13 +20103,41 @@ function AiChatTabView({
               <NewSessionFooterPicker
                 id="chat-effort"
                 label={selectedEffort}
-                options={['Low effort', 'Medium effort', 'High effort']}
+                options={composerEffortOptions}
                 open={newSessionSettingsMenu === 'chat-effort'}
                 onOpenChange={setNewSessionSettingsMenu}
                 onSelect={setSelectedEffort}
               />
+              {isCodexStyleAgent && (
+                <>
+                  <NewSessionFooterPicker
+                    id="chat-mode"
+                    label="Agent"
+                    options={['Agent']}
+                    open={newSessionSettingsMenu === 'chat-mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={() => {}}
+                  />
+                  <NewSessionFooterPicker
+                    id="chat-fast-mode"
+                    label="Fast mode · Off"
+                    options={['Fast mode · Off']}
+                    open={newSessionSettingsMenu === 'chat-fast-mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={() => {}}
+                  />
+                  <NewSessionFooterPicker
+                    id="chat-sdd-mode"
+                    label={sddModeOn ? 'SDD mode: On' : 'SDD mode: Off'}
+                    options={['SDD mode: On', 'SDD mode: Off']}
+                    open={newSessionSettingsMenu === 'chat-sdd-mode'}
+                    onOpenChange={setNewSessionSettingsMenu}
+                    onSelect={(option) => setSddModeOn(option === 'SDD mode: On')}
+                  />
+                </>
+              )}
             </span>
-            <span>Feedback <Icon name="ide/externalLink" size={16} /></span>
+            {!isCodexStyleAgent && <span>Feedback <Icon name="ide/externalLink" size={16} /></span>}
           </footer>
         )}
         <AiChatAttachmentContextMenu
@@ -21128,13 +21206,20 @@ export default function App() {
     [aiChatDraftListItems, aiChatDraftSessionsById],
   );
   const aiChatHistoryRows = useMemo(
-    () => aiChatDraftListItems.map((item) => ({
-      id: item.id,
-      title: item.title || 'New Chat',
-      agent: item.icon === 'codex' || item.icon === 'junie' ? item.icon : 'claude',
-      time: item.time || 'now',
-    })),
-    [aiChatDraftListItems],
+    () => aiChatDraftListItems.map((item) => {
+      const messages = aiChatSentMessagesByChatId[item.id] ?? [];
+      const changedFiles = [...messages].reverse().find((message) => (
+        Array.isArray(message?.changeCards) && message.changeCards.length > 0
+      ))?.changeCards ?? [];
+      return {
+        id: item.id,
+        title: item.title || 'New Chat',
+        agent: AI_CHAT_AGENTS.some((candidate) => candidate.id === item.icon) ? item.icon : 'claude',
+        time: item.time || 'now',
+        changedFiles,
+      };
+    }),
+    [aiChatDraftListItems, aiChatSentMessagesByChatId],
   );
   const selectionChatTargets = useMemo(() => {
     const seen = new Set();
@@ -21252,6 +21337,10 @@ export default function App() {
   const [presetDialogDraft, setPresetDialogDraft] = useState(null);
   const [presetDialogEmpty, setPresetDialogEmpty] = useState(false);
   const [finalToolbarAppliedNotice, setFinalToolbarAppliedNotice] = useState(null);
+  // Which chat's "generated" this run of Vet-Schedules.md — drives the top bar's
+  // "navigate back to chat" title trigger. Defaults to the original demo chat;
+  // updated whenever an SDD chat opens the doc via its own generated-file link.
+  const [vetSchedulesRelatedChatId, setVetSchedulesRelatedChatId] = useState('refactor-time-slots');
   const finalPendingSessionIdRef = useRef(null);
 
   useEffect(() => {
@@ -21349,6 +21438,11 @@ export default function App() {
       .find((option) => option.id === configuration.modelId)?.label ?? null;
     const effortLabel = getFinalEffortOptions(configuration.agentId)
       .find((option) => option.id === configuration.effortId)?.label ?? null;
+    // The chat's displayed agent/icon: for SDD this stays 'sdd' even though the underlying
+    // model/effort profile ("GPT-5.6-Sol" / "Extra High") is borrowed from Codex.
+    const chatAgentIcon = AI_CHAT_AGENTS.some((agent) => agent.id === nextItem.id)
+      ? nextItem.id
+      : configuration.agentId;
     // AI Review is the one built-in preset whose command must stay visible and
     // editable in the new chat composer instead of being injected silently.
     const initialComposerText = configuration.customPrompt === '/review' ? '/review' : '';
@@ -21366,7 +21460,7 @@ export default function App() {
         ...prev,
         [pendingId]: {
           ...prev[pendingId],
-          icon: configuration.agentId,
+          icon: chatAgentIcon,
           initialComposerText,
           initialModel: modelLabel,
           initialEffort: effortLabel,
@@ -21377,11 +21471,11 @@ export default function App() {
       // createEmptyAiChatSession would have.
       openChatInEditorTabRef.current?.(pendingId, {
         title: pendingSession.title,
-        icon: configuration.agentId,
+        icon: chatAgentIcon,
       });
     } else {
       const session = createEmptyAiChatSession({
-        icon: configuration.agentId,
+        icon: chatAgentIcon,
         title: 'New Session',
         initialComposerText,
         initialModel: modelLabel,
@@ -21696,6 +21790,7 @@ export default function App() {
   const doneEnhanceFlowRef = useRef(null);
   const specStatusChatIdsRef = useRef({});
   const seededPresetTaskRef = useRef(true);
+  const seededInitialSddSessionRef = useRef(false);
   const genTimerRef = useRef(null);
   const terminalDrivenGenerationRef = useRef(false);
   const terminalRunTimeoutsRef = useRef([]);
@@ -25389,6 +25484,13 @@ export default function App() {
     handleAgentTaskSelect('t1');
   }, [screen, handleAgentTaskSelect]);
 
+  // Land on a fresh, empty SDD session by default instead of the seeded demo chat.
+  useEffect(() => {
+    if (screen !== 'ide' || seededInitialSddSessionRef.current) return;
+    seededInitialSddSessionRef.current = true;
+    startFinalSessionFromToolbar('sdd');
+  }, [screen]);
+
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
 
@@ -28119,6 +28221,10 @@ export default function App() {
     }));
   }, [currentAgentTaskLabel, ideTabs, setRunStateForTab]);
   const handleAgentTaskTopBarAction = useCallback((status, options = {}) => {
+    if (options?.relatedChatId) {
+      openChatInEditorTab(options.relatedChatId);
+      return;
+    }
     if (!['Build', 'Specified'].includes(status)) return;
     const sourceTabId = resolveSpecStatusSourceTabId(options?.sourceTabId ?? null);
     setSpecTopBarStatusForTab(status, sourceTabId);
@@ -28152,6 +28258,7 @@ export default function App() {
     ensureSpecStatusChat,
     ideTabs,
     openAiToolWindow,
+    openChatInEditorTab,
     resolveSpecStatusSourceTabId,
     setSpecTopBarStatusForTab,
     startSpecBuildDocumentState,
@@ -30940,6 +31047,12 @@ export default function App() {
       || (!REVIEW_PLACEHOLDER_CHAT_TITLES.includes(sessionTitle) ? sessionTitle : '')
       || (attachmentFeatureTitle ? `Changes in ${attachmentFeatureTitle}` : 'Current changes');
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
+    // SDD (AIUX-639): any message sent in a chat whose agent is 'sdd' gets a scripted
+    // "generated the spec" reply pointing at the existing Vet-Schedules.md spec document.
+    const isSddAgentChat = !isReviewCommand
+      && !shouldStreamCommentResponse
+      && Boolean(messageText)
+      && aiChatScenarios[targetChatId]?.icon === 'sdd';
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
@@ -30956,14 +31069,61 @@ export default function App() {
       contentParts: Array.isArray(contentParts) ? contentParts : null,
     };
     const assistantMessageId = `${targetChatId}-assistant-${stamp}-${baseCount}`;
-    const assistantMessage = shouldRunAgent
-      ? { id: assistantMessageId, role: 'assistant', text: '', streaming: true }
+    const assistantMessage = shouldRunAgent || isSddAgentChat
+      ? {
+          id: assistantMessageId,
+          role: 'assistant',
+          text: '',
+          streaming: true,
+          kind: isSddAgentChat ? 'sdd-spec-generated' : undefined,
+        }
       : null;
 
     handleSelectedAiChatSentMessagesChange(
       (prev) => (assistantMessage ? [...prev, newMessage, assistantMessage] : [...prev, newMessage]),
       targetChatId,
     );
+
+    if (isSddAgentChat) {
+      const sddResultBullets = [
+        'Created the Vet-Schedules.md specification: a parallel schedule track that adds real per-vet availability checks alongside the existing Visit-Booking flow.',
+        'Plan: a new VetSchedule entity and repository query, validating requested visit times against a vet’s working hours, and seeding demo schedule data in H2.',
+        'Acceptance Criteria: vets get per-weekday working schedules, out-of-hours bookings are rejected, and Visit-Booking.md keeps its static hourly slots untouched while this ships.',
+      ];
+      const fullSddResponse = sddResultBullets.join(' ');
+      let revealedLength = 0;
+      const streamNextSddChunk = () => {
+        revealedLength = Math.min(fullSddResponse.length, revealedLength + 2);
+        const isComplete = revealedLength >= fullSddResponse.length;
+        handleSelectedAiChatSentMessagesChange(
+          (prev) => prev.map((message) => (
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  text: fullSddResponse.slice(0, revealedLength),
+                  streaming: !isComplete,
+                  result: isComplete ? sddResultBullets : undefined,
+                  workedForLabel: isComplete ? '2m 40s' : undefined,
+                  changeCards: isComplete
+                    ? [
+                        {
+                          id: `sdd-generated-vet-schedules-${assistantMessageId}`,
+                          name: 'Vet-Schedules.md',
+                          icon: 'fileTypes/markdown',
+                          added: '+25',
+                          agentTaskId: 't2',
+                        },
+                      ]
+                    : undefined,
+                }
+              : message
+          )),
+          targetChatId,
+        );
+        if (!isComplete) window.setTimeout(streamNextSddChunk, 32);
+      };
+      window.setTimeout(streamNextSddChunk, 400);
+    }
 
     if (transientContextAttachments.length > 0) {
       handleClearAllComposerDiffAttachments({
@@ -33027,7 +33187,7 @@ export default function App() {
                   // instead, scoped to this pane.
                   <div className="editor ai-spec-split-editor-host">
                     <div className="editor-body">
-                      <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+                      <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} />
                     </div>
                   </div>
                 )}
@@ -33083,6 +33243,10 @@ export default function App() {
                   scrollTarget={chatScrollTarget}
                   onEditAnnotation={null}
                   onOpenChangedFile={(file) => openCommentTarget(file, activeAiChatTabChatId)}
+                  onOpenAgentTaskTab={(agentTaskId) => {
+                    if (agentTaskId === 't2') setVetSchedulesRelatedChatId(activeAiChatTabChatId);
+                    handleAgentTaskSelect(agentTaskId);
+                  }}
                   onCreateSpec={() => {
                     setCommitReviewContext(null);
                     setGlobalReviewTargetChatId(activeAiChatTabChatId);
@@ -33102,7 +33266,7 @@ export default function App() {
               </div>
             )
             : isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} />
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}
