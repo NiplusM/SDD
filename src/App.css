@@ -20290,8 +20290,10 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .ai-review-editor-split-tabbar {
+  position: relative;
   width: 100%;
   flex: 0 0 auto;
+  padding-right: 34px;
 }
 
 .ai-review-editor-split-body {

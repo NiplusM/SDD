@@ -17759,11 +17759,15 @@ function AiReviewEditorSplit({
       <section className="ai-review-editor-split-pane is-chat" aria-label="Review chat pane">
         <div className="main-window-editor-tabs ai-review-editor-split-tabbar">
           <TabBar
-            tabs={[{ label: chatLabel, icon: chatIcon, closable: false }]}
+            tabs={[{ label: chatLabel, icon: chatIcon, closable: true }]}
             activeTab={0}
+            onTabClose={() => onCloseReview?.()}
             direction="horizontal"
             focused={false}
           />
+          <div className="editor-tabs-more-slot">
+            <IconButton icon="general/moreVertical" aria-label="More" className="editor-tabs-more-button" />
+          </div>
         </div>
         <div className="ai-review-editor-split-body">{leftPane}</div>
       </section>
@@ -17781,6 +17785,9 @@ function AiReviewEditorSplit({
             direction="horizontal"
             focused
           />
+          <div className="editor-tabs-more-slot">
+            <IconButton icon="general/moreVertical" aria-label="More" className="editor-tabs-more-button" />
+          </div>
         </div>
         <div className="ai-review-editor-split-body is-review">{rightPane}</div>
       </section>
