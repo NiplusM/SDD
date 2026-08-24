@@ -15629,7 +15629,7 @@ function buildChatChangedFilesScopeOptions(entries = []) {
     { id: 'session-changes', label: 'Session Changes', section: 'session', files: chatFiles },
     {
       id: 'all-project-changes',
-      label: 'All Changes',
+      label: 'All Sessions Changes',
       section: 'project',
       files: [...chatFiles, ...commitFiles],
     },
@@ -19382,7 +19382,7 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   processedReviewScopeFileCount: 0,
   // Snapshot of completedFileEditRunCount at the moment Skip was last
   // clicked, not a plain boolean — so dismissing is only ever temporary:
-  // the All Changes tab reappears as soon as a run finishes *after* that
+  // the All Sessions Changes tab reappears as soon as a run finishes *after* that
   // snapshot, i.e. as soon as there are new changes it hasn't shown yet.
   // -1 (never dismissed) so it's satisfied by the very first completed run.
   vcsSummaryDismissedAtCount: -1,
@@ -19557,7 +19557,7 @@ function AiChatTabView({
       vcsRunExtraCounts: typeof updater === 'function' ? updater(current.vcsRunExtraCounts) : updater,
     }));
   }, [updateComposerState]);
-  // All Changes shouldn't appear the instant the 1st send starts — only
+  // All Sessions Changes shouldn't appear the instant the 1st send starts — only
   // once that run has actually finished, same as the count above.
   const setCompletedFileEditRunCount = useCallback((updater) => {
     updateComposerState((current) => ({
@@ -20612,7 +20612,7 @@ function AiChatTabView({
               vcsTab={!showVcsTab ? null : {
                 // Matches the name used everywhere else this scope is opened
                 // from (the diff view's own header, the old summary card).
-                label: 'All Changes',
+                label: 'All Sessions Changes',
                 branch: `${vcsFiles.length}`,
                 added: vcsAdded,
                 removed: vcsRemoved,
