@@ -337,7 +337,7 @@ export function ComposerFollowUpQueue({
   //
   // The files tab still auto-collapses the panel once it disappears — but
   // only when NOTHING else (queue or vcs) is left to show. Collapsing just
-  // because files went away, while the user is sitting on the All Sessions Changes
+  // because files went away, while the user is sitting on the All Changes
   // tab (or a queue is still pending), would hide a tab that's still there
   // in the strip and still worth looking at.
   //
@@ -383,7 +383,7 @@ export function ComposerFollowUpQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasFilesTab, hasQueueTab]);
 
-  // #3 priority: vcs (All Sessions Changes) never auto-claims focus on arrival —
+  // #3 priority: vcs (All Changes) never auto-claims focus on arrival —
   // it's still reachable by clicking its tab, it just doesn't steal
   // attention the way queue/files do.
 
@@ -573,13 +573,13 @@ export function ComposerFollowUpQueue({
       <div className="ij-air-follow-up-queue__body" style={{ height: bodyHeight }}>
         <div ref={bodyContentRef} className="ij-air-follow-up-queue__body-inner">
           {resolvedActiveTab === 'vcs' ? (
-            <div className="ij-air-follow-up-queue__vcs-files" aria-label={`${vcsTab?.label ?? 'All Sessions Changes'} files`}>
+            <div className="ij-air-follow-up-queue__vcs-files" aria-label={`${vcsTab?.label ?? 'All Changes'} files`}>
               {(vcsTab?.files ?? []).map((file) => (
                 <VcsSummaryFileRow key={file.tabId} file={file} onOpenFile={vcsTab.onOpenFile} />
               ))}
             </div>
           ) : resolvedActiveTab === 'files' && filesTab?.variant === 'edit' ? (
-            // Same row metrics and gap as the All Sessions Changes tab's file list
+            // Same row metrics and gap as the All Changes tab's file list
             // (.ij-air-follow-up-queue__vcs-files) so the two blocks read
             // as one consistent rhythm.
             <div className="ij-air-follow-up-queue__vcs-files">
