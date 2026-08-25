@@ -20602,10 +20602,16 @@ function AiChatTabView({
           return (
             <ComposerFollowUpQueue
               items={showQueueContent ? queuedFollowUps : []}
-              scopeItems={showQueueContent ? reviewScopeQueueItems : []}
-              filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 ? {
-                label: agentRun?.kind === 'review' ? 'AI Review' : 'Current Changes',
-                variant: agentRun?.kind === 'review' ? 'review' : 'edit',
+              // "Current Changes" (the plain file-edit variant of this tab) is
+              // commented out of the UI — out of scope for now. AI Review still
+              // uses this same tab (scopeItems + filesTab together), so only
+              // that branch stays live; hasFilesTab in ComposerFollowUpQueue
+              // keys off scopeItems.length, so it must be gated too, not just
+              // filesTab's label/data.
+              scopeItems={showQueueContent && agentRun?.kind === 'review' ? reviewScopeQueueItems : []}
+              filesTab={showQueueContent && reviewScopeQueueFiles.length > 0 && agentRun?.kind === 'review' ? {
+                label: 'AI Review',
+                variant: 'review',
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
               } : null}
