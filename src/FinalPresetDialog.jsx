@@ -154,6 +154,10 @@ export function FinalPresetDialog({
       onChange?.({
         ...draft,
         ...item,
+        // Explicit, not inherited from whatever preset was open before —
+        // otherwise switching e.g. SDD -> another preset without its own
+        // sddMode field would silently keep SDD mode "On".
+        sddMode: Boolean(item.sddMode),
         managedRecommendation: Boolean(item.managedRecommendation),
         lockedPreset: Boolean(item.lockedPreset),
         defaultPreset: false,
@@ -183,6 +187,10 @@ export function FinalPresetDialog({
       accessId: item.accessId ?? getFinalAgentDefaults(item.agentId).accessId,
       planEffortId: item.planEffortId ?? getFinalAgentDefaults(item.agentId).planEffortId,
       customPrompt: item.customPrompt ?? '',
+      // These built-in agent entries (Codex, Claude, Junie, ...) never carry
+      // sddMode themselves — always reset explicitly, or it'd keep whatever
+      // was left over from the previously open preset (e.g. SDD's "On").
+      sddMode: Boolean(item.sddMode),
     };
     onChange?.({
       ...nextDraft,

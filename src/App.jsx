@@ -24033,7 +24033,13 @@ export default function App() {
     };
     const agentTaskId = AGENT_TASK_BY_LABEL[lowerLabel];
     if (agentTaskId) {
-      handleAgentTaskSelect(agentTaskId);
+      // The SDD spec is always worked alongside its generating chat now —
+      // never opens as a standalone tab.
+      if (agentTaskId === 't2') {
+        openSpecInSplitViewRef.current?.('t2', vetSchedulesRelatedChatId);
+      } else {
+        handleAgentTaskSelect(agentTaskId);
+      }
       requestReveal(null);
       return;
     }
@@ -31235,14 +31241,13 @@ export default function App() {
 
     if (isSddAgentChat) {
       const sddResultBullets = [
-        'Created the Vet-Schedules.md specification: a parallel schedule track that adds real per-vet availability checks alongside the existing Visit-Booking flow.',
-        'Plan: a new VetSchedule entity and repository query, validating requested visit times against a vet’s working hours, and seeding demo schedule data in H2.',
-        'Acceptance Criteria: vets get per-weekday working schedules, out-of-hours bookings are rejected, and Visit-Booking.md keeps its static hourly slots untouched while this ships.',
+        'Created the Vet-Schedules.md specification: a parallel schedule track with per-vet availability checks alongside Visit-Booking.',
+        'Plan validates visit times against working hours; Visit-Booking.md stays untouched while this ships.',
       ];
       const fullSddResponse = sddResultBullets.join(' ');
       let revealedLength = 0;
       const streamNextSddChunk = () => {
-        revealedLength = Math.min(fullSddResponse.length, revealedLength + 2);
+        revealedLength = Math.min(fullSddResponse.length, revealedLength + 4);
         const isComplete = revealedLength >= fullSddResponse.length;
         handleSelectedAiChatSentMessagesChange(
           (prev) => prev.map((message) => (
@@ -31271,7 +31276,15 @@ export default function App() {
           )),
           targetChatId,
         );
-        if (!isComplete) window.setTimeout(streamNextSddChunk, 32);
+        if (!isComplete) {
+          window.setTimeout(streamNextSddChunk, 28);
+          return;
+        }
+        // The spec is worked alongside its generating chat, not read on its
+        // own — open it in split the moment it's ready instead of waiting
+        // for the user to click the "Edited Vet-Schedules.md" reference.
+        setVetSchedulesRelatedChatId(targetChatId);
+        openSpecInSplitViewRef.current?.('t2', targetChatId);
       };
       window.setTimeout(streamNextSddChunk, 400);
     }
@@ -33407,7 +33420,11 @@ export default function App() {
                   onEditAnnotation={null}
                   onOpenChangedFile={(file) => openCommentTarget(file, activeAiChatTabChatId)}
                   onOpenAgentTaskTab={(agentTaskId) => {
-                    if (agentTaskId === 't2') setVetSchedulesRelatedChatId(activeAiChatTabChatId);
+                    if (agentTaskId === 't2') {
+                      setVetSchedulesRelatedChatId(activeAiChatTabChatId);
+                      openSpecInSplitViewRef.current?.('t2', activeAiChatTabChatId);
+                      return;
+                    }
                     handleAgentTaskSelect(agentTaskId);
                   }}
                   onCreateSpec={() => {
