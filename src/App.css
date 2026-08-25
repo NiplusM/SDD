@@ -2423,7 +2423,7 @@ body {
 }
 
 .spec-done-overlay {
-  --spec-done-gutter-width: 70px;
+  --spec-done-gutter-width: 46px;
   --spec-done-gutter-inline-offset: 8px;
   --spec-done-row-content-inline-padding: 4px;
   --spec-plan-subitem-indent: 22px;
@@ -3747,6 +3747,15 @@ body {
   user-select: none;
 }
 
+/* .editor-gutter-row (shared base class also present on this element) forces
+   justify-content: center and padding-left: 0 with !important and 2-class
+   specificity — match that specificity (.spec-done-row .spec-done-gutter-cell)
+   and add !important so this, declared later in the file, wins the cascade. */
+.spec-done-row .spec-done-gutter-cell {
+  justify-content: flex-start !important;
+  padding-left: var(--spec-done-gutter-inline-offset) !important;
+}
+
 .spec-done-gutter-cell .editor-gutter-line-number,
 .spec-done-gutter-cell .spec-done-gutter-breakpoint-btn,
 .spec-done-gutter-cell .spec-done-gutter-line-number-run,
@@ -5013,17 +5022,17 @@ body {
 .spec-done-comment-popup-textarea {
   box-sizing: border-box;
   width: 100%;
-  min-height: 28px;
+  min-height: 32px;
   max-height: 120px;
-  padding: 5px 8px;
+  padding: 7px 10px;
   border: 1px solid var(--input-border, var(--control-border, #4b4f56));
   border-radius: 4px;
   background: var(--input-bg, var(--control-bg, #1f2024));
   color: var(--text-white);
   font-family: Inter, -apple-system, sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
-  line-height: 16px;
+  line-height: 18px;
   resize: none;
   overflow-y: auto;
   field-sizing: content;
@@ -7994,9 +8003,9 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  width: clamp(300px, 54%, 520px);
+  width: clamp(320px, 34%, 460px);
   min-width: 0;
-  max-width: min(100%, 520px);
+  max-width: min(100%, 460px);
   box-sizing: border-box;
 }
 
@@ -8692,6 +8701,8 @@ body {
   min-width: 80px;
   min-height: 40px;
   padding: 0;
+  /* Line up the trigger's icon with the file icon of the tab above it. */
+  margin-left: -4px;
 }
 
 .agent-task-toolbar-title-trigger {
@@ -20268,6 +20279,11 @@ button.aiux543-answer-change-card:focus-visible {
   display: none;
 }
 
+@keyframes aiReviewEditorSplitReveal {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
 .ai-review-editor-split {
   display: grid;
   width: 100%;
@@ -20277,6 +20293,7 @@ button.aiux543-answer-change-card:focus-visible {
   grid-template-columns: minmax(360px, 1fr) 1px minmax(420px, 1.08fr);
   overflow: hidden;
   background: #191a1c;
+  animation: aiReviewEditorSplitReveal var(--motion-duration-medium) var(--motion-ease-soft);
 }
 
 .ai-review-editor-split-pane {
@@ -20315,6 +20332,8 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 .ai-review-editor-split-body > .ai-spec-split-editor-host {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -20324,9 +20343,16 @@ button.aiux543-answer-change-card:focus-visible {
    every .editor-body nested anywhere inside the outer editor while a split
    is active — including this local one used as AgentTaskEditorArea's portal
    target. Force it back on; !important is needed to beat that :has() rule's
-   specificity regardless of source order. */
+   specificity regardless of source order. It's a plain sibling of
+   AgentTaskEditorArea here (not its ancestor), sized to fill the remaining
+   column height below the toolbar so the portaled .spec-done-overlay
+   (position: absolute; inset: 0 on this box) doesn't cover the toolbar.
+   position: relative anchors that inset:0. */
 .ai-spec-split-editor-host .editor-body {
   display: flex !important;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .ai-review-editor-split-body.is-review .aiux-review-overview {
@@ -21403,6 +21429,23 @@ button.aiux543-answer-change-card:focus-visible {
 .spec-done-overlay .spec-done-line-comment > span:last-child {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* The split's right pane is narrower than a full-width tab — keep Plan/AC
+   lines on one row there (truncated) instead of reflowing to a second line. */
+.ai-spec-split-editor-host .spec-done-overlay .spec-done-line > [contenteditable],
+.ai-spec-split-editor-host .spec-done-overlay .spec-done-line-status > span:last-child,
+.ai-spec-split-editor-host .spec-done-overlay .spec-done-line-check > span:last-child,
+.ai-spec-split-editor-host .spec-done-overlay .spec-done-line-bullet > span:last-child,
+.ai-spec-split-editor-host .spec-done-overlay .spec-done-line-comment > span:last-child {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  vertical-align: bottom;
 }
 
 .spec-done-overlay .spec-done-bullet {

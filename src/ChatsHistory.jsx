@@ -119,12 +119,14 @@ function ChatsHistoryToolWindow({
   onOpenFile = null,
   vetSchedulesLineCount = 0,
 }) {
-  // Everything collapsed by default except the refactoring chat, which is
-  // expanded (its Changes / Context / Sub-threads sections stay collapsed).
+  // Everything collapsed by default except the refactoring chat and whichever
+  // chat is active when this panel first mounts (e.g. the default SDD session)
+  // — both expanded (their Changes / Context / Sub-threads sections stay collapsed).
   const [expandedSections, setExpandedSections] = useState({});
-  const [expandedRows, setExpandedRows] = useState({
+  const [expandedRows, setExpandedRows] = useState(() => ({
     'refactor-time-slots': true,
-  });
+    ...(activeChatId ? { [activeChatId]: true } : {}),
+  }));
   // Selection follows the active chat editor tab. When no chat tab is active
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;

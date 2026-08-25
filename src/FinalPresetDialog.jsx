@@ -508,7 +508,7 @@ export function FinalPresetDialog({
                           Sent before the first prompt and hidden from AIR’s editor, transcript, and session title
                         </span>
                       </label>
-                      <label className="aiux550f4-final-final-preset-field">
+                      <div className="aiux550f4-final-final-preset-parameters">
                         <span>SDD:</span>
                         <FinalSessionSelect
                           ariaLabel="SDD mode"
@@ -516,7 +516,7 @@ export function FinalPresetDialog({
                           value={draft.sddMode ? 'on' : 'off'}
                           onChange={(nextValue) => update('sddMode', nextValue === 'on')}
                         />
-                      </label>
+                      </div>
                     </>
                   ) : null}
                 </div>
