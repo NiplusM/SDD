@@ -19718,6 +19718,20 @@ function AiChatTabView({
               <AiChatProgressIcon />
               <span>Running...</span>
             </div>
+          ) : message.role === 'assistant' && message.kind === 'sdd-spec-generated' && message.streaming ? (
+            // Same no-heading treatment as the finished reply below — the
+            // agent-name heading (e.g. "SDD") only ever showed up here while
+            // the text was still streaming in, which read as inconsistent.
+            <article key={message.id} className="aiux543-answer">
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                <span className="ai-chat-streaming-caret" aria-hidden="true" />
+              </p>
+            </article>
           ) : message.role === 'assistant' && message.kind === 'sdd-spec-generated' && !message.streaming ? (
             <Fragment key={message.id}>
               {Array.isArray(message.result) && message.result.length > 0 && (
@@ -28371,6 +28385,19 @@ export default function App() {
   ]);
   const handleAiChatMessageSent = useCallback(({ chatId, message = null } = {}) => {
     if (!chatId) return;
+
+    // A note left on a doc (handleAddSpecSelectionToChat) lands as a pending
+    // selection-context attachment on whichever chat generated it — however
+    // that attachment actually gets sent (the doc's own "Sent to Agent", or
+    // just hitting send in the chat itself with nothing but the attachment
+    // in the composer), the note is now the chat's to handle and shouldn't
+    // still sit in the document too.
+    const sentDocTabIds = new Set(
+      (Array.isArray(message?.attachments) ? message.attachments : [])
+        .filter((attachment) => attachment?.isSelectionContext && !attachment?.isChatSelectionContext && attachment?.sourceTabId)
+        .map((attachment) => attachment.sourceTabId),
+    );
+    sentDocTabIds.forEach((tabId) => clearTaskCommentsForTab(tabId));
 
     const statusChatMatch = String(chatId).match(/^spec-chat-(.+)-(build|specified)$/u);
     if (!statusChatMatch) return;

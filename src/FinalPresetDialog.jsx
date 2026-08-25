@@ -497,6 +497,15 @@ export function FinalPresetDialog({
                   </div>
                   {advancedOpen ? (
                     <>
+                      <div className="aiux550f4-final-final-preset-parameters aiux550f4-final-final-preset-parameters-sdd">
+                        <span>SDD mode:</span>
+                        <FinalSessionSelect
+                          ariaLabel="SDD mode"
+                          options={sddModeOptions}
+                          value={draft.sddMode ? 'on' : 'off'}
+                          onChange={(nextValue) => update('sddMode', nextValue === 'on')}
+                        />
+                      </div>
                       <label className="aiux550f4-final-final-preset-field custom-prompt">
                         <span>Injected instructions:</span>
                         <textarea
@@ -508,15 +517,6 @@ export function FinalPresetDialog({
                           Sent before the first prompt and hidden from AIR’s editor, transcript, and session title
                         </span>
                       </label>
-                      <div className="aiux550f4-final-final-preset-parameters">
-                        <span>SDD:</span>
-                        <FinalSessionSelect
-                          ariaLabel="SDD mode"
-                          options={sddModeOptions}
-                          value={draft.sddMode ? 'on' : 'off'}
-                          onChange={(nextValue) => update('sddMode', nextValue === 'on')}
-                        />
-                      </div>
                     </>
                   ) : null}
                 </div>
