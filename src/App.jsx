@@ -13369,49 +13369,54 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <span className="agent-task-toolbar-chat-trigger-label">{relatedChat.title}</span>
                   </button>
                 )}
-                {runState === 'running' ? (<>
-                  <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
-                    <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                    <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
-                    <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
-                    <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
-                    <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
-                    <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
-                    <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
-                  </svg>
-                  <span className="at-generating-label">Building...</span>
-                </>) : (<>
-                  {/* Between runs — the loader above covers "running"; this matches its
-                      icon size (16px) and label style exactly so every state in this
-                      spot reads as one family instead of a patchwork. Three distinct
-                      states need three distinct icons, not one dot standing in for two
-                      of them: pencil for pending edits, checkmark for an executed run,
-                      and a plain dot only for the true empty/not-run-yet state. */}
-                  {hasPendingSpecifyChanges ? (
-                    <Icon name="general/edit" size={16} />
-                  ) : topBarDisplayStatus === 'Build' ? (
-                    <Icon name="general/checkmark" size={16} />
-                  ) : (
-                    <span className="agent-task-toolbar-status-dot-wrap" aria-hidden="true">
-                      <span className="agent-task-toolbar-status-dot" />
+                {/* The status indicator (Ready to Execute/Executed/Edited, and the
+                    "Building..." busy state) is redundant once the related chat is
+                    reachable right here — its own timeline already narrates exactly
+                    that ("Running the Plan...", "Worked for Xs", the file list). Only
+                    show it standalone, when there's no chat to tell that story. */}
+                {!relatedChat && (
+                  runState === 'running' ? (<>
+                    <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <rect opacity="0.93" x="2.34961" y="3.76416" width="2" height="4" rx="1" transform="rotate(-45 2.34961 3.76416)" fill="#868A91"/>
+                      <rect opacity="0.78" x="1" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                      <rect opacity="0.69" x="5.17871" y="9.40991" width="2" height="4" rx="1" transform="rotate(45 5.17871 9.40991)" fill="#868A91"/>
+                      <rect opacity="0.62" x="7" y="11" width="2" height="4" rx="1" fill="#868A91"/>
+                      <rect opacity="0.48" x="9.41003" y="10.8242" width="2" height="4" rx="1" transform="rotate(-45 9.41003 10.8242)" fill="#868A91"/>
+                      <rect opacity="0.38" x="11" y="7" width="4" height="2" rx="1" fill="#868A91"/>
+                      <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
+                      <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
+                    </svg>
+                    <span className="at-generating-label">Building...</span>
+                  </>) : (<>
+                    {/* Three distinct states need three distinct icons, not one dot
+                        standing in for two of them: pencil for pending edits,
+                        checkmark for an executed run, and a plain dot only for the
+                        true empty/not-run-yet state. */}
+                    {hasPendingSpecifyChanges ? (
+                      <Icon name="general/edit" size={16} />
+                    ) : topBarDisplayStatus === 'Build' ? (
+                      <Icon name="general/checkmark" size={16} />
+                    ) : (
+                      <span className="agent-task-toolbar-status-dot-wrap" aria-hidden="true">
+                        <span className="agent-task-toolbar-status-dot" />
+                      </span>
+                    )}
+                    <span className="at-generating-label">
+                      {hasPendingSpecifyChanges ? 'Edited' : (topBarDisplayStatus === 'Build' ? 'Executed' : 'Ready to Execute')}
                     </span>
-                  )}
-                  <span className="at-generating-label">
-                    {hasPendingSpecifyChanges ? 'Edited' : (topBarDisplayStatus === 'Build' ? 'Executed' : 'Ready to Execute')}
-                  </span>
-                  {attachedFiles && attachedFiles.length > 0 && (
-                    <div className="attached-files-list">
-                      {attachedFiles.map((file, idx) => (
-                        <AttachedFileChip
-                          key={file.label + idx}
-                          label={file.label}
-                          onRemove={() => onRemoveAttached?.(idx)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>)}
+                  </>)
+                )}
+                {attachedFiles && attachedFiles.length > 0 && (
+                  <div className="attached-files-list">
+                    {attachedFiles.map((file, idx) => (
+                      <AttachedFileChip
+                        key={file.label + idx}
+                        label={file.label}
+                        onRemove={() => onRemoveAttached?.(idx)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Default state — right */}
