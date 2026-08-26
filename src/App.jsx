@@ -12623,8 +12623,14 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   const topBarDisplayStatus = ['Build', 'Specified'].includes(topBarStatus)
     ? topBarStatus
     : 'Specified';
-  const relatedChat = commentContextLabel.trim().toLowerCase() === 'vet-schedules.md'
-    ? (chatTargets.find((chat) => chat.id === (vetSchedulesRelatedChatId ?? 'refactor-time-slots')) ?? null)
+  const normalizedCommentContextLabel = commentContextLabel.trim().toLowerCase();
+  const relatedChatId = normalizedCommentContextLabel === 'vet-schedules.md'
+    ? (vetSchedulesRelatedChatId ?? 'refactor-time-slots')
+    : normalizedCommentContextLabel === 'visit-booking.md'
+      ? 'refactor-time-slots'
+      : null;
+  const relatedChat = relatedChatId
+    ? (chatTargets.find((chat) => chat.id === relatedChatId) ?? null)
     : null;
   const collapsedDoneToolbarText = relatedChat?.title
     ?? (hasToolbarText ? value.replace(/\s+/g, ' ').trim() : toolbarPlaceholder);
@@ -24210,12 +24216,12 @@ export default function App() {
     };
     const agentTaskId = AGENT_TASK_BY_LABEL[lowerLabel];
     if (agentTaskId) {
-      // The SDD spec is always worked alongside its generating chat now —
-      // never opens as a standalone tab.
+      // Every agentic spec doc is always worked alongside its generating
+      // chat now — never opens as a standalone tab.
       if (agentTaskId === 't2') {
         openSpecInSplitViewRef.current?.('t2', vetSchedulesRelatedChatId);
       } else {
-        handleAgentTaskSelect(agentTaskId);
+        openSpecInSplitViewRef.current?.(agentTaskId, 'refactor-time-slots');
       }
       requestReveal(null);
       return;
@@ -25727,8 +25733,8 @@ export default function App() {
   useEffect(() => {
     if (screen !== 'ide' || seededPresetTaskRef.current) return;
     seededPresetTaskRef.current = true;
-    handleAgentTaskSelect('t1');
-  }, [screen, handleAgentTaskSelect]);
+    openSpecInSplitViewRef.current?.('t1', 'refactor-time-slots');
+  }, [screen]);
 
   // Land on a fresh, empty SDD session by default instead of the seeded demo chat.
   useEffect(() => {
