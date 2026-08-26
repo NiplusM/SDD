@@ -1372,6 +1372,118 @@ class VisitControllerTests {
     }
 }`,
   },
+  // Vet-Schedules.md's Plan/Build files — indices 10-14, kept clear of the
+  // 0-6 range above (a different scenario's plan) so neither mapping steps
+  // on the other's diff content.
+  10: {
+    fileLabel: 'VetSchedule.java',
+    language: 'java',
+    beforeCode: '',
+    afterCode: `@Entity
+@Table(name = "vet_schedules")
+public class VetSchedule extends BaseEntity {
+
+    @ManyToOne
+    @JoinColumn(name = "vet_id")
+    @NotNull
+    private Vet vet;
+
+    @Column(name = "weekday")
+    @NotNull
+    private DayOfWeek weekday;
+
+    @Column(name = "start_time")
+    @NotNull
+    private LocalTime startTime;
+
+    @Column(name = "end_time")
+    @NotNull
+    private LocalTime endTime;
+}`,
+  },
+  11: {
+    fileLabel: 'VetScheduleRepository.java',
+    language: 'java',
+    beforeCode: '',
+    afterCode: `public interface VetScheduleRepository extends CrudRepository<VetSchedule, Integer> {
+
+    List<VetSchedule> findByVetIdAndWeekday(int vetId, DayOfWeek weekday);
+}`,
+  },
+  12: {
+    fileLabel: 'VisitController.java',
+    language: 'java',
+    beforeCode: `@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
+public String processNewVisitForm(@Valid Visit visit, BindingResult result) {
+    if (result.hasErrors()) {
+        return "pets/createOrUpdateVisitForm";
+    }
+    visitRepository.save(visit);
+    return "redirect:/owners/{ownerId}";
+}`,
+    afterCode: `@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
+public String processNewVisitForm(@Valid Visit visit, BindingResult result) {
+    if (result.hasErrors()) {
+        return "pets/createOrUpdateVisitForm";
+    }
+    List<VetSchedule> schedules = vetScheduleRepository.findByVetIdAndWeekday(
+        visit.getVet().getId(), visit.getDate().getDayOfWeek());
+    boolean withinHours = schedules.stream().anyMatch(schedule ->
+        !visit.getTime().isBefore(schedule.getStartTime())
+            && !visit.getTime().isAfter(schedule.getEndTime()));
+    if (!withinHours) {
+        result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
+        return "pets/createOrUpdateVisitForm";
+    }
+    visitRepository.save(visit);
+    return "redirect:/owners/{ownerId}";
+}`,
+  },
+  13: {
+    fileLabel: 'data.sql',
+    language: 'sql',
+    beforeCode: '',
+    afterCode: `INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (1, 'MONDAY', '09:00', '17:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (1, 'TUESDAY', '09:00', '17:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'MONDAY', '10:00', '18:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'WEDNESDAY', '10:00', '18:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'THURSDAY', '08:00', '16:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'FRIDAY', '08:00', '16:00');`,
+  },
+  14: {
+    fileLabel: 'VisitControllerTests.java',
+    language: 'java',
+    beforeCode: `@WebMvcTest(VisitController.class)
+class VisitControllerTests {
+
+    @Test
+    void initCreationFormDoesNotExposeVetChoices() throws Exception {
+        mockMvc.perform(get("/owners/1/pets/1/visits/new"))
+            .andExpect(status().isOk());
+    }
+}`,
+    afterCode: `@WebMvcTest(VisitController.class)
+class VisitControllerTests {
+
+    @Test
+    void initCreationFormDoesNotExposeVetChoices() throws Exception {
+        mockMvc.perform(get("/owners/1/pets/1/visits/new"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsBookingOutsideVetWorkingHours() throws Exception {
+        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
+            .thenReturn(List.of(schedule(1, DayOfWeek.MONDAY, "09:00", "17:00")));
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-13")
+                .param("time", "20:00")
+                .param("vet", "1"))
+            .andExpect(model().attributeHasFieldErrors("visit", "time"));
+    }
+}`,
+  },
 };
 
 const MY_PROJECT_TREE = [
@@ -8677,7 +8789,10 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       style={planLineStyle}
     >
       {statusItem
-        ? <CheckStatus status={hasPlanComment ? 'skipped' : statusItem.status} outdated={!hasPlanComment && isOutdated} isLoading={isRunning && !hasPlanComment && statusItem.status === 'pending'} />
+        // Leaving a comment on a plan item used to force its status to
+        // "skipped" (grayed out) regardless of whether it had actually run —
+        // a completed item stays visibly done even with a comment on it.
+        ? <CheckStatus status={statusItem.status} outdated={isOutdated} isLoading={isRunning && statusItem.status === 'pending'} />
         : (isRunning
             ? <CheckStatus status="pending" isLoading />
             : <Checkbox className="spec-done-checkbox" checked={false} onChange={() => {}} />)
@@ -8901,65 +9016,72 @@ function DoneInspectionWidget({
   return (
     <>
     <div className={`spec-done-inspection-widget${className ? ` ${className}` : ''}`}>
-      {hasIssues && (
-        <>
-          <button
-            type="button"
-            className="spec-done-inspection-counts-btn"
-            aria-label={problemLabelParts.join(' and ')}
-            data-demo-id="spec-inspection-counts"
-            onClick={() => onOpenProblems?.()}
-          >
-            {hasWarnings && (
-              <span className="spec-done-inspection-group">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path fillRule="evenodd" clipRule="evenodd" d="M1.27603 10.8634L6.3028 1.98903C7.04977 0.670323 8.94893 0.670326 9.69589 1.98903L14.7227 10.8634C15.516 12.2639 14.5047 14 12.8956 14H3.10308C1.494 14 0.482737 12.2639 1.27603 10.8634Z" fill="#C7A450" />
-                <path d="M9 5C9 4.44772 8.55228 4 8 4C7.44772 4 7 4.44772 7 5V7.5C7 8.05229 7.44772 8.5 8 8.5C8.55229 8.5 9 8.05228 9 7.5L9 5Z" fill="#1E1F22" />
-                <path d="M8 12C8.55228 12 9 11.5523 9 11C9 10.4477 8.55228 10 8 10C7.44772 10 7 10.4477 7 11C7 11.5523 7.44772 12 8 12Z" fill="#1E1F22" />
-              </svg>
-              <span className="spec-done-inspection-text">{warningCount}</span>
-            </span>
-          )}
-          {hasErrors && (
-            <span className="spec-done-inspection-group">
+      {/* Always present, not just when there are issues — otherwise there's no
+          way to get to the Problems view from a clean document at all. A
+          clean run gets a plain checkmark instead of a count. */}
+      <button
+        type="button"
+        className="spec-done-inspection-counts-btn"
+        aria-label={hasIssues ? problemLabelParts.join(' and ') : 'No problems'}
+        data-demo-id="spec-inspection-counts"
+        onClick={() => onOpenProblems?.()}
+      >
+        {hasWarnings && (
+          <span className="spec-done-inspection-group">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path fillRule="evenodd" clipRule="evenodd" d="M1.27603 10.8634L6.3028 1.98903C7.04977 0.670323 8.94893 0.670326 9.69589 1.98903L14.7227 10.8634C15.516 12.2639 14.5047 14 12.8956 14H3.10308C1.494 14 0.482737 12.2639 1.27603 10.8634Z" fill="#C7A450" />
+            <path d="M9 5C9 4.44772 8.55228 4 8 4C7.44772 4 7 4.44772 7 5V7.5C7 8.05229 7.44772 8.5 8 8.5C8.55229 8.5 9 8.05228 9 7.5L9 5Z" fill="#1E1F22" />
+            <path d="M8 12C8.55228 12 9 11.5523 9 11C9 10.4477 8.55228 10 8 10C7.44772 10 7 10.4477 7 11C7 11.5523 7.44772 12 8 12Z" fill="#1E1F22" />
+          </svg>
+          <span className="spec-done-inspection-text">{warningCount}</span>
+        </span>
+      )}
+      {hasErrors && (
+        <span className="spec-done-inspection-group">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path fillRule="evenodd" clipRule="evenodd" d="M2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8ZM7 5C7 4.44772 7.44772 4 8 4C8.55229 4 9 4.44772 9 5V8C9 8.55228 8.55229 9 8 9C7.44772 9 7 8.55228 7 8V5ZM9 11C9 11.5523 8.55229 12 8 12C7.44772 12 7 11.5523 7 11C7 10.4477 7.44772 10 8 10C8.55229 10 9 10.4477 9 11Z" fill="#DB5C5C" />
+          </svg>
+            <span className="spec-done-inspection-text">{errorCount}</span>
+          </span>
+        )}
+        {!hasIssues && (
+          <span className="spec-done-inspection-group">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" fill="#55A76A" />
+              <path d="M4.5 8L7 10.5L11.5 6" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+        )}
+      </button>
+      {(hasWarnings || hasErrors) && (
+        <div className="spec-done-inspection-nav">
+          <Tooltip text="Previous Highlighted Error" shortcut="⇧F2" placement="bottom" delay={0}>
+            <button
+              type="button"
+              className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
+              aria-label="Previous highlighted error"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onNavigatePreviousIssue?.()}
+            >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path fillRule="evenodd" clipRule="evenodd" d="M2 8C2 4.68629 4.68629 2 8 2C11.3137 2 14 4.68629 14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8ZM7 5C7 4.44772 7.44772 4 8 4C8.55229 4 9 4.44772 9 5V8C9 8.55228 8.55229 9 8 9C7.44772 9 7 8.55228 7 8V5ZM9 11C9 11.5523 8.55229 12 8 12C7.44772 12 7 11.5523 7 11C7 10.4477 7.44772 10 8 10C8.55229 10 9 10.4477 9 11Z" fill="#DB5C5C" />
+                <path d="M4.5 9.75L8 6.25L11.5 9.75" stroke="currentColor" strokeLinecap="round" />
               </svg>
-                <span className="spec-done-inspection-text">{errorCount}</span>
-              </span>
-            )}
-          </button>
-          {(hasWarnings || hasErrors) && (
-            <div className="spec-done-inspection-nav">
-              <Tooltip text="Previous Highlighted Error" shortcut="⇧F2" placement="bottom" delay={0}>
-                <button
-                  type="button"
-                  className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
-                  aria-label="Previous highlighted error"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onNavigatePreviousIssue?.()}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M4.5 9.75L8 6.25L11.5 9.75" stroke="currentColor" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </Tooltip>
-              <Tooltip text="Next Highlighted Error" shortcut="F2" placement="bottom" delay={0}>
-                <button
-                  type="button"
-                  className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
-                  aria-label="Next highlighted error"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onNavigateNextIssue?.()}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="currentColor" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </Tooltip>
-            </div>
-          )}
-        </>
+            </button>
+          </Tooltip>
+          <Tooltip text="Next Highlighted Error" shortcut="F2" placement="bottom" delay={0}>
+            <button
+              type="button"
+              className="spec-inspection-nav-btn spec-done-inspection-nav-btn"
+              aria-label="Next highlighted error"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onNavigateNextIssue?.()}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M11.5 6.25L8 9.75L4.5 6.25" stroke="currentColor" strokeLinecap="round" />
+              </svg>
+            </button>
+          </Tooltip>
+        </div>
       )}
     </div>
     {versionPopupRect && (
@@ -13137,7 +13259,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   function renderBusyToolbar(title) {
     return (
       <div className="agent-task-toolbar" ref={toolbarRef}>
-        <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
           <div className="agent-task-toolbar-left">
             <svg className="at-loader" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -13231,7 +13352,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
       <>
         <div className="agent-task-editor-area" data-gen-state={genState}>
           <div className="agent-task-toolbar" ref={toolbarRef}>
-            <div className="agent-task-toolbar-gradient" />
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
@@ -13248,28 +13368,24 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   </svg>
                   <span className="at-generating-label">Building...</span>
                 </>) : (<>
-                  <button
-                    type="button"
-                    className="agent-task-toolbar-title-trigger"
-                    aria-label={relatedChat ? collapsedDoneToolbarText : `Open ${collapsedDoneToolbarText} chat`}
-                    onClick={handleTopBarTitleOpenChat}
-                  >
-                    <AgentTaskTopBarIcon style={{ flexShrink: 0 }} icon={relatedChat?.icon} />
-                    {renderToolbarInput({ collapsibleInDone: true })}
-                  </button>
-                </>)}
-              </div>
-
-              {/* Default state — right */}
-              <div className="agent-task-toolbar-right">
-                {runState === 'running' ? (
-                  <button type="button" className="at-send-btn" onClick={() => onStop()}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-                      <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" stroke="#C4C4C4" strokeWidth="1.6" />
-                    </svg>
-                    <span className="at-send-label">Stop</span>
-                  </button>
-                ) : (<>
+                  {/* Between runs — the loader above covers "running"; this matches its
+                      icon size (16px) and label style exactly so every state in this
+                      spot reads as one family instead of a patchwork. Three distinct
+                      states need three distinct icons, not one dot standing in for two
+                      of them: pencil for pending edits, checkmark for an executed run,
+                      and a plain dot only for the true empty/not-run-yet state. */}
+                  {hasPendingSpecifyChanges ? (
+                    <Icon name="general/edit" size={16} />
+                  ) : topBarDisplayStatus === 'Build' ? (
+                    <Icon name="general/checkmark" size={16} />
+                  ) : (
+                    <span className="agent-task-toolbar-status-dot-wrap" aria-hidden="true">
+                      <span className="agent-task-toolbar-status-dot" />
+                    </span>
+                  )}
+                  <span className="at-generating-label">
+                    {hasPendingSpecifyChanges ? 'Edited' : (topBarDisplayStatus === 'Build' ? 'Executed' : 'Ready to Execute')}
+                  </span>
                   {attachedFiles && attachedFiles.length > 0 && (
                     <div className="attached-files-list">
                       {attachedFiles.map((file, idx) => (
@@ -13281,28 +13397,40 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       ))}
                     </div>
                   )}
-                  <button type="button" className="at-send-btn" data-demo-id="agent-task-run" onClick={() => {
-                    updateTopBarTitleAction('Build');
-                    onTopBarAction?.('Build', { sendMessage: true });
-                    // Suppress badge during and after the run — the run itself
-                    // will produce authoritative statuses, so pre-run pending
-                    // changes are no longer relevant.
-                    setHasPendingDoneEnhanceChanges(false);
-                    if (suppressEnhanceBadgeTimerRef.current) {
-                      clearTimeout(suppressEnhanceBadgeTimerRef.current);
-                    }
-                    suppressEnhanceBadgeRef.current = true;
-                    suppressEnhanceBadgeTimerRef.current = setTimeout(() => {
-                      suppressEnhanceBadgeRef.current = false;
-                      suppressEnhanceBadgeTimerRef.current = 0;
-                    }, 4000);
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="icon">
-                      <path d="M9.5 8H3.5L2.5 14.5L14.5 8L2.5 1.5L3.192 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    <span className="at-send-label">Sent to Agent</span>
-                  </button>
                 </>)}
+              </div>
+
+              {/* Default state — right */}
+              <div className="agent-task-toolbar-right">
+                {runState === 'running' ? (
+                  <Button type="secondary" size="slim" onClick={() => onStop()}>
+                    Stop
+                  </Button>
+                ) : (
+                  <Button
+                    type="primary"
+                    size="slim"
+                    data-demo-id="agent-task-run"
+                    onClick={() => {
+                      updateTopBarTitleAction('Build');
+                      onTopBarAction?.('Build', { sendMessage: true });
+                      // Suppress badge during and after the run — the run itself
+                      // will produce authoritative statuses, so pre-run pending
+                      // changes are no longer relevant.
+                      setHasPendingDoneEnhanceChanges(false);
+                      if (suppressEnhanceBadgeTimerRef.current) {
+                        clearTimeout(suppressEnhanceBadgeTimerRef.current);
+                      }
+                      suppressEnhanceBadgeRef.current = true;
+                      suppressEnhanceBadgeTimerRef.current = setTimeout(() => {
+                        suppressEnhanceBadgeRef.current = false;
+                        suppressEnhanceBadgeTimerRef.current = 0;
+                      }, 4000);
+                    }}
+                  >
+                    Execute
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -13341,7 +13469,6 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
   return (
     <div className="agent-task-editor-area">
       <div className="agent-task-toolbar" ref={toolbarRef}>
-        <div className="agent-task-toolbar-gradient" />
         <div className="agent-task-toolbar-content">
 
           {showGeneratingState ? <>
@@ -15419,30 +15546,65 @@ const SDD_BUILD_CHANGE_CARDS = [
     name: 'VetSchedule.java', label: 'VetSchedule.java',
     icon: 'fileTypes/java',
     added: '+18', removed: '', diff: { added: 18, deleted: 0 },
+    diffRequest: {
+      text: 'Add VetSchedule.java entity under the vet package',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 10 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 5,
+    },
   },
   {
     id: 'sdd-build-vet-schedule-repository',
     name: 'VetScheduleRepository.java', label: 'VetScheduleRepository.java',
     icon: 'fileTypes/java',
     added: '+9', removed: '', diff: { added: 9, deleted: 0 },
+    diffRequest: {
+      text: 'Add repository queries by vet/date in VetScheduleRepository.findByVetIdAndWeekday()',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 11 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 5,
+    },
   },
   {
     id: 'sdd-build-visit-controller',
     name: 'VisitController.java', label: 'VisitController.java',
     icon: 'fileTypes/java',
     added: '+14', removed: '-3', diff: { added: 14, deleted: 3 },
+    diffRequest: {
+      text: 'Validate requested visit_time against schedule windows in VisitController.processNewVisitForm()',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 12 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 5,
+    },
   },
   {
     id: 'sdd-build-data-sql',
     name: 'data.sql', label: 'data.sql',
     icon: 'fileTypes/sql',
     added: '+6', removed: '', diff: { added: 6, deleted: 0 },
+    diffRequest: {
+      text: 'Seed sample schedules in H2 data.sql',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 13 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 5,
+    },
   },
   {
     id: 'sdd-build-visit-controller-tests',
     name: 'VisitControllerTests.java', label: 'VisitControllerTests.java',
     icon: 'fileTypes/java',
     added: '+11', removed: '', diff: { added: 11, deleted: 0 },
+    diffRequest: {
+      text: 'Add tests for off-hours booking rejection in VisitControllerTests.java',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 14 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 5,
+    },
   },
 ];
 
@@ -16027,11 +16189,6 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                 );
         })}
       </div>
-      <button className="ai-chat-card-menu" type="button" aria-label="Message actions">
-        <span />
-        <span />
-        <span />
-      </button>
     </article>
   );
 }
@@ -18731,8 +18888,9 @@ function ReviewDecisionComposer({
 }
 
 function NewSessionFooterPicker({ id, label, options, open, onOpenChange, onSelect }) {
+  const anchorRef = useRef(null);
   return (
-    <span className="aiux543-new-session-setting-picker">
+    <span className="aiux543-new-session-setting-picker" ref={anchorRef}>
       <button
         type="button"
         className={open ? 'is-open' : ''}
@@ -18745,27 +18903,38 @@ function NewSessionFooterPicker({ id, label, options, open, onOpenChange, onSele
       >
         {label} <Icon name="general/chevronDown" size={16} />
       </button>
-      {open && (
-        <div className="aiux543-new-session-setting-menu" role="menu" aria-label={label}>
-          {options.map((option) => (
-            <button
-              type="button"
-              role="menuitemradio"
-              aria-checked={option === label}
-              className={option === label ? 'is-selected' : ''}
-              key={option}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelect(option);
-                onOpenChange(null);
-              }}
-            >
-              <span>{option}</span>
-              {option === label && <Icon name="general/checkmark" size={16} />}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Portaled and positioned from the button's own bounding rect — this
+          picker can sit inside a horizontally scrolling row (the narrow
+          split's composer footer) without the popup getting clipped by
+          that row's own overflow. */}
+      <FinalAnchoredPopup
+        align="start"
+        anchorRef={anchorRef}
+        ariaLabel={label}
+        className="aiux543-new-session-setting-menu-items"
+        estimatedHeight={8 + options.length * 30}
+        onClose={() => onOpenChange(null)}
+        open={open}
+        width={176}
+      >
+        {options.map((option) => (
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={option === label}
+            className={option === label ? 'is-selected' : ''}
+            key={option}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(option);
+              onOpenChange(null);
+            }}
+          >
+            <span>{option}</span>
+            {option === label && <Icon name="general/checkmark" size={16} />}
+          </button>
+        ))}
+      </FinalAnchoredPopup>
     </span>
   );
 }
@@ -19071,6 +19240,13 @@ function AiChatTabView({
     const handlePointerDown = (event) => {
       const target = event.target;
       if (target instanceof Node && newSessionSettingsRef.current?.contains(target)) return;
+      // The picker's own dropdown is a FinalAnchoredPopup now — portaled to
+      // document.body, so it's never a DOM descendant of the footer above.
+      // Without this check, this "outside click" listener (mousedown) fires
+      // and clears newSessionSettingsMenu before the later click event ever
+      // reaches the option button, so nothing you click in the popup does
+      // anything.
+      if (target instanceof Element && target.closest('[data-final-popup]')) return;
       setNewSessionSettingsMenu(null);
     };
     const handleKeyDown = (event) => {
@@ -19500,9 +19676,6 @@ function AiChatTabView({
             turn?.role === 'user' ? (
               <div key={`turn-${index}`} className="aiux543-user-message aiux543-thread-user-message" data-ai-chat-message-id={`${messageId}-turn-${index}`}>
                 <p>{turn.text}</p>
-                <span className="aiux543-kebab" aria-hidden="true">
-                  <Icon name="general/moreVertical" size={16} />
-                </span>
               </div>
             ) : (
               <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
@@ -19539,9 +19712,6 @@ function AiChatTabView({
             ) : scenario?.userPrompt ? (
               <div className="aiux543-user-message" data-ai-chat-message-id={messageId}>
                 <p>{scenario.userPrompt}</p>
-                <span className="aiux543-kebab" aria-hidden="true">
-                  <Icon name="general/moreVertical" size={16} />
-                </span>
               </div>
             ) : null}
 
@@ -19604,9 +19774,17 @@ function AiChatTabView({
         )}
 
         {!scenario.workedForLabel && (hasChatChangedFilesList(scenario) ? (
-          <ChatChangedFilesCard
+          // "N files changed" (edited-files style), not the plain "Done" card —
+          // every chat reports its finished iterations the same way now.
+          <ChatEditedFilesCard
             files={getChatChangeCards(scenario)}
             onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
+            onOpenReview={onOpenDiffTab ? () => {
+              const firstDiffRequest = getChatChangeCards(scenario)
+                .map((card) => card?.diffRequest)
+                .find(Boolean);
+              if (firstDiffRequest) onOpenDiffTab(firstDiffRequest);
+            } : null}
           />
         ) : getChatChangeCards(scenario).map((card) => {
           const openDiff = card.diffRequest && onOpenDiffTab ? () => onOpenDiffTab(card.diffRequest) : null;
@@ -19718,7 +19896,9 @@ function AiChatTabView({
               <AiChatProgressIcon />
               <span>Running...</span>
             </div>
-          ) : message.role === 'assistant' && message.kind === 'sdd-spec-generated' && message.streaming ? (
+          ) : message.role === 'assistant'
+            && (message.kind === 'sdd-spec-generated' || message.kind === 'sdd-status')
+            && message.streaming ? (
             // Same no-heading treatment as the finished reply below — the
             // agent-name heading (e.g. "SDD") only ever showed up here while
             // the text was still streaming in, which read as inconsistent.
@@ -19730,6 +19910,19 @@ function AiChatTabView({
               >
                 {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
                 <span className="ai-chat-streaming-caret" aria-hidden="true" />
+              </p>
+            </article>
+          ) : message.role === 'assistant' && message.kind === 'sdd-status' && !message.streaming ? (
+            // Plain no-heading text once done streaming too — this is just a
+            // transient "running the checks" status line, not a reply with
+            // its own agent-name heading.
+            <article key={message.id} className="aiux543-answer">
+              <p
+                data-ai-chat-annotatable="true"
+                data-ai-chat-message-id={message.id}
+                data-ai-chat-block-id={`sent-${message.id}`}
+              >
+                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
               </p>
             </article>
           ) : message.role === 'assistant' && message.kind === 'sdd-spec-generated' && !message.streaming ? (
@@ -19759,9 +19952,9 @@ function AiChatTabView({
             </Fragment>
           ) : message.role === 'assistant' && message.kind === 'sdd-build-completed' && !message.streaming ? (
             <Fragment key={message.id}>
-              <div className="ai-chat-edited-files-worked-for">{`Worked for ${message.workedForLabel}`}</div>
-              <ChatEditedFilesCard
+              <ChatEditedFilesSummary
                 files={message.changeCards ?? []}
+                workedForLabel={message.workedForLabel}
                 onOpenFile={(file) => (file.agentTaskId ? onOpenAgentTaskTab?.(file.agentTaskId) : onOpenChangedFile?.(file))}
               />
             </Fragment>
@@ -20003,12 +20196,6 @@ function AiChatTabView({
               >
                 <Icon name="general/add" size={16} />
               </button>
-              {!isNewSessionState && !isAgentRunProcessing && (
-                <button className="aiux543-chat-dropdown" type="button">
-                  Default
-                  <Icon name="general/chevronDown" size={16} />
-                </button>
-              )}
             </div>
             <div className="aiux543-chat-toolbar-right">
               {isAgentRunProcessing ? (
@@ -20681,56 +20868,6 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
   );
 }
 
-// Summary card for a multi-file change: run status + rollback on top, then the
-// changed files with their line counters. Each row opens that file's diff.
-function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null }) {
-  if (files.length === 0) return null;
-
-  return (
-    <section className="ai-chat-changed-files-card">
-      <header className="ai-chat-changed-files-header">
-        <span className="ai-chat-changed-files-status">
-          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
-            <Icon name="general/checkmark" size={16} />
-          </span>
-          <span>Done</span>
-        </span>
-        <span className="ai-chat-changed-files-actions">
-          <button
-            type="button"
-            className="ai-chat-changed-files-rollback"
-            onClick={onRollback ?? undefined}
-          >
-            Rollback
-          </button>
-        </span>
-      </header>
-      <div className="ai-chat-changed-files-title">Changed Files</div>
-      <div className="ai-chat-changed-files-list">
-        {files.map((file) => {
-          const openFile = onOpenFile && file.diffRequest ? () => onOpenFile(file) : null;
-
-          return (
-            <button
-              key={file.id ?? file.name}
-              type="button"
-              className="ai-chat-changed-files-row"
-              onClick={openFile ?? undefined}
-              disabled={!openFile}
-            >
-              <span className="ai-chat-changed-files-name">{file.name}</span>
-              <span className="ai-chat-changed-files-counters">
-                <span className="ai-chat-changed-files-add">{file.added}</span>
-                <span className="ai-chat-changed-files-remove">{file.removed}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 // Flat "Edited <file> +N -N" rows (no card/border), used for scenarios that
 // report a "Worked for" duration instead of the boxed Changed Files card.
 function ChatEditedFilesSummary({ files = [], workedForLabel = '', onOpenFile = null }) {
@@ -21271,9 +21408,19 @@ export default function App() {
   const aiChatHistoryRows = useMemo(
     () => aiChatDraftListItems.map((item) => {
       const messages = aiChatSentMessagesByChatId[item.id] ?? [];
-      const changedFiles = [...messages].reverse().find((message) => (
-        Array.isArray(message?.changeCards) && message.changeCards.length > 0
-      ))?.changeCards ?? [];
+      // Merge changeCards across every message instead of just the latest —
+      // a later reply (e.g. the build's "N files changed") shouldn't push an
+      // earlier one (e.g. the generated Vet-Schedules.md) out of the list.
+      const changedFiles = messages.reduce((acc, message) => {
+        if (!Array.isArray(message?.changeCards)) return acc;
+        message.changeCards.forEach((card) => {
+          if (!card) return;
+          const key = card.id ?? card.name ?? card.label;
+          if (acc.some((existing) => (existing.id ?? existing.name ?? existing.label) === key)) return;
+          acc.push(card);
+        });
+        return acc;
+      }, []);
       return {
         id: item.id,
         title: item.title || 'New Chat',
@@ -23116,9 +23263,15 @@ export default function App() {
   ]);
 
   const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true }) => {
+    // A caller that only knows the document's tab label (e.g. a "files changed"
+    // list built from static data, with no live tab id to reference) can pass
+    // source.label instead of source.tabId — resolve it here rather than
+    // falling back to "whatever tab happens to be active right now".
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
-      : (ideTabs[activeEditorTab ?? 0] ?? null);
+      : (source?.label
+          ? (ideTabs.find((tab) => tab.label === source.label) ?? null)
+          : (ideTabs[activeEditorTab ?? 0] ?? null));
     const sourceTabId = source?.tabId ?? sourceTab?.id ?? null;
     const sourceTabLabel = source?.label ?? sourceTab?.label ?? null;
     if (!sourceTabId || !sourceTabLabel) return;
@@ -28307,7 +28460,10 @@ export default function App() {
         // it from the document's top bar surfaces the same request there too.
         const chatId = vetSchedulesRelatedChatId;
         if (chatId) {
-          const userText = status === 'Build' ? 'Build the spec' : 'Specify the spec';
+          // Match the document toolbar's own button label exactly — the chat
+          // message and the action that triggered it should read as the
+          // same thing, not a paraphrase of it.
+          const userText = status === 'Build' ? 'Execute' : 'Specify the spec';
           // Notes left on the doc land here as pending composer attachments
           // (see handleAddSpecSelectionToChat) — sending to the agent means
           // sending them along too, and since the chat now owns them, they
@@ -28334,6 +28490,7 @@ export default function App() {
             status === 'Build'
               ? 'Running the Plan and Acceptance Criteria checks in Vet-Schedules.md.'
               : 'Refining Vet-Schedules.md.',
+            'sdd-status',
           );
         }
         if (status === 'Build') {
@@ -32243,12 +32400,12 @@ export default function App() {
 
   // Stream a short assistant message into a chat (used for agent actions like
   // applying a quick fix / resolving a review comment).
-  const streamAssistantMessage = useCallback((chatId, fullText) => {
+  const streamAssistantMessage = useCallback((chatId, fullText, kind = undefined) => {
     if (!chatId || !fullText) return;
     const stamp = Date.now();
     const assistantMessageId = `${chatId}-agent-action-${stamp}`;
     handleSelectedAiChatSentMessagesChange(
-      (prev) => [...prev, { id: assistantMessageId, role: 'assistant', text: '', streaming: true }],
+      (prev) => [...prev, { id: assistantMessageId, role: 'assistant', text: '', streaming: true, kind }],
       chatId,
     );
     const timerKey = `${chatId}:${assistantMessageId}`;

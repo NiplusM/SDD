@@ -270,7 +270,10 @@ export function AiChatAttachmentStrip({
             <span className="ai-chat-attachment-name">{getAiChatAttachmentDisplayLabel(attachment)}</span>
             {inlineCount > 0 && (
               <span className="ai-chat-attachment-comment-count">
-                <span className="ai-chat-attachment-comment-count-separator" aria-hidden="true">·</span>
+                {/* Same balloon-icon count used once this attachment is actually sent
+                    (ChatUserCard) — a note shouldn't look different before and after
+                    it's delivered. */}
+                <Icon name="general/balloon" size={16} />
                 <span className="ai-chat-attachment-comment-count-value">{inlineCount}</span>
                 {canShowCommentSources && (
                   <button

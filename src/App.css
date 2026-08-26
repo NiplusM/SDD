@@ -8724,53 +8724,23 @@ body {
   min-width: 80px;
   min-height: 40px;
   padding: 0;
-  /* Line up the trigger's icon with the file icon of the tab above it. */
-  margin-left: -4px;
 }
 
-.agent-task-toolbar-title-trigger {
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  border: 0;
-  border-radius: 3px;
-  color: inherit;
-  cursor: pointer;
-  display: flex;
+.agent-task-toolbar-status-dot-wrap {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  flex: 0 1 auto;
-  font: inherit;
-  box-sizing: border-box;
-  height: 22px;
-  max-width: min(520px, 100%);
-  min-height: 22px;
-  min-width: 0;
-  padding: 3px 4px 3px 6px;
-  text-align: left;
-  transition: background-color 120ms ease, box-shadow 120ms ease;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-.agent-task-toolbar-title-trigger:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.agent-task-toolbar-title-trigger:hover .at-input-preview-text {
-  color: var(--text-default);
-}
-
-.agent-task-toolbar-title-trigger:focus-visible {
-  outline: 1px solid rgba(84, 138, 247, 0.72);
-  outline-offset: 2px;
-}
-
-.agent-task-toolbar-title-trigger .at-input-preview {
-  cursor: pointer;
-}
-
-.agent-task-toolbar-title-trigger .at-input-shell {
-  padding-top: 0;
-  padding-bottom: 0;
+.agent-task-toolbar-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #868A91;
+  flex-shrink: 0;
 }
 
 .agent-task-toolbar-left.is-multiline {
@@ -9446,7 +9416,9 @@ body {
   font-family: Inter, -apple-system, sans-serif;
   font-size: 13px;
   font-weight: 500;
-  color: #DFE1E5;
+  /* Muted to match the gray icon/dot/spinner next to it — a bright label next
+     to a muted icon read as two different tones instead of one status. */
+  color: #9DA0A8;
   line-height: 16px;
 }
 
@@ -11056,8 +11028,8 @@ body {
   flex: 0 0 auto;
   width: auto;
   margin: 8px 20px 14px 24px;
-  padding: 10px 46px 10px 16px;
-  border-radius: 6px;
+  padding: 10px 16px;
+  border-radius: 16px;
   background: #393B40;
   color: #DFE1E5;
 }
@@ -11422,29 +11394,6 @@ body {
 @keyframes ai-chat-streaming-caret {
   0%, 45% { opacity: 1; }
   46%, 100% { opacity: 0; }
-}
-
-.ai-chat-card-menu {
-  all: unset;
-  position: absolute;
-  top: 5px;
-  right: 10px;
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  cursor: pointer;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: #CED0D6;
-}
-
-.ai-chat-card-menu span {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .ai-chat-change-card,
@@ -13152,7 +13101,7 @@ body {
   gap: 12px;
   margin: 0 auto;
   padding: 8px 10px 8px 16px;
-  border-radius: 6px;
+  border-radius: 16px;
   background: #393b40;
   box-shadow: 0 -16px 0 16px #191a1c, 0 8px 12px #191a1c;
 }
@@ -13782,6 +13731,11 @@ button.aiux543-answer-change-card:focus-visible {
   padding: 0 24px clamp(8px, 1.5vh, 12px);
   background: #191a1c;
   box-shadow: 0 -12px 14px #191a1c;
+  /* Lets the footer pills below query this panel's own width rather than the
+     viewport's — the same chat renders both full-width (standalone) and
+     squeezed into the 30% split column, and only the latter needs to shrink. */
+  container-type: inline-size;
+  container-name: aiux543-composer;
 }
 
 .aiux543-ai-review-prompt {
@@ -14230,10 +14184,30 @@ button.aiux543-answer-change-card:focus-visible {
 
   display: inline-flex;
   min-width: 0;
+  /* Must stay a single row, no scroll and no wrap — every pill is
+     compacted (no chevron, tighter padding/gap/font) below so the full
+     set fits even in the narrow 30% split column. */
   flex-wrap: nowrap;
-  overflow-x: auto;
+  overflow: hidden;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.aiux543-editor-footer-left::-webkit-scrollbar {
+  height: 4px;
+}
+
+.aiux543-editor-footer-left::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.aiux543-editor-footer-left::-webkit-scrollbar-thumb {
+  background: rgba(143, 147, 154, 0.34);
+  border-radius: 999px;
+}
+
+.aiux543-editor-footer-left::-webkit-scrollbar-thumb:hover {
+  background: rgba(143, 147, 154, 0.52);
 }
 
 .aiux543-editor-footer-left > span {
@@ -14534,7 +14508,8 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button {
   all: unset;
   display: inline-flex;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   min-height: 26px;
   box-sizing: border-box;
   align-items: center;
@@ -14544,6 +14519,8 @@ button.aiux543-answer-change-card:focus-visible {
   color: #8b8e96;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -14561,6 +14538,28 @@ button.aiux543-answer-change-card:focus-visible {
 .aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button .icon {
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
+}
+
+/* Squeezed into the 30% split column, the same five pills (with their
+   chevrons) don't fit at full size — shrink proportionally instead of
+   dropping the chevron or wrapping/scrolling. Full width (standalone chat)
+   keeps the normal size above. */
+@container aiux543-composer (max-width: 480px) {
+  .aiux543-new-session-settings .aiux543-editor-footer-left {
+    gap: 1px;
+  }
+
+  .aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button {
+    gap: 1px;
+    padding: 0 3px;
+    font-size: 11px;
+  }
+
+  .aiux543-new-session-settings > .aiux543-editor-footer-left > .aiux543-new-session-setting-picker > button .icon {
+    width: 10px;
+    height: 10px;
+  }
 }
 
 .aiux543-new-session-setting-picker {
@@ -14569,23 +14568,20 @@ button.aiux543-answer-change-card:focus-visible {
   flex-shrink: 0;
 }
 
-.aiux543-new-session-setting-menu {
-  position: absolute;
-  z-index: 80;
-  bottom: calc(100% + 5px);
-  left: 0;
+/* Rendered through FinalAnchoredPopup (portaled, position: fixed, computed
+   from the trigger's own bounding rect) instead of a plain absolutely
+   positioned child — the picker can sit inside a horizontally scrolling
+   row (the narrow split's composer footer) without the popup getting
+   clipped by that row's own overflow. Only the menu ITEMS are styled
+   here; border/background/position come from the anchored-popup base
+   class so the two don't fight over `position`. */
+.aiux543-new-session-setting-menu-items {
   display: flex;
-  min-width: 176px;
-  box-sizing: border-box;
   flex-direction: column;
   padding: 4px;
-  border: 1px solid #3d4047;
-  border-radius: 8px;
-  background: #2b2d30;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.46);
 }
 
-.aiux543-new-session-setting-menu > button {
+.aiux543-new-session-setting-menu-items > button {
   all: unset;
   display: flex;
   min-height: 28px;
@@ -14601,15 +14597,15 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-.aiux543-new-session-setting-menu > button:hover,
-.aiux543-new-session-setting-menu > button:focus-visible,
-.aiux543-new-session-setting-menu > button.is-selected {
+.aiux543-new-session-setting-menu-items > button:hover,
+.aiux543-new-session-setting-menu-items > button:focus-visible,
+.aiux543-new-session-setting-menu-items > button.is-selected {
   background: #2a4371;
   outline: none;
 }
 
-.aiux543-new-session-setting-menu > button > .icon,
-.aiux543-new-session-setting-menu > button > svg {
+.aiux543-new-session-setting-menu-items > button > .icon,
+.aiux543-new-session-setting-menu-items > button > svg {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
@@ -18110,7 +18106,12 @@ button.aiux543-answer-change-card:focus-visible {
   font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.ai-chat-footer,
+.ai-chat-footer {
+  height: 32px;
+  color: #8B8E96;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 .aiux543-editor-footer {
   height: 32px;
   color: #8B8E96;

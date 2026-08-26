@@ -119,18 +119,30 @@ function ChatsHistoryToolWindow({
   onOpenFile = null,
   vetSchedulesLineCount = 0,
 }) {
-  // Everything collapsed by default except the refactoring chat and whichever
-  // chat is active when this panel first mounts (e.g. the default SDD session)
-  // — both expanded (their Changes / Context / Sub-threads sections stay collapsed).
+  // Everything collapsed by default, including the refactoring chat — a row
+  // only auto-expands once it actually has something to show.
   const [expandedSections, setExpandedSections] = useState({});
-  const [expandedRows, setExpandedRows] = useState(() => ({
-    'refactor-time-slots': true,
-    ...(activeChatId ? { [activeChatId]: true } : {}),
-  }));
+  const [expandedRows, setExpandedRows] = useState({});
   // Selection follows the active chat editor tab. When no chat tab is active
   // (e.g. a code file or the default view), nothing is highlighted.
   const selectedId = activeChatId ?? null;
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
+  // A dynamic row (the active session) starts with no changed files and thus
+  // nothing to expand — auto-expand it the moment its changedFiles goes from
+  // empty to non-empty, but only once, so a user who collapses it back after
+  // that isn't fought by this effect on every re-render. 'refactor-time-slots'
+  // is excluded: its content is static (always present), so "gained changes"
+  // never applies to it — it stays collapsed until the user opens it.
+  const autoExpandedRowIdsRef = useRef(new Set());
+  useEffect(() => {
+    flatRows.forEach((row) => {
+      if (row.id === 'refactor-time-slots') return;
+      if (!(row.changedFiles?.length > 0)) return;
+      if (autoExpandedRowIdsRef.current.has(row.id)) return;
+      autoExpandedRowIdsRef.current.add(row.id);
+      setExpandedRows((prev) => (prev[row.id] ? prev : { ...prev, [row.id]: true }));
+    });
+  }, [flatRows]);
   const projectGroups = useMemo(() => {
     const sessionRows = flatRows.slice(0, 9);
     return [
@@ -222,7 +234,11 @@ function ChatsHistoryToolWindow({
 
               <div className="agent-sessions-list">
                 {project.rows.map((row, rowIndex) => {
-                  const expanded = Boolean(expandedRows[row.id]);
+                  // Nothing to show yet (a fresh session with no changed files) means
+                  // nothing to expand — the chevron itself would be a dead affordance,
+                  // so it's left out entirely until there's real content behind it.
+                  const hasExpandableContent = row.id === 'refactor-time-slots' || row.changedFiles?.length > 0;
+                  const expanded = hasExpandableContent && Boolean(expandedRows[row.id]);
                   const showCost = rowIndex < 4;
                   return (
                     <React.Fragment key={row.id}>
@@ -234,16 +250,20 @@ function ChatsHistoryToolWindow({
                       ].filter(Boolean).join(' ')}
                       onClick={() => handleSelectChat(row.id)}
                     >
-                      <span
-                        className="agent-sessions-session-chevron"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          setExpandedRows((prev) => ({ ...prev, [row.id]: !expanded }));
-                        }}
-                      >
-                        <Aiux550ChevronIcon expanded={expanded} />
-                      </span>
+                      {hasExpandableContent ? (
+                        <span
+                          className="agent-sessions-session-chevron"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setExpandedRows((prev) => ({ ...prev, [row.id]: !expanded }));
+                          }}
+                        >
+                          <Aiux550ChevronIcon expanded={expanded} />
+                        </span>
+                      ) : (
+                        <span className="agent-sessions-session-chevron" aria-hidden="true" />
+                      )}
                       <span className="agent-sessions-session-agent">
                         <AiChatAgentIcon
                           icon={row.agent || 'claude'}
