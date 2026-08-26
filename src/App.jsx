@@ -31568,13 +31568,11 @@ export default function App() {
     );
 
     if (isSddAgentChat) {
-      // Open the split once the agent's first response actually lands (the
-      // reply starts streaming), not before — opening it the instant the
-      // message is sent would show the doc ahead of any reply existing at
-      // all. The busy state ("Specifying...") still covers the whole run,
-      // it just starts alongside that first chunk instead of pre-empting it.
-      const sddDocTabId = getAgentTaskTabId('t2');
-      let hasOpenedSddDocSplit = false;
+      // The doc doesn't open at all until the agent has actually replied in
+      // the chat and shown the edited file there — no split, no busy state,
+      // nothing on the right, while the reply is still just text streaming
+      // in the chat. Opening it earlier (even just to show it's "working")
+      // showed a doc that doesn't exist yet from the chat's perspective.
       const sddResultBullets = [
         'Created the Vet-Schedules.md specification: a parallel schedule track with per-vet availability checks alongside Visit-Booking.',
         'Plan validates visit times against working hours; Visit-Booking.md stays untouched while this ships.',
@@ -31582,11 +31580,6 @@ export default function App() {
       const fullSddResponse = sddResultBullets.join(' ');
       let revealedLength = 0;
       const streamNextSddChunk = () => {
-        if (!hasOpenedSddDocSplit) {
-          hasOpenedSddDocSplit = true;
-          openSpecInSplitViewRef.current?.('t2', targetChatId);
-          setDocToolbarBusy(sddDocTabId, 'Specifying...');
-        }
         revealedLength = Math.min(fullSddResponse.length, revealedLength + 4);
         const isComplete = revealedLength >= fullSddResponse.length;
         handleSelectedAiChatSentMessagesChange(
@@ -31620,11 +31613,12 @@ export default function App() {
           window.setTimeout(streamNextSddChunk, 28);
           return;
         }
-        // The spec is worked alongside its generating chat from the moment
-        // it's requested (already opened, above) — this just clears the
-        // busy state now that the reply (and so the "generation") is done.
+        // Only now — reply finished, "Edited Vet-Schedules.md" card shown —
+        // does the doc exist at all from the chat's perspective, so only
+        // now does it actually open, already complete, no busy state ever
+        // shown for it.
         setVetSchedulesRelatedChatId(targetChatId);
-        setDocToolbarBusy(sddDocTabId, null);
+        openSpecInSplitViewRef.current?.('t2', targetChatId);
         renameSddChatAfterGeneration(targetChatId, 'Vet schedule availability checks');
       };
       window.setTimeout(streamNextSddChunk, 400);
