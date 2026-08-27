@@ -1484,6 +1484,59 @@ class VisitControllerTests {
     }
 }`,
   },
+  15: {
+    fileLabel: 'Visit.java',
+    language: 'java',
+    beforeCode: `public class Visit extends BaseEntity {
+
+    @Column(name = "visit_date")
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    private LocalDate date = LocalDate.now();
+
+    @NotBlank
+    private String description;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id")
+    private Pet pet;
+}`,
+    afterCode: `public class Visit extends BaseEntity {
+
+    @Column(name = "visit_date")
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    private LocalDate date = LocalDate.now();
+
+    @Column(name = "visit_time")
+    private LocalTime time;
+
+    @ManyToOne
+    @JoinColumn(name = "vet_id")
+    private Vet vet;
+
+    @NotBlank
+    private String description;
+
+    @ManyToOne
+    @JoinColumn(name = "pet_id")
+    private Pet pet;
+
+    public LocalTime getTime() {
+        return time;
+    }
+
+    public void setTime(LocalTime time) {
+        this.time = time;
+    }
+
+    public Vet getVet() {
+        return vet;
+    }
+
+    public void setVet(Vet vet) {
+        this.vet = vet;
+    }
+}`,
+  },
 };
 
 const MY_PROJECT_TREE = [
@@ -13648,6 +13701,7 @@ const VET_SCHEDULES_PLAN_RUN_STATUSES = [
   { status: 'passed' },
   { status: 'passed' },
   { status: 'passed' },
+  { status: 'passed' },
 ];
 
 function createVetSchedulesSpecDocument() {
@@ -13668,11 +13722,12 @@ function createVetSchedulesSpecDocument() {
       title: 'Plan',
       meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package' },
-        { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/date in @VetScheduleRepository.findByVetIdAndWeekday()' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-4', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql for @Configuration.md#plan' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
+        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package (table created via Hibernate ddl-auto for the H2 demo)' },
+        { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/weekday in @VetScheduleRepository.findByVetIdAndWeekday()' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'Add vet (FK) and time (TIME) columns to visits, exposed as Vet vet / LocalTime time on @Visit.java' },
+        { id: 'plan-4', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
+        { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql for @Configuration.md#plan' },
+        { id: 'plan-6', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
       ],
     },
     {
@@ -13690,8 +13745,9 @@ function createVetSchedulesSpecDocument() {
       title: 'Implementation Notes',
       items: [
         { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
-        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L14-L20' },
+        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L10-L20' },
         { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
+        { id: 'ref-5', type: 'bullet', text: 'New vet/time fields on the visit: @Visit.java#L7-L12' },
         { id: 'ref-4', type: 'bullet', text: 'Spring scheduling reference: [Scheduling Tasks](https://spring.io/guides/gs/scheduling-tasks).' },
       ],
     },
@@ -15609,7 +15665,7 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
     id: 'generated-diff-vet-schedules',
     name: 'Vet-Schedules.md',
     icon: 'fileTypes/markdown',
-    added: '+25',
+    added: '+27',
     removed: '',
     agentTaskId: 't2',
   },
@@ -15628,7 +15684,7 @@ const SDD_BUILD_CHANGE_CARDS = [
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 10 },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 5,
+      fileCount: 6,
     },
   },
   {
@@ -15637,11 +15693,24 @@ const SDD_BUILD_CHANGE_CARDS = [
     icon: 'fileTypes/java',
     added: '+9', removed: '', diff: { added: 9, deleted: 0 },
     diffRequest: {
-      text: 'Add repository queries by vet/date in VetScheduleRepository.findByVetIdAndWeekday()',
+      text: 'Add repository queries by vet/weekday in VetScheduleRepository.findByVetIdAndWeekday()',
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 11 },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 5,
+      fileCount: 6,
+    },
+  },
+  {
+    id: 'sdd-build-visit-vet-time-fields',
+    name: 'Visit.java', label: 'Visit.java',
+    icon: 'fileTypes/java',
+    added: '+18', removed: '', diff: { added: 18, deleted: 0 },
+    diffRequest: {
+      text: 'Add vet (FK) and time (TIME) columns to visits, exposed as Vet vet / LocalTime time on Visit.java',
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: 15 },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 6,
     },
   },
   {
@@ -15654,7 +15723,7 @@ const SDD_BUILD_CHANGE_CARDS = [
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 12 },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 5,
+      fileCount: 6,
     },
   },
   {
@@ -15667,7 +15736,7 @@ const SDD_BUILD_CHANGE_CARDS = [
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 13 },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 5,
+      fileCount: 6,
     },
   },
   {
@@ -15680,7 +15749,7 @@ const SDD_BUILD_CHANGE_CARDS = [
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 14 },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 5,
+      fileCount: 6,
     },
   },
 ];
@@ -31599,7 +31668,7 @@ export default function App() {
                           label: 'Vet-Schedules.md',
                           icon: 'fileTypes/markdown',
                           type: 'markdown',
-                          added: '+25',
+                          added: '+27',
                           agentTaskId: 't2',
                         },
                       ]
