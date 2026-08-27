@@ -15665,7 +15665,10 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
     id: 'generated-diff-vet-schedules',
     name: 'Vet-Schedules.md',
     icon: 'fileTypes/markdown',
-    added: '+27',
+    // Derived, not hand-counted — a hardcoded number silently drifts out of
+    // sync with the document the moment a Plan/Notes line is added or an
+    // item's text picks up auto-derived sub-checks (withDerivedPlanChildren).
+    added: `+${VET_SCHEDULES_SERIALIZED_LINE_COUNT}`,
     removed: '',
     agentTaskId: 't2',
   },
@@ -31598,11 +31601,18 @@ export default function App() {
       attachment?.isSelectionContext && !attachment?.isChatSelectionContext
     ));
     const isSddNoteFollowUp = !isReviewCommand && docNoteAttachments.length > 0;
-    // SDD (AIUX-639): any message sent in a chat whose agent is 'sdd' gets a scripted
-    // "generated the spec" reply pointing at the existing Vet-Schedules.md spec document.
+    // SDD (AIUX-639): the first message sent in a chat whose agent is 'sdd' gets
+    // the scripted "generated the spec" reply. Without the "already generated"
+    // guard, every later plain-text message in that same chat re-ran the exact
+    // same reply with a freshly unique changeCard id each time — duplicating
+    // "Vet-Schedules.md" in that chat's History row instead of being deduped.
+    const hasAlreadyGeneratedSddSpec = (aiChatSentMessagesByChatId[targetChatId] ?? []).some((message) => (
+      message?.kind === 'sdd-spec-generated' && !message?.streaming
+    ));
     const isSddAgentChat = !isReviewCommand
       && !shouldStreamCommentResponse
       && !isSddNoteFollowUp
+      && !hasAlreadyGeneratedSddSpec
       && Boolean(messageText)
       && aiChatScenarios[targetChatId]?.icon === 'sdd';
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
@@ -31668,7 +31678,7 @@ export default function App() {
                           label: 'Vet-Schedules.md',
                           icon: 'fileTypes/markdown',
                           type: 'markdown',
-                          added: '+27',
+                          added: `+${VET_SCHEDULES_SERIALIZED_LINE_COUNT}`,
                           agentTaskId: 't2',
                         },
                       ]
