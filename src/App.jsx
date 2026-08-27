@@ -1473,22 +1473,32 @@ INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'FR
   14: {
     fileLabel: 'VisitControllerTests.java',
     language: 'java',
-    beforeCode: `@WebMvcTest(VisitController.class)
-class VisitControllerTests {
-
-    @Test
-    void initCreationFormDoesNotExposeVetChoices() throws Exception {
-        mockMvc.perform(get("/owners/1/pets/1/visits/new"))
-            .andExpect(status().isOk());
-    }
-}`,
+    beforeCode: MY_EDITOR_TAB_CONTENTS['5'].code,
     afterCode: `@WebMvcTest(VisitController.class)
 class VisitControllerTests {
 
+    @MockBean
+    private VisitRepository visitRepository;
+
+    @MockBean
+    private VetRepository vetRepository;
+
+    @MockBean
+    private VetScheduleRepository vetScheduleRepository;
+
     @Test
-    void initCreationFormDoesNotExposeVetChoices() throws Exception {
-        mockMvc.perform(get("/owners/1/pets/1/visits/new"))
-            .andExpect(status().isOk());
+    void processNewVisitFormDoubleBookingRejected() throws Exception {
+        when(visitRepository.existsByVetIdAndDateAndTime(
+                3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
+            .thenReturn(true);
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-15")
+                .param("time", "10:00")
+                .param("vet", "3")
+                .param("description", "Regular check"))
+            .andExpect(status().isOk())
+            .andExpect(model().attributeHasFieldErrors("visit", "time"));
     }
 
     @Test
@@ -1514,7 +1524,31 @@ class VisitControllerTests {
                 .param("vet", "1"))
             .andExpect(model().attributeHasFieldErrors("visit", "time"));
     }
+
+    private VetSchedule schedule(DayOfWeek weekday, String start, String end) {
+        VetSchedule schedule = new VetSchedule();
+        schedule.setWeekday(weekday);
+        schedule.setStartTime(LocalTime.parse(start));
+        schedule.setEndTime(LocalTime.parse(end));
+        return schedule;
+    }
 }`,
+  },
+  16: {
+    fileLabel: 'schema.sql',
+    language: 'sql',
+    beforeCode: MY_EDITOR_TAB_CONTENTS['4'].code,
+    afterCode: `${MY_EDITOR_TAB_CONTENTS['4'].code}
+
+CREATE TABLE vet_schedules (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    vet_id      INTEGER NOT NULL,
+    weekday     VARCHAR(9) NOT NULL,
+    start_time  TIME NOT NULL,
+    end_time    TIME NOT NULL,
+    CONSTRAINT fk_vet_schedules_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
+    CONSTRAINT uk_vet_schedule_window UNIQUE (vet_id, weekday, start_time, end_time)
+);`,
   },
   15: {
     fileLabel: 'Visit.java',
@@ -15864,15 +15898,15 @@ const SDD_BUILD_CHANGE_CARDS = [
     },
   },
   {
-    id: 'sdd-build-visit-vet-time-fields',
-    name: 'Visit.java', label: 'Visit.java',
-    documentLabel: 'Visit fields:',
-    icon: 'fileTypes/java',
-    added: '+29', removed: '-6', diff: { added: 29, deleted: 6 },
+    id: 'sdd-build-schema',
+    name: 'schema.sql', label: 'schema.sql',
+    documentLabel: 'H2 schema:',
+    icon: 'fileTypes/sql',
+    added: '+8', removed: '', diff: { added: 8, deleted: 0 },
     diffRequest: {
-      text: 'Add vet (FK) and time (TIME) columns to visits, exposed as vet and time fields on Visit.java',
+      text: 'Add vet_schedules table and foreign key to H2 schema.sql',
       statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 15 },
+      issueTarget: { kind: 'plan', index: 16 },
       source: { label: 'Vet-Schedules.md' },
       fileCount: 6,
     },
