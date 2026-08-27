@@ -4778,6 +4778,14 @@ body {
   overflow-wrap: anywhere;
 }
 
+.spec-done-comment-popup-group.is-headerless .spec-done-comment-popup-item-text {
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .spec-done-comment-popup-group.is-muted-session .spec-done-comment-popup-item-text {
   color: #A8ADB7;
 }
