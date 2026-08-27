@@ -16521,25 +16521,26 @@ function SddSpecGenerationStreamingMessage({ message }) {
   const steps = [
     {
       icon: 'general/search',
-      label: 'Inspecting project context',
-      detail: 'vet schedules, visits, booking tests',
+      label: 'Looking up project context',
+      detail: 'PetClinic visit booking flow',
     },
     {
       icon: 'fileTypes/java',
-      label: 'Reading source files',
-      detail: 'Vet.java, Visit.java, VisitController.java',
+      label: 'Reading Java sources',
+      detail: 'Visit.java, VisitController.java, VisitControllerTests.java',
     },
     {
       icon: 'fileTypes/markdown',
-      label: 'Drafting specification',
+      label: 'Editing spec document',
       detail: 'Vet-Schedules.md',
     },
     {
       icon: 'general/checkmark',
-      label: 'Linking implementation plan',
-      detail: 'entity, repository, validation, tests',
+      label: 'Preparing execution plan',
+      detail: 'entity, repository, validation, seed data, tests',
     },
   ];
+  const visibleSteps = steps.slice(0, Math.min(steps.length, progressStep + 1));
 
   return (
     <article className="aiux543-answer sdd-generation-stream">
@@ -16549,14 +16550,14 @@ function SddSpecGenerationStreamingMessage({ message }) {
         data-ai-chat-block-id={`sent-${message.id}`}
       >
         {message.text || (prompt
-          ? `I’ll turn “${prompt}” into an executable spec connected to the PetClinic codebase.`
-          : 'I’ll turn this request into an executable spec connected to the PetClinic codebase.')}
+          ? `I’m creating Vet-Schedules.md for “${prompt}”.`
+          : 'I’m creating Vet-Schedules.md for this booking change.')}
         <span className="ai-chat-streaming-caret" aria-hidden="true" />
       </p>
-      <div className="sdd-generation-stream-steps" role="status" aria-label="SDD generation progress">
-        {steps.map((step, index) => {
+      <div className="sdd-generation-stream-steps" role="status" aria-label="SDD generation activity">
+        {visibleSteps.map((step, index) => {
           const isDone = index < progressStep;
-          const isActive = index === progressStep;
+          const isActive = index === progressStep && progressStep < steps.length;
           return (
             <div
               key={step.label}
@@ -16565,8 +16566,10 @@ function SddSpecGenerationStreamingMessage({ message }) {
               <span className="sdd-generation-stream-step-icon">
                 {isActive ? <IconLoaderSpinner /> : <Icon name={isDone ? 'general/checkmark' : step.icon} size={16} />}
               </span>
-              <span className="sdd-generation-stream-step-label">{step.label}</span>
-              <span className="ai-chat-transcript-code-chip">{step.detail}</span>
+              <span className="sdd-generation-stream-step-copy">
+                <span className="sdd-generation-stream-step-label">{step.label}</span>
+                <span className="sdd-generation-stream-step-detail">{step.detail}</span>
+              </span>
             </div>
           );
         })}
@@ -31877,13 +31880,14 @@ export default function App() {
       // in the chat. Opening it earlier (even just to show it's "working")
       // showed a doc that doesn't exist yet from the chat's perspective.
       const sddResultBullets = [
-        'Created Vet-Schedules.md for vet working hours: VetSchedule entity, weekday lookup repository, Visit vet/time fields, controller validation, seed data, and off-hours tests.',
-        'Kept the existing Visit-Booking.md hourly-slot flow unchanged while adding the schedule-backed validation track.',
+        'Edited Vet-Schedules.md with a plan for a VetSchedule entity, weekday lookup repository, Visit vet/time fields, controller validation, H2 seed data, and off-hours/boundary tests.',
+        'Left Visit-Booking.md unchanged so the current hourly-slot rollout stays separate from the schedule-backed validation track.',
       ];
       const fullSddResponse = [
-        `I’ll turn “${messageText}” into an executable spec connected to the PetClinic codebase.`,
-        'I found the booking flow in VisitController, the Visit model fields that need to be persisted, and the test surface in VisitControllerTests.',
-        'I’m drafting Vet-Schedules.md with a plan that stays separate from the existing Visit-Booking.md rollout.',
+        `I’m creating Vet-Schedules.md for “${messageText}”.`,
+        'I found the visit creation path in VisitController.java, the Visit model, and the existing controller tests.',
+        'The spec adds VetSchedule, a weekday repository lookup, Visit vet/time fields, controller validation, H2 seed schedules, and regression tests including the end-time boundary.',
+        'I’ll keep it separate from Visit-Booking.md so the existing hourly-slot rollout stays unchanged.',
       ].join(' ');
       let revealedLength = 0;
       const streamNextSddChunk = () => {

@@ -10042,11 +10042,13 @@ body {
 .spec-ref-file,
 .spec-ref-external-section {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 3px;
   max-width: min(100%, 380px);
   min-width: 0;
-  padding: 4px 8px 4px 6px;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px 0 6px;
   border: 0;
   border-radius: 5px;
   background: rgba(155, 158, 167, 0.09);
@@ -10054,8 +10056,8 @@ body {
   font-family: inherit;
   font-size: 1em;
   font-weight: 500;
-  line-height: inherit;
-  vertical-align: baseline;
+  line-height: 20px;
+  vertical-align: -5px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -10098,8 +10100,8 @@ body {
   font-family: inherit;
   font-size: 0.92em;
   font-weight: 500;
+  line-height: 18px;
   letter-spacing: 0.01em;
-  vertical-align: baseline;
   white-space: nowrap;
 }
 
@@ -10173,10 +10175,10 @@ body {
 .spec-ref-external-section::before {
   content: '';
   display: inline-block;
+  flex: 0 0 auto;
   width: 14px;
   height: 14px;
   margin-right: 3px;
-  vertical-align: -3px;
   background-image: url("data:image/svg+xml;utf8,<svg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'><rect x='2' y='12' width='8' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='6' width='8' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='9' width='12' height='1' rx='.5' fill='%23CED0D6'/><rect x='2' y='3' width='12' height='1' rx='.5' fill='%23CED0D6'/></svg>");
   background-size: contain;
   background-repeat: no-repeat;
@@ -10284,8 +10286,11 @@ body {
    reference as `Configuration.md › Plan`. The leading paragraph glyph (¶)
    plays the role of the file-type icon. */
 .spec-ref-current-section {
-  display: inline;
-  padding: 4px 8px 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 0 8px 0 6px;
   border: 0;
   border-radius: 5px;
   background: rgba(155, 158, 167, 0.09);
@@ -10293,8 +10298,8 @@ body {
   font-family: inherit;
   font-size: 1em;
   font-weight: 500;
-  line-height: inherit;
-  vertical-align: baseline;
+  line-height: 20px;
+  vertical-align: -5px;
   white-space: nowrap;
 }
 
@@ -13654,18 +13659,18 @@ body {
 .sdd-generation-stream-steps {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin: 2px 0 8px;
+  gap: 2px;
+  margin: 4px 0 8px;
 }
 
 .sdd-generation-stream-step {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 22px;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 20px;
   color: #6F737A;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 18px;
 }
 
@@ -13684,11 +13689,28 @@ body {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
+  margin-top: 1px;
   color: currentColor;
+}
+
+.sdd-generation-stream-step-copy {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
 }
 
 .sdd-generation-stream-step-label {
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.sdd-generation-stream-step-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: #8B8E94;
+  font-size: 12px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
