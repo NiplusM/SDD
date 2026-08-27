@@ -28971,6 +28971,11 @@ export default function App() {
     );
 
     setRunStateForTab('running', tabId);
+    // Build owns the document just like a note-resolution does. Keep the
+    // document's own toolbar in its busy form immediately, rather than
+    // leaving the related-chat title visible until the checklist starts to
+    // reveal statuses.
+    setDocToolbarBusy(tabId, 'Building...');
     currentRunSourceTabIdRef.current = tabId;
     const planRunRequest = {
       mode: 'section',
@@ -28993,6 +28998,7 @@ export default function App() {
     const finishBuildState = () => {
       setAppliedIssueFixes({ ac: {}, plan: {} });
       clearSpecDocumentRunRequestForTab(tabId);
+      setDocToolbarBusy(tabId, null);
       delete specActionDocStateTimersRef.current[timerKey];
       onComplete?.();
     };
@@ -29023,6 +29029,7 @@ export default function App() {
     removedIssueIndices,
     revealRunStatuses,
     setAppliedIssueFixes,
+    setDocToolbarBusy,
     setRunStateForTab,
   ]);
   const startSpecSpecifyDocumentState = useCallback((tabId) => {

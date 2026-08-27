@@ -537,6 +537,16 @@ async function runScenario(page) {
   await demoClick(page, page.getByRole('button', { name: 'Execute', exact: true }).first(), 'Beat 4', 'Execute the refined document.');
   const documentLoading = page.locator('.agent-task-toolbar .at-generating-label:visible', { hasText: 'Building...' }).first();
   await documentLoading.waitFor({ state: 'visible', timeout: 10000 });
+  const sectionRunButtons = page.locator('.spec-done-gutter-cell-section-run .spec-done-gutter-item-run-btn:visible');
+  if (await sectionRunButtons.count() !== 2) {
+    throw new Error(`Expected Plan and Acceptance Criteria run buttons during execution, got ${await sectionRunButtons.count()}`);
+  }
+  const sectionRunButtonOpacities = await sectionRunButtons.evaluateAll((nodes) => (
+    nodes.map((node) => getComputedStyle(node).opacity)
+  ));
+  if (sectionRunButtonOpacities.some((opacity) => opacity !== '1')) {
+    throw new Error(`Section run buttons must remain visible during execution: ${JSON.stringify(sectionRunButtonOpacities)}`);
+  }
   await capture(page, 'beat-4-document-executing');
   await documentLoading.waitFor({ state: 'hidden', timeout: 30000 });
   await page.locator('.spec-done-scroll:visible').evaluate((node) => {
