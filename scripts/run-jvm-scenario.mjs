@@ -415,8 +415,16 @@ async function finishOptionalSpecificationLaunch(page, beat) {
   if (!initialLoadingText.startsWith('I’m creating Vet-Schedules.md for')) {
     throw new Error(`Unexpected initial SDD loading text: ${JSON.stringify(initialLoadingText)}`);
   }
-  await initialLoading.locator('.sdd-generation-stream-step.is-active', { hasText: 'Looking up project context' }).waitFor({ state: 'visible' });
-  await initialLoading.locator('.sdd-generation-stream-step.is-active .loader-spinner').waitFor({ state: 'visible' });
+  const activeInitialStep = initialLoading.locator('.sdd-generation-stream-step.is-active', { hasText: 'Looking up project context' });
+  await activeInitialStep.waitFor({ state: 'visible' });
+  await activeInitialStep.locator('.loader-spinner').waitFor({ state: 'visible' });
+  const activeStepColors = await activeInitialStep.evaluate((step) => ({
+    label: getComputedStyle(step.querySelector('.sdd-generation-stream-step-label')).color,
+    detail: getComputedStyle(step.querySelector('.sdd-generation-stream-step-detail')).color,
+  }));
+  if (activeStepColors.label !== activeStepColors.detail) {
+    throw new Error(`Active SDD generation step uses mixed text colors: ${JSON.stringify(activeStepColors)}`);
+  }
   await capture(page, 'beat-1-initial-loading');
 
   await pause(520);
