@@ -10852,7 +10852,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       // the scenes (so sending it later still works the normal way), but the
       // chat itself never surfaces — the user works the document only, and
       // sends the note to the agent from right there (see the doc toolbar's
-      // "Send note" button) instead of a split opening on its own.
+      // "Send to Agent" button) instead of a split opening on its own.
       if (isVetSchedulesDocument && boundChatId && !shouldCreateAnnotation) {
         onAddSelectionToChat?.({
           selectedText: nextValue,
@@ -13639,7 +13639,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     disabled={Boolean(busyToolbarLabel)}
                     onClick={() => onSendPendingNotes?.()}
                   >
-                    {pendingNoteCount === 1 ? 'Apply note' : `Apply ${pendingNoteCount} notes`}
+                    Send to Agent
                   </Button>
                 )}
                 {runState === 'running' ? (
