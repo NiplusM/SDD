@@ -1372,7 +1372,7 @@ class VisitControllerTests {
     }
 }`,
   },
-  // Vet-Schedules.md's Plan/Build files — indices 10-14, kept clear of the
+  // Vet-Schedules.md's Plan/Build files — indices 10-15, kept clear of the
   // 0-6 range above (a different scenario's plan) so neither mapping steps
   // on the other's diff content.
   10: {
@@ -1399,6 +1399,38 @@ public class VetSchedule extends BaseEntity {
     @Column(name = "end_time")
     @NotNull
     private LocalTime endTime;
+
+    public Vet getVet() {
+        return vet;
+    }
+
+    public void setVet(Vet vet) {
+        this.vet = vet;
+    }
+
+    public DayOfWeek getWeekday() {
+        return weekday;
+    }
+
+    public void setWeekday(DayOfWeek weekday) {
+        this.weekday = weekday;
+    }
+
+    public LocalTime getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(LocalTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public LocalTime getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(LocalTime endTime) {
+        this.endTime = endTime;
+    }
 }`,
   },
   11: {
@@ -1426,14 +1458,16 @@ public String processNewVisitForm(@Valid Visit visit, BindingResult result) {
     if (result.hasErrors()) {
         return "pets/createOrUpdateVisitForm";
     }
-    List<VetSchedule> schedules = vetScheduleRepository.findByVetIdAndWeekday(
-        visit.getVet().getId(), visit.getDate().getDayOfWeek());
-    boolean withinHours = schedules.stream().anyMatch(schedule ->
-        !visit.getTime().isBefore(schedule.getStartTime())
-            && !visit.getTime().isAfter(schedule.getEndTime()));
-    if (!withinHours) {
-        result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
-        return "pets/createOrUpdateVisitForm";
+    if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null) {
+        List<VetSchedule> schedules = vetScheduleRepository.findByVetIdAndWeekday(
+            visit.getVet().getId(), visit.getDate().getDayOfWeek());
+        boolean withinHours = schedules.stream().anyMatch(schedule ->
+            !visit.getTime().isBefore(schedule.getStartTime())
+                && visit.getTime().isBefore(schedule.getEndTime()));
+        if (!withinHours) {
+            result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
+            return "pets/createOrUpdateVisitForm";
+        }
     }
     visitRepository.save(visit);
     return "redirect:/owners/{ownerId}";
@@ -1479,6 +1513,18 @@ class VisitControllerTests {
         mockMvc.perform(post("/owners/1/pets/1/visits/new")
                 .param("date", "2026-04-13")
                 .param("time", "20:00")
+                .param("vet", "1"))
+            .andExpect(model().attributeHasFieldErrors("visit", "time"));
+    }
+
+    @Test
+    void rejectsBookingAtScheduleEndBoundary() throws Exception {
+        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
+            .thenReturn(List.of(schedule(1, DayOfWeek.MONDAY, "09:00", "17:00")));
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-13")
+                .param("time", "17:00")
                 .param("vet", "1"))
             .andExpect(model().attributeHasFieldErrors("visit", "time"));
     }
@@ -15788,7 +15834,7 @@ const SDD_BUILD_CHANGE_CARDS = [
     name: 'VetSchedule.java', label: 'VetSchedule.java',
     documentLabel: 'Entity:',
     icon: 'fileTypes/java',
-    added: '+21', removed: '', diff: { added: 21, deleted: 0 },
+    added: '+45', removed: '', diff: { added: 45, deleted: 0 },
     diffRequest: {
       text: 'Add VetSchedule.java entity under the vet package',
       statusItem: { status: 'passed' },
@@ -15830,7 +15876,7 @@ const SDD_BUILD_CHANGE_CARDS = [
     name: 'VisitController.java', label: 'VisitController.java',
     documentLabel: 'Validation:',
     icon: 'fileTypes/java',
-    added: '+9', removed: '', diff: { added: 9, deleted: 0 },
+    added: '+11', removed: '', diff: { added: 11, deleted: 0 },
     diffRequest: {
       text: 'Validate requested visit_time against schedule windows in VisitController.processNewVisitForm()',
       statusItem: { status: 'passed' },
@@ -15858,9 +15904,9 @@ const SDD_BUILD_CHANGE_CARDS = [
     name: 'VisitControllerTests.java', label: 'VisitControllerTests.java',
     documentLabel: 'Regression test:',
     icon: 'fileTypes/java',
-    added: '+12', removed: '', diff: { added: 12, deleted: 0 },
+    added: '+24', removed: '', diff: { added: 24, deleted: 0 },
     diffRequest: {
-      text: 'Add tests for off-hours booking rejection in VisitControllerTests.java',
+      text: 'Add tests for off-hours and boundary-time rejection in VisitControllerTests.java',
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 14 },
       source: { label: 'Vet-Schedules.md' },
