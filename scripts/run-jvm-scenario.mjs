@@ -421,15 +421,22 @@ async function finishOptionalSpecificationLaunch(page, beat) {
   }
 
   // Newer prototype builds complete Specify in its own chat without a separate
-  // terminal permission surface. The next beat reopens the source task.
+  // terminal permission surface. In the SDD flow the generated document opens
+  // directly, while other entry points keep the source chat visible.
+  const completedDocument = page.locator('.spec-done-overlay:visible').first();
+  if (await completedDocument.isVisible().catch(() => false)) {
+    await pause(800);
+    return;
+  }
+
+  // The next beat reopens the source task.
   await page.locator('.aiux543-conversation:visible').first().waitFor({ state: 'visible', timeout: 10000 });
   await pause(800);
 }
 
 async function runScenario(page) {
-  const prompt = 'Create a spec for visit booking in PetClinic based on prd.md';
-  const acComment = 'Fixed hourly slots from 09:00 to 16:00. Use <select> with predefined options. Last bookable slot is 16:00. Slot range configurable.';
-  const diffComment = 'Time slots never change at runtime — build the list once in the constructor';
+  const prompt = 'Add vet working hours, and reject bookings outside them';
+  const noteText = 'cover the exclusive end boundary in the regression tests';
 
   console.log('Running JVM scenario automation…');
   await updateOverlay(page, { beat: 'Beat 1', text: 'Loading the welcome screen…' });
@@ -441,15 +448,112 @@ async function runScenario(page) {
   await clickByDemoId(page, 'welcome-new-agent-task', 'Beat 1', 'Open “New Task for Agent”.');
   await capture(page, 'beat-1-new-task');
 
-  const editor = page.locator('.main-window-editor-content .editor .pce-textarea').first();
+  const editor = page.locator('textarea[aria-label="Task prompt"]:visible').first();
   await demoType(page, editor, 'Beat 1', 'Type the initial visit-booking prompt.', prompt);
   await capture(page, 'beat-1-prompt');
 
-  await clickByDemoId(page, 'agent-task-generate', 'Beat 1', 'Generate the first spec draft.');
+  await demoClick(page, page.getByRole('button', { name: 'Send', exact: true }).last(), 'Beat 1', 'Send the initial task to the agent.');
   await finishOptionalSpecificationLaunch(page, 'Beat 1');
+  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 1', 'Open the generated Vet-Schedules.md document.');
+  const document = page.locator('.spec-done-overlay:visible').first();
+  await document.getByRole('heading', { name: 'Reference Files', exact: true }).waitFor({ state: 'visible' });
+  await document.getByText('Demo seed data includes at least one valid schedule window for each of the six seeded vets.', { exact: true }).waitFor({ state: 'visible' });
   await capture(page, 'beat-1-generated-spec');
 
-  await clickTaskRow(page, 'visit-booking.md', 'Beat 2', 'Open visit-booking.md from Agent Tasks.');
+  const testPlanRow = page.locator('[data-demo-id="spec-row-plan-14"]').first();
+  await testPlanRow.hover();
+  const testSourceChip = testPlanRow.locator('[data-ref-target="VisitControllerTests.java"]').first();
+  await demoClick(page, testSourceChip, 'Beat 2', 'Open the linked VisitControllerTests.java source next to the document.');
+  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'VisitControllerTests.java' }).waitFor({ state: 'visible' });
+  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 2', 'Return to the specification.');
+
+  const acValidationRow = page.locator('[data-demo-id="spec-row-ac-1"]').first();
+  const acValidationEditable = acValidationRow.locator('[contenteditable="true"]').first();
+  await demoFocus(page, acValidationEditable, 'Beat 2', 'Replace the generic Validation subject with a method reference.');
+  const selected = await acValidationEditable.evaluate((node) => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode;
+      const start = textNode.textContent.indexOf('Validation');
+      if (start < 0) continue;
+      const range = document.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + 'Validation'.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+    return false;
+  });
+  if (!selected) throw new Error('Could not select the Validation text in AC #2');
+  await page.keyboard.type('@process', { delay: 18 });
+  const processMethodCompletion = page.locator('.at-popup-row', { hasText: 'processNewVisitForm()' }).first();
+  await demoClick(page, processMethodCompletion, 'Beat 2', 'Insert the existing controller method reference from completion.');
+  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+
+  await clickTaskRow(page, 'VisitControllerTests.java', 'Beat 2', 'Switch away to verify the manual document edit is retained.');
+  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 2', 'Return to the edited specification.');
+  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+
+  await testPlanRow.hover();
+  await clickByDemoId(page, 'spec-comment-plan-14', 'Beat 3', 'Add a targeted note to the regression-test Plan item.');
+  const noteInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
+  await demoType(page, noteInput, 'Beat 3', 'Describe the exclusive end-boundary coverage.', noteText);
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 3', 'Attach the note to the Plan item.');
+
+  const sendToAgent = page.getByRole('button', { name: 'Send to Agent', exact: true }).first();
+  await demoClick(page, sendToAgent, 'Beat 3', 'Apply the targeted note without opening a chat split.');
+  const noteLoading = page.locator('.agent-task-toolbar .at-generating-label:visible').first();
+  await noteLoading.waitFor({ state: 'visible', timeout: 10000 });
+  await noteLoading.waitFor({ state: 'hidden', timeout: 30000 });
+  await testPlanRow.getByText(noteText, { exact: false }).waitFor({ state: 'visible' });
+  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+  await capture(page, 'beat-3-note-applied');
+
+  await demoClick(page, page.getByRole('button', { name: 'Execute', exact: true }).first(), 'Beat 4', 'Execute the refined document.');
+  const documentLoading = page.locator('.agent-task-toolbar .at-generating-label:visible', { hasText: 'Building...' }).first();
+  await documentLoading.waitFor({ state: 'visible', timeout: 10000 });
+  await capture(page, 'beat-4-document-executing');
+  await documentLoading.waitFor({ state: 'hidden', timeout: 30000 });
+  await page.locator('.spec-done-scroll:visible').evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
+  await pause(200);
+  const expectedGeneratedDiffs = [
+    'VetSchedule.java+59',
+    'VetScheduleRepository.java+4',
+    'schema.sql+11',
+    'data.sql+9',
+    'VetFormatter.java+29',
+    'VisitController.java+15-1',
+    'VisitControllerTests.java+74-2',
+  ];
+  const renderedGeneratedDiffs = await page.locator('.spec-changed-files-chip:visible').evaluateAll((nodes) => (
+    nodes.map((node) => (node.textContent || '').replace(/\s+/g, ''))
+  ));
+  if (JSON.stringify(renderedGeneratedDiffs) !== JSON.stringify(expectedGeneratedDiffs)) {
+    throw new Error(`Generated diff list mismatch: ${JSON.stringify(renderedGeneratedDiffs)}`);
+  }
+  await capture(page, 'beat-4-execution-complete');
+
+  const controllerDiffChip = page.locator('.spec-changed-files-chip:visible', { hasText: 'VisitController.java' }).first();
+  await demoClick(page, controllerDiffChip, 'Beat 5', 'Open the generated controller diff next to Vet-Schedules.md.');
+  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'Diff VisitController.java' }).waitFor({ state: 'visible' });
+  await page.locator('.plan-diff-fragment:visible', { hasText: 'isBefore(schedule.getEndTime())' }).first().waitFor({ state: 'visible' });
+
+  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 5', 'Return to the specification before opening the regression-test diff.');
+  const testDiffChip = page.locator('.spec-changed-files-chip:visible', { hasText: 'VisitControllerTests.java' }).first();
+  await demoClick(page, testDiffChip, 'Beat 5', 'Open the generated regression-test diff next to Vet-Schedules.md.');
+  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'Diff VisitControllerTests.java' }).waitFor({ state: 'visible' });
+  await page.locator('.plan-diff-fragment:visible', { hasText: 'acceptsBookingAtScheduleStartBoundary' }).first().waitFor({ state: 'visible' });
+  await page.locator('.plan-diff-fragment:visible', { hasText: 'rejectsBookingAtScheduleEndBoundary' }).first().waitFor({ state: 'visible' });
+  await capture(page, 'beat-5-generated-diffs');
+
+  await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });
+  await pause(1400);
+  return;
+
   const inspectionCounts = page.locator('[data-demo-id="spec-inspection-counts"]').first();
   if (!await inspectionCounts.isVisible().catch(() => false)) {
     await clickSpecSectionRun(page, 'Plan', 'Beat 2', 'Build the spec to produce current inspection results.');
@@ -459,7 +563,7 @@ async function runScenario(page) {
     state: 'visible',
     timeout: 20000,
   });
-  await capture(page, 'beat-2-visit-booking');
+  await capture(page, 'beat-2-vet-schedules');
 
   await clickByDemoId(page, 'spec-inspection-counts', 'Beat 2', 'Open the issues detected in the spec.');
   await pause(700);
@@ -523,9 +627,9 @@ async function runScenario(page) {
   });
   await capture(page, 'beat-5-review-context-retained');
 
-  const diffAiReviewButton = page.locator('.plan-diff-ai-review-button:visible').first();
-  await waitForEnabled(diffAiReviewButton);
-  await demoFocus(page, diffAiReviewButton, 'Beat 6', 'The reviewed diff is ready for a follow-up AI Review.');
+  const diffCodeReviewButton = page.locator('.plan-diff-code-review-button:visible').first();
+  await waitForEnabled(diffCodeReviewButton);
+  await demoFocus(page, diffCodeReviewButton, 'Beat 6', 'The reviewed diff is ready for a follow-up Code Review.');
 
   await capture(page, 'beat-6-wrap-up');
   await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });

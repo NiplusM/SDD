@@ -523,13 +523,8 @@ class VisitController {
     }
 
     @ModelAttribute("vets")
-    public Collection<Vet> populateVets(
-            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate date,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "HH:mm") LocalTime time) {
-        if (date == null || time == null) {
-            return this.vetRepository.findAll();
-        }
-        return this.vetRepository.findAvailableFor(date, time);
+    public Collection<Vet> populateVets() {
+        return this.vetRepository.findAll();
     }
 
     @ModelAttribute("timeSlots")
@@ -543,7 +538,8 @@ class VisitController {
 
     @GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
     public String initNewVisitForm(@PathVariable int ownerId, @PathVariable int petId, Map<String, Object> model) {
-        Owner owner = this.ownerRepository.findById(ownerId);
+        Owner owner = this.ownerRepository.findById(ownerId)
+            .orElseThrow(() -> new IllegalArgumentException("Owner not found: " + ownerId));
         Pet pet = owner.getPet(petId);
         Visit visit = new Visit();
         pet.addVisit(visit);
@@ -565,13 +561,14 @@ class VisitController {
         }
 
         if (result.hasErrors()) {
-            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
+            model.addAttribute("vets", populateVets());
             model.addAttribute("timeSlots", populateTimeSlots());
             return "pets/createOrUpdateVisitForm";
         }
 
         try {
-            Owner owner = this.ownerRepository.findById(ownerId);
+            Owner owner = this.ownerRepository.findById(ownerId)
+                .orElseThrow(() -> new IllegalArgumentException("Owner not found: " + ownerId));
             Pet pet = owner.getPet(petId);
             pet.addVisit(visit);
             this.visitRepository.save(visit);
@@ -579,7 +576,7 @@ class VisitController {
         catch (DataIntegrityViolationException ex) {
             result.rejectValue("time", "duplicate",
                 "Concurrent booking detected. Please choose another slot.");
-            model.addAttribute("vets", populateVets(visit.getDate(), visit.getTime()));
+            model.addAttribute("vets", populateVets());
             model.addAttribute("timeSlots", populateTimeSlots());
             return "pets/createOrUpdateVisitForm";
         }
@@ -689,6 +686,30 @@ CREATE TABLE vets (
     last_name   VARCHAR(30)
 );
 
+CREATE TABLE owners (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    first_name  VARCHAR(30),
+    last_name   VARCHAR(30),
+    address     VARCHAR(255),
+    city        VARCHAR(80),
+    telephone   VARCHAR(20)
+);
+
+CREATE TABLE types (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    name        VARCHAR(80)
+);
+
+CREATE TABLE pets (
+    id          INTEGER IDENTITY PRIMARY KEY,
+    name        VARCHAR(30),
+    birth_date  DATE,
+    type_id     INTEGER NOT NULL,
+    owner_id    INTEGER NOT NULL,
+    CONSTRAINT fk_pets_type FOREIGN KEY (type_id) REFERENCES types(id),
+    CONSTRAINT fk_pets_owner FOREIGN KEY (owner_id) REFERENCES owners(id)
+);
+
 CREATE TABLE visits (
     id          INTEGER IDENTITY PRIMARY KEY,
     pet_id      INTEGER NOT NULL,
@@ -706,13 +727,16 @@ CREATE TABLE visits (
     code: `@WebMvcTest(VisitController.class)
 class VisitControllerTests {
 
-    @MockBean
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
     private VisitRepository visitRepository;
 
-    @MockBean
+    @MockitoBean
     private VetRepository vetRepository;
 
-    @MockBean
+    @MockitoBean
     private OwnerRepository ownerRepository;
 
     @Test
@@ -1382,13 +1406,18 @@ public class VetSchedule extends BaseEntity {
     @NotNull
     private DayOfWeek weekday;
 
-    @Column(name = "start_time")
+    @Column(name = "start_time", nullable = false)
     @NotNull
     private LocalTime startTime;
 
-    @Column(name = "end_time")
+    @Column(name = "end_time", nullable = false)
     @NotNull
     private LocalTime endTime;
+
+    @AssertTrue(message = "End time must be after start time")
+    public boolean isValidTimeRange() {
+        return startTime == null || endTime == null || endTime.isAfter(startTime);
+    }
 
     public Vet getVet() {
         return vet;
@@ -1448,7 +1477,7 @@ public class VetSchedule extends BaseEntity {
                 .anyMatch(schedule -> !visit.getTime().isBefore(schedule.getStartTime())
                     && visit.getTime().isBefore(schedule.getEndTime()));
             if (!withinWorkingHours) {
-                result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
+                result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours.");
             }
         }
 
@@ -1463,29 +1492,46 @@ INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (1, 'TU
 INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'MONDAY', '10:00', '18:00');
 INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'WEDNESDAY', '10:00', '18:00');
 INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'THURSDAY', '08:00', '16:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'FRIDAY', '08:00', '16:00');`,
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'FRIDAY', '08:00', '16:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (4, 'MONDAY', '09:00', '17:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (5, 'TUESDAY', '08:00', '16:00');
+INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (6, 'WEDNESDAY', '11:00', '19:00');`,
   },
   14: {
     fileLabel: 'VisitControllerTests.java',
     language: 'java',
     beforeCode: MY_EDITOR_TAB_CONTENTS['5'].code,
     afterCode: `@WebMvcTest(VisitController.class)
+@Import(VetFormatter.class)
 class VisitControllerTests {
 
-    @MockBean
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
     private VisitRepository visitRepository;
 
-    @MockBean
+    @MockitoBean
     private VetRepository vetRepository;
 
-    @MockBean
+    @MockitoBean
     private VetScheduleRepository vetScheduleRepository;
+
+    @MockitoBean
+    private OwnerRepository ownerRepository;
+
+    @BeforeEach
+    void setUp() {
+        when(vetRepository.findAll()).thenReturn(List.of(vet(1), vet(3)));
+    }
 
     @Test
     void processNewVisitFormDoubleBookingRejected() throws Exception {
         when(visitRepository.existsByVetIdAndDateAndTime(
                 3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
             .thenReturn(true);
+        when(vetScheduleRepository.findByVetIdAndWeekday(3, DayOfWeek.WEDNESDAY))
+            .thenReturn(List.of(schedule(DayOfWeek.WEDNESDAY, "09:00", "17:00")));
 
         mockMvc.perform(post("/owners/1/pets/1/visits/new")
                 .param("date", "2026-04-15")
@@ -1493,31 +1539,47 @@ class VisitControllerTests {
                 .param("vet", "3")
                 .param("description", "Regular check"))
             .andExpect(status().isOk())
-            .andExpect(model().attributeHasFieldErrors("visit", "time"));
+            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "duplicate"));
     }
 
     @Test
     void rejectsBookingOutsideVetWorkingHours() throws Exception {
         when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
-            .thenReturn(List.of(schedule(1, DayOfWeek.MONDAY, "09:00", "17:00")));
+            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
 
         mockMvc.perform(post("/owners/1/pets/1/visits/new")
                 .param("date", "2026-04-13")
                 .param("time", "20:00")
                 .param("vet", "1"))
-            .andExpect(model().attributeHasFieldErrors("visit", "time"));
+            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "outsideWorkingHours"));
     }
 
     @Test
     void rejectsBookingAtScheduleEndBoundary() throws Exception {
         when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
-            .thenReturn(List.of(schedule(1, DayOfWeek.MONDAY, "09:00", "17:00")));
+            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
 
         mockMvc.perform(post("/owners/1/pets/1/visits/new")
                 .param("date", "2026-04-13")
                 .param("time", "17:00")
                 .param("vet", "1"))
-            .andExpect(model().attributeHasFieldErrors("visit", "time"));
+            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "outsideWorkingHours"));
+    }
+
+    @Test
+    void acceptsBookingAtScheduleStartBoundary() throws Exception {
+        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
+            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
+        when(ownerRepository.findById(1)).thenReturn(Optional.of(ownerWithPet(1)));
+
+        mockMvc.perform(post("/owners/1/pets/1/visits/new")
+                .param("date", "2026-04-13")
+                .param("time", "09:00")
+                .param("vet", "1"))
+            .andExpect(status().is3xxRedirection())
+            .andExpect(redirectedUrl("/owners/1"));
+
+        verify(visitRepository).save(any(Visit.class));
     }
 
     private VetSchedule schedule(DayOfWeek weekday, String start, String end) {
@@ -1526,6 +1588,20 @@ class VisitControllerTests {
         schedule.setStartTime(LocalTime.parse(start));
         schedule.setEndTime(LocalTime.parse(end));
         return schedule;
+    }
+
+    private Vet vet(int id) {
+        Vet vet = new Vet();
+        vet.setId(id);
+        return vet;
+    }
+
+    private Owner ownerWithPet(int petId) {
+        Owner owner = new Owner();
+        Pet pet = new Pet();
+        pet.setId(petId);
+        owner.addPet(pet);
+        return owner;
     }
 }`,
   },
@@ -1542,6 +1618,7 @@ CREATE TABLE vet_schedules (
     start_time  TIME NOT NULL,
     end_time    TIME NOT NULL,
     CONSTRAINT fk_vet_schedules_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
+    CONSTRAINT ck_vet_schedule_window CHECK (start_time < end_time),
     CONSTRAINT uk_vet_schedule_window UNIQUE (vet_id, weekday, start_time, end_time)
 );`,
   },
@@ -1549,7 +1626,8 @@ CREATE TABLE vet_schedules (
     fileLabel: 'VetFormatter.java',
     language: 'java',
     beforeCode: '',
-    afterCode: `public class VetFormatter implements Formatter<Vet> {
+    afterCode: `@Component
+public class VetFormatter implements Formatter<Vet> {
 
     private final VetRepository vetRepository;
 
@@ -1558,8 +1636,18 @@ CREATE TABLE vet_schedules (
     }
 
     @Override
-    public Vet parse(String text, Locale locale) {
-        return this.vetRepository.findById(Integer.parseInt(text));
+    public Vet parse(String text, Locale locale) throws ParseException {
+        final Integer vetId;
+        try {
+            vetId = Integer.valueOf(text);
+        }
+        catch (NumberFormatException ex) {
+            throw new ParseException("invalid vet id: " + text, 0);
+        }
+        return this.vetRepository.findAll().stream()
+            .filter(vet -> Objects.equals(vet.getId(), vetId))
+            .findFirst()
+            .orElseThrow(() -> new ParseException("vet not found: " + text, 0));
     }
 
     @Override
@@ -1568,68 +1656,15 @@ CREATE TABLE vet_schedules (
     }
 }`,
   },
-  15: {
-    fileLabel: 'Visit.java',
-    language: 'java',
-    beforeCode: `public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    private LocalDate date = LocalDate.now();
-
-    @NotBlank
-    private String description;
-
-    @ManyToOne
-    @JoinColumn(name = "pet_id")
-    private Pet pet;
-}`,
-    afterCode: `public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    private LocalDate date = LocalDate.now();
-
-    @Column(name = "visit_time")
-    private LocalTime time;
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    private Vet vet;
-
-    @NotBlank
-    private String description;
-
-    @ManyToOne
-    @JoinColumn(name = "pet_id")
-    private Pet pet;
-
-    public LocalTime getTime() {
-        return time;
-    }
-
-    public void setTime(LocalTime time) {
-        this.time = time;
-    }
-
-    public Vet getVet() {
-        return vet;
-    }
-
-    public void setVet(Vet vet) {
-        this.vet = vet;
-    }
-}`,
-  },
 };
 
-// Vet-Schedules.md's own Plan items are numbered 0-5 by their position in
+// Vet-Schedules.md's own Plan items are numbered 0-6 by their position in
 // the document (same as every other doc's Plan), but their diff content
-// lives at indices 10-15 in PLAN_CODE_DIFF_PRESETS (kept out of the 0-6
+// lives at dedicated indices in PLAN_CODE_DIFF_PRESETS (kept out of the 0-6
 // range the unrelated refactor-time-slots scenario's presets occupy).
 // Without this remap, a Plan row's "Show diff" click resolves its position
 // straight into that colliding range and opens someone else's diff.
-const VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION = [10, 11, 15, 12, 13, 14];
+const VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION = [10, 11, 16, 13, 17, 12, 14];
 
 function isVetSchedulesSourceLabel(label = '') {
   return String(label ?? '').trim().toLowerCase() === 'vet-schedules.md';
@@ -3642,9 +3677,11 @@ const COMPLETION_PREVIEW_LIBRARY = {
   },
   'VetFormatter.java': {
     previewLines: [
+      '@Component',
       'public class VetFormatter implements Formatter<Vet> {',
-      '    public Vet parse(String text, Locale locale) {',
-      '        return this.vetRepository.findById(Integer.parseInt(text));',
+      '    public Vet parse(String text, Locale locale) throws ParseException {',
+      '        return this.vetRepository.findAll().stream()',
+      '            .filter(vet -> Objects.equals(vet.getId(), Integer.valueOf(text)))',
       '    }',
       '}',
     ],
@@ -3753,13 +3790,18 @@ public class VetSchedule extends BaseEntity {
     @NotNull
     private DayOfWeek weekday;
 
-    @Column(name = "start_time")
+    @Column(name = "start_time", nullable = false)
     @NotNull
     private LocalTime startTime;
 
-    @Column(name = "end_time")
+    @Column(name = "end_time", nullable = false)
     @NotNull
     private LocalTime endTime;
+
+    @AssertTrue(message = "End time must be after start time")
+    public boolean isValidTimeRange() {
+        return startTime == null || endTime == null || endTime.isAfter(startTime);
+    }
 
     public Vet getVet() { return this.vet; }
     public void setVet(Vet vet) { this.vet = vet; }
@@ -3778,7 +3820,7 @@ public class VetSchedule extends BaseEntity {
     language: 'java',
     code: `public interface VetScheduleRepository extends CrudRepository<VetSchedule, Integer> {
 
-    List<VetSchedule> findByVetIdAndWeekday(Integer vetId, DayOfWeek weekday);
+    List<VetSchedule> findByVetIdAndWeekday(int vetId, DayOfWeek weekday);
 }`,
   },
 };
@@ -10910,11 +10952,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       // sends the note to the agent from right there (see the doc toolbar's
       // "Send to Agent" button) instead of a split opening on its own.
       if (isVetSchedulesDocument && boundChatId && !shouldCreateAnnotation) {
+        const sourceRowMeta = rowMetaByKey.get(commentPopup.rowKey) ?? null;
         onAddSelectionToChat?.({
           selectedText: nextValue,
           chatId: boundChatId,
           rowKey: rowCommentKey,
           rowIndex,
+          rawIndex: Number.isInteger(sourceRowMeta?.rawIndex) ? sourceRowMeta.rawIndex : null,
           lineLabel: newEntry?.lineLabel ?? '',
           openSplit: false,
         });
@@ -13871,7 +13915,7 @@ const VET_SCHEDULES_AC_RUN_STATUSES = [
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'Working schedules stored by weekday', chip: null },
+      { status: 'passed', text: 'Working schedules use start-inclusive, end-exclusive windows', chip: null },
     ],
   },
   {
@@ -13883,7 +13927,7 @@ const VET_SCHEDULES_AC_RUN_STATUSES = [
   {
     status: 'passed',
     checks: [
-      { status: 'passed', text: 'Demo seed data includes schedule rows', chip: null },
+      { status: 'passed', text: 'Demo seed data covers all six seeded vets', chip: null },
     ],
   },
   {
@@ -13913,7 +13957,7 @@ function createVetSchedulesSpecDocument() {
         {
           id: 'goal-text',
           type: 'paragraph',
-          text: 'Define the parallel Vet Schedules track that enables real availability checks for visit booking without blocking the initial visit-booking rollout.',
+          text: 'Add persisted vet working hours and server-side booking validation without replacing the current static time-slot picker.',
         },
       ],
     },
@@ -13922,34 +13966,35 @@ function createVetSchedulesSpecDocument() {
       title: 'Plan',
       meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package; persist weekdays as enum names' },
+        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity with enum-name weekday persistence and validated time ranges' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/weekday in @VetScheduleRepository.findByVetIdAndWeekday()' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Add the vet_schedules table and FK to H2 @schema.sql' },
-        { id: 'plan-4', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
-        { id: 'plan-6', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
-        { id: 'plan-7', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'Create the H2 schedule table in @schema.sql with vet FK + valid-time-window check' },
+        { id: 'plan-4', type: 'check', checked: false, text: 'Seed working hours for all six demo vets in H2 data.sql' },
+        { id: 'plan-5', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
+        { id: 'plan-6', type: 'check', checked: false, text: 'Validate requested visit_time against half-open schedule windows in @VisitController.processNewVisitForm()' },
+        { id: 'plan-7', type: 'check', checked: false, text: 'Add off-hours rejection tests in @VisitControllerTests.java for controller validation' },
       ],
     },
     {
       id: 'acceptance',
       title: 'Acceptance Criteria',
       items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Vets can have working schedules stored by day of week in @VetSchedule entity.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Booking validation can reject slots outside a vet\'s working hours.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one schedule per vet.' },
-        { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan can keep using static hourly slots while this work is in progress.' },
+        { id: 'ac-1', type: 'check', checked: false, text: 'Each veterinarian\'s working hours are stored by weekday with a start-inclusive, end-exclusive time window.' },
+        { id: 'ac-2', type: 'check', checked: false, text: 'Validation rejects a slot unless it falls within at least one of the selected vet\'s [start, end) windows.' },
+        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one valid schedule window for each of the six seeded vets.' },
+        { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan keeps the existing static hourly slot picker; this change adds server-side validation.' },
       ],
     },
     {
       id: 'references',
       title: 'Reference Files',
       items: [
-        { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
-        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L10-L21' },
-        { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
-        { id: 'ref-5', type: 'bullet', text: 'Existing vet/time fields on the visit: @Visit.java#L10-L20' },
-        { id: 'ref-4', type: 'bullet', text: 'Spring Data reference: [Query Methods](https://docs.spring.io/spring-data/jpa/reference/repositories/query-methods-details.html).' },
+        { id: 'ref-1', type: 'bullet', text: 'Existing visit date, time, and vet fields: @Visit.java#L5-L20' },
+        { id: 'ref-2', type: 'bullet', text: 'Existing booking POST flow: @VisitController.processNewVisitForm()' },
+        { id: 'ref-3', type: 'bullet', text: 'Existing vet and time inputs: @createOrUpdateVisitForm.html#L13-L30' },
+        { id: 'ref-4', type: 'bullet', text: 'Existing H2 visits table and constraints: @schema.sql#L39-L50' },
+        { id: 'ref-5', type: 'bullet', text: 'Spring Data reference: [Query Methods](https://docs.spring.io/spring-data/jpa/reference/repositories/query-methods-details.html).' },
+        { id: 'ref-6', type: 'bullet', text: 'Canonical formatter pattern: [PetTypeFormatter](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java).' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
@@ -13961,7 +14006,7 @@ const VET_SCHEDULES_SERIALIZED_LINE_COUNT = serializeSpecDocument(createVetSched
 
 function createVetSchedulesTaskDraft() {
   return [
-    'Define the parallel Vet Schedules track that enables real availability checks for visit booking without blocking the initial visit-booking rollout.',
+    'Add persisted vet working hours and server-side booking validation without replacing the current static time-slot picker.',
     '',
     '- Model working hours per vet and weekday.',
     '- Reject bookings outside configured schedule windows.',
@@ -15886,100 +15931,111 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
   },
 ];
 
-// Shown in the generating chat once "Sent to Agent" finishes running
-// Vet-Schedules.md's Plan — one row per file the Plan calls for touching.
+function getPresetLineDiffSummary(presetIndex) {
+  const preset = PLAN_CODE_DIFF_PRESETS[presetIndex] ?? {};
+  const toLines = (code) => (typeof code === 'string' && code.length > 0 ? code.split(/\r?\n/u) : []);
+  const beforeLines = toLines(preset.beforeCode);
+  const afterLines = toLines(preset.afterCode);
+  let previous = new Array(afterLines.length + 1).fill(0);
+
+  for (const beforeLine of beforeLines) {
+    const current = new Array(afterLines.length + 1).fill(0);
+    for (let afterIndex = 1; afterIndex <= afterLines.length; afterIndex += 1) {
+      current[afterIndex] = beforeLine === afterLines[afterIndex - 1]
+        ? previous[afterIndex - 1] + 1
+        : Math.max(previous[afterIndex], current[afterIndex - 1]);
+    }
+    previous = current;
+  }
+
+  const commonLineCount = previous[afterLines.length];
+  return {
+    added: afterLines.length - commonLineCount,
+    deleted: beforeLines.length - commonLineCount,
+  };
+}
+
+function createSddBuildChangeCard({
+  id,
+  presetIndex,
+  documentLabel,
+  icon,
+  text,
+}) {
+  const preset = PLAN_CODE_DIFF_PRESETS[presetIndex];
+  const diff = getPresetLineDiffSummary(presetIndex);
+  return {
+    id,
+    name: preset.fileLabel,
+    label: preset.fileLabel,
+    documentLabel,
+    icon,
+    added: diff.added > 0 ? `+${diff.added}` : '',
+    removed: diff.deleted > 0 ? `-${diff.deleted}` : '',
+    diff,
+    diffRequest: {
+      text,
+      statusItem: { status: 'passed' },
+      issueTarget: { kind: 'plan', index: presetIndex },
+      source: { label: 'Vet-Schedules.md' },
+      fileCount: 7,
+    },
+  };
+}
+
+// Shown after Vet-Schedules.md executes. The order mirrors the document Plan,
+// and every counter is derived from the exact before/after code rendered by
+// the corresponding diff tab.
 const SDD_BUILD_CHANGE_CARDS = [
-  {
-    id: 'sdd-build-vet-formatter',
-    name: 'VetFormatter.java', label: 'VetFormatter.java',
-    documentLabel: 'Form binding:', icon: 'fileTypes/java',
-    added: '+17', removed: '', diff: { added: 17, deleted: 0 },
-    diffRequest: { text: 'Register VetFormatter for visit form binding', statusItem: { status: 'passed' }, issueTarget: { kind: 'plan', index: 17 }, source: { label: 'Vet-Schedules.md' }, fileCount: 7 },
-  },
-  {
+  createSddBuildChangeCard({
     id: 'sdd-build-vet-schedule-entity',
-    name: 'VetSchedule.java', label: 'VetSchedule.java',
+    presetIndex: 10,
     documentLabel: 'Entity:',
     icon: 'fileTypes/java',
-    added: '+45', removed: '', diff: { added: 45, deleted: 0 },
-    diffRequest: {
-      text: 'Add VetSchedule.java entity under the vet package',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 10 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
-  {
+    text: 'Add the VetSchedule entity with validated [start, end) windows',
+  }),
+  createSddBuildChangeCard({
     id: 'sdd-build-vet-schedule-repository',
-    name: 'VetScheduleRepository.java', label: 'VetScheduleRepository.java',
+    presetIndex: 11,
     documentLabel: 'Repository query:',
     icon: 'fileTypes/java',
-    added: '+4', removed: '', diff: { added: 4, deleted: 0 },
-    diffRequest: {
-      text: 'Add repository queries by vet/weekday in VetScheduleRepository.findByVetIdAndWeekday()',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 11 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
-  {
+    text: 'Add the vet/weekday schedule query',
+  }),
+  createSddBuildChangeCard({
     id: 'sdd-build-schema',
-    name: 'schema.sql', label: 'schema.sql',
+    presetIndex: 16,
     documentLabel: 'H2 schema:',
     icon: 'fileTypes/sql',
-    added: '+8', removed: '', diff: { added: 8, deleted: 0 },
-    diffRequest: {
-      text: 'Add vet_schedules table and foreign key to H2 schema.sql',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 16 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
-  {
-    id: 'sdd-build-visit-controller',
-    name: 'VisitController.java', label: 'VisitController.java',
-    documentLabel: 'Validation:',
-    icon: 'fileTypes/java',
-    added: '+11', removed: '', diff: { added: 11, deleted: 0 },
-    diffRequest: {
-      text: 'Validate requested visit_time against schedule windows in VisitController.processNewVisitForm()',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 12 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
-  {
+    text: 'Add the vet_schedules table, FK, and valid-time-window check',
+  }),
+  createSddBuildChangeCard({
     id: 'sdd-build-data-sql',
-    name: 'data.sql', label: 'data.sql',
+    presetIndex: 13,
     documentLabel: 'Seed data:',
     icon: 'fileTypes/sql',
-    added: '+6', removed: '', diff: { added: 6, deleted: 0 },
-    diffRequest: {
-      text: 'Seed sample schedules in H2 data.sql',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 13 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
-  {
-    id: 'sdd-build-visit-controller-tests',
-    name: 'VisitControllerTests.java', label: 'VisitControllerTests.java',
-    documentLabel: 'Regression test:',
+    text: 'Seed working hours for all six demo vets',
+  }),
+  createSddBuildChangeCard({
+    id: 'sdd-build-vet-formatter',
+    presetIndex: 17,
+    documentLabel: 'Form binding:',
     icon: 'fileTypes/java',
-    added: '+24', removed: '', diff: { added: 24, deleted: 0 },
-    diffRequest: {
-      text: 'Add tests for off-hours and boundary-time rejection in VisitControllerTests.java',
-      statusItem: { status: 'passed' },
-      issueTarget: { kind: 'plan', index: 14 },
-      source: { label: 'Vet-Schedules.md' },
-      fileCount: 6,
-    },
-  },
+    text: 'Register VetFormatter for visit-form binding',
+  }),
+  createSddBuildChangeCard({
+    id: 'sdd-build-visit-controller',
+    presetIndex: 12,
+    documentLabel: 'Validation:',
+    icon: 'fileTypes/java',
+    text: 'Validate visit_time against [start, end) schedule windows',
+  }),
+  createSddBuildChangeCard({
+    id: 'sdd-build-visit-controller-tests',
+    presetIndex: 14,
+    documentLabel: 'Regression tests:',
+    icon: 'fileTypes/java',
+    text: 'Cover off-hours rejection and both schedule boundaries',
+  }),
 ];
 
 // A multi-file change is summarized as one "Changed Files" card (file + counters
@@ -29150,6 +29206,7 @@ export default function App() {
     rowIds = [],
     sourceRowKey = null,
     sourceRowIndex = null,
+    sourceRawIndex = null,
     lineLabel = '',
     openChat = true,
   } = {}) => {
@@ -29189,6 +29246,7 @@ export default function App() {
       rowIds: Array.isArray(rowIds) ? rowIds : [],
       sourceRowKey: typeof sourceRowKey === 'string' && sourceRowKey.length > 0 ? sourceRowKey : null,
       sourceRowIndex: Number.isInteger(sourceRowIndex) ? sourceRowIndex : null,
+      sourceRawIndex: Number.isInteger(sourceRawIndex) ? sourceRawIndex : null,
       lineLabel: normalizedLineLabel,
       createdAt: stamp,
     };
@@ -29212,6 +29270,7 @@ export default function App() {
       rowIds: Array.isArray(rowIds) ? rowIds : [],
       sourceRowKey: typeof sourceRowKey === 'string' && sourceRowKey.length > 0 ? sourceRowKey : null,
       sourceRowIndex: Number.isInteger(sourceRowIndex) ? sourceRowIndex : null,
+      sourceRawIndex: Number.isInteger(sourceRawIndex) ? sourceRawIndex : null,
       lineLabel: normalizedLineLabel,
       selections: [selection],
     };
@@ -29242,6 +29301,9 @@ export default function App() {
                 selectedText: selection.selectedText,
                 lineLabel: selection.lineLabel,
                 rowIds: selection.rowIds,
+                sourceRowKey: selection.sourceRowKey,
+                sourceRowIndex: selection.sourceRowIndex,
+                sourceRawIndex: selection.sourceRawIndex,
                 selections: nextSelections,
               };
             });
@@ -29274,6 +29336,7 @@ export default function App() {
     chatId = null,
     rowKey = null,
     rowIndex = null,
+    rawIndex = null,
     lineLabel = '',
     openSplit = false,
   } = {}) => {
@@ -29303,6 +29366,7 @@ export default function App() {
       sourceIcon: activeEditorTabMeta?.icon ?? 'fileTypes/markdown',
       sourceRowKey: rowKey,
       sourceRowIndex: rowIndex,
+      sourceRawIndex: rawIndex,
       lineLabel,
       openChat: false,
     });
@@ -31976,13 +32040,13 @@ export default function App() {
       // in the chat. Opening it earlier (even just to show it's "working")
       // showed a doc that doesn't exist yet from the chat's perspective.
       const sddResultBullets = [
-        'Edited Vet-Schedules.md with a plan for a VetSchedule entity, weekday lookup repository, Visit vet/time fields, controller validation, H2 seed data, and off-hours/boundary tests.',
+        'Edited Vet-Schedules.md with a plan for a VetSchedule entity, weekday lookup repository, H2 schema and seed data, form binding, controller validation, and boundary tests.',
         'Left Visit-Booking.md unchanged so the current hourly-slot rollout stays separate from the schedule-backed validation track.',
       ];
       const fullSddResponse = [
         `I’m creating Vet-Schedules.md for “${messageText}”.`,
         'I found the visit creation path in VisitController.java, the Visit model, and the existing controller tests.',
-        'The spec adds VetSchedule, a weekday repository lookup, Visit vet/time fields, controller validation, H2 seed schedules, and regression tests including the end-time boundary.',
+        'The spec adds VetSchedule, a weekday repository lookup, H2 schema and seed schedules, VetFormatter form binding, controller validation, and boundary-focused regression tests.',
         'I’ll keep it separate from Visit-Booking.md so the existing hourly-slot rollout stays unchanged.',
       ].join(' ');
       let revealedLength = 0;
@@ -32092,20 +32156,33 @@ export default function App() {
         // what makes the document visibly update once the run completes.
         if (noteSourceTabId) {
           const noteSourceRowIndex = docNoteAttachments[0]?.sourceRowIndex;
-          if (Number.isInteger(noteSourceRowIndex)) {
+          const noteSourceRawIndex = docNoteAttachments[0]?.sourceRawIndex;
+          if (Number.isInteger(noteSourceRawIndex) || Number.isInteger(noteSourceRowIndex)) {
             // The note was left on a specific line — change that exact line,
             // not just clear its comment thread, so the document itself
             // visibly reflects the fix.
-            setIdeTabContents((prev) => {
-              const content = prev[noteSourceTabId];
-              const code = typeof content?.code === 'string' ? content.code : null;
-              if (!code) return prev;
-              const rawLineIndex = getRawLineIndexFromDisplayRowIndex(code, noteSourceRowIndex);
-              if (rawLineIndex == null) return prev;
-              const lines = code.split(/\r?\n/);
-              lines[rawLineIndex] = appendNoteAddressedClause(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
-              return { ...prev, [noteSourceTabId]: { ...content, code: lines.join('\n') } };
-            });
+            const persistedCode = manualDocumentDraftsByTabId[noteSourceTabId]
+              ?? ideTabContents[noteSourceTabId]?.code
+              ?? null;
+            if (typeof persistedCode === 'string' && persistedCode.length > 0) {
+              const rawLineIndex = Number.isInteger(noteSourceRawIndex)
+                ? noteSourceRawIndex
+                : getRawLineIndexFromDisplayRowIndex(persistedCode, noteSourceRowIndex);
+              if (rawLineIndex != null) {
+                const lines = persistedCode.split(/\r?\n/);
+                lines[rawLineIndex] = appendNoteAddressedClause(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
+                const nextCode = lines.join('\n');
+                setManualDocumentDraftsByTabId((prev) => ({ ...prev, [noteSourceTabId]: nextCode }));
+                setIdeTabContents((prev) => ({
+                  ...prev,
+                  [noteSourceTabId]: {
+                    ...(prev[noteSourceTabId] ?? {}),
+                    language: prev[noteSourceTabId]?.language ?? 'markdown',
+                    code: nextCode,
+                  },
+                }));
+              }
+            }
           }
           clearTaskCommentsForTab(noteSourceTabId);
           setDocToolbarBusy(noteSourceTabId, null);
@@ -32550,6 +32627,8 @@ export default function App() {
     renameChatAfterReview,
     agentRunByChatId,
     clearTaskCommentsForTab,
+    ideTabContents,
+    manualDocumentDraftsByTabId,
     renameSddChatAfterGeneration,
     setDocToolbarBusy,
     handleAgentTaskSelect,
