@@ -12678,7 +12678,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     : 'Specified';
   const normalizedCommentContextLabel = commentContextLabel.trim().toLowerCase();
   const relatedChatId = normalizedCommentContextLabel === 'vet-schedules.md'
-    ? (vetSchedulesRelatedChatId ?? 'refactor-time-slots')
+    ? vetSchedulesRelatedChatId
     : normalizedCommentContextLabel === 'visit-booking.md'
       ? 'refactor-time-slots'
       : null;
@@ -21704,7 +21704,7 @@ export default function App() {
   // Which chat's "generated" this run of Vet-Schedules.md — drives the top bar's
   // "navigate back to chat" title trigger. Defaults to the original demo chat;
   // updated whenever an SDD chat opens the doc via its own generated-file link.
-  const [vetSchedulesRelatedChatId, setVetSchedulesRelatedChatId] = useState('refactor-time-slots');
+  const [vetSchedulesRelatedChatId, setVetSchedulesRelatedChatId] = useState(null);
   const finalPendingSessionIdRef = useRef(null);
 
   useEffect(() => {
@@ -31692,12 +31692,12 @@ export default function App() {
           window.setTimeout(streamNextSddChunk, 28);
           return;
         }
-        // Only now — reply finished, "Edited Vet-Schedules.md" card shown —
-        // does the doc exist at all from the chat's perspective, so only
-        // now does it actually open, already complete, no busy state ever
-        // shown for it.
+        // Marketing-video variant: open the generated doc directly as its
+        // own standalone tab (no split) once the reply finishes — but the
+        // toolbar's chat-trigger chip still needs to point at the chat that
+        // actually generated it, not fall back to a default/unrelated one.
         setVetSchedulesRelatedChatId(targetChatId);
-        openSpecInSplitViewRef.current?.('t2', targetChatId);
+        handleAgentTaskSelect('t2');
         renameSddChatAfterGeneration(targetChatId, 'Vet schedule availability checks');
       };
       window.setTimeout(streamNextSddChunk, 400);
@@ -32219,6 +32219,7 @@ export default function App() {
     clearTaskCommentsForTab,
     renameSddChatAfterGeneration,
     setDocToolbarBusy,
+    handleAgentTaskSelect,
   ]);
 
   const handleCompleteReviewDecision = useCallback((chatId) => {
