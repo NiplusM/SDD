@@ -1431,33 +1431,24 @@ public class VetSchedule extends BaseEntity {
   12: {
     fileLabel: 'VisitController.java',
     language: 'java',
-    beforeCode: `@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-public String processNewVisitForm(@Valid Visit visit, BindingResult result) {
-    if (result.hasErrors()) {
-        return "pets/createOrUpdateVisitForm";
-    }
-    visitRepository.save(visit);
-    return "redirect:/owners/{ownerId}";
-}`,
-    afterCode: `@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-public String processNewVisitForm(@Valid Visit visit, BindingResult result) {
-    if (result.hasErrors()) {
-        return "pets/createOrUpdateVisitForm";
-    }
-    if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null) {
-        List<VetSchedule> schedules = vetScheduleRepository.findByVetIdAndWeekday(
-            visit.getVet().getId(), visit.getDate().getDayOfWeek());
-        boolean withinHours = schedules.stream().anyMatch(schedule ->
-            !visit.getTime().isBefore(schedule.getStartTime())
-                && visit.getTime().isBefore(schedule.getEndTime()));
-        if (!withinHours) {
-            result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
-            return "pets/createOrUpdateVisitForm";
+    beforeCode: MY_EDITOR_TAB_CONTENTS['1'].code,
+    afterCode: MY_EDITOR_TAB_CONTENTS['1'].code
+      .replace('    private final VetRepository vetRepository;\n', '    private final VetRepository vetRepository;\n    private final VetScheduleRepository vetScheduleRepository;\n')
+      .replace('            VisitRepository visitRepository,\n            VetRepository vetRepository) {', '            VisitRepository visitRepository,\n            VetRepository vetRepository,\n            VetScheduleRepository vetScheduleRepository) {')
+      .replace('        this.vetRepository = vetRepository;\n', '        this.vetRepository = vetRepository;\n        this.vetScheduleRepository = vetScheduleRepository;\n')
+      .replace('\n        if (result.hasErrors()) {', `
+        if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null) {
+            boolean withinWorkingHours = this.vetScheduleRepository
+                .findByVetIdAndWeekday(visit.getVet().getId(), visit.getDate().getDayOfWeek())
+                .stream()
+                .anyMatch(schedule -> !visit.getTime().isBefore(schedule.getStartTime())
+                    && visit.getTime().isBefore(schedule.getEndTime()));
+            if (!withinWorkingHours) {
+                result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours");
+            }
         }
-    }
-    visitRepository.save(visit);
-    return "redirect:/owners/{ownerId}";
-}`,
+
+        if (result.hasErrors()) {`),
   },
   13: {
     fileLabel: 'data.sql',
