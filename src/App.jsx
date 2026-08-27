@@ -676,7 +676,8 @@ public class Visit extends BaseEntity {
   },
   '4': {
     language: 'sql',
-    code: `DROP TABLE IF EXISTS visits;
+    code: `DROP TABLE IF EXISTS vet_schedules;
+DROP TABLE IF EXISTS visits;
 DROP TABLE IF EXISTS pets;
 DROP TABLE IF EXISTS types;
 DROP TABLE IF EXISTS vets;
@@ -710,6 +711,9 @@ class VisitControllerTests {
 
     @MockBean
     private VetRepository vetRepository;
+
+    @MockBean
+    private OwnerRepository ownerRepository;
 
     @Test
     void processNewVisitFormDoubleBookingRejected() throws Exception {
@@ -1540,6 +1544,29 @@ CREATE TABLE vet_schedules (
     CONSTRAINT fk_vet_schedules_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
     CONSTRAINT uk_vet_schedule_window UNIQUE (vet_id, weekday, start_time, end_time)
 );`,
+  },
+  17: {
+    fileLabel: 'VetFormatter.java',
+    language: 'java',
+    beforeCode: '',
+    afterCode: `public class VetFormatter implements Formatter<Vet> {
+
+    private final VetRepository vetRepository;
+
+    public VetFormatter(VetRepository vetRepository) {
+        this.vetRepository = vetRepository;
+    }
+
+    @Override
+    public Vet parse(String text, Locale locale) {
+        return this.vetRepository.findById(Integer.parseInt(text));
+    }
+
+    @Override
+    public String print(Vet vet, Locale locale) {
+        return String.valueOf(vet.getId());
+    }
+}`,
   },
   15: {
     fileLabel: 'Visit.java',
@@ -13874,6 +13901,7 @@ const VET_SCHEDULES_PLAN_RUN_STATUSES = [
   { status: 'passed' },
   { status: 'passed' },
   { status: 'passed' },
+  { status: 'passed' },
 ];
 
 function createVetSchedulesSpecDocument() {
@@ -13900,6 +13928,7 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-4', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
+        { id: 'plan-7', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
       ],
     },
     {
@@ -15860,6 +15889,13 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
 // Shown in the generating chat once "Sent to Agent" finishes running
 // Vet-Schedules.md's Plan — one row per file the Plan calls for touching.
 const SDD_BUILD_CHANGE_CARDS = [
+  {
+    id: 'sdd-build-vet-formatter',
+    name: 'VetFormatter.java', label: 'VetFormatter.java',
+    documentLabel: 'Form binding:', icon: 'fileTypes/java',
+    added: '+17', removed: '', diff: { added: 17, deleted: 0 },
+    diffRequest: { text: 'Register VetFormatter for visit form binding', statusItem: { status: 'passed' }, issueTarget: { kind: 'plan', index: 17 }, source: { label: 'Vet-Schedules.md' }, fileCount: 7 },
+  },
   {
     id: 'sdd-build-vet-schedule-entity',
     name: 'VetSchedule.java', label: 'VetSchedule.java',
