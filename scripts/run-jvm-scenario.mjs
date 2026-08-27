@@ -409,6 +409,23 @@ async function clickByText(page, selector, text, beat, description, options = {}
 }
 
 async function finishOptionalSpecificationLaunch(page, beat) {
+  const initialLoading = page.locator('.sdd-generation-stream:visible').first();
+  await initialLoading.waitFor({ state: 'visible', timeout: 10000 });
+  const initialLoadingText = (await initialLoading.locator('p').first().textContent() ?? '').trim();
+  if (!initialLoadingText.startsWith('I’m creating Vet-Schedules.md for')) {
+    throw new Error(`Unexpected initial SDD loading text: ${JSON.stringify(initialLoadingText)}`);
+  }
+  await initialLoading.locator('.sdd-generation-stream-step.is-active', { hasText: 'Looking up project context' }).waitFor({ state: 'visible' });
+  await initialLoading.locator('.sdd-generation-stream-step.is-active .loader-spinner').waitFor({ state: 'visible' });
+  await capture(page, 'beat-1-initial-loading');
+
+  await pause(520);
+  const appendedLoadingText = (await initialLoading.locator('p').first().textContent() ?? '').trim();
+  if (!appendedLoadingText.startsWith(initialLoadingText) || appendedLoadingText.length <= initialLoadingText.length) {
+    throw new Error(`Initial SDD response did not append monotonically: ${JSON.stringify({ initialLoadingText, appendedLoadingText })}`);
+  }
+  await capture(page, 'beat-1-initial-streaming');
+
   const permission = page.locator('[data-demo-id="terminal-permission-allow-once"]').first();
   if (await permission.waitFor({ state: 'visible', timeout: 1800 }).then(() => true).catch(() => false)) {
     await demoClick(page, permission, beat, 'Allow the agent execution for this run.');
@@ -452,7 +469,13 @@ async function runScenario(page) {
   await demoType(page, editor, 'Beat 1', 'Type the initial visit-booking prompt.', prompt);
   await capture(page, 'beat-1-prompt');
 
-  await demoClick(page, page.getByRole('button', { name: 'Send', exact: true }).last(), 'Beat 1', 'Send the initial task to the agent.');
+  await demoClick(
+    page,
+    page.getByRole('button', { name: 'Send', exact: true }).last(),
+    'Beat 1',
+    'Send the initial task to the agent.',
+    { clickPauseMs: 40, afterPauseMs: 0 },
+  );
   await finishOptionalSpecificationLaunch(page, 'Beat 1');
   await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 1', 'Open the generated Vet-Schedules.md document.');
   const document = page.locator('.spec-done-overlay:visible').first();

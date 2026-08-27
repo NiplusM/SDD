@@ -13608,7 +13608,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
     return (
       <>
         <div className="agent-task-editor-area" data-gen-state="loading">
-          {renderBusyToolbar(busyLabel ?? 'Analizing...')}
+          {renderBusyToolbar(busyLabel ?? 'Analyzing...')}
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
@@ -32000,6 +32000,9 @@ export default function App() {
       && !hasAlreadyGeneratedSddSpec
       && Boolean(messageText)
       && aiChatScenarios[targetChatId]?.icon === 'sdd';
+    const initialSddResponse = isSddAgentChat
+      ? `I’m creating Vet-Schedules.md for “${messageText}”.`
+      : '';
     const shouldRunAgent = shouldStreamCommentResponse || isReviewCommand;
     const stamp = Date.now();
     const baseCount = (aiChatSentMessagesByChatId[targetChatId] ?? []).length;
@@ -32020,7 +32023,7 @@ export default function App() {
       ? {
           id: assistantMessageId,
           role: 'assistant',
-          text: '',
+          text: initialSddResponse,
           streaming: true,
           kind: (isSddAgentChat || isSddNoteFollowUp) ? 'sdd-spec-generated' : undefined,
           prompt: isSddAgentChat ? messageText : undefined,
@@ -32044,12 +32047,15 @@ export default function App() {
         'Left Visit-Booking.md unchanged so the current hourly-slot rollout stays separate from the schedule-backed validation track.',
       ];
       const fullSddResponse = [
-        `I’m creating Vet-Schedules.md for “${messageText}”.`,
+        initialSddResponse,
         'I found the visit creation path in VisitController.java, the Visit model, and the existing controller tests.',
         'The spec adds VetSchedule, a weekday repository lookup, H2 schema and seed schedules, VetFormatter form binding, controller validation, and boundary-focused regression tests.',
         'I’ll keep it separate from Visit-Booking.md so the existing hourly-slot rollout stays unchanged.',
       ].join(' ');
-      let revealedLength = 0;
+      // Start from the sentence already rendered in the assistant placeholder.
+      // Streaming must only append text; it must never flash a complete sentence
+      // and then jump backwards to its first few characters.
+      let revealedLength = initialSddResponse.length;
       const streamNextSddChunk = () => {
         revealedLength = Math.min(fullSddResponse.length, revealedLength + 6);
         const isComplete = revealedLength >= fullSddResponse.length;
