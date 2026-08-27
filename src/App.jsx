@@ -10,8 +10,7 @@ import {
   normalizePlanDiffUiState,
   DiffInlineCommentPopup,
   PlanDiffCommentBadge,
-  PlanDiffNewReviewButton,
-  AiReviewComposerDialog,
+  CodeReviewComposerDialog,
   REVIEW_FINDING_STATUS_IDS,
   getReviewFindingStatus,
 } from './PlanDiffView.jsx';
@@ -87,12 +86,12 @@ import {
   defaultRightPanelContent,
   defaultBottomPanelContent,
 } from '@jetbrains/int-ui-kit';
-import { EditorSelectionToolbar, NEW_CHAT_TARGET_ID } from './EditorSelectionToolbar.jsx';
+import { NEW_CHAT_TARGET_ID } from './EditorSelectionToolbar.jsx';
 import { FinalAnchoredPopup, FinalChoiceIcon } from './FinalPresetParts.jsx';
 import { FinalPresetDialog } from './FinalPresetDialog.jsx';
 import { AgentsCatalogueEditor } from './AgentsCatalogueEditor.jsx';
 import {
-  FINAL_AI_REVIEW_PRESET,
+  FINAL_CODE_REVIEW_PRESET,
   FINAL_DIRECT_AGENT_OPTIONS,
   FINAL_INITIAL_PRESETS,
   FINAL_MANAGED_RECOMMENDED_PRESET,
@@ -122,7 +121,7 @@ const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.jav
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
-const AI_REVIEW_ICON_NAME = 'general/balloon';
+const CODE_REVIEW_ICON_NAME = 'general/balloon';
 const COMPOSER_ATTACHMENT_COLLAPSED_LIMIT = 18;
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
@@ -709,6 +708,9 @@ class VisitControllerTests {
     @MockBean
     private VisitRepository visitRepository;
 
+    @MockBean
+    private VetRepository vetRepository;
+
     @Test
     void processNewVisitFormDoubleBookingRejected() throws Exception {
         when(visitRepository.existsByVetIdAndDateAndTime(
@@ -721,7 +723,7 @@ class VisitControllerTests {
                 .param("vet", "3")
                 .param("description", "Regular check"))
             .andExpect(status().isOk())
-            .andExpect(model().attributeHasFieldErrors("visit", "vet"))
+            .andExpect(model().attributeHasFieldErrors("visit", "time"))
             .andExpect(view().name("pets/createOrUpdateVisitForm"));
     }
 }`,
@@ -1099,23 +1101,6 @@ function CommitToolWindow({
           <IconButton icon="general/show" tooltip="Show" />
           <IconButton icon="general/expandAll" tooltip="Expand All" onClick={() => setCollapsedGroups(new Set())} />
           <IconButton icon="general/collapseAll" tooltip="Collapse All" onClick={() => setCollapsedGroups(new Set(groups.map((g) => g.id)))} />
-          <span className="commit-toolbar-separator" aria-hidden="true" />
-          <div className="commit-ai-review-entry">
-            <PlanDiffNewReviewButton
-              triggerClassName="commit-ai-review-trigger"
-              disabled={reviewSourceAttachments.length === 0}
-              disabledReason="No changes to review"
-              currentScopeLabel="Prepared commit scope"
-              currentFileLabel={reviewSourceAttachments[0]?.sourceLabel ?? 'Current file'}
-              initialScopeId="current"
-              contextLabel="Prepared changes"
-              contextMeta={`${reviewSourceAttachments.length} selected file${reviewSourceAttachments.length === 1 ? '' : 's'}`}
-              contextIcon="general/listFiles"
-              sourceAttachments={reviewSourceAttachments}
-              onStartReview={onStartReview}
-              launchSource="commit"
-            />
-          </div>
         </div>
 
         <div className="commit-tree">
@@ -1388,7 +1373,8 @@ public class VetSchedule extends BaseEntity {
     @NotNull
     private Vet vet;
 
-    @Column(name = "weekday")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "weekday", nullable = false)
     @NotNull
     private DayOfWeek weekday;
 
@@ -3710,7 +3696,8 @@ public class VetSchedule extends BaseEntity {
     @NotNull
     private Vet vet;
 
-    @Column(name = "weekday")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "weekday", nullable = false)
     @NotNull
     private DayOfWeek weekday;
 
@@ -5928,6 +5915,12 @@ function normalizeLegacyVisitBookingGoalCode(code = '') {
   return replaced ? nextLines.join('\n') : code;
 }
 
+function normalizeDocumentHeadingTitleCase(code = '') {
+  return String(code)
+    .replace(/^##\s+Reference files\s*$/gim, '## Reference Files')
+    .replace(/^##\s+Generated diffs\s*$/gim, '## Generated Diffs');
+}
+
 function normalizeLegacyVisitBookingGoalDocumentSections(documentSections = []) {
   if (!Array.isArray(documentSections)) {
     return [];
@@ -6098,7 +6091,7 @@ function createSpecDocument() {
     },
     {
       id: 'implementation',
-      title: 'Reference files',
+      title: 'Reference Files',
       items: [
         { id: 'impl-1', type: 'bullet', text: 'Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.' },
         { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
@@ -10061,7 +10054,7 @@ function areDoneOverlayUiStatesEqual(left = null, right = null) {
   ));
 }
 
-function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, defaultSubmitTargetKey = '', acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onRunItem = null }) {
+function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerateSpec, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, addPopupFiles, attachedFiles = [], onAddToProjectContext, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, defaultSubmitTargetKey = '', acRunResult, planRunResult, documentSections, acWarningBanner, inspectionSummary, versionHistory = null, onOpenVersionDiff = null, onCommentCountChange, onCommentsChange, commentEntries: persistedCommentEntries = [], relatedCommentIssues = [], removedIssueIndices, highlightedProblemLocation = null, commentResetToken = 0, uiState = null, onUiStateChange = null, onPendingEnhanceStateChange = null, onUserInput = null, onCodeChange = null, activeRunRequest = null, commentContextLabel: providedCommentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onRunItem = null }) {
   const effectiveDocumentSections = useMemo(
     () => orderPlanBeforeAcceptanceSections(
       normalizeLegacyVisitBookingGoalDocumentSections(documentSections).map((section) => withDerivedPlanChildren(section))
@@ -10071,9 +10064,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const effectiveCode = useMemo(
     () => orderPlanBeforeAcceptanceCode(
       normalizeLegacyDerivedPlanChildrenCode(
-        normalizeLegacyVisitBookingGoalCode(
+        normalizeDocumentHeadingTitleCase(normalizeLegacyVisitBookingGoalCode(
           typeof code === 'string' ? code : serializeSpecDocument(effectiveDocumentSections)
-        )
+        ))
       )
     ),
     [code, effectiveDocumentSections]
@@ -10125,6 +10118,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
   const [draftCode, setDraftCode] = useState(() => effectiveCode);
   const draftCodeRef = useRef(draftCode);
   draftCodeRef.current = draftCode;
+  const commitDraftCode = useCallback((nextCode) => {
+    if (typeof nextCode !== 'string') return;
+
+    draftCodeRef.current = nextCode;
+    setDraftCode(nextCode);
+    onCodeChange?.(nextCode);
+  }, [onCodeChange]);
   // When typing triggers a re-render (setDraftCode), the contenteditable line is
   // rebuilt and the browser caret is lost. We stash the caret's row + character
   // offset here right before the re-render and restore it in a layout effect.
@@ -10134,9 +10134,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
     setProjectContextBannerDismissed(false);
   }, [projectContextFile?.label, showSuccessBanner]);
 
+  // Comment submission clears comment-specific UI state via `commentResetToken`.
+  // It must not reload the document at the same time: that would discard an
+  // `@` completion (or any manual edit) that has just been applied locally.
   useEffect(() => {
+    draftCodeRef.current = effectiveCode;
     setDraftCode(effectiveCode);
-  }, [commentResetToken, effectiveCode]);
+  }, [effectiveCode]);
 
   const displayRows = useMemo(() => {
     const rawLines = draftCode ? draftCode.split(/\r?\n/) : [];
@@ -11032,14 +11036,17 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         // React would bail out of re-rendering and leave the half-edited DOM
         // stranded — force a reconcile by first flushing the edited snapshot.
         if (finalCode === draftCodeRef.current && snapshot !== draftCodeRef.current) {
-          flushSync(() => setDraftCode(snapshot));
+          flushSync(() => {
+            draftCodeRef.current = snapshot;
+            setDraftCode(snapshot);
+          });
         }
         pendingCaretRestoreRef.current = {
           rawIndex: rawIndexAttr,
           rowKey: rowEl?.dataset.rowKey ?? null,
           offset: triggerStart + renderedLabel.length + sep.length,
         };
-        setDraftCode(finalCode);
+        commitDraftCode(finalCode);
         onUserInput?.();
       }
     }
@@ -11143,13 +11150,13 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
             offset: pre.toString().length,
           };
         } catch { pendingCaretRestoreRef.current = null; }
-        setDraftCode(nextDraftCode);
+        commitDraftCode(nextDraftCode);
       }
       updateEditedLinesState();
     };
     el.addEventListener('input', handleInput);
     return () => el.removeEventListener('input', handleInput);
-  }, [onUserInput, updateEditedLinesState]);
+  }, [commitDraftCode, onUserInput, updateEditedLinesState]);
 
   // Show a reference chip's resolved file location on hover, rendered with the
   // int-ui-kit `.tooltip` styling through a portal (kept OUTSIDE the
@@ -11502,14 +11509,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const shrunk = linkText.slice(0, -1);
       const nextText = /^\[[^\]]+\]\s?\(/.test(shrunk) ? shrunk : '';
       pendingCaretRestoreRef.current = { rawIndex: rawIndexAttr, rowKey: rowEl?.dataset.rowKey ?? null, offset: baseOffset + nextText.length };
-      setDraftCode((prev) => {
-        const lines = prev.split(/\r?\n/);
-        if (rawIndex >= 0 && rawIndex < lines.length) {
-          const at = lines[rawIndex].indexOf(linkText);
-          if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + linkText.length);
-        }
-        return lines.join('\n');
-      });
+      const lines = draftCodeRef.current.split(/\r?\n/);
+      if (rawIndex >= 0 && rawIndex < lines.length) {
+        const at = lines[rawIndex].indexOf(linkText);
+        if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + linkText.length);
+      }
+      commitDraftCode(lines.join('\n'));
       onUserInput?.();
     };
 
@@ -11537,14 +11542,12 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       };
       setRefHoverTip(null);
       refHoverTipRef.current = null;
-      setDraftCode((prev) => {
-        const lines = prev.split(/\r?\n/);
-        if (rawIndex >= 0 && rawIndex < lines.length) {
-          const at = lines[rawIndex].indexOf(raw);
-          if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + raw.length);
-        }
-        return lines.join('\n');
-      });
+      const lines = draftCodeRef.current.split(/\r?\n/);
+      if (rawIndex >= 0 && rawIndex < lines.length) {
+        const at = lines[rawIndex].indexOf(raw);
+        if (at >= 0) lines[rawIndex] = lines[rawIndex].slice(0, at) + nextText + lines[rawIndex].slice(at + raw.length);
+      }
+      commitDraftCode(lines.join('\n'));
       onUserInput?.();
     };
 
@@ -12050,6 +12053,19 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
               issueSeverity,
               issueTarget,
             } = rowMeta;
+            // The generated-diffs block is appended after the document. Its
+            // own heading provides the section break, so trailing editing rows
+            // would otherwise create a visibly larger gap than every section
+            // above it.
+            // The generated-diffs block follows the final document row. Do not
+            // render editor padding (including a terminal newline) before it:
+            // every other document section has one consistent section break.
+            const isTrailingBlankDocumentRow = isVetSchedulesDocument
+              && rowMeta.line.trim() === ''
+              && displayRows.slice(rowIndex + 1).every((nextRow) => nextRow.line.trim() === '');
+            if (isVetSchedulesDocument && (rowMeta.isVirtual || isTrailingBlankDocumentRow)) {
+              return null;
+            }
             // Row deleted by user — render invisible ghost so snapshot can record empty line
             if (deletedRowKeys.has(stableKey)) {
               return (
@@ -12502,7 +12518,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           // once Execute has actually run — the marketing-video path into a
           // file's generated diff with no extra window.
           <div className="spec-changed-files-section">
-            <h2 className="spec-changed-files-heading">Generated diffs</h2>
+            <h2 className="spec-changed-files-heading">Generated Diffs</h2>
             <ul className="spec-changed-files-list">
               {SDD_BUILD_CHANGE_CARDS.map((card) => (
                 <li
@@ -12580,16 +12596,6 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       </div>,
       document.body
     )}
-    <SpecSelectionToolbar
-      position={selectionToolbarPos}
-      onAction={handleSelectionToolbarAction}
-      chatTargets={chatTargets}
-      onMenuOpenChange={handleSelectionToolbarMenuOpenChange}
-      onDismiss={() => {
-        selectionToolbarMenuOpenRef.current = false;
-        setSelectionToolbarPos(null);
-      }}
-    />
     {intentionPopup && (
       <PositionedPopup triggerRect={intentionPopup.rect} onDismiss={() => setIntentionPopup(null)} gap={4}>
         <DoneIssueIntentionPopup
@@ -12760,7 +12766,7 @@ function AgentTaskTopBarIcon({ style, icon = 'claude' }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onOpenRelatedChatSplit = null, busyToolbarLabel = null, pendingNoteCount = 0, onSendPendingNotes = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, onDocumentCodeChange = null, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onOpenRelatedChatSplit = null, busyToolbarLabel = null, pendingNoteCount = 0, onSendPendingNotes = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -13510,7 +13516,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onCodeChange={(nextCode) => onDocumentCodeChange?.(nextCode, specSessionKey)} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
           doneOverlayHost
         )}
       </>
@@ -13525,7 +13531,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           {renderFloatingPopups()}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onCodeChange={(nextCode) => onDocumentCodeChange?.(nextCode, specSessionKey)} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
           doneOverlayHost
         )}
       </>
@@ -13540,7 +13546,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
             <div className="agent-task-toolbar-content">
               {/* Default state — left */}
               <div className={`agent-task-toolbar-left${isToolbarInputMultiline ? ' is-multiline' : ''}`}>
-                {busyToolbarLabel ? (
+                {busyToolbarLabel || runState === 'running' ? (
                   // The chat that owns this doc is actively working it — same
                   // busy look as "Building...", so a run in progress always
                   // reads the same way regardless of what triggered it.
@@ -13555,7 +13561,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       <rect opacity="0.3" x="12.2384" y="2.35001" width="2" height="4" rx="1" transform="rotate(45 12.2384 2.35001)" fill="#868A91"/>
                       <rect x="7" y="1" width="2" height="4" rx="1" fill="#868A91"/>
                     </svg>
-                    <span className="at-generating-label">{busyToolbarLabel}</span>
+                    <span className="at-generating-label">{busyToolbarLabel ?? 'Building...'}</span>
                   </>
                 ) : (
                 <>
@@ -13703,7 +13709,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
           )}
         </div>
         {shouldRenderDoneOverlay && doneOverlayHost && createPortal(
-          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
+          <DoneMarkdownOverlay code={currentCode} onOpenProblems={onOpenProblems} onOpenTerminal={onOpenTerminal} onRegenerateSpec={onDoneRegenerate} onFixIssue={handleDoneOverlayFixIssue} onOpenDiffTab={onOpenDiffTab} onOpenCheckChip={onOpenCheckChip} onOpenCommentSource={onOpenCommentSource} addPopupFiles={addPopupFiles} attachedFiles={attachedFiles} onAddToProjectContext={onAddAttached} onAddSelectionToChat={onAddSelectionToChat} chatTargets={chatTargets} renderSubmitTargetPicker={renderSubmitTargetPicker} defaultSubmitTargetKey={specSessionKey} acRunResult={acRunResult} planRunResult={planRunResult} documentSections={documentSections} acWarningBanner={acWarningBanner} inspectionSummary={inspectionSummary} versionHistory={versionHistory} onOpenVersionDiff={onOpenVersionDiff} onCommentsChange={onDoneCommentsChange} commentEntries={doneCommentEntries} relatedCommentIssues={relatedCommentIssues} removedIssueIndices={removedIssueIndices} highlightedProblemLocation={highlightedProblemLocation} commentResetToken={commentResetToken} uiState={doneOverlayUiState} onUiStateChange={onDoneOverlayUiStateChange} onPendingEnhanceStateChange={handlePendingEnhanceStateChange} onUserInput={handleOverlayUserInput} onCodeChange={(nextCode) => onDocumentCodeChange?.(nextCode, specSessionKey)} activeRunRequest={activeRunRequest} commentContextLabel={commentContextLabel} commentContextSessionLabel={commentContextSessionLabel} vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onRunItem={() => onTopBarAction?.('Build', { sendMessage: true })} />,
           doneOverlayHost
         )}
       </>
@@ -13863,11 +13869,11 @@ function createVetSchedulesSpecDocument() {
       title: 'Plan',
       meta: { kind: 'chip', text: 'Configuration.md' },
       items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package (table created via Hibernate ddl-auto for the H2 demo)' },
+        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package; persist weekdays as enum names' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/weekday in @VetScheduleRepository.findByVetIdAndWeekday()' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Add vet (FK) and time (TIME) columns to visits, exposed as vet and time fields on @Visit.java' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'Add the vet_schedules table and FK to H2 @schema.sql' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql for @Configuration.md#plan' },
+        { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
       ],
     },
@@ -13883,13 +13889,13 @@ function createVetSchedulesSpecDocument() {
     },
     {
       id: 'references',
-      title: 'Reference files',
+      title: 'Reference Files',
       items: [
         { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
-        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L10-L20' },
+        { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L10-L21' },
         { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
-        { id: 'ref-5', type: 'bullet', text: 'New vet/time fields on the visit: @Visit.java#L7-L12' },
-        { id: 'ref-4', type: 'bullet', text: 'Spring scheduling reference: [Scheduling Tasks](https://spring.io/guides/gs/scheduling-tasks).' },
+        { id: 'ref-5', type: 'bullet', text: 'Existing vet/time fields on the visit: @Visit.java#L10-L20' },
+        { id: 'ref-4', type: 'bullet', text: 'Spring Data reference: [Query Methods](https://docs.spring.io/spring-data/jpa/reference/repositories/query-methods-details.html).' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
@@ -17089,7 +17095,7 @@ function normalizeAgentRunLineLabel(lineLabel = '') {
 }
 
 // ─── Aggregated review diff overview ─────────────────────────────────────────
-// Both "View diff" CTAs (composer card + Chat History AI Review row) open a single
+// Both "View diff" CTAs (composer card + Chat History Code Review row) open a single
 // shared tab that stacks every reviewed file's diff — reusing the existing diff
 // renderer (PlanDiffOverlay) with its inline comments — as a read-only overview.
 const REVIEW_DIFF_TAB_ID = 'review-diff-overview';
@@ -17866,7 +17872,7 @@ const REVIEW_SEVERITY_FILTER_IDS = REVIEW_SEVERITY_FILTERS.map((option) => optio
 const REVIEW_RESOLVED_FILTER_ID = 'resolved';
 // Chat titles that carry no context: a review neither takes its name from them nor
 // preserves them — it overwrites them with the review's own context instead.
-const REVIEW_PLACEHOLDER_CHAT_TITLES = ['', 'AI Review', 'New Chat', 'New Session'];
+const REVIEW_PLACEHOLDER_CHAT_TITLES = ['', 'Code Review', 'New Chat', 'New Session'];
 const REVIEW_ACTION_DELAY_MS = 2800;
 
 function normalizeReviewSeverityFilter(value = REVIEW_SEVERITY_FILTER_IDS) {
@@ -18094,8 +18100,8 @@ function ReviewDiffToolbarNav({
   return (
     <span className="aiux-review-diffnav" ref={rootRef}>
       <span className="aiux-review-diffnav-context">
-        <Icon name={AI_REVIEW_ICON_NAME} size={16} />
-        <span className="aiux-review-diffnav-chat-name">{chatTitle || 'AI Review'}</span>
+        <Icon name={CODE_REVIEW_ICON_NAME} size={16} />
+        <span className="aiux-review-diffnav-chat-name">{chatTitle || 'Code Review'}</span>
         <span className="aiux-review-diffnav-summary">{reviewSummary}</span>
         <span className={`aiux550-review-done-badge aiux-review-overview-status${reviewAllResolved ? ' is-done' : ''}`}>
           <span className="aiux550-review-done-dot" aria-hidden="true" />
@@ -18187,7 +18193,7 @@ function ReviewDiffToolbarNav({
   );
 }
 
-// Shared file-card shell for the full AI Review tab and the compact review
+// Shared file-card shell for the full Code Review tab and the compact review
 // summary in chat. Both surfaces should describe a reviewed file with the same
 // icon, title, summary, border, and content container.
 const ReviewFileCard = forwardRef(function ReviewFileCard({
@@ -18286,7 +18292,7 @@ function ReviewCommentGroupHeader({
   );
 }
 
-function AiReviewEditorSplit({
+function CodeReviewEditorSplit({
   chatLabel,
   reviewLabel,
   chatIcon,
@@ -18301,13 +18307,13 @@ function AiReviewEditorSplit({
 }) {
   const reviewTab = {
     label: reviewLabel,
-    icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} />,
+    icon: <Icon name={CODE_REVIEW_ICON_NAME} size={16} />,
     closable: true,
   };
   return (
-    <div className="ai-review-editor-split" data-testid="ai-review-editor-split">
-      <section className="ai-review-editor-split-pane is-chat" aria-label="Review chat pane">
-        <div className="main-window-editor-tabs ai-review-editor-split-tabbar">
+    <div className="code-review-editor-split" data-testid="code-review-editor-split">
+      <section className="code-review-editor-split-pane is-chat" aria-label="Review chat pane">
+        <div className="main-window-editor-tabs code-review-editor-split-tabbar">
           <TabBar
             tabs={[{ label: chatLabel, icon: chatIcon, closable: true }]}
             activeTab={0}
@@ -18319,11 +18325,11 @@ function AiReviewEditorSplit({
             <IconButton icon="general/moreVertical" aria-label="More" className="editor-tabs-more-button" />
           </div>
         </div>
-        <div className="ai-review-editor-split-body">{leftPane}</div>
+        <div className="code-review-editor-split-body">{leftPane}</div>
       </section>
-      <div className="ai-review-editor-split-divider" role="separator" aria-orientation="vertical" />
-      <section className="ai-review-editor-split-pane is-review" aria-label="Full Review pane">
-        <div className="main-window-editor-tabs ai-review-editor-split-tabbar">
+      <div className="code-review-editor-split-divider" role="separator" aria-orientation="vertical" />
+      <section className="code-review-editor-split-pane is-review" aria-label="Full Review pane">
+        <div className="main-window-editor-tabs code-review-editor-split-tabbar">
           <TabBar
             tabs={showReviewTab ? [reviewTab, ...rightTabs] : rightTabs}
             activeTab={activeRightTab}
@@ -18339,13 +18345,13 @@ function AiReviewEditorSplit({
             <IconButton icon="general/moreVertical" aria-label="More" className="editor-tabs-more-button" />
           </div>
         </div>
-        <div className="ai-review-editor-split-body is-review">{rightPane}</div>
+        <div className="code-review-editor-split-body is-review">{rightPane}</div>
       </section>
     </div>
   );
 }
 
-function AiReviewSplitFileView({
+function CodeReviewSplitFileView({
   file,
   scopeFiles = [],
   focusRowIds = [],
@@ -18353,7 +18359,7 @@ function AiReviewSplitFileView({
   readOnly = false,
   severityFilter = 'all',
   activeChatId = '',
-  activeChatTitle = 'AI Review',
+  activeChatTitle = 'Code Review',
   renderSubmitTargetPicker = null,
   onNavigateFile = null,
   onCommentsChange = null,
@@ -18474,14 +18480,14 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
         `${liveReviewSummary?.fileCount ?? 0} file${(liveReviewSummary?.fileCount ?? 0) === 1 ? '' : 's'}`,
         `${liveReviewSummary?.commentCount ?? 0} finding${(liveReviewSummary?.commentCount ?? 0) === 1 ? '' : 's'}`,
       ].join(' · ');
-  const reviewContextTitle = String(reviewSummary?.featureTitle || chatTitle || 'AI Review').trim();
+  const reviewContextTitle = String(reviewSummary?.featureTitle || chatTitle || 'Code Review').trim();
   // The toolbar's target is a button that opens the chat, so it carries the chat's
-  // current name — which a finished review renames to "AI Review · <context>". The
+  // current name — which a finished review renames to "Code Review · <context>". The
   // bare context stays in the "Review complete: …" heading below.
   const reviewChatLabel = String(chatTitle || '').trim() || reviewContextTitle;
   const reviewSummaryDescription = liveReviewSummary
     ? buildReviewSummaryDescription(liveReviewSummary)
-    : `AI Review checked ${files.length} file${files.length === 1 ? '' : 's'} and found ${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0)} concrete issue${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0) === 1 ? '' : 's'}. Review the findings below before completing the review.`;
+    : `Code Review checked ${files.length} file${files.length === 1 ? '' : 's'} and found ${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0)} concrete issue${files.reduce((sum, file) => sum + (file.commentCount ?? 0), 0) === 1 ? '' : 's'}. Review the findings below before completing the review.`;
   const markReviewFileCommentsPending = useCallback((tabId, filter, pending = true, status = 'all') => {
     if (!tabId || !onFileCommentsChange) return;
     const file = files.find((candidate) => candidate.tabId === tabId);
@@ -18749,7 +18755,7 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
       {isTimeline ? (
         <div className="aiux-review-overview-scroll is-comments-only" ref={scrollRef}>
           <div className="aiux-review-comments-only-content">
-            <section className="aiux-review-overview-intro" aria-label="AI Review summary">
+            <section className="aiux-review-overview-intro" aria-label="Code Review summary">
               <div className="aiux-review-overview-intro-inner">
                 <h2>Review Preview: {reviewContextTitle}</h2>
                 <p>{reviewSummaryDescription}</p>
@@ -18767,7 +18773,7 @@ function ReviewDiffOverview({ files = [], reviewSummary = null, agentIcon = 'cod
       ) : (
         <div className={`aiux-review-overview-scroll${isPanel ? ' is-panel' : ''}`} ref={scrollRef}>
           <div className={isPanel ? 'aiux-review-panel-left' : 'aiux-review-overview-stack'}>
-            <section className="aiux-review-overview-intro" aria-label="AI Review summary">
+            <section className="aiux-review-overview-intro" aria-label="Code Review summary">
               <div className="aiux-review-overview-intro-inner">
                 <h2>Review Preview: {reviewContextTitle}</h2>
                 <p>{reviewSummaryDescription}</p>
@@ -19041,8 +19047,8 @@ function ReviewSummaryMessage({
       <article ref={cardRef} className={`aiux550-review-summary-message${expanded ? ' is-expanded' : ''}${className ? ` ${className}` : ''}`}>
         <div className="aiux550-review-summary-message-head">
           <span className="aiux550-review-summary-message-title text-ui-default">
-            <Icon name={AI_REVIEW_ICON_NAME} size={16} />
-            <span>AI Review</span>
+            <Icon name={CODE_REVIEW_ICON_NAME} size={16} />
+            <span>Code Review</span>
             {/* Scope summary only — no feature/chat name. The card sits inside the chat
                 the review was launched from, so naming it here is redundant. The full
                 view's toolbar keeps the context because it lives in its own tab. */}
@@ -19093,8 +19099,8 @@ function ReviewSummaryMessage({
                               initialDiffComments={file.comments}
                               singleLineNumbers={file.isPlain}
                               showGutterComments
-                              commentContextLabel="AI Review"
-                              commentContextIcon={AI_REVIEW_ICON_NAME}
+                              commentContextLabel="Code Review"
+                              commentContextIcon={CODE_REVIEW_ICON_NAME}
                               severityFilter={category.filter}
                               resolveKeepsComment
                               allowInlineCommentCompose={false}
@@ -19309,18 +19315,18 @@ function NewSessionFooterPicker({ id, label, options, open, onOpenChange, onSele
   );
 }
 
-function AiReviewComposerPrompt({ onCreateSpec = null, onRunReview = null, onCommitChanges = null }) {
+function CodeReviewComposerPrompt({ onCreateSpec = null, onRunReview = null, onCommitChanges = null }) {
   return (
-    <div className="aiux543-ai-review-prompt" role="group" aria-label="Change actions">
-      <button type="button" className="aiux543-ai-review-prompt-button" onClick={onCreateSpec ?? undefined}>
+    <div className="aiux543-code-review-prompt" role="group" aria-label="Change actions">
+      <button type="button" className="aiux543-code-review-prompt-button" onClick={onCreateSpec ?? undefined}>
         <span>Create a Spec</span>
       </button>
-      <span className="aiux543-ai-review-prompt-divider" aria-hidden="true" />
-      <button type="button" className="aiux543-ai-review-prompt-button" onClick={onRunReview ?? undefined}>
-        <span>Run AI Review</span>
+      <span className="aiux543-code-review-prompt-divider" aria-hidden="true" />
+      <button type="button" className="aiux543-code-review-prompt-button" onClick={onRunReview ?? undefined}>
+        <span>Run Code Review</span>
       </button>
-      <span className="aiux543-ai-review-prompt-divider" aria-hidden="true" />
-      <button type="button" className="aiux543-ai-review-prompt-button" onClick={onCommitChanges ?? undefined}>
+      <span className="aiux543-code-review-prompt-divider" aria-hidden="true" />
+      <button type="button" className="aiux543-code-review-prompt-button" onClick={onCommitChanges ?? undefined}>
         <span>Commit Changes</span>
       </button>
     </div>
@@ -19366,7 +19372,7 @@ function AiChatTabView({
   scrollTarget = null,
   onEditAnnotation = null,
   onCreateSpec = null,
-  onRunAiReview = null,
+  onRunCodeReview = null,
   onCommitChanges = null,
   onOpenChangedFile = null,
   onOpenAgentTaskTab = null,
@@ -19499,10 +19505,10 @@ function AiChatTabView({
       ? 'done'
       : (index === processedReviewScopeFileCount ? 'processing' : 'queued'),
   }));
-  const showAiReviewPrompt = chatId === DEFAULT_OPEN_CHAT_ID
+  const showCodeReviewPrompt = chatId === DEFAULT_OPEN_CHAT_ID
     && agentRun?.kind !== 'review'
     && !readyReviewMessage
-    && Boolean(onRunAiReview);
+    && Boolean(onRunCodeReview);
   const reviewPromptFiles = getChatChangeCards(scenario);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const isCodexStyleAgent = CODEX_STYLE_AGENT_IDS.includes(selectedAgentId);
@@ -20366,10 +20372,10 @@ function AiChatTabView({
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
-        {false && showAiReviewPrompt && reviewPromptFiles.length > 0 && (
-          <AiReviewComposerPrompt
+        {false && showCodeReviewPrompt && reviewPromptFiles.length > 0 && (
+          <CodeReviewComposerPrompt
             onCreateSpec={onCreateSpec}
-            onRunReview={() => onRunAiReview?.(chatId)}
+            onRunReview={() => onRunCodeReview?.(chatId)}
             onCommitChanges={() => onCommitChanges?.(chatId)}
           />
         )}
@@ -21604,6 +21610,10 @@ export default function App() {
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
+  // User-authored document text lives independently of transient flows (comments,
+  // execution and tab transitions). It intentionally lasts for the browser session
+  // only, so a full page reload is the explicit reset boundary.
+  const [manualDocumentDraftsByTabId, setManualDocumentDraftsByTabId] = useState({});
   // Read-only mirror for callbacks that must not re-create themselves on every tab edit.
   const ideTabContentsRef = useRef(ideTabContents);
   ideTabContentsRef.current = ideTabContents;
@@ -21648,7 +21658,7 @@ export default function App() {
   const [specSplitTabId, setSpecSplitTabId] = useState(null);
   // Diff tabs opened alongside the doc in the spec split's own right-pane tab
   // strip (e.g. from a changed-file row in the chat) — kept separate from the
-  // reviewSplit* state above, which belongs to the unrelated AI Review split.
+  // reviewSplit* state above, which belongs to the unrelated Code Review split.
   const [specSplitDiffTabIds, setSpecSplitDiffTabIds] = useState([]);
   const [specSplitActiveRightTab, setSpecSplitActiveRightTab] = useState(0);
   const openSpecInSplitViewRef = useRef(null);
@@ -21921,7 +21931,7 @@ export default function App() {
   const [finalRemovedDefaultAgentIds, setFinalRemovedDefaultAgentIds] = useState([]);
   const [finalToolbarChoiceId, setFinalToolbarChoiceId] = useState(() => {
     const storedChoiceId = readStoredFinalConfiguration(FINAL_TOOLBAR_VARIANT_KEY)?.choiceId;
-    return storedChoiceId && storedChoiceId !== FINAL_AI_REVIEW_PRESET.id ? storedChoiceId : 'codex';
+    return storedChoiceId && storedChoiceId !== FINAL_CODE_REVIEW_PRESET.id ? storedChoiceId : 'codex';
   });
   const [presetDialogDraft, setPresetDialogDraft] = useState(null);
   const [presetDialogEmpty, setPresetDialogEmpty] = useState(false);
@@ -21941,8 +21951,8 @@ export default function App() {
   // Installing an agent from the catalogue pushes into FINAL_DIRECT_AGENT_OPTIONS, so subscribe to
   // the install store to re-run the (un-memoized) getFinalAgentItems calls below.
   useAgentInstallState();
-  // AI Review preset entry point is temporarily disabled in the preset menus.
-  const finalVisiblePresets = finalPresets.filter((preset) => preset.id !== FINAL_AI_REVIEW_PRESET.id);
+  // Code Review preset entry point is temporarily disabled in the preset menus.
+  const finalVisiblePresets = finalPresets.filter((preset) => preset.id !== FINAL_CODE_REVIEW_PRESET.id);
   const finalDefaultAgentItems = getFinalAgentItems(
     [],
     finalDefaultPresetOverrides,
@@ -22032,7 +22042,7 @@ export default function App() {
     const chatAgentIcon = AI_CHAT_AGENTS.some((agent) => agent.id === nextItem.id)
       ? nextItem.id
       : configuration.agentId;
-    // AI Review is the one built-in preset whose command must stay visible and
+    // Code Review is the one built-in preset whose command must stay visible and
     // editable in the new chat composer instead of being injected silently.
     const initialComposerText = configuration.customPrompt === '/review' ? '/review' : '';
 
@@ -22272,32 +22282,10 @@ export default function App() {
     setPresetDialogDraft(nextPreset);
   };
 
-  // ─── Control+Control opens the AI Review composer anywhere ────────────────
   const [globalReviewDialogOpen, setGlobalReviewDialogOpen] = useState(false);
   const [globalReviewLaunchSource, setGlobalReviewLaunchSource] = useState('shortcut');
   const [globalReviewTargetChatId, setGlobalReviewTargetChatId] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
-  const lastControlKeyTimeRef = useRef(0);
-
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.repeat || event.key !== 'Control') return;
-
-      const now = Date.now();
-      if (now - lastControlKeyTimeRef.current <= 500) {
-        setGlobalReviewTargetChatId(null);
-        setGlobalReviewLaunchSource('shortcut');
-        setGlobalReviewDialogOpen(true);
-        lastControlKeyTimeRef.current = 0;
-        return;
-      }
-
-      lastControlKeyTimeRef.current = now;
-    };
-
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, []);
 
   const finalPresetDialogNode = (
     <FinalPresetDialog
@@ -22977,7 +22965,7 @@ export default function App() {
           commentEntries: agentTaskCommentEntries,
         }
       : (interactiveTaskStates[tabId] ?? scenario.initialTaskState);
-    const persistedCode = ideTabContents[tabId]?.code;
+    const persistedCode = manualDocumentDraftsByTabId[tabId] ?? ideTabContents[tabId]?.code;
     const baseCode =
       typeof persistedCode === 'string' && persistedCode.length > 0
         ? persistedCode
@@ -23000,6 +22988,7 @@ export default function App() {
     ideTabContents,
     ideTabs,
     interactiveTaskStates,
+    manualDocumentDraftsByTabId,
     planRunResult,
     removedIssueIndices,
   ]);
@@ -23829,12 +23818,12 @@ export default function App() {
     const listItem = chatId ? getAiChatListItemById(chatId) : null;
     const chatTitle = (scenario?.title || listItem?.title || '').trim();
     const reviewAgentIcon = scenario?.icon || listItem?.icon || 'codex';
-    // "AI Review" + the launching chat as context. A review that lives in its own
-    // chat is already named "AI Review · <context>", so reuse that title verbatim
-    // instead of stacking a second "AI Review ·" prefix on it.
+    // "Code Review" + the launching chat as context. A review that lives in its own
+    // chat is already named "Code Review · <context>", so reuse that title verbatim
+    // instead of stacking a second "Code Review ·" prefix on it.
     const label = !chatTitle
-      ? 'AI Review'
-      : (/^AI Review\b/iu.test(chatTitle) ? chatTitle : `AI Review · ${chatTitle}`);
+      ? 'Code Review'
+      : (/^Code Review\b/iu.test(chatTitle) ? chatTitle : `Code Review · ${chatTitle}`);
     const preservesOpenDiffs = Boolean(chatId && reviewSplitChatId === chatId);
     setScreen('ide');
     setSelectedAiChatId(chatId);
@@ -23862,7 +23851,7 @@ export default function App() {
         // Refresh the label so it reflects the chat the review was launched from.
         const nextTabs = prevTabs.map((tab, index) => (
           index === existingIndex
-            ? { ...tab, label, icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} /> }
+            ? { ...tab, label, icon: <Icon name={CODE_REVIEW_ICON_NAME} size={16} /> }
             : tab
         ));
         requestAnimationFrame(() => setActiveEditorTab(existingIndex));
@@ -23875,7 +23864,7 @@ export default function App() {
         : prevTabs.length;
       const nextTabs = [
         ...prevTabs.slice(0, insertAt),
-        { id: REVIEW_DIFF_TAB_ID, label, icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} />, closable: true },
+        { id: REVIEW_DIFF_TAB_ID, label, icon: <Icon name={CODE_REVIEW_ICON_NAME} size={16} />, closable: true },
         ...prevTabs.slice(insertAt),
       ];
       requestAnimationFrame(() => setActiveEditorTab(insertAt));
@@ -24522,7 +24511,7 @@ export default function App() {
   const renameChatAfterReview = useCallback((chatId, featureTitle) => {
     const context = String(featureTitle || '').trim();
     if (!chatId || !context) return;
-    const nextTitle = `AI Review · ${context}`;
+    const nextTitle = `Code Review · ${context}`;
     const chatTabId = `ai-chat-${chatId}`;
     // Decide from the mirror rather than inside the updater: the tab labels below are
     // separate state, and a flag set inside an updater isn't readable in time.
@@ -24571,7 +24560,7 @@ export default function App() {
     )));
   }, []);
 
-  const openEditorTabByLabel = useCallback((label, { line = null, section = null } = {}) => {
+  const openEditorTabByLabel = useCallback((label, { line = null, section = null, adjacentToTabId = null } = {}) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
     const revealLine = Number.isInteger(line) && line > 0 ? line : null;
     const revealSection = typeof section === 'string' && section.trim().length > 0 ? section.trim() : null;
@@ -24587,6 +24576,18 @@ export default function App() {
     const normalizedLabel = label.trim();
     const existingTabIndex = ideTabs.findIndex((tab) => tab.label === normalizedLabel);
     if (existingTabIndex >= 0) {
+      const adjacentIndex = adjacentToTabId ? ideTabs.findIndex((tab) => tab.id === adjacentToTabId) : -1;
+      if (adjacentIndex >= 0 && existingTabIndex !== adjacentIndex + 1) {
+        const tab = ideTabs[existingTabIndex];
+        const withoutTab = ideTabs.filter((_, index) => index !== existingTabIndex);
+        const sourceIndex = withoutTab.findIndex((item) => item.id === adjacentToTabId);
+        const targetIndex = sourceIndex + 1;
+        setIdeTabs([...withoutTab.slice(0, targetIndex), tab, ...withoutTab.slice(targetIndex)]);
+        setScreen('ide');
+        setActiveEditorTab(targetIndex);
+        requestReveal(tab.id);
+        return;
+      }
       setScreen('ide');
       setActiveEditorTab(existingTabIndex);
       requestReveal(ideTabs[existingTabIndex].id);
@@ -24658,13 +24659,21 @@ export default function App() {
       code: previewCode,
     };
 
-    setIdeTabs((prev) => [...prev, finalTab]);
+    const adjacentTabIndex = adjacentToTabId
+      ? ideTabs.findIndex((tab) => tab.id === adjacentToTabId)
+      : -1;
+    const insertionIndex = adjacentTabIndex >= 0 ? adjacentTabIndex + 1 : ideTabs.length;
+    setIdeTabs((prev) => [
+      ...prev.slice(0, insertionIndex),
+      finalTab,
+      ...prev.slice(insertionIndex),
+    ]);
     setIdeTabContents((prev) => ({
       ...prev,
       [finalTab.id]: finalContent,
     }));
     setScreen('ide');
-    setActiveEditorTab(ideTabs.length);
+    setActiveEditorTab(insertionIndex);
     requestReveal(finalTab.id);
   }, [ideTabs, handleAgentTaskSelect]);
 
@@ -27249,6 +27258,27 @@ export default function App() {
   const handleActiveDoneOverlayUiStateChange = useCallback((uiState) => {
     updateDoneOverlayUiStateForTab(uiState, visibleEditorStateTabId);
   }, [updateDoneOverlayUiStateForTab, visibleEditorStateTabId]);
+  const handleDoneDocumentCodeChange = useCallback((nextCode, sourceTabId) => {
+    if (!sourceTabId || typeof nextCode !== 'string') return;
+
+    setManualDocumentDraftsByTabId((prev) => (
+      prev[sourceTabId] === nextCode ? prev : { ...prev, [sourceTabId]: nextCode }
+    ));
+
+    setIdeTabContents((prev) => {
+      const currentContent = prev[sourceTabId] ?? {};
+      if (currentContent.code === nextCode) return prev;
+
+      return {
+        ...prev,
+        [sourceTabId]: {
+          ...currentContent,
+          language: currentContent.language ?? 'markdown',
+          code: nextCode,
+        },
+      };
+    });
+  }, []);
   const handleDoneCommentsChange = useCallback((nextEntries) => {
     const targetTabId = visibleEditorStateTabId;
     if (!targetTabId) return;
@@ -27556,7 +27586,8 @@ export default function App() {
   });
   const currentAgentTaskLabel = ideTabs[activeEditorTab ?? 0]?.label ?? TERMINAL_TASK_TAB_BASE_LABEL;
   const activeDoneSourceTabId = generationTabId ?? activeEditorTabId;
-  const activeDoneDisplayCode = activeAgentTaskViewState?.code
+  const activeDoneDisplayCode = manualDocumentDraftsByTabId[activeDoneSourceTabId]
+    ?? activeAgentTaskViewState?.code
     ?? (activeDoneSourceTabId ? (ideTabContents[activeDoneSourceTabId]?.code ?? '') : '');
   const hasLocalTerminalTabs = terminalTabsState.length > 0;
   const activeLocalTerminalTabIndex = hasLocalTerminalTabs
@@ -28194,7 +28225,7 @@ export default function App() {
   }, []);
   const buildAdHocReviewSplitFile = useCallback((tabId) => {
     const content = ideTabContents[tabId];
-    const baseDiffData = content?.diffData ?? content?.plainFileData ?? null;
+    const baseDiffData = content?.diffData ?? null;
     if (!baseDiffData) return null;
     const tab = ideTabs.find((candidate) => candidate.id === tabId) ?? null;
     const sessions = normalizeDiffSessionCommentsByChatId(content?.diffSessionCommentsByChatId);
@@ -28349,7 +28380,7 @@ export default function App() {
   const reviewSplitChatLabel = String(
     reviewSplitScenario?.title || reviewSplitListItem?.title || 'AI Chat',
   ).trim();
-  const reviewSplitReviewLabel = ideTabs.find((tab) => tab.id === REVIEW_DIFF_TAB_ID)?.label || 'AI Review';
+  const reviewSplitReviewLabel = ideTabs.find((tab) => tab.id === REVIEW_DIFF_TAB_ID)?.label || 'Code Review';
   const isReviewEditorSplitActive = Boolean(
     reviewSplitChatId
       && (
@@ -28373,7 +28404,7 @@ export default function App() {
   // comment sessions instead of the unrelated review split's.
   const specSplitDiffTabs = specSplitDiffTabIds.map((tabId) => {
     const content = ideTabContents[tabId];
-    const baseDiffData = content?.diffData ?? null;
+    const baseDiffData = content?.diffData ?? content?.plainFileData ?? null;
     const sourceLabel = baseDiffData?.sourceTabLabel || content?.diffLineText || 'Diff';
     const name = String(sourceLabel).replace(/^diff\s+/iu, '').trim() || 'Diff';
     if (!baseDiffData) {
@@ -28425,7 +28456,10 @@ export default function App() {
     [agentRunByChatId, hasReviewRun, ideTabContents],
   );
   const activeReviewFileIndex = allReviewFiles.findIndex((file) => file.tabId === activeTabId);
-  const activeAgentTaskCode = activeAgentTaskViewState?.code ?? activeTabContent?.code ?? '';
+  const activeAgentTaskCode = manualDocumentDraftsByTabId[visibleEditorStateTabId ?? activeEditorTabId]
+    ?? activeAgentTaskViewState?.code
+    ?? activeTabContent?.code
+    ?? '';
   const activeAgentTaskCommentEntries = visibleEditorStateTabId
     ? getCommentEntriesForTaskTab(visibleEditorStateTabId)
     : [];
@@ -29021,9 +29055,10 @@ export default function App() {
     clearTaskCommentsForTab(statusChatMatch[1]);
   }, [clearTaskCommentsForTab]);
   const currentPersistedSpecCode = visibleEditorStateTabId
-    ? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
+    ? (manualDocumentDraftsByTabId[visibleEditorStateTabId]
+      ?? ((doneEnhanceFlowRef.current && visibleEditorStateTabId === generationTabId)
         ? (doneEnhanceFlowRef.current.initialCode ?? '')
-        : (ideTabContents[visibleEditorStateTabId]?.code ?? ''))
+        : (ideTabContents[visibleEditorStateTabId]?.code ?? '')))
     : '';
   const activeVersionHistory = visibleEditorStateTabId
     ? syncSpecVersionHistoryCurrentCode(
@@ -30066,7 +30101,7 @@ export default function App() {
 
     // Quick fix / Resolve on an agent review comment: run the agent's action in
     // chat (streamed response) and drop the matching review finding from the
-    // "AI Review" folder — then persist the comment removal below. For a user's
+    // "Code Review" folder — then persist the comment removal below. For a user's
     // own comment (not a review finding) the chat record is posted further down
     // as a sent message-with-attachment plus the agent's reply.
     if (metadata?.resolveAction) {
@@ -31818,7 +31853,7 @@ export default function App() {
     const shouldStreamCommentResponse = commentAttachments.length > 0 && !isReviewCommand;
     // A note left on the spec doc (handleAddSpecSelectionToChat) lands here as a plain
     // selection-context attachment, not a diff comment — it needs its own "the agent
-    // addressed the note" reply instead of falling through to the generic AI Review
+    // addressed the note" reply instead of falling through to the generic Code Review
     // comment flow (which reads a comment count from diffComments, not from this) or,
     // worse, to isSddAgentChat below (which would re-run the very first "created the
     // spec" reply, since a note carries no messageText of its own to disqualify it).
@@ -32248,7 +32283,7 @@ export default function App() {
       const commentRunCommentCount = noteItems.length || commentAttachments.length;
       const fullResponse = isReviewCommand
         ? `Reviewed ${reviewFileCount} file${reviewFileCount === 1 ? '' : 's'} and found ${scopedReviewFindings.length} issue${scopedReviewFindings.length === 1 ? '' : 's'} — see the synchronized result in Review Preview or Full Review.`
-        : `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the AI Review folder.`;
+        : `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the Code Review folder.`;
       const timerKey = `${targetChatId}:${assistantMessageId}`;
       // Keep the busy UI on screen long enough to read the appearing comments
       // before the run resolves and the card collapses.
@@ -32406,7 +32441,7 @@ export default function App() {
                     ...message,
                     kind: 'review-summary',
                     streaming: false,
-                    text: 'AI Review summary',
+                    text: 'Code Review summary',
                     reviewSummary,
                   }
                 : message
@@ -32506,7 +32541,7 @@ export default function App() {
       ?? attachments[0];
     const attachmentTitle = String(primaryReviewAttachment?.label || '').replace(/^diff\s+/iu, '').trim();
     const reviewFeatureTitle = attachmentTitle ? `Changes in ${attachmentTitle}` : 'Current changes';
-    const reviewChatTitle = `AI Review · ${reviewFeatureTitle}`;
+    const reviewChatTitle = `Code Review · ${reviewFeatureTitle}`;
     const modelLabel = {
       sol: '5.6 Sol',
       sonnet: 'Claude Sonnet 4.1',
@@ -32646,7 +32681,7 @@ export default function App() {
     selectedAiChatId,
   ]);
 
-  const globalAiReviewSourceAttachments = (() => {
+  const globalCodeReviewSourceAttachments = (() => {
     if (globalReviewTargetChatId && globalReviewLaunchSource.startsWith('chat-')) {
       const targetScenario = getAiChatScenarioById(globalReviewTargetChatId);
       const chatContextAttachment = {
@@ -32766,10 +32801,10 @@ export default function App() {
         ? 'Commit the changes from this chat'
         : '';
 
-  // The same popup the AI Review buttons open, mounted once for the Control+Control shortcut so it
+  // The same popup the Code Review buttons open, mounted once for the Control+Control shortcut so it
   // can appear over whatever is on screen — including the Welcome screen.
-  const globalAiReviewDialogNode = (
-    <AiReviewComposerDialog
+  const globalCodeReviewDialogNode = (
+    <CodeReviewComposerDialog
       open={globalReviewDialogOpen}
       onClose={() => {
         setGlobalReviewDialogOpen(false);
@@ -32786,11 +32821,11 @@ export default function App() {
       } : null}
       initialShowQuickActions={!globalReviewLaunchSource.startsWith('chat-')}
       currentScopeLabel="Local changes"
-      currentFileLabel={globalAiReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
+      currentFileLabel={globalCodeReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
       contextLabel="Changes"
       contextMeta="Local changes"
       contextIcon="general/listFiles"
-      sourceAttachments={globalAiReviewSourceAttachments}
+      sourceAttachments={globalCodeReviewSourceAttachments}
       onStartReview={(payload) => {
         if (globalReviewLaunchSource === 'chat-spec') {
           handleAgentTaskSelect('t2');
@@ -32916,7 +32951,7 @@ export default function App() {
       role: 'assistant',
       kind: 'review-summary',
       streaming: false,
-      text: 'AI Review summary',
+      text: 'Code Review summary',
       reviewSummary: stoppedSummary,
     };
     handleSelectedAiChatSentMessagesChange(
@@ -32975,7 +33010,7 @@ export default function App() {
 
   // Add (or refocus) a diff as a tab in the spec split's own right pane, next
   // to Vet-Schedules.md — mirrors openPlanDiffInReviewSplit's job for the
-  // unrelated AI Review split, using its own tab-id list instead of that
+  // unrelated Code Review split, using its own tab-id list instead of that
   // split's reviewSplitFileTabIds so the two features stay independent.
   const openSpecSplitDiffTab = useCallback((diffRequest) => {
     if (!diffRequest) return null;
@@ -33006,7 +33041,7 @@ export default function App() {
   }, [openPlanDiffTab]);
 
   // Navigate to the file/diff a comment lives in — shared by the Chats-History
-  // "AI Review" folder and the review card above the composer.
+  // "Code Review" folder and the review card above the composer.
   const openCommentTarget = useCallback((target, chatId = null) => {
     if (!target) return;
     if (target.agentTaskId) { openSpecInSplitView(target.agentTaskId, chatId); return; }
@@ -33477,7 +33512,7 @@ export default function App() {
     };
     // Same split-awareness as openCommentTarget: an attachment belonging to
     // the chat already showing in the spec split opens inside that split's
-    // own tab strip, not the unrelated AI Review split's.
+    // own tab strip, not the unrelated Code Review split's.
     if (contextChatId && contextChatId === specSplitChatId) {
       openSpecSplitDiffTab(enrichedDiffRequest);
       return;
@@ -33804,7 +33839,7 @@ export default function App() {
         {settingsDialogPortal}
         {editorTabsMorePortal}
         {finalPresetDialogNode}
-        {globalAiReviewDialogNode}
+        {globalCodeReviewDialogNode}
         {terminalPermissionPortal}
       </ThemeProvider>
     );
@@ -33910,7 +33945,7 @@ export default function App() {
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideDefaultOpenToolWindows.join('-')}`}
-        className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'ai-review-editor-split-active' : ''}
+        className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'code-review-editor-split-active' : ''}
         height={865}
         projectName={PROJECT_NAME}
         projectIcon="SP"
@@ -33954,7 +33989,7 @@ export default function App() {
         editorTopBar={
           isReviewEditorSplitActive
             ? (
-              <AiReviewEditorSplit
+              <CodeReviewEditorSplit
                 chatLabel={reviewSplitChatLabel}
                 reviewLabel={reviewSplitReviewLabel}
                 chatIcon={<AiChatAgentIcon icon={reviewSplitListItem?.icon ?? reviewSplitScenario?.icon ?? 'claude'} title={reviewSplitChatLabel} />}
@@ -34029,7 +34064,7 @@ export default function App() {
                 )}
                 rightPane={(
                   activeReviewSplitFile ? (
-                    <AiReviewSplitFileView
+                    <CodeReviewSplitFileView
                       key={activeReviewSplitFile.tabId}
                       file={activeReviewSplitFile}
                       scopeFiles={visibleReviewSplitScopeFiles}
@@ -34062,7 +34097,7 @@ export default function App() {
                         ...pickerProps,
                         includeDocuments: false,
                       })}
-                      onOpenChat={() => document.querySelector('.ai-review-editor-split-pane.is-chat textarea')?.focus()}
+                      onOpenChat={() => document.querySelector('.code-review-editor-split-pane.is-chat textarea')?.focus()}
                       onSubmitReview={() => requestReviewFeedback(reviewSplitChatId)}
                       onOpenFileTab={openReviewSplitFileTab}
                       onFileCommentsChange={(tabId, comments, metadata) => (
@@ -34086,7 +34121,7 @@ export default function App() {
             )
             : isSpecEditorSplitActive
             ? (
-              <AiReviewEditorSplit
+              <CodeReviewEditorSplit
                 chatLabel={specSplitChatLabel}
                 chatIcon={<AiChatAgentIcon icon={specSplitChatListItem?.icon ?? specSplitChatScenario?.icon ?? 'claude'} title={specSplitChatLabel} />}
                 onCloseReview={closeSpecSplitView}
@@ -34152,7 +34187,7 @@ export default function App() {
                         setGlobalReviewLaunchSource('chat-spec');
                         setGlobalReviewDialogOpen(true);
                       }}
-                      onRunAiReview={(targetChatId) => {
+                      onRunCodeReview={(targetChatId) => {
                         handleAiChatTabSend(targetChatId, '/review', aiChatComposerDiffAttachments, { forceReview: true });
                       }}
                       onCommitChanges={(targetChatId) => {
@@ -34169,10 +34204,10 @@ export default function App() {
                   ? (
                     // A changed-file diff opened from the chat (or a Plan/AC
                     // "Show diff" click) — rendered independently of the
-                    // outer active tab, same as the AI Review split's own
+                    // outer active tab, same as the Code Review split's own
                     // per-file view, so picking a diff tab here never
                     // exits the split.
-                    <AiReviewSplitFileView
+                    <CodeReviewSplitFileView
                       key={specSplitDiffTabs[specSplitActiveRightTab - 1].tabId}
                       file={specSplitDiffTabs[specSplitActiveRightTab - 1].file}
                       scopeFiles={specSplitDiffTabs.map((tab) => tab.file).filter(Boolean)}
@@ -34197,11 +34232,11 @@ export default function App() {
                   // child — it portals into the nearest ancestor .editor's
                   // .editor-body (see doneOverlayHost). The real outer
                   // .editor-body is CSS-hidden while any split is active
-                  // (.editor:has(.ai-review-editor-split) .editor-body), so
+                  // (.editor:has(.code-review-editor-split) .editor-body), so
                   // give it a local .editor/.editor-body pair to portal into
                   // instead, scoped to this pane.
                   <div className="editor ai-spec-split-editor-host">
-                    <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
+                    <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={(label, location) => openEditorTabByLabel(label, { ...location, adjacentToTabId: activeEditorTabId })} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} onDocumentCodeChange={handleDoneDocumentCodeChange} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
                     {/* AgentTaskEditorArea's toolbar renders directly above — this
                         stays an EMPTY sibling, not its ancestor, so the portaled
                         .spec-done-overlay (position:absolute; inset:0 on this box)
@@ -34276,7 +34311,7 @@ export default function App() {
                     setGlobalReviewLaunchSource('chat-spec');
                     setGlobalReviewDialogOpen(true);
                   }}
-                  onRunAiReview={(targetChatId) => {
+                  onRunCodeReview={(targetChatId) => {
                     handleAiChatTabSend(targetChatId, '/review', aiChatComposerDiffAttachments, { forceReview: true });
                   }}
                   onCommitChanges={(targetChatId) => {
@@ -34289,7 +34324,7 @@ export default function App() {
               </div>
             )
             : isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={(label, location) => openEditorTabByLabel(label, { ...location, adjacentToTabId: activeEditorTabId })} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} onDocumentCodeChange={handleDoneDocumentCodeChange} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}
@@ -34447,18 +34482,8 @@ export default function App() {
       {settingsDialogPortal}
       {editorTabsMorePortal}
       {finalPresetDialogNode}
-      {globalAiReviewDialogNode}
+      {globalCodeReviewDialogNode}
       {terminalPermissionPortal}
-      <EditorSelectionToolbar
-        position={editorSelectionToolbarPos}
-        onAction={handleEditorSelectionToolbarAction}
-        chatTargets={selectionChatTargets}
-        onMenuOpenChange={handleEditorSelectionToolbarMenuOpenChange}
-        onDismiss={() => {
-          editorSelectionToolbarMenuOpenRef.current = false;
-          setEditorSelectionToolbarPos(null);
-        }}
-      />
       <ChatSelectionCommentPopover
         request={chatSelectionCommentRequest}
         value={chatSelectionCommentValue}
