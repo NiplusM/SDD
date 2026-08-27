@@ -1539,6 +1539,29 @@ class VisitControllerTests {
   },
 };
 
+// Vet-Schedules.md's own Plan items are numbered 0-5 by their position in
+// the document (same as every other doc's Plan), but their diff content
+// lives at indices 10-15 in PLAN_CODE_DIFF_PRESETS (kept out of the 0-6
+// range the unrelated refactor-time-slots scenario's presets occupy).
+// Without this remap, a Plan row's "Show diff" click resolves its position
+// straight into that colliding range and opens someone else's diff.
+const VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION = [10, 11, 15, 12, 13, 14];
+
+function isVetSchedulesSourceLabel(label = '') {
+  return String(label ?? '').trim().toLowerCase() === 'vet-schedules.md';
+}
+
+function remapVetSchedulesPlanDiffIndex(originalIndex) {
+  if (!Number.isInteger(originalIndex)) return originalIndex;
+  return VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION[originalIndex] ?? originalIndex;
+}
+
+function getPlanDiffPresetIndexForSource(originalIndex, sourceLabel = '') {
+  return isVetSchedulesSourceLabel(sourceLabel)
+    ? remapVetSchedulesPlanDiffIndex(originalIndex)
+    : originalIndex;
+}
+
 const MY_PROJECT_TREE = [
   {
     id: 'root',
@@ -6029,7 +6052,7 @@ function createSpecDocument() {
     },
     {
       id: 'implementation',
-      title: 'Implementation Notes',
+      title: 'Reference files',
       items: [
         { id: 'impl-1', type: 'bullet', text: 'Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.' },
         { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
@@ -7054,7 +7077,7 @@ function renderDoneInlineReference(rawReference, key) {
   // `data-ref-raw`), the label round-trips without any extra handling.
   return (
     <span key={key} {...commonProps}>
-      {reference.label}
+      <span className="spec-ref-file-text">{reference.label}</span>
       {reference.lineLabel ? (
         <span className="spec-ref-line">{reference.lineLabel}</span>
       ) : null}
@@ -8035,6 +8058,7 @@ function buildPlanDiffViewerData({
   removedIssueIndices = null,
   diffData = null,
   diffTarget = null,
+  sourceTabLabel = '',
 } = {}) {
   const planSection = (documentSections ?? []).find((section) => section?.title?.toLowerCase() === 'plan') ?? null;
   const removedPlanIndices = removedIssueIndices?.plan ?? {};
@@ -8053,10 +8077,19 @@ function buildPlanDiffViewerData({
   const visiblePlanItemCount = (planSection.items ?? []).reduce((count, item, originalIndex) => (
     item?.type === 'check' && !removedPlanIndices[originalIndex] ? count + 1 : count
   ), 0);
-  const presetFileLabels = Object.values(PLAN_CODE_DIFF_PRESETS).map((preset) => preset.fileLabel);
-  const canUsePresetFileMapping =
-    visiblePlanItemCount === presetFileLabels.length
-    && changedFiles.some((file) => presetFileLabels.includes(file));
+  const sourceLabel = sourceTabLabel || diffData?.sourceTabLabel || '';
+  const isVetSchedulesDiff = isVetSchedulesSourceLabel(sourceLabel);
+  const presetFileLabels = isVetSchedulesDiff
+    ? VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION
+        .map((presetIndex) => PLAN_CODE_DIFF_PRESETS[presetIndex]?.fileLabel)
+        .filter(Boolean)
+    : Object.values(PLAN_CODE_DIFF_PRESETS).map((preset) => preset.fileLabel);
+  const canUsePresetFileMapping = isVetSchedulesDiff
+    ? true
+    : (
+        visiblePlanItemCount === presetFileLabels.length
+        && changedFiles.some((file) => presetFileLabels.includes(file))
+      );
 
   let visibleIndex = 0;
   const planItems = (planSection.items ?? []).reduce((items, item, originalIndex) => {
@@ -8064,9 +8097,10 @@ function buildPlanDiffViewerData({
       return items;
     }
 
-    const isCurrent = diffTarget?.kind === 'plan' && diffTarget.index === originalIndex;
+    const presetIndex = getPlanDiffPresetIndexForSource(originalIndex, sourceLabel);
+    const isCurrent = diffTarget?.kind === 'plan' && diffTarget.index === presetIndex;
     const currentDiffFiles = isCurrent && diffData?.sourceTabLabel ? [diffData.sourceTabLabel] : [];
-    const presetFile = canUsePresetFileMapping ? PLAN_CODE_DIFF_PRESETS[originalIndex]?.fileLabel ?? null : null;
+    const presetFile = canUsePresetFileMapping ? PLAN_CODE_DIFF_PRESETS[presetIndex]?.fileLabel ?? null : null;
     const statusItem = planRunResult?.[visibleIndex] ?? null;
     const status = statusItem?.status ?? null;
 
@@ -8079,6 +8113,7 @@ function buildPlanDiffViewerData({
       files: [presetFile, ...currentDiffFiles].filter((file, index, files) => typeof file === 'string' && file.trim().length > 0 && files.indexOf(file) === index),
       isCurrent,
       originalIndex,
+      presetIndex,
       visibleIndex,
     });
 
@@ -8107,9 +8142,16 @@ function getPlanCodeDiffPreset(issueTarget) {
   return PLAN_CODE_DIFF_PRESETS[presetIndex] ?? PLAN_CODE_DIFF_PRESETS[0];
 }
 
+function splitCodeDiffSourceLines(code = '') {
+  if (typeof code !== 'string' || code.length === 0) {
+    return [];
+  }
+  return code.split(/\r?\n/);
+}
+
 function buildCodeDiffRows(beforeCode = '', afterCode = '', rowIdPrefix = 'code-diff', contextRadius = 4) {
-  const beforeLines = typeof beforeCode === 'string' ? beforeCode.split(/\r?\n/) : [''];
-  const afterLines = typeof afterCode === 'string' ? afterCode.split(/\r?\n/) : [''];
+  const beforeLines = splitCodeDiffSourceLines(beforeCode);
+  const afterLines = splitCodeDiffSourceLines(afterCode);
 
   let commonPrefixLength = 0;
   while (
@@ -8825,7 +8867,7 @@ function withDerivedPlanChildren(section) {
   };
 }
 
-function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, renderInline = renderDoneMarkdownInline }) {
+function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget = null, isIssueActive = false, commentAdornment = null, onOpenDiffTab = null, nestingLevel = 0, hasPlanComment = false, isRunning = false, renderInline = renderDoneMarkdownInline, hideDiffAction = false }) {
   const diffTarget = issueTarget ?? checkTarget;
   const demoTargetId = formatDemoTargetId(diffTarget);
   const isOutdated = isRunStatusItemOutdated(statusItem);
@@ -8852,7 +8894,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
       }
       <span className="spec-done-plan-text" contentEditable suppressContentEditableWarning>{renderInline(text, statusItem?.highlight, statusItem?.issue)}</span>
       {commentAdornment}
-      {canShowDiff && !isNested && (
+      {canShowDiff && !isNested && !hideDiffAction && (
         <button
           type="button"
           className="ac-checks-toggle spec-plan-diff-toggle"
@@ -8868,7 +8910,7 @@ function PlanCheckRow({ statusItem = null, text, issueTarget = null, checkTarget
   );
 }
 
-function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null, renderInline = renderDoneMarkdownInline, hideHeadingFiles = false) {
+function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatus = null, sectionMeta = null, planStatus = null, isIssueActive = false, commentAdornment = null, issueTarget = null, onOpenDiffTab = null, checkTarget = null, currentSectionTitle = '', activeRunRequest = null, nestingLevel = 0, onProposalAccept = null, onProposalDecision = null, hasPlanComment = false, onOpenCheckChip = null, renderInline = renderDoneMarkdownInline, hideHeadingFiles = false, hidePlanDiffAction = false) {
   const headingInfo = getDoneHeadingInfo(line);
   const headingTitle = headingInfo?.title ?? null;
   if (headingTitle) {
@@ -8953,6 +8995,7 @@ function renderDoneLine(line, key, addPopupFiles, attachedFiles = [], checkStatu
           hasPlanComment={hasPlanComment}
           isRunning={isRunning}
           renderInline={renderInline}
+          hideDiffAction={hidePlanDiffAction}
         />
       );
     }
@@ -10285,13 +10328,15 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
 
       if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
         const originalIndex = statusMeta.originalIndex;
-        if (Number.isInteger(originalIndex)) {
-          checkTarget = { kind: 'plan', index: originalIndex };
+        const isVetSchedulesDoc = commentContextLabel.trim().toLowerCase() === 'vet-schedules.md';
+        const diffIndex = isVetSchedulesDoc ? remapVetSchedulesPlanDiffIndex(originalIndex) : originalIndex;
+        if (Number.isInteger(diffIndex)) {
+          checkTarget = { kind: 'plan', index: diffIndex };
         }
         planStatus = displayStatusItem;
-        if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(originalIndex)) {
+        if (displayStatusItem && (statusIssueSeverity === 'warning' || statusIssueSeverity === 'failed' || statusIssueSeverity === 'error') && Number.isInteger(diffIndex)) {
           issueSeverity = statusIssueSeverity;
-          issueTarget = { kind: 'plan', index: originalIndex };
+          issueTarget = { kind: 'plan', index: diffIndex };
         }
       }
 
@@ -10757,9 +10802,11 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       const newEntry = buildCommentEntry(nextValue);
       updateRowComments(rowCommentKey, (comments) => [...comments, newEntry]);
 
-      // The spec is worked through its chat, not the document alone — surface
-      // the new note there as an attachment and bring the chat into view
-      // (split, alongside the document) instead of leaving it silent.
+      // Marketing-video variant: the note stays attached to its chat behind
+      // the scenes (so sending it later still works the normal way), but the
+      // chat itself never surfaces — the user works the document only, and
+      // sends the note to the agent from right there (see the doc toolbar's
+      // "Send note" button) instead of a split opening on its own.
       if (isVetSchedulesDocument && boundChatId && !shouldCreateAnnotation) {
         onAddSelectionToChat?.({
           selectedText: nextValue,
@@ -10767,7 +10814,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           rowKey: rowCommentKey,
           rowIndex,
           lineLabel: newEntry?.lineLabel ?? '',
-          openSplit: true,
+          openSplit: false,
         });
       }
     }
@@ -12266,6 +12313,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                     )
                   ),
                   isVetSchedulesDocument,
+                  isVetSchedulesDocument,
                 )}
               </div>
             </div>
@@ -12400,6 +12448,38 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                 );
               })}
             </div>
+          </div>
+        )}
+        {isVetSchedulesDocument && Boolean(planRunResult) && (
+          // Marketing-video variant: the same changed-file list the chat's
+          // "Edited files" card shows, surfaced right in the document itself
+          // once Execute has actually run — the marketing-video path into a
+          // file's generated diff with no extra window.
+          <div className="spec-changed-files-section">
+            <h2 className="spec-changed-files-heading">Generated diffs</h2>
+            <ul className="spec-changed-files-list">
+              {SDD_BUILD_CHANGE_CARDS.map((card) => (
+                <li
+                  key={card.id}
+                  className="spec-changed-files-item"
+                >
+                  <span className="spec-changed-files-item-prefix">{card.documentLabel ?? 'Changed file:'}</span>
+                  <button
+                    type="button"
+                    className="spec-changed-files-chip"
+                    onClick={() => onOpenDiffTab?.(card.diffRequest)}
+                    title={`Open diff for ${card.label}`}
+                  >
+                    <FileTypeIcon label={card.label} />
+                    <span className="spec-changed-files-chip-name">{card.label}</span>
+                    <span className="spec-changed-files-chip-counts">
+                      {card.added && <span className="added">{card.added}</span>}
+                      {card.removed && <span className="removed">{card.removed}</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
@@ -12634,7 +12714,7 @@ function AgentTaskTopBarIcon({ style, icon = 'claude' }) {
   );
 }
 
-function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onOpenRelatedChatSplit = null, busyToolbarLabel = null }) {
+function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenerate, onDoneRegenerate, onFixIssue, onOpenDiffTab, onOpenCheckChip, onOpenCommentSource = null, onOpenVersionDiff, attachedFiles, onRemoveAttached, onAddAttached, onAddSelectionToChat = null, chatTargets = [], renderSubmitTargetPicker = null, currentCode, documentSections, onOpenProblems, onOpenTerminal, addPopupFiles, acRunResult, planRunResult, acWarningBanner, inspectionSummary, versionHistory = null, removedIssueIndices, highlightedProblemLocation = null, doneCommentEntries = [], relatedCommentIssues = [], onDoneCommentsChange, commentResetToken = 0, preserveDoneOverlayDuringBusy = false, runState = 'default', activeRunRequest = null, doneOverlayUiState = null, onDoneOverlayUiStateChange = null, onTopBarAction = null, onTopBarStatusChange = null, topBarStatus = 'Specified', busyLabel = null, specSessionKey = null, commentContextLabel = '', commentContextSessionLabel = 'Active', vetSchedulesRelatedChatId = null, onOpenRelatedChatSplit = null, busyToolbarLabel = null, pendingNoteCount = 0, onSendPendingNotes = null }) {
   const [value, setValue] = useState('');
   const [taskText, setTaskText] = useState('');
   const [hasBreakpoint, setHasBreakpoint] = useState(false);
@@ -13501,6 +13581,21 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
 
               {/* Default state — right */}
               <div className="agent-task-toolbar-right">
+                {pendingNoteCount > 0 && runState !== 'running' && (
+                  // Marketing-video variant: a note left on the doc can be sent
+                  // straight to the agent from here — no need to open the chat
+                  // (or the doc's own Execute, which runs the full Plan/AC pass)
+                  // just to get it addressed.
+                  <Button
+                    type="secondary"
+                    size="slim"
+                    className="agent-task-toolbar-note-action"
+                    disabled={Boolean(busyToolbarLabel)}
+                    onClick={() => onSendPendingNotes?.()}
+                  >
+                    {pendingNoteCount === 1 ? 'Apply note' : `Apply ${pendingNoteCount} notes`}
+                  </Button>
+                )}
                 {runState === 'running' ? (
                   <Button type="secondary" size="slim" onClick={() => onStop()}>
                     Stop
@@ -13724,7 +13819,7 @@ function createVetSchedulesSpecDocument() {
       items: [
         { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity under the vet package (table created via Hibernate ddl-auto for the H2 demo)' },
         { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/weekday in @VetScheduleRepository.findByVetIdAndWeekday()' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Add vet (FK) and time (TIME) columns to visits, exposed as Vet vet / LocalTime time on @Visit.java' },
+        { id: 'plan-3', type: 'check', checked: false, text: 'Add vet (FK) and time (TIME) columns to visits, exposed as vet and time fields on @Visit.java' },
         { id: 'plan-4', type: 'check', checked: false, text: 'Validate requested visit_time against schedule windows in @VisitController.processNewVisitForm()' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Seed sample schedules in H2 data.sql for @Configuration.md#plan' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Add tests for off-hours booking rejection in @VisitControllerTests.java' },
@@ -13742,21 +13837,13 @@ function createVetSchedulesSpecDocument() {
     },
     {
       id: 'references',
-      title: 'Implementation Notes',
+      title: 'Reference files',
       items: [
         { id: 'ref-1', type: 'bullet', text: 'VetSchedule entity declaration: @VetSchedule.java#L3' },
         { id: 'ref-2', type: 'bullet', text: 'Working-hours fields (weekday, start/end time): @VetSchedule.java#L10-L20' },
         { id: 'ref-3', type: 'bullet', text: 'Availability lookup query: @VetScheduleRepository.java#L3' },
         { id: 'ref-5', type: 'bullet', text: 'New vet/time fields on the visit: @Visit.java#L7-L12' },
         { id: 'ref-4', type: 'bullet', text: 'Spring scheduling reference: [Scheduling Tasks](https://spring.io/guides/gs/scheduling-tasks).' },
-      ],
-    },
-    {
-      id: 'notes',
-      title: 'Notes',
-      items: [
-        { id: 'note-1', type: 'bullet', text: 'Parallel task from Beat 5 of the PetClinic demo scenario.' },
-        { id: 'note-2', type: 'bullet', text: 'Does not change the current visit-booking acceptance criteria yet.' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
@@ -14208,6 +14295,7 @@ function buildAgentTaskPlanTreeModel({
     documentSections,
     planRunResult,
     removedIssueIndices,
+    sourceTabLabel: task.label,
   });
 
   if (!Array.isArray(viewerData.planItems) || viewerData.planItems.length === 0) {
@@ -14220,8 +14308,11 @@ function buildAgentTaskPlanTreeModel({
   const navigationByNodeId = {};
   const fileNodes = viewerData.planItems.flatMap((item, itemIndex) => {
     const originalIndex = Number.isInteger(item?.originalIndex) ? item.originalIndex : itemIndex;
+    const diffIndex = Number.isInteger(item?.presetIndex)
+      ? item.presetIndex
+      : getPlanDiffPresetIndexForSource(originalIndex, task.label);
     const visibleIndex = Number.isInteger(item?.visibleIndex) ? item.visibleIndex : itemIndex;
-    const issueTarget = { kind: 'plan', index: originalIndex };
+    const issueTarget = { kind: 'plan', index: diffIndex };
     const statusItem = item?.statusItem ?? planRunResult?.[visibleIndex] ?? { status: item?.status ?? 'pending' };
     const diffData = buildPlanDiffData({
       sourceCode,
@@ -14486,11 +14577,26 @@ function getRawLineIndexFromDisplayRowIndex(code, targetRowIndex) {
   return row && Number.isInteger(row.rawIndex) ? row.rawIndex : null;
 }
 
-function appendNoteAddressedClause(line = '') {
+// A real edit reflects what the note actually asked for, not just that it
+// was "addressed" — strip the request framing ("please", "could you", …)
+// down to the substance and fold that into the line as its own clause.
+function getNoteClauseFromText(noteText = '') {
+  const trimmed = String(noteText ?? '').trim();
+  if (!trimmed) return '';
+  const withoutFraming = trimmed
+    .replace(/^(please|could you|can you|would you|make sure to|make sure you|pls)\b[,:]?\s*/iu, '')
+    .replace(/\s+(too|as well|please)$/iu, '')
+    .replace(/[.!?]+$/u, '')
+    .trim();
+  return withoutFraming || trimmed;
+}
+
+function appendNoteAddressedClause(line = '', noteText = '') {
   const trimmedEnd = line.replace(/\s+$/u, '');
   const hasTrailingPunctuation = /[.!?]$/u.test(trimmedEnd);
   const core = hasTrailingPunctuation ? trimmedEnd.slice(0, -1) : trimmedEnd;
-  return `${core}, addressing the note.`;
+  const clause = getNoteClauseFromText(noteText);
+  return clause ? `${core}, ${clause}.` : `${core}, addressing the note.`;
 }
 
 function getAiChatAttachmentSequenceKey(attachment = null, index = 0) {
@@ -15680,8 +15786,9 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-vet-schedule-entity',
     name: 'VetSchedule.java', label: 'VetSchedule.java',
+    documentLabel: 'Entity:',
     icon: 'fileTypes/java',
-    added: '+18', removed: '', diff: { added: 18, deleted: 0 },
+    added: '+21', removed: '', diff: { added: 21, deleted: 0 },
     diffRequest: {
       text: 'Add VetSchedule.java entity under the vet package',
       statusItem: { status: 'passed' },
@@ -15693,8 +15800,9 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-vet-schedule-repository',
     name: 'VetScheduleRepository.java', label: 'VetScheduleRepository.java',
+    documentLabel: 'Repository query:',
     icon: 'fileTypes/java',
-    added: '+9', removed: '', diff: { added: 9, deleted: 0 },
+    added: '+4', removed: '', diff: { added: 4, deleted: 0 },
     diffRequest: {
       text: 'Add repository queries by vet/weekday in VetScheduleRepository.findByVetIdAndWeekday()',
       statusItem: { status: 'passed' },
@@ -15706,10 +15814,11 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-visit-vet-time-fields',
     name: 'Visit.java', label: 'Visit.java',
+    documentLabel: 'Visit fields:',
     icon: 'fileTypes/java',
-    added: '+18', removed: '', diff: { added: 18, deleted: 0 },
+    added: '+29', removed: '-6', diff: { added: 29, deleted: 6 },
     diffRequest: {
-      text: 'Add vet (FK) and time (TIME) columns to visits, exposed as Vet vet / LocalTime time on Visit.java',
+      text: 'Add vet (FK) and time (TIME) columns to visits, exposed as vet and time fields on Visit.java',
       statusItem: { status: 'passed' },
       issueTarget: { kind: 'plan', index: 15 },
       source: { label: 'Vet-Schedules.md' },
@@ -15719,8 +15828,9 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-visit-controller',
     name: 'VisitController.java', label: 'VisitController.java',
+    documentLabel: 'Validation:',
     icon: 'fileTypes/java',
-    added: '+14', removed: '-3', diff: { added: 14, deleted: 3 },
+    added: '+9', removed: '', diff: { added: 9, deleted: 0 },
     diffRequest: {
       text: 'Validate requested visit_time against schedule windows in VisitController.processNewVisitForm()',
       statusItem: { status: 'passed' },
@@ -15732,6 +15842,7 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-data-sql',
     name: 'data.sql', label: 'data.sql',
+    documentLabel: 'Seed data:',
     icon: 'fileTypes/sql',
     added: '+6', removed: '', diff: { added: 6, deleted: 0 },
     diffRequest: {
@@ -15745,8 +15856,9 @@ const SDD_BUILD_CHANGE_CARDS = [
   {
     id: 'sdd-build-visit-controller-tests',
     name: 'VisitControllerTests.java', label: 'VisitControllerTests.java',
+    documentLabel: 'Regression test:',
     icon: 'fileTypes/java',
-    added: '+11', removed: '', diff: { added: 11, deleted: 0 },
+    added: '+12', removed: '', diff: { added: 12, deleted: 0 },
     diffRequest: {
       text: 'Add tests for off-hours booking rejection in VisitControllerTests.java',
       statusItem: { status: 'passed' },
@@ -16354,6 +16466,66 @@ function ChatAssistantMessage({ children, streaming = false }) {
         {streaming && <span className="ai-chat-streaming-caret" aria-hidden="true" />}
       </p>
     </div>
+  );
+}
+
+function SddSpecGenerationStreamingMessage({ message }) {
+  const progressStep = Number.isInteger(message?.progressStep) ? message.progressStep : 0;
+  const prompt = String(message?.prompt ?? '').trim();
+  const steps = [
+    {
+      icon: 'general/search',
+      label: 'Inspecting project context',
+      detail: 'vet schedules, visits, booking tests',
+    },
+    {
+      icon: 'fileTypes/java',
+      label: 'Reading source files',
+      detail: 'Vet.java, Visit.java, VisitController.java',
+    },
+    {
+      icon: 'fileTypes/markdown',
+      label: 'Drafting specification',
+      detail: 'Vet-Schedules.md',
+    },
+    {
+      icon: 'general/checkmark',
+      label: 'Linking implementation plan',
+      detail: 'entity, repository, validation, tests',
+    },
+  ];
+
+  return (
+    <article className="aiux543-answer sdd-generation-stream">
+      <p
+        data-ai-chat-annotatable="true"
+        data-ai-chat-message-id={message.id}
+        data-ai-chat-block-id={`sent-${message.id}`}
+      >
+        {message.text || (prompt
+          ? `I’ll turn “${prompt}” into an executable spec connected to the PetClinic codebase.`
+          : 'I’ll turn this request into an executable spec connected to the PetClinic codebase.')}
+        <span className="ai-chat-streaming-caret" aria-hidden="true" />
+      </p>
+      <div className="sdd-generation-stream-steps" role="status" aria-label="SDD generation progress">
+        {steps.map((step, index) => {
+          const isDone = index < progressStep;
+          const isActive = index === progressStep;
+          return (
+            <div
+              key={step.label}
+              className={`sdd-generation-stream-step${isDone ? ' is-done' : ''}${isActive ? ' is-active' : ''}`}
+            >
+              <span className="sdd-generation-stream-step-icon">
+                {isActive ? <IconLoaderSpinner /> : <Icon name={isDone ? 'general/checkmark' : step.icon} size={16} />}
+              </span>
+              <span className="sdd-generation-stream-step-label">{step.label}</span>
+              <span className="ai-chat-transcript-code-chip">{step.detail}</span>
+            </div>
+          );
+        })}
+      </div>
+    </article>
   );
 }
 
@@ -20048,19 +20220,23 @@ function AiChatTabView({
           ) : message.role === 'assistant'
             && (message.kind === 'sdd-spec-generated' || message.kind === 'sdd-status')
             && message.streaming ? (
-            // Same no-heading treatment as the finished reply below — the
-            // agent-name heading (e.g. "SDD") only ever showed up here while
-            // the text was still streaming in, which read as inconsistent.
-            <article key={message.id} className="aiux543-answer">
-              <p
-                data-ai-chat-annotatable="true"
-                data-ai-chat-message-id={message.id}
-                data-ai-chat-block-id={`sent-${message.id}`}
-              >
-                {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
-                <span className="ai-chat-streaming-caret" aria-hidden="true" />
-              </p>
-            </article>
+            message.kind === 'sdd-spec-generated' && message.prompt
+              ? <SddSpecGenerationStreamingMessage key={message.id} message={message} />
+              : (
+                // Same no-heading treatment as the finished reply below — the
+                // agent-name heading (e.g. "SDD") only ever showed up here while
+                // the text was still streaming in, which read as inconsistent.
+                <article key={message.id} className="aiux543-answer">
+                  <p
+                    data-ai-chat-annotatable="true"
+                    data-ai-chat-message-id={message.id}
+                    data-ai-chat-block-id={`sent-${message.id}`}
+                  >
+                    {renderAnnotatedParagraph(message.text, `sent-${message.id}`, message.id)}
+                    <span className="ai-chat-streaming-caret" aria-hidden="true" />
+                  </p>
+                </article>
+              )
           ) : message.role === 'assistant' && message.kind === 'sdd-status' && !message.streaming ? (
             // Plain no-heading text once done streaming too — this is just a
             // transient "running the checks" status line, not a reply with
@@ -31638,6 +31814,8 @@ export default function App() {
           text: '',
           streaming: true,
           kind: (isSddAgentChat || isSddNoteFollowUp) ? 'sdd-spec-generated' : undefined,
+          prompt: isSddAgentChat ? messageText : undefined,
+          progressStep: isSddAgentChat ? 0 : undefined,
         }
       : null;
 
@@ -31653,14 +31831,22 @@ export default function App() {
       // in the chat. Opening it earlier (even just to show it's "working")
       // showed a doc that doesn't exist yet from the chat's perspective.
       const sddResultBullets = [
-        'Created the Vet-Schedules.md specification: a parallel schedule track with per-vet availability checks alongside Visit-Booking.',
-        'Plan validates visit times against working hours; Visit-Booking.md stays untouched while this ships.',
+        'Created Vet-Schedules.md for vet working hours: VetSchedule entity, weekday lookup repository, Visit vet/time fields, controller validation, seed data, and off-hours tests.',
+        'Kept the existing Visit-Booking.md hourly-slot flow unchanged while adding the schedule-backed validation track.',
       ];
-      const fullSddResponse = sddResultBullets.join(' ');
+      const fullSddResponse = [
+        `I’ll turn “${messageText}” into an executable spec connected to the PetClinic codebase.`,
+        'I found the booking flow in VisitController, the Visit model fields that need to be persisted, and the test surface in VisitControllerTests.',
+        'I’m drafting Vet-Schedules.md with a plan that stays separate from the existing Visit-Booking.md rollout.',
+      ].join(' ');
       let revealedLength = 0;
       const streamNextSddChunk = () => {
-        revealedLength = Math.min(fullSddResponse.length, revealedLength + 4);
+        revealedLength = Math.min(fullSddResponse.length, revealedLength + 6);
         const isComplete = revealedLength >= fullSddResponse.length;
+        const progressRatio = fullSddResponse.length > 0 ? revealedLength / fullSddResponse.length : 1;
+        const progressStep = isComplete
+          ? 4
+          : Math.min(3, Math.floor(progressRatio * 4));
         handleSelectedAiChatSentMessagesChange(
           (prev) => prev.map((message) => (
             message.id === assistantMessageId
@@ -31668,6 +31854,7 @@ export default function App() {
                   ...message,
                   text: fullSddResponse.slice(0, revealedLength),
                   streaming: !isComplete,
+                  progressStep,
                   result: isComplete ? sddResultBullets : undefined,
                   workedForLabel: isComplete ? '2m 40s' : undefined,
                   changeCards: isComplete
@@ -31770,7 +31957,7 @@ export default function App() {
               const rawLineIndex = getRawLineIndexFromDisplayRowIndex(code, noteSourceRowIndex);
               if (rawLineIndex == null) return prev;
               const lines = code.split(/\r?\n/);
-              lines[rawLineIndex] = appendNoteAddressedClause(lines[rawLineIndex]);
+              lines[rawLineIndex] = appendNoteAddressedClause(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
               return { ...prev, [noteSourceTabId]: { ...content, code: lines.join('\n') } };
             });
           }
@@ -32221,6 +32408,22 @@ export default function App() {
     setDocToolbarBusy,
     handleAgentTaskSelect,
   ]);
+
+  // Marketing-video variant: a note left on Vet-Schedules.md sits as a
+  // pending attachment on the chat that generated it (still true even
+  // though that chat is never shown) — this sends it to the agent directly
+  // from the document's own toolbar, reusing the exact same isSddNoteFollowUp
+  // resolution (busy state, line edit) handleAiChatTabSend already runs for
+  // a real chat message with the same attachments.
+  const activeVetSchedulesPendingNotes = vetSchedulesRelatedChatId
+    ? (aiChatSelectionContextByChatId[vetSchedulesRelatedChatId] ?? [])
+    : [];
+  const handleSendPendingVetSchedulesNotes = useCallback(() => {
+    if (!vetSchedulesRelatedChatId) return;
+    const pending = aiChatSelectionContextByChatId[vetSchedulesRelatedChatId] ?? [];
+    if (pending.length === 0) return;
+    handleAiChatTabSend(vetSchedulesRelatedChatId, '', pending);
+  }, [vetSchedulesRelatedChatId, aiChatSelectionContextByChatId, handleAiChatTabSend]);
 
   const handleCompleteReviewDecision = useCallback((chatId) => {
     if (!chatId) return;
@@ -33948,7 +34151,7 @@ export default function App() {
                   // give it a local .editor/.editor-body pair to portal into
                   // instead, scoped to this pane.
                   <div className="editor ai-spec-split-editor-host">
-                    <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} />
+                    <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
                     {/* AgentTaskEditorArea's toolbar renders directly above — this
                         stays an EMPTY sibling, not its ancestor, so the portaled
                         .spec-done-overlay (position:absolute; inset:0 on this box)
@@ -34036,7 +34239,7 @@ export default function App() {
               </div>
             )
             : isAgentTaskTab
-            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} />
+            ? <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={openEditorTabByLabel} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Related Chats" vetSchedulesRelatedChatId={vetSchedulesRelatedChatId} onOpenRelatedChatSplit={(chatId) => openSpecInSplitView('t2', chatId)} busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} />
             : isReviewDiffTab
             ? <ReviewDiffOverview
                 files={reviewDiffFiles}

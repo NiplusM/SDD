@@ -3715,6 +3715,116 @@ body {
   line-height: 16px;
 }
 
+/* Marketing-video variant: changed files are rendered as document content,
+   matching the Implementation Notes bullet + inline-file-chip shape. */
+.spec-changed-files-section {
+  box-sizing: border-box;
+  width: min(760px, calc(100% - 72px));
+  margin: 8px 0 22px 56px;
+  color: rgba(223, 225, 229, 0.9);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.spec-changed-files-heading {
+  margin: 0 0 8px;
+  color: rgba(223, 225, 229, 0.92);
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.spec-changed-files-list {
+  margin: 0 0 0 0;
+  padding-left: 17px;
+  color: inherit;
+  font: inherit;
+}
+
+.spec-changed-files-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-height: calc(1em * 1.55);
+  padding-left: 2px;
+  margin: 0 0 2px;
+  min-width: 0;
+}
+
+.spec-changed-files-item::marker {
+  color: rgba(223, 225, 229, 0.9);
+  font-size: 13px;
+}
+
+.spec-changed-files-item-prefix {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spec-changed-files-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: min(100%, 280px);
+  min-height: 0;
+  padding: 1px 8px 1px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(155, 158, 167, 0.09);
+  color: inherit;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: inherit;
+  vertical-align: baseline;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.spec-changed-files-chip:hover {
+  background: rgba(155, 158, 167, 0.14);
+}
+
+.spec-changed-files-chip svg {
+  flex: 0 0 auto;
+}
+
+.spec-changed-files-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.spec-changed-files-chip-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-left: 2px;
+  color: rgba(206, 208, 214, 0.5);
+  font-family: inherit;
+  font-size: 0.92em;
+  font-weight: 500;
+  line-height: inherit;
+}
+
+.spec-changed-files-chip-counts .added {
+  color: #6fca8f;
+}
+
+.spec-changed-files-chip-counts .removed {
+  color: #ff7f87;
+}
+
 .spec-done-row.spec-done-active-line:not([data-issue-severity="warning"]):not([data-issue-severity="failed"]):not([data-issue-severity="error"]) {
   background: transparent;
 }
@@ -8875,6 +8985,7 @@ body {
 .agent-task-toolbar-right {
   display: flex;
   align-items: center;
+  gap: 6px;
   align-self: flex-end;
   box-sizing: border-box;
   min-height: 40px;
@@ -8882,6 +8993,22 @@ body {
   padding: 0;
   flex-shrink: 1;
   min-width: 0;
+}
+
+.agent-task-toolbar-note-action {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 10px !important;
+  border-color: rgba(134, 138, 145, 0.36) !important;
+  background: transparent !important;
+  color: #CED0D6 !important;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.agent-task-toolbar-note-action:hover:not(:disabled) {
+  border-color: rgba(134, 138, 145, 0.48) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #DFE1E5 !important;
 }
 
 
@@ -9914,7 +10041,11 @@ body {
    `Configuration.md › plan` reads as the same kind of "file" reference. */
 .spec-ref-file,
 .spec-ref-external-section {
-  display: inline;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  max-width: min(100%, 380px);
+  min-width: 0;
   padding: 4px 8px 4px 6px;
   border: 0;
   border-radius: 5px;
@@ -9926,6 +10057,7 @@ body {
   line-height: inherit;
   vertical-align: baseline;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 /* When the chip points at an actual editor target it becomes clickable.
@@ -9960,13 +10092,21 @@ body {
 }
 
 .spec-ref-line {
-  margin-left: 6px;
+  flex: 0 0 auto;
+  margin-left: 3px;
   color: rgba(206, 208, 214, 0.5);
   font-family: inherit;
   font-size: 0.92em;
   font-weight: 500;
   letter-spacing: 0.01em;
   vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.spec-ref-file-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -10174,18 +10314,28 @@ body {
    The `›` divider and the `¶` icon get muted styling so the file + section
    parts read as the headline information. */
 .spec-ref-section-divider {
+  flex: 0 0 auto;
   opacity: 0.55;
   margin: 0 1px;
 }
 
 .spec-ref-paragraph-icon {
   display: inline-block;
+  flex: 0 0 auto;
   width: 12px;
   margin-right: 2px;
   text-align: center;
   font-weight: 600;
   opacity: 0.7;
   vertical-align: baseline;
+}
+
+.spec-ref-file-name,
+.spec-ref-section-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* External-section refs (e.g. `Configuration.md › Plan`) reuse the file chip
@@ -13495,6 +13645,51 @@ body {
   line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.sdd-generation-stream {
+  margin-bottom: 8px;
+}
+
+.sdd-generation-stream-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 8px;
+}
+
+.sdd-generation-stream-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  color: #6F737A;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.sdd-generation-stream-step.is-active {
+  color: #CED0D6;
+}
+
+.sdd-generation-stream-step.is-done {
+  color: #8B8E94;
+}
+
+.sdd-generation-stream-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: currentColor;
+}
+
+.sdd-generation-stream-step-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .aiux543-answer-result-list {
