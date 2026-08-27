@@ -13686,6 +13686,12 @@ body {
   color: #CED0D6;
 }
 
+/* An active streaming step is one unit of work. Its context must carry the
+   same tone as its label; otherwise a single live row looks half-muted. */
+.sdd-generation-stream-step.is-active .sdd-generation-stream-step-detail {
+  color: currentColor;
+}
+
 .sdd-generation-stream-step.is-done {
   color: #8B8E94;
 }
