@@ -22380,7 +22380,7 @@ export default function App() {
   // Doc tab -> busy label. Shown in the toolbar's left slot instead of its
   // usual chat trigger/status while the chat that owns that doc is actively
   // working it — either generating it for the first time ("Specifying...")
-  // or addressing a note sent from the chat ("Addressing note...").
+  // or addressing a note sent from the chat ("Processing...").
   const [docToolbarBusyByTabId, setDocToolbarBusyByTabId] = useState({});
   const setDocToolbarBusy = useCallback((tabId, label) => {
     if (!tabId) return;
@@ -31949,7 +31949,7 @@ export default function App() {
       // Same busy look the doc's own Execute uses — the toolbar's chat
       // trigger steps aside for the run instead of sitting there inert
       // while the note is actually being worked.
-      if (noteSourceTabId) setDocToolbarBusy(noteSourceTabId, 'Addressing note...');
+      if (noteSourceTabId) setDocToolbarBusy(noteSourceTabId, 'Processing...');
       const sddNoteResultBullets = [
         noteCount === 1
           ? `Addressed the note on ${noteSourceLabel}.`
