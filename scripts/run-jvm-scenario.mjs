@@ -585,6 +585,9 @@ async function runScenario(page) {
   if (passedAcItemsAfterSectionRun <= 1) {
     throw new Error(`An Acceptance Criteria section run must affect the complete section: ${passedAcItemsAfterSectionRun}`);
   }
+  if (await page.locator('.spec-changed-files-chip:visible').count() !== 0) {
+    throw new Error('Generated diffs must appear only after the full Execute action.');
+  }
 
   await demoClick(page, page.getByRole('button', { name: 'Execute', exact: true }).first(), 'Beat 4', 'Execute the refined document.');
   const documentLoading = page.locator('.agent-task-toolbar .at-generating-label:visible', { hasText: 'Building...' }).first();
