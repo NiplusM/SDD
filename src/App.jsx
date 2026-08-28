@@ -21797,6 +21797,8 @@ export default function App() {
   // split next to a chat, driven by openSpecInSplitView/closeSpecSplitView.
   const [specSplitChatId, setSpecSplitChatId] = useState(null);
   const [specSplitTabId, setSpecSplitTabId] = useState(null);
+  // Marketing-video file references use a document/file split, never a chat.
+  const [specFileSplitActive, setSpecFileSplitActive] = useState(false);
   // Diff tabs opened alongside the doc in the spec split's own right-pane tab
   // strip (e.g. from a changed-file row in the chat) — kept separate from the
   // reviewSplit* state above, which belongs to the unrelated Code Review split.
@@ -28591,6 +28593,9 @@ export default function App() {
   const isSpecEditorSplitActive = Boolean(
     specSplitChatId && specSplitTabId && activeTabId === specSplitTabId,
   );
+  const isSpecFileEditorSplitActive = Boolean(
+    specFileSplitActive && specSplitTabId && activeTabId === specSplitTabId,
+  );
   // File and diff tabs opened in the spec split's own right pane (index 0 is
   // always the Vet-Schedules.md doc tab itself, appended in the render below).
   // Mirrors buildAdHocReviewSplitFile, scoped to specSplitChatId's own
@@ -33301,6 +33306,7 @@ export default function App() {
     if (activeEditorTabId !== tabId) handleAgentTaskSelect(agentTaskId);
     setSpecSplitTabId(tabId);
     setSpecSplitChatId(chatId ?? null);
+    setSpecFileSplitActive(false);
     // Composer attachments (e.g. a note just added to the chat) are keyed off
     // selectedAiChatId — keep it pointed at the split's chat so they show up.
     if (chatId) setSelectedAiChatId(chatId);
@@ -33317,6 +33323,7 @@ export default function App() {
   const closeSpecSplitView = useCallback(() => {
     setSpecSplitChatId(null);
     setSpecSplitTabId(null);
+    setSpecFileSplitActive(false);
     setSpecSplitDiffTabIds([]);
     setSpecSplitActiveRightTab(0);
   }, []);
@@ -33354,17 +33361,19 @@ export default function App() {
   }, [openPlanDiffTab]);
   openSpecSplitDiffTabRef.current = openSpecSplitDiffTab;
 
-  // Opening a file reference from the marketing specification transitions the
-  // document into its existing split view and makes the file a right-pane tab.
-  // The original generation flow remains standalone; only explicit navigation
-  // from the document opens this focused investigation view.
+  // Marketing file chips split the document and source file directly. The
+  // generated chat stays closed: this investigation is document-first.
   const openSpecSplitFile = useCallback((label) => {
     const normalizedLabel = typeof label === 'string' ? label.trim() : '';
     if (!normalizedLabel) return null;
 
     const lowerLabel = normalizedLabel.toLowerCase();
     if (lowerLabel === 'vet-schedules.md' || lowerLabel === 'visit-booking.md') {
-      openSpecInSplitView(lowerLabel === 'vet-schedules.md' ? 't2' : 't1', specSplitChatId ?? vetSchedulesRelatedChatId);
+      const taskId = lowerLabel === 'vet-schedules.md' ? 't2' : 't1';
+      handleAgentTaskSelect(taskId);
+      setSpecSplitChatId(null);
+      setSpecSplitTabId(getAgentTaskTabId(taskId) ?? taskId);
+      setSpecFileSplitActive(false);
       return null;
     }
 
@@ -33397,21 +33406,21 @@ export default function App() {
           ),
         };
 
+    setIdeTabContents((current) => ({ ...current, [tabId]: content }));
+    const documentTabId = getAgentTaskTabId('t2') ?? 'agent-task-t2';
+    if (activeEditorTabId !== documentTabId) handleAgentTaskSelect('t2');
     if (!existingTab) {
       setIdeTabs((current) => (
         current.some((candidate) => candidate.id === tabId) ? current : [...current, tab]
       ));
     }
-    setIdeTabContents((current) => ({ ...current, [tabId]: content }));
-    openSpecInSplitView('t2', specSplitChatId ?? vetSchedulesRelatedChatId);
-    setSpecSplitDiffTabIds((current) => {
-      const existingIndex = current.indexOf(tabId);
-      const nextIds = existingIndex >= 0 ? current : [...current, tabId];
-      setSpecSplitActiveRightTab((existingIndex >= 0 ? existingIndex : nextIds.length - 1) + 1);
-      return nextIds;
-    });
+    setSpecSplitChatId(null);
+    setSpecSplitTabId(documentTabId);
+    setSpecFileSplitActive(true);
+    setSpecSplitDiffTabIds([tabId]);
+    setSpecSplitActiveRightTab(1); // file-only split: source index 0 maps to internal index 1
     return tabId;
-  }, [ideTabContents, ideTabs, openSpecInSplitView, specSplitChatId, vetSchedulesRelatedChatId]);
+  }, [activeEditorTabId, handleAgentTaskSelect, ideTabContents, ideTabs]);
   openSpecSplitFileRef.current = openSpecSplitFile;
 
   // Navigate to the file/diff a comment lives in — shared by the Chats-History
@@ -34319,7 +34328,7 @@ export default function App() {
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideDefaultOpenToolWindows.join('-')}`}
-        className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'code-review-editor-split-active' : ''}
+        className={(isReviewEditorSplitActive || isSpecEditorSplitActive || isSpecFileEditorSplitActive) ? 'code-review-editor-split-active' : ''}
         height={865}
         projectName={PROJECT_NAME}
         projectIcon="SP"
@@ -34618,6 +34627,43 @@ export default function App() {
                     <div className="editor-body" />
                   </div>
                   )
+                )}
+              />
+            )
+            : isSpecFileEditorSplitActive
+            ? (
+              <CodeReviewEditorSplit
+                chatLabel="Vet-Schedules.md"
+                chatIcon={<Icon name="fileTypes/markdown" size={16} />}
+                onCloseReview={closeSpecSplitView}
+                showReviewTab={false}
+                rightTabs={specSplitDiffTabs.map((tab) => ({ label: tab.label, icon: tab.icon, closable: true }))}
+                activeRightTab={Math.max(0, specSplitActiveRightTab - 1)}
+                onRightTabChange={(index) => setSpecSplitActiveRightTab(index + 1)}
+                onRightTabClose={(index) => {
+                  const closedTabId = specSplitDiffTabs[index]?.tabId;
+                  setSpecSplitDiffTabIds((current) => current.filter((tabId) => tabId !== closedTabId));
+                  if (specSplitDiffTabs.length <= 1) closeSpecSplitView();
+                  else setSpecSplitActiveRightTab(1);
+                }}
+                leftPane={(
+                  <div className="editor ai-spec-split-editor-host">
+                    <AgentTaskEditorArea genState={genState} genProgress={genProgress} onSend={startAgentTaskGeneration} onStop={() => setGenState('idle')} onRegenerate={startAgentTaskGeneration} onDoneRegenerate={handleDoneRegenerate} onFixIssue={handleDoneIssueFix} onOpenDiffTab={openPlanDiffTab} onOpenCheckChip={(label, location) => openEditorTabByLabel(label, { ...location, adjacentToTabId: activeEditorTabId })} onOpenCommentSource={handleOpenSpecCommentSource} onOpenVersionDiff={handleDoneVersionSelect} attachedFiles={attachedFiles} onRemoveAttached={(idx) => updateAttachedFilesForTab((files) => files.filter((_, i) => i !== idx))} onAddAttached={(item) => updateAttachedFilesForTab((files) => files.some((file) => file.label === item.label) ? files : [...files, { label: item.label, description: item.description }])} onAddSelectionToChat={handleAddSpecSelectionToChat} chatTargets={selectionChatTargets} renderSubmitTargetPicker={renderCommentSubmitTargetPicker} currentCode={activeAgentTaskCode} onDocumentCodeChange={handleDoneDocumentCodeChange} documentSections={activeAgentTaskDocumentSections} onOpenProblems={() => toggleIdeBottomToolWindow('problems')} onOpenTerminal={handleDoneOpenTerminal} addPopupFiles={addPopupFiles} acRunResult={activeAgentTaskAcRunResult} planRunResult={activeAgentTaskPlanRunResult} acWarningBanner={activeEditorAcWarningBanner} inspectionSummary={agentTaskInspectionSummary} versionHistory={activeVersionHistory} removedIssueIndices={activeAgentTaskRemovedIssueIndices} highlightedProblemLocation={highlightedProblemLocation?.tabId === activeEditorTabId ? highlightedProblemLocation : null} doneCommentEntries={activeAgentTaskCommentEntries} relatedCommentIssues={activeRelatedDiffCommentIssues} onDoneCommentsChange={handleDoneCommentsChange} commentResetToken={doneCommentResetToken} preserveDoneOverlayDuringBusy={Boolean(doneEnhanceFlowRef.current) && (genState === 'loading' || genState === 'generating')} runState={runState} activeRunRequest={runState === 'running' ? (visiblePendingTerminalRun ?? activeSpecDocumentRunRequest ?? lastTerminalRunRequestRef.current ?? null) : null} doneOverlayUiState={activeDoneOverlayUiState} onDoneOverlayUiStateChange={handleActiveDoneOverlayUiStateChange} onTopBarAction={handleAgentTaskTopBarAction} onTopBarStatusChange={setSpecTopBarStatusForTab} topBarStatus={activeSpecTopBarStatus} busyLabel={doneEnhanceFlowRef.current ? 'Specifying...' : (terminalDrivenGenerationRef.current ? 'Building...' : null)} specSessionKey={activeEditorTabId} commentContextLabel={activeSpecCommentContextLabel} commentContextSessionLabel="Session" busyToolbarLabel={docToolbarBusyByTabId[activeEditorTabId] ?? null} pendingNoteCount={activeVetSchedulesPendingNotes.length} onSendPendingNotes={handleSendPendingVetSchedulesNotes} showGeneratedDiffs={Boolean(completedFullSpecRunsByTab[visibleEditorStateTabId])} />
+                    <div className="editor-body" />
+                  </div>
+                )}
+                rightPane={(
+                  specSplitDiffTabs[specSplitActiveRightTab - 1]?.file
+                    ? <CodeReviewSplitFileView
+                        key={specSplitDiffTabs[specSplitActiveRightTab - 1].tabId}
+                        file={specSplitDiffTabs[specSplitActiveRightTab - 1].file}
+                        scopeFiles={specSplitDiffTabs.map((tab) => tab.file).filter(Boolean)}
+                        agentIcon="sdd"
+                        readOnly
+                        activeChatId=""
+                        activeChatTitle=""
+                      />
+                    : null
                 )}
               />
             )
