@@ -23818,10 +23818,10 @@ export default function App() {
 
   const openPlanDiffTab = useCallback((params) => {
     const { text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true } = params;
-    // A generated-diff chip clicked from Vet-Schedules.md stays in the
-    // document split. The split helper passes registerEditorTab=false while
-    // preparing its underlying tab, which intentionally bypasses this route.
-    if (registerEditorTab && activeSourceEditorTabId === 'agent-task-t2') {
+    // Only the Feature MVP's chat/document split owns its right-pane diff
+    // tabs. Marketing video opens generated diffs as ordinary neighbouring
+    // editor tabs instead.
+    if (registerEditorTab && activeSourceEditorTabId === 'agent-task-t2' && specSplitChatId) {
       return openSpecSplitDiffTabRef.current?.(params);
     }
     // A caller that only knows the document's tab label (e.g. a "files changed"
@@ -23849,7 +23849,11 @@ export default function App() {
     const sourceCode = typeof source?.code === 'string'
       ? source.code
       : (sourceViewState?.code ?? ideTabContents[sourceTabId]?.code ?? '');
-    const diffTabId = buildPlanDiffTabId(sourceTabId);
+    const diffTabId = sourceTabId === 'agent-task-t2'
+      && ['plan', 'ac'].includes(issueTarget?.kind)
+      && Number.isInteger(issueTarget?.index)
+      ? `plan-diff-${sourceTabId}-${issueTarget.kind}-${issueTarget.index}`
+      : buildPlanDiffTabId(sourceTabId);
     const diffData = buildPlanDiffData({
       sourceCode,
       text,
@@ -23983,6 +23987,7 @@ export default function App() {
 	    ideTabContents,
     ideTabs,
     selectedAiChatId,
+    specSplitChatId,
     updatePlanDiffUiStateForTab,
   ]);
 
