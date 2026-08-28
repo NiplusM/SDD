@@ -196,7 +196,7 @@ function ChatsHistoryToolWindow({
     >
       <div className="agent-sessions-panel">
         <button className="agent-sessions-new" type="button" onClick={() => handleSelectChat(AIUX_NEW_SESSION_TAB_ID)}>
-          <AgentSessionsBurstIcon />
+          <Icon name="general/add" size={18} />
           <span>New Session</span>
           <span className="agent-sessions-new-actions" aria-hidden="true">
             <AgentSessionsTuneIcon />
@@ -302,14 +302,6 @@ function ChatsHistoryToolWindow({
         </button>
       </div>
     </ToolWindow>
-  );
-}
-
-function AgentSessionsBurstIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path d="M9 1V17M1 9H17M3.35 3.35L14.65 14.65M14.65 3.35L3.35 14.65M5.9 1.9L12.1 16.1M16.1 5.9L1.9 12.1M12.1 1.9L5.9 16.1M1.9 5.9L16.1 12.1" stroke="currentColor" strokeLinecap="round" />
-    </svg>
   );
 }
 
