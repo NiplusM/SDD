@@ -23395,7 +23395,7 @@ export default function App() {
     }
   }, [generationTabId, getTaskRuntimeState]);
 
-  const handleAgentTaskSelect = useCallback((task) => {
+  const handleAgentTaskSelect = useCallback((task, options = {}) => {
     const resolvedTask = typeof task === 'string'
       ? (agentTasks.find((item) => item?.id === task) ?? null)
       : task;
@@ -23425,10 +23425,29 @@ export default function App() {
     setScreen('ide');
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
-    const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
-    const nextActiveTabIndex = existingTabIndex >= 0 ? existingTabIndex : 0;
+    const relatedChatTabId = typeof options.insertBeforeChatId === 'string' && options.insertBeforeChatId
+      ? `ai-chat-${options.insertBeforeChatId}`
+      : null;
+    const taskTab = existingTabIndex >= 0 ? ideTabs[existingTabIndex] : nextTab;
+    const tabsWithoutTask = existingTabIndex >= 0
+      ? ideTabs.filter((tabItem) => tabItem.id !== resolvedTabId)
+      : ideTabs;
+    const insertBeforeRelatedChatIndex = relatedChatTabId
+      ? tabsWithoutTask.findIndex((tabItem) => tabItem.id === relatedChatTabId)
+      : -1;
+    const shouldPlaceBeforeRelatedChat = insertBeforeRelatedChatIndex >= 0;
+    const nextTabs = shouldPlaceBeforeRelatedChat
+      ? [
+        ...tabsWithoutTask.slice(0, insertBeforeRelatedChatIndex),
+        taskTab,
+        ...tabsWithoutTask.slice(insertBeforeRelatedChatIndex),
+      ]
+      : (existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs]);
+    const nextActiveTabIndex = shouldPlaceBeforeRelatedChat
+      ? insertBeforeRelatedChatIndex
+      : (existingTabIndex >= 0 ? existingTabIndex : 0);
 
-    if (existingTabIndex < 0) {
+    if (nextTabs !== ideTabs) {
       setIdeTabs(nextTabs);
     }
 
@@ -32245,7 +32264,10 @@ export default function App() {
         // toolbar's chat-trigger chip still needs to point at the chat that
         // actually generated it, not fall back to a default/unrelated one.
         setVetSchedulesRelatedChatId(targetChatId);
-        handleAgentTaskSelect('t2');
+        // Keep the chat tab in the bar, but do not open it or create a split
+        // in the marketing flow. The completed document becomes the tab
+        // immediately to its left instead.
+        handleAgentTaskSelect('t2', { insertBeforeChatId: targetChatId });
         renameSddChatAfterGeneration(targetChatId, 'Vet schedule availability checks');
       };
       window.setTimeout(streamNextSddChunk, 400);
