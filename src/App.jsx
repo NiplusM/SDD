@@ -21470,6 +21470,7 @@ export default function App() {
   const [specSplitActiveRightTab, setSpecSplitActiveRightTab] = useState(0);
   const openSpecInSplitViewRef = useRef(null);
   const openSpecSplitFileRef = useRef(null);
+  const openSpecSplitDiffTabRef = useRef(null);
   const [reviewFeedbackRequestByChatId, setReviewFeedbackRequestByChatId] = useState({});
   // Synchronous mirror of review-owned fixture patches. The canonical copy is
   // also stored on each run; this ref covers Apply → immediate Cancel in one UI tick.
@@ -23480,7 +23481,14 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true }) => {
+  const openPlanDiffTab = useCallback((params) => {
+    const { text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true } = params;
+    // Generated-diff chips in Vet-Schedules.md must remain in the document's
+    // split view. The split helper calls back with registerEditorTab=false to
+    // create the underlying data without re-entering this route.
+    if (registerEditorTab && activeSourceEditorTabId === 'agent-task-t2') {
+      return openSpecSplitDiffTabRef.current?.(params);
+    }
     // A caller that only knows the document's tab label (e.g. a "files changed"
     // list built from static data, with no live tab id to reference) can pass
     // source.label instead of source.tabId — resolve it here rather than
@@ -32869,6 +32877,7 @@ export default function App() {
     });
     return diffTabId;
   }, [openPlanDiffTab]);
+  openSpecSplitDiffTabRef.current = openSpecSplitDiffTab;
 
   // References inside Vet-Schedules.md are part of the same investigation as
   // the specification itself. Keep them in the split's right-hand tab strip
