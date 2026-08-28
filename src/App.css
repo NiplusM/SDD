@@ -8144,9 +8144,9 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  width: clamp(320px, 34%, 520px);
+  width: clamp(320px, 38%, 560px);
   min-width: 0;
-  max-width: min(100%, 520px);
+  max-width: min(100%, 560px);
   box-sizing: border-box;
 }
 

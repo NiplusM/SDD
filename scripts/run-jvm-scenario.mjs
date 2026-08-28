@@ -531,6 +531,12 @@ async function runScenario(page) {
   await clickByDemoId(page, 'spec-comment-plan-14', 'Beat 3', 'Add a targeted note to the regression-test Plan item.');
   const noteInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
   await demoType(page, noteInput, 'Beat 3', 'Describe the exclusive end-boundary coverage.', noteText);
+  const notePopupLayout = await noteInput.evaluate((node) => ({
+    textareaHeight: node.getBoundingClientRect().height,
+  }));
+  if (notePopupLayout.textareaHeight > 38) {
+    throw new Error(`The note composer must fit the scripted note on one line: ${JSON.stringify(notePopupLayout)}`);
+  }
   await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 3', 'Attach the note to the Plan item.');
 
   const sendToAgent = page.getByRole('button', { name: 'Send Comments', exact: true }).first();
