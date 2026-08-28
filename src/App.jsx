@@ -34101,8 +34101,14 @@ export default function App() {
     }
     return findFirstProjectFileFromRunStatuses(activeAgentTaskAcRunResult, activeAgentTaskPlanRunResult);
   })();
+  const isNewSessionStatusBar = activeStatusBarTab?.label === 'New Session';
   const ideStatusBarBreadcrumbs = [
-    ...(activeStatusBarTaskTab
+    ...(isNewSessionStatusBar
+      ? [{
+          icon: false,
+          label: <StatusBarActiveFileLabel icon={<AiChatCodexIcon />} label="New Session" />,
+        }]
+      : (activeStatusBarTaskTab
       ? [{
           icon: false,
           label: (
@@ -34112,8 +34118,8 @@ export default function App() {
             />
           ),
         }]
-      : []),
-    ...(activeStatusBarProjectFileName
+      : [])),
+    ...(!isNewSessionStatusBar && activeStatusBarProjectFileName
       ? [{
           icon: false,
           label: (
