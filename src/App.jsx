@@ -33361,8 +33361,8 @@ export default function App() {
   }, [openPlanDiffTab]);
   openSpecSplitDiffTabRef.current = openSpecSplitDiffTab;
 
-  // Marketing file chips split the document and source file directly. The
-  // generated chat stays closed: this investigation is document-first.
+  // Marketing file chips open ordinary editor tabs. Keep the source directly
+  // after the document in the tab strip, with no chat and no split view.
   const openSpecSplitFile = useCallback((label) => {
     const normalizedLabel = typeof label === 'string' ? label.trim() : '';
     if (!normalizedLabel) return null;
@@ -33371,9 +33371,6 @@ export default function App() {
     if (lowerLabel === 'vet-schedules.md' || lowerLabel === 'visit-booking.md') {
       const taskId = lowerLabel === 'vet-schedules.md' ? 't2' : 't1';
       handleAgentTaskSelect(taskId);
-      setSpecSplitChatId(null);
-      setSpecSplitTabId(getAgentTaskTabId(taskId) ?? taskId);
-      setSpecFileSplitActive(false);
       return null;
     }
 
@@ -33406,19 +33403,30 @@ export default function App() {
           ),
         };
 
-    setIdeTabContents((current) => ({ ...current, [tabId]: content }));
     const documentTabId = getAgentTaskTabId('t2') ?? 'agent-task-t2';
     if (activeEditorTabId !== documentTabId) handleAgentTaskSelect('t2');
-    if (!existingTab) {
-      setIdeTabs((current) => (
-        current.some((candidate) => candidate.id === tabId) ? current : [...current, tab]
-      ));
-    }
+    setIdeTabContents((current) => ({ ...current, [tabId]: content }));
+    const documentIndex = ideTabs.findIndex((candidate) => candidate.id === documentTabId);
+    const sourceIndex = ideTabs.findIndex((candidate) => candidate.id === tabId);
+    const targetIndex = documentIndex >= 0
+      ? documentIndex + 1 - (sourceIndex >= 0 && sourceIndex < documentIndex ? 1 : 0)
+      : 0;
+    setIdeTabs((current) => {
+      const sourceTab = current.find((candidate) => candidate.id === tabId) ?? tab;
+      const withoutSource = current.filter((candidate) => candidate.id !== tabId);
+      const currentDocumentIndex = withoutSource.findIndex((candidate) => candidate.id === documentTabId);
+      const insertIndex = currentDocumentIndex >= 0 ? currentDocumentIndex + 1 : 0;
+      return [
+        ...withoutSource.slice(0, insertIndex),
+        sourceTab,
+        ...withoutSource.slice(insertIndex),
+      ];
+    });
+    setActiveEditorTab(targetIndex);
     setSpecSplitChatId(null);
-    setSpecSplitTabId(documentTabId);
-    setSpecFileSplitActive(true);
-    setSpecSplitDiffTabIds([tabId]);
-    setSpecSplitActiveRightTab(1); // file-only split: source index 0 maps to internal index 1
+    setSpecSplitTabId(null);
+    setSpecSplitDiffTabIds([]);
+    setSpecSplitActiveRightTab(0);
     return tabId;
   }, [activeEditorTabId, handleAgentTaskSelect, ideTabContents, ideTabs]);
   openSpecSplitFileRef.current = openSpecSplitFile;
