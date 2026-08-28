@@ -23081,7 +23081,7 @@ export default function App() {
     }
   }, [generationTabId, getTaskRuntimeState]);
 
-  const handleAgentTaskSelect = useCallback((task) => {
+  const handleAgentTaskSelect = useCallback((task, options = {}) => {
     const resolvedTask = typeof task === 'string'
       ? (agentTasks.find((item) => item?.id === task) ?? null)
       : task;
@@ -23111,10 +23111,29 @@ export default function App() {
     setScreen('ide');
 
     const existingTabIndex = ideTabs.findIndex((tabItem) => tabItem.id === resolvedTabId);
-    const nextTabs = existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs];
-    const nextActiveTabIndex = existingTabIndex >= 0 ? existingTabIndex : 0;
+    const relatedChatTabId = typeof options.insertBeforeChatId === 'string' && options.insertBeforeChatId
+      ? `ai-chat-${options.insertBeforeChatId}`
+      : null;
+    const taskTab = existingTabIndex >= 0 ? ideTabs[existingTabIndex] : nextTab;
+    const tabsWithoutTask = existingTabIndex >= 0
+      ? ideTabs.filter((tabItem) => tabItem.id !== resolvedTabId)
+      : ideTabs;
+    const insertBeforeRelatedChatIndex = relatedChatTabId
+      ? tabsWithoutTask.findIndex((tabItem) => tabItem.id === relatedChatTabId)
+      : -1;
+    const shouldPlaceBeforeRelatedChat = insertBeforeRelatedChatIndex >= 0;
+    const nextTabs = shouldPlaceBeforeRelatedChat
+      ? [
+        ...tabsWithoutTask.slice(0, insertBeforeRelatedChatIndex),
+        taskTab,
+        ...tabsWithoutTask.slice(insertBeforeRelatedChatIndex),
+      ]
+      : (existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs]);
+    const nextActiveTabIndex = shouldPlaceBeforeRelatedChat
+      ? insertBeforeRelatedChatIndex
+      : (existingTabIndex >= 0 ? existingTabIndex : 0);
 
-    if (existingTabIndex < 0) {
+    if (nextTabs !== ideTabs) {
       setIdeTabs(nextTabs);
     }
 
@@ -23130,6 +23149,11 @@ export default function App() {
       };
     });
     setActiveEditorTab(nextActiveTabIndex);
+
+    // A split can be reopened while the document is being manually edited.
+    // Its only necessary change is tab placement; restoring the task snapshot
+    // here would discard that in-session edit.
+    if (options.preserveCurrentTaskState && activeEditorTabId === resolvedTabId) return;
 
     if (preset?.kind && preset.kind !== 'interactive') {
       return;
@@ -23148,6 +23172,7 @@ export default function App() {
     setAcWarningBannerForTab(null, buildTerminalSessionTabId(resolvedTabId));
   }, [
     agentTasks,
+    activeEditorTabId,
     applyInteractiveTaskState,
     ideTabs,
     interactiveTaskStates,
@@ -32832,12 +32857,13 @@ export default function App() {
     if (!agentTaskId) return;
     const preset = getPresetAgentTaskDefinition(agentTaskId);
     const tabId = preset?.tab?.id ?? getAgentTaskTabId(agentTaskId) ?? agentTaskId;
-    // handleAgentTaskSelect re-applies that task's whole interactive state
-    // (comments included) from its last-saved snapshot — necessary when
-    // actually switching into the tab, but when it's already open and active
-    // (e.g. a note was just added there) it would stomp the edit that hasn't
-    // been saved into that snapshot yet. Only select when actually switching.
-    if (activeEditorTabId !== tabId) handleAgentTaskSelect(agentTaskId);
+    // A generated document belongs immediately to the left of the chat that
+    // produced it. Reopening an already active document keeps its unsaved
+    // in-session edits intact while still restoring that tab order.
+    handleAgentTaskSelect(agentTaskId, {
+      insertBeforeChatId: chatId,
+      preserveCurrentTaskState: activeEditorTabId === tabId,
+    });
     setSpecSplitTabId(tabId);
     setSpecSplitChatId(chatId ?? null);
     // Composer attachments (e.g. a note just added to the chat) are keyed off
