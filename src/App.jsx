@@ -24629,17 +24629,31 @@ export default function App() {
       icon: <AiChatAgentIcon icon={metaOverride?.icon ?? listItem?.icon ?? 'claude'} title={chatTitle} />,
       closable: true,
     };
+    // The pending session is the editor's stable entry point. Keep it at the
+    // far left whether it has just been created or the user returns to it.
+    const isNewSessionTab = chatTitle === 'New Session';
     if (shouldActivate) {
       setSelectedAiChatId(chatId);
       setScreen('ide');
     }
     const existingIndex = ideTabs.findIndex((tab) => tab.id === chatTabId);
     if (existingIndex >= 0) {
-      setIdeTabs((prev) => prev.map((tab) => (tab.id === chatTabId ? { ...tab, ...chatTab } : tab)));
-      if (shouldActivate) setActiveEditorTab(existingIndex);
+      setIdeTabs((prev) => {
+        const updatedTab = prev.find((tab) => tab.id === chatTabId);
+        if (!isNewSessionTab) {
+          return prev.map((tab) => (tab.id === chatTabId ? { ...tab, ...chatTab } : tab));
+        }
+        return [
+          { ...updatedTab, ...chatTab },
+          ...prev.filter((tab) => tab.id !== chatTabId),
+        ];
+      });
+      if (shouldActivate) setActiveEditorTab(isNewSessionTab ? 0 : existingIndex);
       return;
     }
-    const insertIndex = Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
+    const insertIndex = isNewSessionTab
+      ? 0
+      : Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
     setIdeTabs((prev) => [
       ...prev.slice(0, insertIndex),
       chatTab,
