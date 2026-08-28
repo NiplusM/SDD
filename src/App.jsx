@@ -119,7 +119,7 @@ import './App.css';
 // its own hardcoded string and they drifted out of sync with each other.
 const PROJECT_NAME = 'spring-petclinic';
 const REVIEW_BASE_BRANCH_NAME = 'main';
-const REVIEW_CURRENT_BRANCH_NAME = 'code-notes-v2';
+const REVIEW_CURRENT_BRANCH_NAME = 'code-notes-v3-release';
 const PROJECT_ROOT_PATH = '~/projects/payment-service';
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
