@@ -12026,7 +12026,9 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   kind: headingTitle.trim().toLowerCase() === 'plan' ? 'plan' : 'ac',
                 }
               : null;
-            const effectiveRunTarget = showRunIcon ? sectionRunTarget : runTarget;
+            // Section headings run their whole section; an individual checklist
+            // row runs only its own Plan/AC item.
+            const effectiveRunTarget = showRunIcon ? sectionRunTarget : effectiveCheckTarget;
             const showCommentAdornment =
               commentCount > 0
               || isCommentPopupOpen
