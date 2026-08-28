@@ -21803,6 +21803,8 @@ export default function App() {
   const [specSplitDiffTabIds, setSpecSplitDiffTabIds] = useState([]);
   const [specSplitActiveRightTab, setSpecSplitActiveRightTab] = useState(0);
   const openSpecInSplitViewRef = useRef(null);
+  const openSpecSplitFileRef = useRef(null);
+  const openSpecSplitDiffTabRef = useRef(null);
   const [reviewFeedbackRequestByChatId, setReviewFeedbackRequestByChatId] = useState({});
   // Synchronous mirror of review-owned fixture patches. The canonical copy is
   // also stored on each run; this ref covers Apply → immediate Cancel in one UI tick.
@@ -23793,7 +23795,14 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true }) => {
+  const openPlanDiffTab = useCallback((params) => {
+    const { text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true } = params;
+    // A generated-diff chip clicked from Vet-Schedules.md stays in the
+    // document split. The split helper passes registerEditorTab=false while
+    // preparing its underlying tab, which intentionally bypasses this route.
+    if (registerEditorTab && activeSourceEditorTabId === 'agent-task-t2') {
+      return openSpecSplitDiffTabRef.current?.(params);
+    }
     // A caller that only knows the document's tab label (e.g. a "files changed"
     // list built from static data, with no live tab id to reference) can pass
     // source.label instead of source.tabId — resolve it here rather than
@@ -24707,6 +24716,12 @@ export default function App() {
 
   const openEditorTabByLabel = useCallback((label, { line = null, section = null, adjacentToTabId = null } = {}) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
+    // Source-file references in the generated specification stay beside that
+    // document in the split instead of taking focus in the outer editor tabs.
+    if (activeSourceEditorTabId === 'agent-task-t2') {
+      openSpecSplitFileRef.current?.(label);
+      return;
+    }
     const revealLine = Number.isInteger(line) && line > 0 ? line : null;
     const revealSection = typeof section === 'string' && section.trim().length > 0 ? section.trim() : null;
     const requestReveal = (tabId) => {
@@ -24820,7 +24835,7 @@ export default function App() {
     setScreen('ide');
     setActiveEditorTab(insertionIndex);
     requestReveal(finalTab.id);
-  }, [ideTabs, handleAgentTaskSelect]);
+  }, [activeSourceEditorTabId, ideTabs, handleAgentTaskSelect]);
 
   // Reveal a source line after a code chip opens its file: scroll the matching
   // `.pce-line` into view and briefly flash it. The editor is a library
@@ -28543,17 +28558,19 @@ export default function App() {
   const isSpecEditorSplitActive = Boolean(
     specSplitChatId && specSplitTabId && activeTabId === specSplitTabId,
   );
-  // Diff tabs opened in the spec split's own right pane (index 0 is always
-  // the Vet-Schedules.md doc tab itself, appended in the render below).
+  // File and diff tabs opened in the spec split's own right pane (index 0 is
+  // always the Vet-Schedules.md doc tab itself, appended in the render below).
   // Mirrors buildAdHocReviewSplitFile, scoped to specSplitChatId's own
   // comment sessions instead of the unrelated review split's.
   const specSplitDiffTabs = specSplitDiffTabIds.map((tabId) => {
     const content = ideTabContents[tabId];
     const baseDiffData = content?.diffData ?? content?.plainFileData ?? null;
-    const sourceLabel = baseDiffData?.sourceTabLabel || content?.diffLineText || 'Diff';
-    const name = String(sourceLabel).replace(/^diff\s+/iu, '').trim() || 'Diff';
+    const isDiff = Boolean(content?.diffData);
+    const sourceTab = ideTabs.find((tab) => tab.id === tabId) ?? null;
+    const sourceLabel = baseDiffData?.sourceTabLabel || sourceTab?.label || content?.diffLineText || 'File';
+    const name = String(sourceLabel).replace(/^diff\s+/iu, '').trim() || 'File';
     if (!baseDiffData) {
-      return { tabId, label: name, icon: DIFF_TAB_ICON_NAME, file: null };
+      return { tabId, label: name, icon: isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(name), file: null };
     }
     const sessions = normalizeDiffSessionCommentsByChatId(content?.diffSessionCommentsByChatId);
     const comments = normalizeStoredDiffCommentsState(
@@ -28562,13 +28579,13 @@ export default function App() {
     return {
       tabId,
       label: name,
-      icon: DIFF_TAB_ICON_NAME,
+      icon: isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(name),
       file: {
         tabId,
         name,
-        isDiff: true,
-        isPlain: false,
-        icon: DIFF_TAB_ICON_NAME,
+        isDiff,
+        isPlain: !isDiff,
+        icon: isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(name),
         diffData: { ...baseDiffData, focusRowId: null },
         fullDiffData: { ...baseDiffData, focusRowId: null },
         comments,
@@ -33299,6 +33316,67 @@ export default function App() {
     });
     return diffTabId;
   }, [openPlanDiffTab]);
+  openSpecSplitDiffTabRef.current = openSpecSplitDiffTab;
+
+  // Opening a file reference from the marketing specification transitions the
+  // document into its existing split view and makes the file a right-pane tab.
+  // The original generation flow remains standalone; only explicit navigation
+  // from the document opens this focused investigation view.
+  const openSpecSplitFile = useCallback((label) => {
+    const normalizedLabel = typeof label === 'string' ? label.trim() : '';
+    if (!normalizedLabel) return null;
+
+    const lowerLabel = normalizedLabel.toLowerCase();
+    if (lowerLabel === 'vet-schedules.md' || lowerLabel === 'visit-booking.md') {
+      openSpecInSplitView(lowerLabel === 'vet-schedules.md' ? 't2' : 't1', specSplitChatId ?? vetSchedulesRelatedChatId);
+      return null;
+    }
+
+    const existingTab = ideTabs.find((tab) => tab.label === normalizedLabel) ?? null;
+    const presetTab = MY_EDITOR_TABS.find((tab) => tab.label === normalizedLabel) ?? null;
+    const tabId = existingTab?.id
+      ?? presetTab?.id
+      ?? `inline-ref-${normalizedLabel.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+    const tab = existingTab ?? presetTab ?? {
+      id: tabId,
+      label: normalizedLabel,
+      icon: resolveAgentTaskPlanFileIcon(normalizedLabel),
+      closable: true,
+    };
+    const fallbackContent = getEditorTabContentByLabel(normalizedLabel)
+      ?? getSpecSourceFileContent(normalizedLabel)
+      ?? {
+        language: normalizedLabel.toLowerCase().endsWith('.java') ? 'java' : 'text',
+        code: '',
+      };
+    const sourceContent = ideTabContents[tabId] ?? fallbackContent;
+    const content = sourceContent?.plainFileData
+      ? sourceContent
+      : {
+          ...sourceContent,
+          plainFileData: buildPlainFileData(
+            sourceContent?.code ?? '',
+            normalizedLabel,
+            sourceContent?.language ?? 'text',
+          ),
+        };
+
+    if (!existingTab) {
+      setIdeTabs((current) => (
+        current.some((candidate) => candidate.id === tabId) ? current : [...current, tab]
+      ));
+    }
+    setIdeTabContents((current) => ({ ...current, [tabId]: content }));
+    openSpecInSplitView('t2', specSplitChatId ?? vetSchedulesRelatedChatId);
+    setSpecSplitDiffTabIds((current) => {
+      const existingIndex = current.indexOf(tabId);
+      const nextIds = existingIndex >= 0 ? current : [...current, tabId];
+      setSpecSplitActiveRightTab((existingIndex >= 0 ? existingIndex : nextIds.length - 1) + 1);
+      return nextIds;
+    });
+    return tabId;
+  }, [ideTabContents, ideTabs, openSpecInSplitView, specSplitChatId, vetSchedulesRelatedChatId]);
+  openSpecSplitFileRef.current = openSpecSplitFile;
 
   // Navigate to the file/diff a comment lives in — shared by the Chats-History
   // "Code Review" folder and the review card above the composer.
