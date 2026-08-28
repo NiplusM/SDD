@@ -533,7 +533,7 @@ async function runScenario(page) {
   await demoType(page, noteInput, 'Beat 3', 'Describe the exclusive end-boundary coverage.', noteText);
   await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 3', 'Attach the note to the Plan item.');
 
-  const sendToAgent = page.getByRole('button', { name: 'Send to Agent', exact: true }).first();
+  const sendToAgent = page.getByRole('button', { name: 'Send Comments', exact: true }).first();
   await demoClick(page, sendToAgent, 'Beat 3', 'Apply the targeted note without opening a chat split.');
   const noteLoading = page.locator('.agent-task-toolbar .at-generating-label:visible').first();
   await noteLoading.waitFor({ state: 'visible', timeout: 10000 });

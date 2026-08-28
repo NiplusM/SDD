@@ -10956,7 +10956,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       // the scenes (so sending it later still works the normal way), but the
       // chat itself never surfaces — the user works the document only, and
       // sends the note to the agent from right there (see the doc toolbar's
-      // "Send to Agent" button) instead of a split opening on its own.
+      // "Send Comments" button) instead of a split opening on its own.
       if (isVetSchedulesDocument && boundChatId && !shouldCreateAnnotation) {
         const sourceRowMeta = rowMetaByKey.get(commentPopup.rowKey) ?? null;
         onAddSelectionToChat?.({
@@ -13758,7 +13758,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     disabled={Boolean(busyToolbarLabel)}
                     onClick={() => onSendPendingNotes?.()}
                   >
-                    Send to Agent
+                    Send Comments
                   </Button>
                 )}
                 {runState === 'running' ? (
@@ -29244,7 +29244,7 @@ export default function App() {
 
     // A note left on a doc (handleAddSpecSelectionToChat) lands as a pending
     // selection-context attachment on whichever chat generated it — however
-    // that attachment actually gets sent (the doc's own "Sent to Agent", or
+    // that attachment actually gets sent (the doc's own "Send Comments", or
     // just hitting send in the chat itself with nothing but the attachment
     // in the composer), the note is now the chat's to handle and shouldn't
     // still sit in the document too.
