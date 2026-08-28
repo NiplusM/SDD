@@ -542,6 +542,44 @@ async function runScenario(page) {
   await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
   await capture(page, 'beat-3-note-applied');
 
+  await testPlanRow.hover();
+  const planItemRun = testPlanRow.locator('.spec-done-gutter-item-run-btn:visible').first();
+  await demoClick(page, planItemRun, 'Beat 4', 'Run only the regression-test Plan item.');
+  const passedPlanItemsAfterSingleRun = await page.locator('.spec-done-row-plan-parent .spec-check-status-passed:visible').count();
+  const passedAcItemsAfterPlanItemRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
+  if (passedPlanItemsAfterSingleRun !== 1 || passedAcItemsAfterPlanItemRun !== 0) {
+    throw new Error(`A single Plan-item run must affect only that item: ${JSON.stringify({ passedPlanItemsAfterSingleRun, passedAcItemsAfterPlanItemRun })}`);
+  }
+
+  const planSectionRun = page.locator('[data-demo-id="spec-run-section-plan"]:visible').first();
+  await demoClick(page, planSectionRun, 'Beat 4', 'Run only the Plan section.');
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.spec-done-row-plan-parent .spec-check-status-passed').length > 1
+  ));
+  const passedPlanItemsAfterSectionRun = await page.locator('.spec-done-row-plan-parent .spec-check-status-passed:visible').count();
+  const passedAcItemsAfterPlanSectionRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
+  if (passedPlanItemsAfterSectionRun <= 1 || passedAcItemsAfterPlanSectionRun !== 0) {
+    throw new Error(`A Plan section run must not trigger Acceptance Criteria: ${JSON.stringify({ passedPlanItemsAfterSectionRun, passedAcItemsAfterPlanSectionRun })}`);
+  }
+
+  await acValidationRow.hover();
+  const acItemRun = acValidationRow.locator('.spec-done-gutter-item-run-btn:visible').first();
+  await demoClick(page, acItemRun, 'Beat 4', 'Run only the edited acceptance criterion.');
+  const passedAcItemsAfterSingleRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
+  if (passedAcItemsAfterSingleRun !== 1) {
+    throw new Error(`A single Acceptance Criteria item run must affect only that item: ${passedAcItemsAfterSingleRun}`);
+  }
+
+  const acSectionRun = page.locator('[data-demo-id="spec-run-section-ac"]:visible').first();
+  await demoClick(page, acSectionRun, 'Beat 4', 'Run only the Acceptance Criteria section.');
+  await page.waitForFunction(() => (
+    document.querySelectorAll('.spec-done-row-ac-item .spec-check-status-passed').length > 1
+  ));
+  const passedAcItemsAfterSectionRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
+  if (passedAcItemsAfterSectionRun <= 1) {
+    throw new Error(`An Acceptance Criteria section run must affect the complete section: ${passedAcItemsAfterSectionRun}`);
+  }
+
   await demoClick(page, page.getByRole('button', { name: 'Execute', exact: true }).first(), 'Beat 4', 'Execute the refined document.');
   const documentLoading = page.locator('.agent-task-toolbar .at-generating-label:visible', { hasText: 'Building...' }).first();
   await documentLoading.waitFor({ state: 'visible', timeout: 10000 });
