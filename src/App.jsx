@@ -15694,6 +15694,7 @@ function buildCommitReviewScopeRequests() {
       reviewCommitGroupId: file.groupId ?? null,
       reviewCommitGroupLabel: file.groupLabel ?? null,
       reviewCommitCategory: getCommitReviewScopeCategory(file, index),
+      reviewVcsStatus: file.status,
       reviewAttribution: file.groupId ? 'session' : 'unassigned',
     };
   });
@@ -15947,13 +15948,20 @@ function getAllProjectChangesFiles(scenario) {
   const requests = buildChatReviewScopeRequests(scenario);
   return requests.map((request, index) => {
     const requestSourceTabId = request?.source?.tabId ?? null;
+    const label = request?.source?.label ?? 'File';
     const card = changedFileCards.find((candidate) => (
       candidate?.diffRequest === request
       || (requestSourceTabId && candidate?.diffRequest?.source?.tabId === requestSourceTabId)
     )) ?? null;
+    // Commit is the source of truth for the status and type of files that
+    // belong to its prepared scope. Chat-only files use the same type lookup
+    // and default to the modified (blue) treatment.
+    const commitFile = COMMIT_CHANGE_FILES.find((file) => file.label === label) ?? null;
     return {
       tabId: requestSourceTabId ?? `all-project-changes-${index}`,
       label: request?.source?.label ?? card?.name ?? 'File',
+      icon: commitFile?.icon ?? card?.icon ?? getCommitFileIcon(label),
+      status: request?.reviewVcsStatus ?? commitFile?.status ?? 'modified',
       added: card ? getChatChangedFileLineCount(card.added) : getChatChangedFileLineCount(request?.reviewAdded),
       removed: card ? getChatChangedFileLineCount(card.removed) : getChatChangedFileLineCount(request?.reviewRemoved),
       diffRequest: request,
