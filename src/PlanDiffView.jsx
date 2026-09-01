@@ -859,15 +859,41 @@ function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange 
 function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
+  selectedChangeScopeId = null,
+  onChangeScope = null,
+  changeScopeOptions = null,
   files = null,
   currentFileIndex = 0,
   onSelectFile = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
+  selectedCompareBranch = null,
+  onCompareBranchChange = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
   const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
+  const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
+    ? changeScopeOptions
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+  const selectedChangeScope = resolvedChangeScopeOptions.find((option) => option.id === selectedChangeScopeId)
+    ?? resolvedChangeScopeOptions[0]
+    ?? null;
+  const activeCompareBranch = selectedCompareBranch || selectedChangeScope?.compareBranch || null;
+  const activeComparison = (selectedChangeScope?.compareBranchOptions ?? [])
+    .map((option) => (typeof option === 'string' ? { id: option, label: option } : option))
+    .find((option) => option?.id === activeCompareBranch);
+  const effectiveChangeScopeOptions = resolvedChangeScopeOptions.map((option) => (
+    option.id === 'branch' && activeComparison
+      ? {
+          ...option,
+          added: Number.isFinite(activeComparison.added) ? activeComparison.added : option.added,
+          removed: Number.isFinite(activeComparison.removed) ? activeComparison.removed : option.removed,
+        }
+      : option
+  ));
+  const effectiveSelectedChangeScope = effectiveChangeScopeOptions.find((option) => option.id === selectedChangeScope?.id)
+    ?? selectedChangeScope;
   const providedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   const selectedFileCount = Math.max(1, providedFiles.length || fileCount);
   const usesProvidedFiles = providedFiles.length > 0;
@@ -912,28 +938,48 @@ function PlanDiffViewingScopeControl({
   };
 
   return (
-    <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
-      <ToolbarButton
-        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
-        className="plan-diff-viewing-file-arrow"
-        title="Previous file"
-        disabled={resolvedCurrentFileIndex <= 0}
-        onClick={() => navigateFiles(-1)}
+    <div className="plan-diff-review-scope-controls">
+      <PlanDiffChangeScopeControl
+        selectedScopeId={selectedChangeScopeId}
+        onScopeChange={onChangeScope}
+        options={effectiveChangeScopeOptions}
       />
-      <span ref={filesRef} className="plan-diff-viewing-files-trigger">
-        <button
-          type="button"
-          className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
-          title="Changed files"
-          aria-haspopup="dialog"
-          aria-expanded={Boolean(filesRect)}
-          onClick={() => {
-            setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
-          }}
-        >
-          {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} Files`}
-        </button>
-      </span>
+      {effectiveSelectedChangeScope?.id === 'branch' && (
+        <PlanDiffBranchComparisonControl
+          scope={effectiveSelectedChangeScope}
+          value={activeCompareBranch}
+          onChange={onCompareBranchChange}
+        />
+      )}
+      <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
+        <ToolbarButton
+          icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
+          className="plan-diff-viewing-file-arrow"
+          title="Previous file"
+          disabled={resolvedCurrentFileIndex <= 0}
+          onClick={() => navigateFiles(-1)}
+        />
+        <span ref={filesRef} className="plan-diff-viewing-files-trigger">
+          <button
+            type="button"
+            className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
+            title="Changed files"
+            aria-haspopup="dialog"
+            aria-expanded={Boolean(filesRect)}
+            onClick={() => {
+              setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
+            }}
+          >
+            {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} Files`}
+          </button>
+        </span>
+        <ToolbarButton
+          icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
+          className="plan-diff-viewing-file-arrow"
+          title="Next file"
+          disabled={resolvedCurrentFileIndex >= selectedFileCount - 1}
+          onClick={() => navigateFiles(1)}
+        />
       {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
@@ -998,6 +1044,7 @@ function PlanDiffViewingScopeControl({
         </div>,
         document.body,
       )}
+      </div>
     </div>
   );
 }
@@ -5905,6 +5952,11 @@ export function PlanDiffEditorToolbar({
             onSelectFile={onSelectFile}
             onNavigatePrevious={onNavigatePreviousFile}
             onNavigateNext={onNavigateNextFile}
+            selectedChangeScopeId={selectedChangeScopeId}
+            onChangeScope={onChangeScope}
+            changeScopeOptions={changeScopeOptions}
+            selectedCompareBranch={selectedCompareBranch}
+            onCompareBranchChange={onCompareBranchChange}
           />
           </div>
           <div className="plan-diff-toolbar-right">
