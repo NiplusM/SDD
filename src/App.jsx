@@ -24847,6 +24847,48 @@ export default function App() {
     requestReveal(finalTab.id);
   }, [ideTabs, handleAgentTaskSelect]);
 
+  const openActiveDiffSourceTabToRight = useCallback(() => {
+    const diffTabId = activeEditorTabId;
+    const diffTabIndex = ideTabs.findIndex((tab) => tab.id === diffTabId);
+    if (!diffTabId || diffTabIndex < 0) return;
+
+    const diffTab = ideTabs[diffTabIndex];
+    const diffContent = ideTabContents[diffTabId] ?? {};
+    const sourceTabId = diffContent.diffSourceTabId ?? diffTab.sourceTabId ?? null;
+    if (!sourceTabId || sourceTabId === diffTabId) return;
+
+    const existingSourceTab = ideTabs.find((tab) => tab.id === sourceTabId) ?? null;
+    const sourceLabel = existingSourceTab?.label
+      ?? diffContent.diffData?.sourceTabLabel
+      ?? 'Source file';
+    const presetSourceTab = MY_EDITOR_TABS.find((tab) => tab.id === sourceTabId || tab.label === sourceLabel) ?? null;
+    const sourceTab = {
+      ...(presetSourceTab ?? existingSourceTab ?? {}),
+      id: sourceTabId,
+      label: sourceLabel,
+      icon: existingSourceTab?.icon ?? presetSourceTab?.icon ?? resolveAgentTaskPlanFileIcon(sourceLabel),
+      closable: existingSourceTab?.closable ?? presetSourceTab?.closable ?? true,
+    };
+    const tabsWithoutSource = ideTabs.filter((tab) => tab.id !== sourceTabId);
+    const updatedDiffIndex = tabsWithoutSource.findIndex((tab) => tab.id === diffTabId);
+    const insertIndex = Math.min(updatedDiffIndex + 1, tabsWithoutSource.length);
+    const nextTabs = [
+      ...tabsWithoutSource.slice(0, insertIndex),
+      sourceTab,
+      ...tabsWithoutSource.slice(insertIndex),
+    ];
+
+    if (!ideTabContents[sourceTabId]) {
+      const sourceContent = getEditorTabContentByLabel(sourceLabel) ?? getSpecSourceFileContent(sourceLabel);
+      if (sourceContent) {
+        setIdeTabContents((prev) => ({ ...prev, [sourceTabId]: sourceContent }));
+      }
+    }
+    setIdeTabs(nextTabs);
+    setScreen('ide');
+    setActiveEditorTab(insertIndex);
+  }, [activeEditorTabId, ideTabContents, ideTabs]);
+
   // Reveal a source line after a code chip opens its file: scroll the matching
   // `.pce-line` into view and briefly flash it. The editor is a library
   // component with no line API, so we drive its rendered DOM directly and retry
@@ -34623,6 +34665,7 @@ export default function App() {
                     onRowFix={handlePlanDiffRowFix}
                     onPlanMarkerClick={handleActivePlanMarkerClick}
                     onReturnToChat={handlePlanDiffReturnToChat}
+                    onEditSource={openActiveDiffSourceTabToRight}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
                     reviewNav={null}

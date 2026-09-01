@@ -5909,6 +5909,7 @@ export function PlanDiffEditorToolbar({
   diffData,
   viewMode = 'unified',
   onViewModeChange = null,
+  onEditSource = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
   scopeId = 'new',
@@ -5937,7 +5938,7 @@ export function PlanDiffEditorToolbar({
           </div>
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
+            <PlanDiffToolbarIconButton label="Edit source" icon="edit" onClick={onEditSource} />
           </div>
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <PlanDiffViewingScopeControl
@@ -6043,6 +6044,7 @@ export function PlanDiffEditorArea({
   onRowFix = null,
   onPlanMarkerClick = null,
   onReturnToChat = null,
+  onEditSource = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
   reviewNav = null,
@@ -6124,7 +6126,7 @@ export function PlanDiffEditorArea({
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
+                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" onClick={onEditSource} />
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <PlanDiffViewingScopeControl
