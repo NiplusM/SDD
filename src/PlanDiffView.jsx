@@ -873,6 +873,7 @@ function PlanDiffViewingScopeControl({
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
   const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
+  const [treeExpanded, setTreeExpanded] = useState(true);
   const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
     ? changeScopeOptions
     : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
@@ -985,59 +986,54 @@ function PlanDiffViewingScopeControl({
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
             <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
               <div className="plan-diff-files-popup-header">
-                <span className="plan-diff-files-popup-preview" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M1.5 8C2.9 5.55 5.08 4.25 8 4.25C10.92 4.25 13.1 5.55 14.5 8C13.1 10.45 10.92 11.75 8 11.75C5.08 11.75 2.9 10.45 1.5 8Z" stroke="currentColor" />
-                    <circle cx="8" cy="8" r="1.75" stroke="currentColor" />
-                  </svg>
-                  <span>1</span>
+                <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
+                  <Icon name="actions/preview" size={16} />
                 </span>
                 <span className="plan-diff-files-popup-actions">
-                  <button type="button" aria-label="Previous changed file" disabled={resolvedCurrentFileIndex === 0} onClick={() => navigateFiles(-1)}>
-                    <Icon name="general/chevronDown" size={16} className="is-up" />
+                  <button type="button" aria-label="Expand all" disabled={treeExpanded} onClick={() => setTreeExpanded(true)}>
+                    <Icon name="general/expandAll" size={16} />
                   </button>
-                  <button type="button" aria-label="Next changed file" disabled={resolvedCurrentFileIndex === selectedFileCount - 1} onClick={() => navigateFiles(1)}>
-                    <Icon name="general/chevronDown" size={16} />
-                  </button>
-                  <button type="button" aria-label="Close changed files" onClick={closeFiles}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeLinecap="round" />
-                    </svg>
+                  <button type="button" aria-label="Collapse all" disabled={!treeExpanded} onClick={() => setTreeExpanded(false)}>
+                    <Icon name="general/collapseAll" size={16} />
                   </button>
                 </span>
               </div>
               <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
-                <div className="plan-diff-files-folder-row is-root" role="treeitem" aria-expanded="true">
-                  <Icon name="general/chevronDown" size={16} />
+                <div className="plan-diff-files-folder-row is-root" role="treeitem" aria-expanded={treeExpanded}>
+                  <Icon name={treeExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
                   <Icon name="nodes/folder" size={16} />
                   <span className="plan-diff-files-tree-label">spring-petclinic</span>
                   <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
                 </div>
-                <div className="plan-diff-files-folder-row is-level-2" role="treeitem" aria-expanded="true">
-                  <Icon name="general/chevronDown" size={16} />
-                  <Icon name="nodes/folder" size={16} />
-                  <span className="plan-diff-files-tree-label">src/main/java/org/springframework/samples/petclinic</span>
-                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                </div>
-                <div className="plan-diff-files-folder-row is-level-3" role="treeitem" aria-expanded="true">
-                  <Icon name="general/chevronDown" size={16} />
-                  <Icon name="nodes/folder" size={16} />
-                  <span className="plan-diff-files-tree-label">owner</span>
-                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                </div>
-                {fileOptions.map((item, index) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === index ? ' is-selected' : ''}`}
-                    role="treeitem"
-                    aria-selected={resolvedCurrentFileIndex === index}
-                    onClick={() => selectFile(item, index)}
-                  >
-                    <Icon name={item.icon} size={16} />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
+                {treeExpanded && (
+                  <>
+                    <div className="plan-diff-files-folder-row is-level-2" role="treeitem" aria-expanded="true">
+                      <Icon name="general/chevronDown" size={16} />
+                      <Icon name="nodes/folder" size={16} />
+                      <span className="plan-diff-files-tree-label">src/main/java/org/springframework/samples/petclinic</span>
+                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
+                    </div>
+                    <div className="plan-diff-files-folder-row is-level-3" role="treeitem" aria-expanded="true">
+                      <Icon name="general/chevronDown" size={16} />
+                      <Icon name="nodes/folder" size={16} />
+                      <span className="plan-diff-files-tree-label">owner</span>
+                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
+                    </div>
+                    {fileOptions.map((item, index) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === index ? ' is-selected' : ''}`}
+                        role="treeitem"
+                        aria-selected={resolvedCurrentFileIndex === index}
+                        onClick={() => selectFile(item, index)}
+                      >
+                        <Icon name={item.icon} size={16} />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             </Popup>
           </PositionedPopup>

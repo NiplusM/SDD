@@ -6346,10 +6346,6 @@ body {
   cursor: default;
 }
 
-.plan-diff-files-popup-actions .is-up {
-  transform: rotate(180deg);
-}
-
 .plan-diff-files-tree {
   box-sizing: border-box;
   max-height: 354px;
