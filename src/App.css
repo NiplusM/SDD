@@ -6214,7 +6214,10 @@ body {
 
 .plan-diff-viewing-file-count-link.aiux-review-diffnav-count {
   height: 26px;
+  padding: 0 4px;
   line-height: 26px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .plan-diff-popover {
@@ -6287,8 +6290,142 @@ body {
 }
 
 .plan-diff-files-popup {
-  width: 284px;
-  max-width: 284px;
+  width: 460px;
+  max-width: min(460px, calc(100vw - 24px));
+  overflow: hidden;
+}
+
+.plan-diff-files-popup .popup-options {
+  gap: 0;
+  padding: 0;
+}
+
+.plan-diff-files-popup-header {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--border-secondary, #33353b);
+}
+
+.plan-diff-files-popup-preview,
+.plan-diff-files-popup-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.plan-diff-files-popup-preview {
+  gap: 2px;
+  color: var(--text-secondary, #8b8e94);
+  font: 500 11px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-files-popup-actions {
+  gap: 2px;
+}
+
+.plan-diff-files-popup-actions button {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-secondary, #8b8e94);
+  cursor: pointer;
+}
+
+.plan-diff-files-popup-actions button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-default, #d1d3d9);
+}
+
+.plan-diff-files-popup-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plan-diff-files-popup-actions .is-up {
+  transform: rotate(180deg);
+}
+
+.plan-diff-files-tree {
+  box-sizing: border-box;
+  max-height: 354px;
+  overflow: auto;
+  padding: 6px;
+}
+
+.plan-diff-files-folder-row,
+.plan-diff-files-file-row {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-files-folder-row {
+  padding: 0 8px;
+}
+
+.plan-diff-files-folder-row.is-level-2 {
+  padding-left: 28px;
+}
+
+.plan-diff-files-folder-row.is-level-3 {
+  padding-left: 48px;
+}
+
+.plan-diff-files-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-diff-files-tree-count {
+  flex: 0 0 auto;
+  color: var(--text-secondary, #8b8e94);
+  font-weight: 400;
+}
+
+.plan-diff-files-file-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px 0 76px;
+  border-radius: 4px;
+  color: #6ea2f8;
+  cursor: pointer;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-files-file-row:hover,
+.plan-diff-files-file-row.is-selected {
+  background: rgba(84, 138, 247, 0.24);
+}
+
+.plan-diff-files-file-row.is-added {
+  color: #74c38b;
+}
+
+.plan-diff-files-file-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The kit's default popup-cell hover reuses the same blue as the selected-item

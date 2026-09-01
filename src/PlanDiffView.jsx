@@ -859,130 +859,145 @@ function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange 
 function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
-  selectedScopeId = 'new',
-  selectedChangeScopeId = null,
-  onChangeScope = null,
-  changeScopeOptions = null,
   files = null,
   currentFileIndex = 0,
   onSelectFile = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
-  selectedCompareBranch = null,
-  onCompareBranchChange = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
-  const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
-    ? changeScopeOptions
-    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
-  const selectedChangeScope = resolvedChangeScopeOptions.find((option) => option.id === selectedChangeScopeId)
-    ?? resolvedChangeScopeOptions[0]
-    ?? null;
-  const activeCompareBranch = selectedCompareBranch || selectedChangeScope?.compareBranch || null;
-  const activeComparison = (selectedChangeScope?.compareBranchOptions ?? [])
-    .map((option) => (typeof option === 'string' ? { id: option, label: option } : option))
-    .find((option) => option?.id === activeCompareBranch);
-  const effectiveChangeScopeOptions = resolvedChangeScopeOptions.map((option) => (
-    option.id === 'branch' && activeComparison
-      ? {
-          ...option,
-          added: Number.isFinite(activeComparison.added) ? activeComparison.added : option.added,
-          removed: Number.isFinite(activeComparison.removed) ? activeComparison.removed : option.removed,
-        }
-      : option
-  ));
-  const effectiveSelectedChangeScope = effectiveChangeScopeOptions.find((option) => option.id === selectedChangeScope?.id)
-    ?? selectedChangeScope;
-  const scopeOptions = buildPlanDiffScopeOptions(fileCount, currentFileLabel);
-  const selectedScope = scopeOptions.find((item) => item.id === selectedScopeId) ?? scopeOptions[0];
+  const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
   const providedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
-  const selectedFileCount = Math.max(1, providedFiles.length || selectedScope.fileCount);
-  const resolvedCurrentFileIndex = Math.max(0, Math.min(selectedFileCount - 1, currentFileIndex));
+  const selectedFileCount = Math.max(1, providedFiles.length || fileCount);
+  const usesProvidedFiles = providedFiles.length > 0;
+  const activeFileIndex = usesProvidedFiles ? currentFileIndex : fallbackFileIndex;
+  const resolvedCurrentFileIndex = Math.max(0, Math.min(selectedFileCount - 1, activeFileIndex));
   const fileOptions = providedFiles.length > 0
     ? providedFiles.map((item, index) => ({
         id: item.id ?? item.tabId ?? `file-${index}`,
         label: item.label ?? item.name ?? `File ${index + 1}`,
-        meta: `${index + 1} of ${selectedFileCount}`,
-        selected: index === resolvedCurrentFileIndex,
         icon: item.icon ?? 'fileTypes/java',
+        status: item.status ?? (String(item.label ?? item.name ?? '').includes('Tests') ? 'added' : 'modified'),
         tabId: item.tabId ?? item.id ?? null,
       }))
     : [
-        { id: 'current', label: currentFileLabel, selected: true, icon: 'fileTypes/java' },
-        { id: 'release', label: 'ReleaseController.java', selected: false, icon: 'fileTypes/java' },
-        { id: 'service', label: 'FeatureService.java', selected: false, icon: 'fileTypes/java' },
-      ].slice(0, selectedFileCount).map((item, index) => ({
-        ...item,
-        meta: `${index + 1} of ${selectedFileCount}`,
-      }));
+        { id: 'current', label: currentFileLabel, status: 'modified' },
+        { id: 'repository', label: 'VisitRepository.java', status: 'modified' },
+        { id: 'tests', label: 'VisitControllerTests.java', status: 'added' },
+        { id: 'visit', label: 'Visit.java', status: 'modified' },
+        { id: 'form', label: 'createOrUpdateVisitForm.html', status: 'modified' },
+        { id: 'schema', label: 'schema.sql', status: 'modified' },
+      ].slice(0, selectedFileCount).map((item) => {
+        const normalized = item.label.toLowerCase();
+        const icon = normalized.endsWith('.java')
+          ? 'fileTypes/java'
+          : normalized.endsWith('.html')
+            ? 'fileTypes/html'
+            : 'fileTypes/text';
+        return { ...item, icon, tabId: null };
+      });
   const closeFiles = () => setFilesRect(null);
+  const navigateFiles = (delta) => {
+    if (usesProvidedFiles) {
+      (delta < 0 ? onNavigatePrevious : onNavigateNext)?.();
+      return;
+    }
+    setFallbackFileIndex((index) => Math.max(0, Math.min(selectedFileCount - 1, index + delta)));
+  };
+  const selectFile = (item, index) => {
+    if (item.tabId) onSelectFile?.(item.tabId);
+    else setFallbackFileIndex(index);
+    closeFiles();
+  };
 
   return (
-    <div className="plan-diff-review-scope-controls">
-      <PlanDiffChangeScopeControl
-        selectedScopeId={selectedChangeScopeId}
-        onScopeChange={onChangeScope}
-        options={effectiveChangeScopeOptions}
-      />
-      {effectiveSelectedChangeScope?.id === 'branch' && (
-        <PlanDiffBranchComparisonControl
-          scope={effectiveSelectedChangeScope}
-          value={activeCompareBranch}
-          onChange={onCompareBranchChange}
-        />
-      )}
-      <div className="plan-diff-viewing-scope" aria-label="Viewing review scope">
+    <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
         className="plan-diff-viewing-file-arrow"
         title="Previous file"
         disabled={resolvedCurrentFileIndex <= 0}
-        onClick={onNavigatePrevious}
+        onClick={() => navigateFiles(-1)}
       />
       <span ref={filesRef} className="plan-diff-viewing-files-trigger">
         <button
           type="button"
           className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
-          title="Files in viewed scope"
+          title="Changed files"
+          aria-haspopup="dialog"
+          aria-expanded={Boolean(filesRect)}
           onClick={() => {
             setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
           }}
         >
-          {`${resolvedCurrentFileIndex + 1} of ${selectedFileCount} files`}
+          {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} Files`}
         </button>
       </span>
-      <ToolbarButton
-        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
-        className="plan-diff-viewing-file-arrow"
-        title="Next file"
-        disabled={resolvedCurrentFileIndex >= selectedFileCount - 1}
-        onClick={onNavigateNext}
-      />
-        {filesRect && typeof document !== 'undefined' && createPortal(
+      {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
             <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
-              {fileOptions.map((item) => (
-                <PopupCell
-                  key={item.id}
-                  icon={item.icon}
-                  selected={item.selected}
-                  shortcut={item.meta}
-                  onClick={() => {
-                    closeFiles();
-                    if (item.tabId) onSelectFile?.(item.tabId);
-                  }}
-                >
-                  {item.label}
-                </PopupCell>
-              ))}
+              <div className="plan-diff-files-popup-header">
+                <span className="plan-diff-files-popup-preview" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M1.5 8C2.9 5.55 5.08 4.25 8 4.25C10.92 4.25 13.1 5.55 14.5 8C13.1 10.45 10.92 11.75 8 11.75C5.08 11.75 2.9 10.45 1.5 8Z" stroke="currentColor" />
+                    <circle cx="8" cy="8" r="1.75" stroke="currentColor" />
+                  </svg>
+                  <span>1</span>
+                </span>
+                <span className="plan-diff-files-popup-actions">
+                  <button type="button" aria-label="Previous changed file" disabled={resolvedCurrentFileIndex === 0} onClick={() => navigateFiles(-1)}>
+                    <Icon name="general/chevronDown" size={16} className="is-up" />
+                  </button>
+                  <button type="button" aria-label="Next changed file" disabled={resolvedCurrentFileIndex === selectedFileCount - 1} onClick={() => navigateFiles(1)}>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  <button type="button" aria-label="Close changed files" onClick={closeFiles}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </span>
+              </div>
+              <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
+                <div className="plan-diff-files-folder-row is-root" role="treeitem" aria-expanded="true">
+                  <Icon name="general/chevronDown" size={16} />
+                  <Icon name="nodes/folder" size={16} />
+                  <span className="plan-diff-files-tree-label">spring-petclinic</span>
+                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
+                </div>
+                <div className="plan-diff-files-folder-row is-level-2" role="treeitem" aria-expanded="true">
+                  <Icon name="general/chevronDown" size={16} />
+                  <Icon name="nodes/folder" size={16} />
+                  <span className="plan-diff-files-tree-label">src/main/java/org/springframework/samples/petclinic</span>
+                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
+                </div>
+                <div className="plan-diff-files-folder-row is-level-3" role="treeitem" aria-expanded="true">
+                  <Icon name="general/chevronDown" size={16} />
+                  <Icon name="nodes/folder" size={16} />
+                  <span className="plan-diff-files-tree-label">owner</span>
+                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
+                </div>
+                {fileOptions.map((item, index) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === index ? ' is-selected' : ''}`}
+                    role="treeitem"
+                    aria-selected={resolvedCurrentFileIndex === index}
+                    onClick={() => selectFile(item, index)}
+                  >
+                    <Icon name={item.icon} size={16} />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
             </Popup>
           </PositionedPopup>
         </div>,
         document.body,
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -5873,22 +5888,6 @@ export function PlanDiffEditorToolbar({
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
-          <PlanDiffViewingScopeControl
-            fileCount={fileCount}
-            currentFileLabel={fileLabel}
-            selectedScopeId={scopeId}
-            files={scopeFiles}
-            currentFileIndex={currentFileIndex}
-            onSelectFile={onSelectFile}
-            onNavigatePrevious={onNavigatePreviousFile}
-            onNavigateNext={onNavigateNextFile}
-            selectedChangeScopeId={selectedChangeScopeId}
-            onChangeScope={onChangeScope}
-            changeScopeOptions={changeScopeOptions}
-            selectedCompareBranch={selectedCompareBranch}
-            onCompareBranchChange={onCompareBranchChange}
-          />
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
             <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
             <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
@@ -5896,8 +5895,17 @@ export function PlanDiffEditorToolbar({
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
             <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
-            <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
           </div>
+          <ToolbarSeparator className="plan-diff-toolbar-separator" />
+          <PlanDiffViewingScopeControl
+            fileCount={fileCount}
+            currentFileLabel={fileLabel}
+            files={scopeFiles}
+            currentFileIndex={currentFileIndex}
+            onSelectFile={onSelectFile}
+            onNavigatePrevious={onNavigatePreviousFile}
+            onNavigateNext={onNavigateNextFile}
+          />
           </div>
           <div className="plan-diff-toolbar-right">
           <span className="plan-diff-toolbar-meta text-ui-default">
@@ -6020,7 +6028,6 @@ export function PlanDiffEditorArea({
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
-  const viewingScopeId = 'new';
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -6063,14 +6070,6 @@ export function PlanDiffEditorArea({
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-left">
-                {reviewNav}
-                {reviewNav && <ToolbarSeparator className="plan-diff-toolbar-separator" />}
-              <PlanDiffViewingScopeControl
-                fileCount={toolbarFileCount}
-                currentFileLabel={toolbarFileLabel}
-                selectedScopeId={viewingScopeId}
-              />
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
@@ -6078,8 +6077,12 @@ export function PlanDiffEditorArea({
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
-                  <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
                 </div>
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                <PlanDiffViewingScopeControl
+                  fileCount={toolbarFileCount}
+                  currentFileLabel={toolbarFileLabel}
+                />
               </div>
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
