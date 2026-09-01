@@ -6023,6 +6023,8 @@ body {
 
 .plan-diff-commit-button.button {
   flex: 0 0 auto;
+  padding-right: 5px;
+  margin-right: 5px;
 }
 
 .plan-diff-commit-button-content {
