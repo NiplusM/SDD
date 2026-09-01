@@ -5385,9 +5385,6 @@ export function PlanDiffInline({ diffData }) {
 export function PlanDiffEditorArea({
   diffData,
   contextSelections = [],
-  // Attachments exactly as the chat composer renders them, so the AI Review popup opens with the
-  // same chips (same notes, selections and hover cards) instead of a locally rebuilt one.
-  composerAttachments = null,
   viewerData = null,
   initialDiffComments = {},
   documentDiffComments = {},
@@ -5414,7 +5411,6 @@ export function PlanDiffEditorArea({
   onReturnToChat = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
-  reviewNav = null,
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
@@ -5438,8 +5434,6 @@ export function PlanDiffEditorArea({
   externalCommentRequest = null,
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
-  reviewSourceTabId = null,
-  onStartReview = null,
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
@@ -5450,53 +5444,6 @@ export function PlanDiffEditorArea({
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
-  const viewingScopeOptions = buildPlanDiffScopeOptions(toolbarFileCount, toolbarFileLabel);
-  const viewingScope = viewingScopeOptions.find((item) => item.id === viewingScopeId) ?? viewingScopeOptions[0];
-  const reviewDialogScopeId = viewingScopeId === 'current-file' ? 'file' : viewingScopeId === 'all' ? 'all' : 'current';
-  const reviewDiffComments = {};
-  const reviewCommentKeys = new Set();
-  const appendReviewComments = (commentState = {}) => {
-    Object.entries(commentState ?? {}).forEach(([rowId, comments]) => {
-      (Array.isArray(comments) ? comments : [comments]).filter(Boolean).forEach((comment) => {
-        const text = typeof comment === 'string' ? comment.trim() : String(comment?.text ?? '').trim();
-        if (!text) return;
-        const lineLabel = typeof comment === 'object' ? String(comment?.lineLabel ?? '').trim() : '';
-        const key = `${rowId}\u0000${lineLabel}\u0000${text}`;
-        if (reviewCommentKeys.has(key)) return;
-        reviewCommentKeys.add(key);
-        reviewDiffComments[rowId] = [...(reviewDiffComments[rowId] ?? []), comment];
-      });
-    });
-  };
-  appendReviewComments(initialDiffComments);
-  (Array.isArray(commentSessions) ? commentSessions : []).forEach((session) => {
-    appendReviewComments(session?.comments);
-  });
-  const reviewComments = Object.values(reviewDiffComments).flat();
-  const localReviewSourceAttachments = [{
-    id: `diff-${toolbarFileLabel}`,
-    label: `Diff ${toolbarFileLabel}`,
-    meta: viewingScope.meta,
-    icon: 'vcs/diff',
-    commentCount: reviewComments.length,
-    comments: reviewComments,
-    diffComments: reviewDiffComments,
-    diffTabId: reviewSourceTabId,
-    sourceTabId: reviewSourceTabId,
-    sourceLabel: toolbarFileLabel,
-  }];
-  // Prefer the chat composer's own attachment objects when they cover this diff: they carry the
-  // selections, notes and reply threads the composer chip hovers with.
-  const composerReviewAttachments = Array.isArray(composerAttachments)
-    ? composerAttachments.filter((attachment) => (
-      attachment?.diffTabId === reviewSourceTabId
-      || attachment?.sourceTabId === reviewSourceTabId
-      || attachment?.sourceLabel === toolbarFileLabel
-    ))
-    : [];
-  const reviewSourceAttachments = composerReviewAttachments.length > 0
-    ? composerReviewAttachments
-    : localReviewSourceAttachments;
 
   useEffect(() => {
     if (!toolbarRef.current) {
@@ -5520,24 +5467,10 @@ export function PlanDiffEditorArea({
   return (
     <>
       <div className="plan-diff-editor-area" ref={toolbarRef}>
-        {singleLineNumbers && reviewNav && (
-          <div className="plan-diff-toolbar-shell">
-            <div className="plan-diff-toolbar">
-              <div className="plan-diff-toolbar-left">
-                {reviewNav}
-              </div>
-              <div className="plan-diff-toolbar-right">
-                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
-              </div>
-            </div>
-          </div>
-        )}
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-left">
-                {reviewNav}
-                {reviewNav && <ToolbarSeparator className="plan-diff-toolbar-separator" />}
               <PlanDiffViewingScopeControl
                 fileCount={toolbarFileCount}
                 currentFileLabel={toolbarFileLabel}
@@ -5558,20 +5491,6 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                {/* AI Review entry point in Diff is temporarily disabled. */}
-                {false && <div className="plan-diff-review-action-group" aria-label="Review controls">
-                  <PlanDiffNewReviewButton
-                    currentScopeLabel="New changes"
-                    currentFileLabel={toolbarFileLabel}
-                    initialScopeId={reviewDialogScopeId}
-                    contextLabel={viewingScope.label}
-                    contextMeta={viewingScope.meta}
-                    contextIcon="general/listFiles"
-                    sourceAttachments={reviewSourceAttachments}
-                    onStartReview={onStartReview}
-                    launchSource="diff"
-                  />
-                </div>}
                 {viewMode !== 'aside' && (
                   <SegmentedControl
                     className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"

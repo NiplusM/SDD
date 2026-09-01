@@ -28369,7 +28369,6 @@ export default function App() {
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
                     contextSelections={activeEditorQuoteSelections}
-                    composerAttachments={aiChatComposerDiffAttachments}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffCommentsWithPending}
                     documentDiffComments={activePlanDiffDocumentCommentsWithPending}
@@ -28423,7 +28422,6 @@ export default function App() {
                     onReturnToChat={handlePlanDiffReturnToChat}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
-                    reviewNav={null}
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     resolveKeepsComment={activeReviewFileIndex >= 0}
@@ -28444,7 +28442,6 @@ export default function App() {
                         errorCount={activePlainFileProblemSummary.errorCount}
                       />
                     ) : null}
-                    reviewSourceTabId={activeTabId}
                   />
                 )
                 : undefined)
