@@ -6013,6 +6013,34 @@ body {
   height: 16px;
 }
 
+.plan-diff-commit-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.plan-diff-commit-button.button {
+  min-width: 88px;
+  height: 28px;
+  padding-inline: 9px 5px;
+}
+
+.plan-diff-commit-button .button-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.plan-diff-commit-button .icon {
+  flex: 0 0 16px;
+  color: var(--icon-secondary, #b4b8bf);
+}
+
+.plan-diff-commit-popup {
+  width: 180px;
+  max-width: 180px;
+}
+
 .plan-diff-toolbar-settings-icon {
   position: relative;
   display: inline-flex;
@@ -22043,13 +22071,43 @@ button.aiux543-answer-change-card:focus-visible {
 
 .ai-review-editor-split-pane.is-review .plan-diff-toolbar-left {
   gap: 4px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .ai-review-editor-split-pane.is-review .plan-diff-review-scope-controls,
 .ai-review-editor-split-pane.is-review .plan-diff-change-scope-trigger,
 .ai-review-editor-split-pane.is-review .plan-diff-toolbar-right {
   gap: 3px;
+}
+
+.ai-review-editor-split-pane.is-review .plan-diff-review-scope-controls {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.ai-review-editor-split-pane.is-review .plan-diff-change-scope-trigger,
+.ai-review-editor-split-pane.is-review .plan-diff-change-scope-button {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.ai-review-editor-split-pane.is-review .plan-diff-change-scope-button > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The signed totals stay available inside the scope popup. In a half-width
+   review pane they are the first optional detail to yield, preventing the
+   file navigator from colliding with the commit action group. */
+.ai-review-editor-split-pane.is-review .plan-diff-change-scope-counts {
+  display: none;
+}
+
+.ai-review-editor-split-pane.is-review .plan-diff-commit-button.button {
+  min-width: 78px;
+  padding-inline: 7px 4px;
 }
 
 .ai-review-editor-split-pane.is-review .plan-diff-change-scope-button {

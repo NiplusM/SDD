@@ -18507,7 +18507,7 @@ function AiReviewSplitFileView({
         changeScopeOptions={changeScopeOptions}
         selectedCompareBranch={selectedCompareBranch}
         onCompareBranchChange={onCompareBranchChange}
-        onCommitScope={() => onCommitScope?.({
+        onCommitScope={(commitOptions) => onCommitScope?.({
           scopeId: selectedChangeScopeId,
           files: scopeFiles.map((scopeFile) => ({
             id: scopeFile.tabId,
@@ -18515,6 +18515,7 @@ function AiReviewSplitFileView({
             icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
             status: scopeFile.status ?? 'modified',
           })),
+          ...commitOptions,
         })}
       />
       <div className="aiux-review-split-file-body">

@@ -601,6 +601,65 @@ function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
   );
 }
 
+function PlanDiffCommitDropdown({ onCommitScope = null }) {
+  const triggerRef = useRef(null);
+  const [triggerRect, setTriggerRect] = useState(null);
+  const [selectedAction, setSelectedAction] = useState('commit');
+  const actions = [
+    { id: 'commit', label: 'Commit', icon: 'vcs/commit' },
+    { id: 'commit-and-push', label: 'Commit and Push', icon: 'vcs/push' },
+  ];
+  const selected = actions.find((action) => action.id === selectedAction) ?? actions[0];
+
+  const chooseAction = (action) => {
+    setSelectedAction(action.id);
+    setTriggerRect(null);
+    onCommitScope?.({ action: action.id });
+  };
+
+  return (
+    <span ref={triggerRef} className="plan-diff-commit-trigger">
+      <Button
+        type="secondary"
+        size="slim"
+        className="plan-diff-commit-button"
+        aria-label={`${selected.label}. Open commit actions`}
+        aria-haspopup="menu"
+        aria-expanded={Boolean(triggerRect)}
+        onClick={() => setTriggerRect((current) => (
+          current ? null : triggerRef.current?.getBoundingClientRect() ?? null
+        ))}
+      >
+        <span>{selected.label}</span>
+        <Icon name="general/chevronDown" size={16} />
+      </Button>
+      {triggerRect && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
+            <Popup
+              visible
+              className="plan-diff-popover plan-diff-commit-popup text-ui-default"
+              onClose={() => setTriggerRect(null)}
+            >
+              {actions.map((action) => (
+                <PopupCell
+                  key={action.id}
+                  icon={action.icon}
+                  selected={action.id === selectedAction}
+                  onClick={() => chooseAction(action)}
+                >
+                  {action.label}
+                </PopupCell>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
+
 function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitController.java') {
   return [
     {
@@ -5960,12 +6019,7 @@ export function PlanDiffEditorToolbar({
           <div className="plan-diff-toolbar-right">
           {onCommitScope && (
             <>
-              <ToolbarButton
-                text="Commit scope"
-                icon={<Icon name="vcs/commit" size={16} />}
-                className="plan-diff-commit-scope-button"
-                onClick={onCommitScope}
-              />
+              <PlanDiffCommitDropdown onCommitScope={onCommitScope} />
               <ToolbarSeparator className="plan-diff-toolbar-separator" />
             </>
           )}
@@ -6139,11 +6193,13 @@ export function PlanDiffEditorArea({
         {singleLineNumbers && reviewNav && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
-              <div className="plan-diff-toolbar-left">
-                {reviewNav}
-              </div>
-              <div className="plan-diff-toolbar-right">
-                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+              <div className="plan-diff-toolbar-primary-row">
+                <div className="plan-diff-toolbar-left">
+                  {reviewNav}
+                </div>
+                <div className="plan-diff-toolbar-right">
+                  <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+                </div>
               </div>
             </div>
           </div>
@@ -6151,7 +6207,8 @@ export function PlanDiffEditorArea({
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
-              <div className="plan-diff-toolbar-left">
+              <div className="plan-diff-toolbar-primary-row">
+                <div className="plan-diff-toolbar-left">
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
@@ -6168,18 +6225,16 @@ export function PlanDiffEditorArea({
                   selectedChangeScopeId={selectedChangeScopeId}
                   onChangeScope={setSelectedChangeScopeId}
                 />
-              </div>
-              <div className="plan-diff-toolbar-right">
+                </div>
+                <div className="plan-diff-toolbar-right">
                 {onCommitScope && (
                   <>
-                    <ToolbarButton
-                      text="Commit scope"
-                      icon={<Icon name="vcs/commit" size={16} />}
-                      className="plan-diff-commit-scope-button"
-                      onClick={() => onCommitScope({
+                    <PlanDiffCommitDropdown
+                      onCommitScope={(commitOptions) => onCommitScope({
                         scopeId: selectedChangeScopeId,
                         scopeLabel: selectedChangeScope?.label ?? 'Current scope',
                         files: demoScopeFiles,
+                        ...commitOptions,
                       })}
                     />
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
@@ -6199,6 +6254,7 @@ export function PlanDiffEditorArea({
                   />
                 )}
                 <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+                </div>
               </div>
             </div>
             <div className="plan-diff-content-labels">
