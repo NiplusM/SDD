@@ -13672,6 +13672,7 @@ const AI_CHAT_GENERATED_DIFF_CARDS = [
     id: 'generated-diff-visit-controller',
     name: 'VisitController.java',
     icon: 'fileTypes/java',
+    status: 'modified',
     added: '+12',
     removed: '-7',
     code: `private final List<LocalTime> timeSlots;
@@ -13692,6 +13693,7 @@ public List<LocalTime> populateTimeSlots() {
     id: 'generated-diff-visit-repository',
     name: 'VisitRepository.java',
     icon: 'fileTypes/java',
+    status: 'modified',
     added: '+2',
     removed: '-0',
     code: `public interface VisitRepository extends CrudRepository<Visit, Integer> {
@@ -13709,6 +13711,7 @@ public List<LocalTime> populateTimeSlots() {
     id: 'generated-diff-visit-controller-tests',
     name: 'VisitControllerTests.java',
     icon: 'fileTypes/java',
+    status: 'added',
     added: '+13',
     removed: '-2',
     code: `@Test
@@ -17869,58 +17872,79 @@ function ChatChangeCard({ icon, name, added, removed, children, onClick = null }
   );
 }
 
-// Summary card for a multi-file change: run status + rollback on top, then the
-// changed files with their line counters. Each row opens that file's diff.
-function ChatChangedFilesCard({ files = [], onOpenFile = null, onRollback = null, onRunReview = null }) {
+// Compact multi-file review prompt. File status is communicated through the
+// standard file-type icon and the filename colour; line counters stay out of
+// the rows so the list scans like the v2 review control.
+function ChatChangedFilesCard({ files = [], onOpenFile = null, onRunReview = null }) {
+  const [expanded, setExpanded] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
+
   if (files.length === 0) return null;
+  if (dismissed) return null;
 
   return (
-    <section className="ai-chat-changed-files-card">
+    <section className={`ai-chat-changed-files-card${expanded ? ' is-expanded' : ''}`}>
       <header className="ai-chat-changed-files-header">
-        <span className="ai-chat-changed-files-status">
-          <span className="ai-chat-changed-files-status-icon" aria-hidden="true">
-            <Icon name="general/checkmark" size={16} />
-          </span>
-          <span>Done</span>
+        <span className="ai-chat-changed-files-scope">
+          <span>All Changes</span>
+          <span className="ai-chat-changed-files-count">{files.length}</span>
         </span>
         <span className="ai-chat-changed-files-actions">
+          <button
+            type="button"
+            className="ai-chat-changed-files-secondary-action"
+            onClick={() => setDismissed(true)}
+          >
+            Don&apos;t ask
+          </button>
+          <button
+            type="button"
+            className="ai-chat-changed-files-secondary-action"
+            onClick={() => setDismissed(true)}
+          >
+            Skip
+          </button>
           {onRunReview && (
             <button
               type="button"
               className="ai-chat-changed-files-review"
               onClick={onRunReview}
             >
-              Run AI Review
+              Review
             </button>
           )}
-          {onRunReview && <span className="ai-chat-changed-files-action-separator" aria-hidden="true" />}
           <button
             type="button"
-            className="ai-chat-changed-files-rollback"
-            onClick={onRollback ?? undefined}
+            className="ai-chat-changed-files-chevron"
+            aria-label={expanded ? 'Collapse changed files' : 'Expand changed files'}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
           >
-            Rollback
+            <Icon name="general/chevronDown" size={16} />
           </button>
         </span>
       </header>
-      <div className="ai-chat-changed-files-title">Changed Files</div>
-      <div className="ai-chat-changed-files-list">
+      <div className="ai-chat-changed-files-list" hidden={!expanded}>
         {files.map((file) => {
           const openFile = onOpenFile && file.diffRequest ? () => onOpenFile(file) : null;
+          const status = ['added', 'deleted', 'modified'].includes(file.status)
+            ? file.status
+            : 'modified';
 
           return (
             <button
               key={file.id ?? file.name}
               type="button"
-              className="ai-chat-changed-files-row"
+              className={`ai-chat-changed-files-row is-${status}`}
               onClick={openFile ?? undefined}
               disabled={!openFile}
             >
+              <Icon
+                name={file.icon ?? resolveAgentTaskPlanFileIcon(file.name)}
+                size={20}
+                className="ai-chat-changed-files-file-icon"
+              />
               <span className="ai-chat-changed-files-name">{file.name}</span>
-              <span className="ai-chat-changed-files-counters">
-                <span className="ai-chat-changed-files-add">{file.added}</span>
-                <span className="ai-chat-changed-files-remove">{file.removed}</span>
-              </span>
             </button>
           );
         })}

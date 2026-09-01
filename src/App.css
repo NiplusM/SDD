@@ -12487,17 +12487,18 @@ body {
 }
 
 
-/* Multi-file change summary in the chat: status + rollback, then file rows.
-   Metrics and colours sampled from the reference screenshot. */
+/* V2 multi-file review prompt: compact scope header, review actions, and
+   status-coloured file rows. */
 .ai-chat-changed-files-card {
   box-sizing: border-box;
   width: min(750px, 100%);
+  flex: 0 0 auto;
   margin-right: auto;
   margin-left: auto;
-  padding: 12px 8px 14px;
-  border: 1px solid #33353A;
-  border-radius: 6px;
-  background: #26282C;
+  overflow: hidden;
+  border: 1px solid #3c4048;
+  border-radius: 10px;
+  background: #24262a;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 20px;
@@ -12505,77 +12506,105 @@ body {
 
 .ai-chat-changed-files-header {
   display: flex;
+  min-height: 54px;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 0 10px;
 }
 
-.ai-chat-changed-files-status {
+.ai-chat-changed-files-scope {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: #D1D3D9;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: #383a3f;
+  color: #f0f1f3;
+  font-size: 16px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
-/* Filled green disc with the check knocked out in the surface colour. */
-.ai-chat-changed-files-status-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  border-radius: 50%;
-  background: #72AB6C;
-  color: #1E1F22;
+.ai-chat-changed-files-count {
+  color: #85888f;
+  font-weight: 550;
 }
 
 .ai-chat-changed-files-actions {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.ai-chat-changed-files-secondary-action,
+.ai-chat-changed-files-chevron {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #96999f;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ai-chat-changed-files-secondary-action:hover,
+.ai-chat-changed-files-chevron:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d4d6da;
 }
 
 .ai-chat-changed-files-review {
   all: unset;
-  color: #7BA0F7;
+  box-sizing: border-box;
+  display: inline-flex;
+  min-width: 98px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 18px;
+  border: 1px solid #454950;
+  border-radius: 7px;
+  background: #26282c;
+  color: #d7d9de;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 650;
   line-height: 20px;
 }
 
 .ai-chat-changed-files-review:hover {
-  text-decoration: underline;
+  border-color: #59606b;
+  background: #303238;
 }
 
-.ai-chat-changed-files-action-separator {
-  width: 1px;
-  height: 16px;
-  background: #4B4D52;
+.ai-chat-changed-files-chevron {
+  width: 28px;
+  padding: 0;
+  color: #a5a8ae;
 }
 
-.ai-chat-changed-files-rollback {
-  all: unset;
-  color: #7BA0F7;
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 20px;
+.ai-chat-changed-files-card:not(.is-expanded) .ai-chat-changed-files-chevron .icon,
+.ai-chat-changed-files-card:not(.is-expanded) .ai-chat-changed-files-chevron svg {
+  transform: rotate(-90deg);
 }
 
-.ai-chat-changed-files-rollback:hover {
-  text-decoration: underline;
-}
-
-.ai-chat-changed-files-title {
-  margin-top: 10px;
-  color: #D1D3D9;
-  font-weight: 600;
+.ai-chat-changed-files-chevron .icon,
+.ai-chat-changed-files-chevron svg {
+  transition: transform 160ms ease;
 }
 
 .ai-chat-changed-files-list {
   display: flex;
   flex-direction: column;
-  margin-top: 4px;
+  padding: 0 10px 12px;
 }
 
 .ai-chat-changed-files-row {
@@ -12583,12 +12612,13 @@ body {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 29px;
+  gap: 9px;
+  height: 36px;
   padding: 0 8px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 15px;
+  font-weight: 550;
   line-height: 20px;
 }
 
@@ -12605,26 +12635,24 @@ body {
 }
 
 .ai-chat-changed-files-name {
-  color: #878A90;
+  color: #6ea2f8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ai-chat-changed-files-counters {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
-  font-weight: 600;
+.ai-chat-changed-files-row.is-added .ai-chat-changed-files-name {
+  color: #74c38b;
 }
 
-.ai-chat-changed-files-add {
-  color: #79A978;
+.ai-chat-changed-files-row.is-deleted .ai-chat-changed-files-name {
+  color: #e06c75;
 }
 
-.ai-chat-changed-files-remove {
-  color: #E56068;
+.ai-chat-changed-files-file-icon {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
 }
 
 .aiux543-code-card {
