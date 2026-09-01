@@ -5910,6 +5910,7 @@ export function PlanDiffEditorToolbar({
   viewMode = 'unified',
   onViewModeChange = null,
   onEditSource = null,
+  onCommitScope = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
   scopeId = 'new',
@@ -5957,6 +5958,17 @@ export function PlanDiffEditorToolbar({
           />
           </div>
           <div className="plan-diff-toolbar-right">
+          {onCommitScope && (
+            <>
+              <ToolbarButton
+                text="Commit scope"
+                icon={<Icon name="vcs/commit" size={16} />}
+                className="plan-diff-commit-scope-button"
+                onClick={onCommitScope}
+              />
+              <ToolbarSeparator className="plan-diff-toolbar-separator" />
+            </>
+          )}
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
           </span>
@@ -6045,6 +6057,7 @@ export function PlanDiffEditorArea({
   onPlanMarkerClick = null,
   onReturnToChat = null,
   onEditSource = null,
+  onCommitScope = null,
   onNavigatePrevious = null,
   onNavigateNext = null,
   reviewNav = null,
@@ -6078,9 +6091,28 @@ export function PlanDiffEditorArea({
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
+  const [selectedChangeScopeId, setSelectedChangeScopeId] = useState('last-turn');
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
+  const demoScopeFiles = useMemo(() => {
+    const files = [
+      { id: 'visit-controller', label: toolbarFileLabel, icon: 'fileTypes/java', status: 'modified' },
+      { id: 'visit-repository', label: 'VisitRepository.java', icon: 'fileTypes/java', status: 'modified' },
+      { id: 'visit-controller-tests', label: 'VisitControllerTests.java', icon: 'fileTypes/java', status: 'added' },
+      { id: 'vet-schedules', label: 'Vet-Schedules.md', icon: 'fileTypes/markdown', status: 'modified' },
+      { id: 'visit-model', label: 'Visit.java', icon: 'fileTypes/java', status: 'modified' },
+      { id: 'visit-form', label: 'createOrUpdateVisitForm.html', icon: 'fileTypes/html', status: 'modified' },
+      { id: 'schema', label: 'schema.sql', icon: 'fileTypes/sql', status: 'modified' },
+      { id: 'pom', label: 'pom.xml', icon: 'fileTypes/xml', status: 'modified' },
+    ];
+    const lastTurnCount = Math.max(1, Math.min(files.length, toolbarFileCount));
+    if (selectedChangeScopeId === 'session-changes') return files.slice(0, Math.max(lastTurnCount, 6));
+    if (selectedChangeScopeId === 'all-project-changes') return files;
+    return files.slice(0, lastTurnCount);
+  }, [selectedChangeScopeId, toolbarFileCount, toolbarFileLabel]);
+  const selectedChangeScope = PLAN_DIFF_CHANGE_SCOPE_OPTIONS.find((scope) => scope.id === selectedChangeScopeId)
+    ?? PLAN_DIFF_CHANGE_SCOPE_OPTIONS[0];
 
   useEffect(() => {
     if (!toolbarRef.current) {
@@ -6130,11 +6162,29 @@ export function PlanDiffEditorArea({
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <PlanDiffViewingScopeControl
-                  fileCount={toolbarFileCount}
+                  fileCount={demoScopeFiles.length}
                   currentFileLabel={toolbarFileLabel}
+                  files={demoScopeFiles}
+                  selectedChangeScopeId={selectedChangeScopeId}
+                  onChangeScope={setSelectedChangeScopeId}
                 />
               </div>
               <div className="plan-diff-toolbar-right">
+                {onCommitScope && (
+                  <>
+                    <ToolbarButton
+                      text="Commit scope"
+                      icon={<Icon name="vcs/commit" size={16} />}
+                      className="plan-diff-commit-scope-button"
+                      onClick={() => onCommitScope({
+                        scopeId: selectedChangeScopeId,
+                        scopeLabel: selectedChangeScope?.label ?? 'Current scope',
+                        files: demoScopeFiles,
+                      })}
+                    />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                  </>
+                )}
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 {viewMode !== 'aside' && (

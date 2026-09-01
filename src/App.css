@@ -21169,6 +21169,20 @@ button.aiux543-answer-change-card:focus-visible {
   min-height: 0;
 }
 
+.commit-custom-group.is-scope-changelist > .commit-group-node {
+  background: color-mix(in srgb, var(--background-accent, #3574f0) 10%, transparent);
+}
+
+.commit-scope-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #315f9f;
+  color: #d9e8ff;
+  font: 500 10px/16px Inter, system-ui, sans-serif;
+}
+
 .commit-toolbar {
   display: flex;
   align-items: center;
@@ -21311,6 +21325,38 @@ button.aiux543-answer-change-card:focus-visible {
 
 .commit-message-area {
   padding: 4px 12px 0;
+}
+
+.commit-scope-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--text-secondary, #a7a9ad);
+  font: 400 11px/16px Inter, system-ui, sans-serif;
+}
+
+.commit-scope-summary .icon {
+  flex: 0 0 16px;
+  color: #78a9ff;
+}
+
+.commit-scope-summary strong {
+  color: var(--text-default, #ced0d6);
+  font-weight: 600;
+}
+
+.commit-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 10px;
+  padding: 6px 8px;
+  border: 1px solid #315f43;
+  border-radius: 4px;
+  background: #20372a;
+  color: #8bd5a0;
+  font: 400 11px/16px Inter, system-ui, sans-serif;
 }
 
 .commit-buttons {

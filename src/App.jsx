@@ -1041,15 +1041,61 @@ function CommitToolWindow({
   ctx,
   onOpenFile = null,
   onReviewContextChange = null,
+  scopeRequest = null,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
   const [amend, setAmend] = useState(false);
   const [message, setMessage] = useState('');
+  const [commitResult, setCommitResult] = useState(null);
 
-  const groups = useMemo(() => buildCommitGroups(COMMIT_CHANGE_FILES, 'chat'), []);
+  const commitFiles = useMemo(() => {
+    const knownFiles = [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES];
+    const requestedFiles = Array.isArray(scopeRequest?.files) ? scopeRequest.files : [];
+    const requestedEntries = requestedFiles.map((requestedFile, index) => {
+      const match = knownFiles.find((file) => file.label === requestedFile.label);
+      return match ?? {
+        ...requestedFile,
+        id: `scope-${scopeRequest?.id ?? 'current'}-${index}`,
+        path: requestedFile.path ?? PROJECT_ROOT_PATH,
+        icon: requestedFile.icon ?? getCommitFileIcon(requestedFile.label),
+        status: requestedFile.status ?? 'modified',
+      };
+    });
+    const labels = new Set(requestedEntries.map((file) => file.label));
+    return [...requestedEntries, ...knownFiles.filter((file) => !labels.has(file.label))];
+  }, [scopeRequest]);
+  const groups = useMemo(() => {
+    if (!scopeRequest) return buildCommitGroups(COMMIT_CHANGE_FILES, 'chat');
+    const requestedLabels = new Set((scopeRequest.files ?? []).map((file) => file.label));
+    const scopedFiles = commitFiles.filter((file) => requestedLabels.has(file.label));
+    const otherFiles = commitFiles.filter((file) => !requestedLabels.has(file.label));
+    return [
+      {
+        id: `scope-changelist-${scopeRequest.id}`,
+        label: scopeRequest.name,
+        count: commitFilesPluralized(scopedFiles.length, 'file'),
+        isScopeChangelist: true,
+        children: scopedFiles,
+      },
+      {
+        id: 'scope-other-changes',
+        label: 'Other Changes',
+        count: commitFilesPluralized(otherFiles.length, 'file'),
+        children: otherFiles,
+      },
+    ].filter((group) => group.children.length > 0);
+  }, [commitFiles, scopeRequest]);
+  useEffect(() => {
+    if (!scopeRequest) return;
+    const requestedLabels = new Set((scopeRequest.files ?? []).map((file) => file.label));
+    setCheckedIds(new Set(commitFiles.filter((file) => requestedLabels.has(file.label)).map((file) => file.id)));
+    setCollapsedGroups(new Set(['scope-other-changes']));
+    setMessage('');
+    setCommitResult(null);
+  }, [commitFiles, scopeRequest]);
   const reviewSourceAttachments = useMemo(() => (
-    COMMIT_CHANGE_FILES
+    commitFiles
       .filter((file) => checkedIds.has(file.id))
       .map((file) => ({
         id: `commit-review-${file.id}`,
@@ -1061,7 +1107,7 @@ function CommitToolWindow({
         commitGroupLabel: file.groupLabel,
         commitStatus: file.status,
       }))
-  ), [checkedIds]);
+  ), [checkedIds, commitFiles]);
   useEffect(() => {
     onReviewContextChange?.({
       focused: ctx.focusedPanel === 'left',
@@ -1083,14 +1129,14 @@ function CommitToolWindow({
   // Footer summary from the checked files' statuses.
   const summary = useMemo(() => {
     const tally = { modified: 0, added: 0, deleted: 0, renamed: 0, untracked: 0 };
-    COMMIT_CHANGE_FILES.forEach((f) => {
+    commitFiles.forEach((f) => {
       if (checkedIds.has(f.id) && tally[f.status] !== undefined) tally[f.status] += 1;
     });
     return ['modified', 'added', 'deleted', 'renamed', 'untracked']
       .filter((k) => tally[k] > 0)
       .map((k) => `${tally[k]} ${k}`)
       .join(', ');
-  }, [checkedIds]);
+  }, [checkedIds, commitFiles]);
 
   return (
     <ToolWindow
@@ -1124,7 +1170,7 @@ function CommitToolWindow({
               return next;
             });
             return (
-              <div className="tree-node-container commit-custom-group" key={group.id}>
+              <div className={`tree-node-container commit-custom-group${group.isScopeChangelist ? ' is-scope-changelist' : ''}`} key={group.id}>
                 {/* Group row = library TreeNode level 1 (paddingLeft 16). */}
                 <div className="tree-node text-ui-default commit-group-node" style={{ paddingLeft: '16px' }}>
                   <button
@@ -1138,6 +1184,7 @@ function CommitToolWindow({
                   </button>
                   <Checkbox checked={groupChecked} onChange={toggleGroupChecked} />
                   <span className="commit-group-label">{group.label}</span>
+                  {group.isScopeChangelist && <span className="commit-scope-badge">Diff scope</span>}
                   <span className="commit-group-count">{group.count}</span>
                 </div>
                 {!collapsed && group.children.map((file) => (
@@ -1189,6 +1236,12 @@ function CommitToolWindow({
             <span className="commit-modified-count">{summary}</span>
           </div>
           <div className="commit-message-area">
+            {scopeRequest && (
+              <div className="commit-scope-summary">
+                <Icon name="vcs/changelist" size={16} />
+                <span>Changelist <strong>{scopeRequest.name}</strong> contains only the open diff scope.</span>
+              </div>
+            )}
             <textarea
               className="commit-message-textarea"
               placeholder="Commit message"
@@ -1198,11 +1251,23 @@ function CommitToolWindow({
           </div>
           <div className="commit-actions">
             <div className="commit-buttons">
-              <Button type="primary" disabled={checkedIds.size === 0}>Commit</Button>
+              <Button
+                type="primary"
+                disabled={checkedIds.size === 0 || Boolean(commitResult)}
+                onClick={() => setCommitResult({ count: checkedIds.size, message: message.trim() || 'Commit scoped changes' })}
+              >
+                {commitResult ? 'Committed' : 'Commit'}
+              </Button>
               <Button type="secondary" disabled={checkedIds.size === 0}>Commit and Push</Button>
             </div>
             <IconButton icon="general/settings" tooltip="Commit Options" />
           </div>
+          {commitResult && (
+            <div className="commit-success" role="status">
+              <Icon name="general/check" size={16} />
+              <span>{commitResult.count} selected file{commitResult.count === 1 ? '' : 's'} committed as “{commitResult.message}”. Unselected changes remain uncommitted.</span>
+            </div>
+          )}
         </div>
       </div>
     </ToolWindow>
@@ -18388,6 +18453,7 @@ function AiReviewSplitFileView({
   onTextSelectionChange = null,
   externalCommentRequest = null,
   onInlineCommentOpenChange = null,
+  onCommitScope = null,
 }) {
   const [viewMode, setViewMode] = useState('unified');
   if (!file) return null;
@@ -18436,6 +18502,15 @@ function AiReviewSplitFileView({
         changeScopeOptions={changeScopeOptions}
         selectedCompareBranch={selectedCompareBranch}
         onCompareBranchChange={onCompareBranchChange}
+        onCommitScope={() => onCommitScope?.({
+          scopeId: selectedChangeScopeId,
+          files: scopeFiles.map((scopeFile) => ({
+            id: scopeFile.tabId,
+            label: scopeFile.name,
+            icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
+            status: scopeFile.status ?? 'modified',
+          })),
+        })}
       />
       <div className="aiux-review-split-file-body">
         <PlanDiffOverlay
@@ -22437,6 +22512,7 @@ export default function App() {
   const [globalReviewLaunchSource, setGlobalReviewLaunchSource] = useState('shortcut');
   const [globalReviewTargetChatId, setGlobalReviewTargetChatId] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
+  const [commitScopeRequest, setCommitScopeRequest] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
 
   useEffect(() => {
@@ -33285,12 +33361,21 @@ export default function App() {
   // Switch the left tool window to the Commit panel. MainWindow's active left
   // window is uncontrolled (driven by stripe clicks), so we activate it the same
   // way a user would — by clicking the "Commit" stripe item.
-  const openCommitToolWindow = useCallback(() => {
+  const openCommitToolWindow = useCallback((scopeRequest = null) => {
     if (typeof document === 'undefined') return;
+    setCommitScopeRequest(scopeRequest?.files?.length ? {
+      ...scopeRequest,
+      id: `${scopeRequest.scopeId ?? 'current'}-${Date.now()}`,
+      name: scopeRequest.name || scopeRequest.scopeLabel || 'Current diff scope',
+    } : null);
     setScreen('ide');
     const stripe = Array.from(document.querySelectorAll('.main-window-stripe-left .stripe'))
       .find((el) => (el.getAttribute('aria-label') || el.getAttribute('title')) === 'Commit');
-    if (stripe instanceof HTMLElement) stripe.click();
+    if (
+      stripe instanceof HTMLElement
+      && stripe.getAttribute('aria-pressed') !== 'true'
+      && !stripe.classList.contains('stripe-selected')
+    ) stripe.click();
   }, []);
 
   const openChatChangeScope = useCallback((chatId, scopeId) => (
@@ -34332,6 +34417,12 @@ export default function App() {
                       changeScopeOptions={reviewSplitChangeScopeOptions}
                       selectedCompareBranch={reviewSplitCompareBranch}
                       onCompareBranchChange={setReviewSplitCompareBranch}
+                      onCommitScope={(scope) => openCommitToolWindow({
+                        ...scope,
+                        name: scope.scopeId === 'all-project-changes'
+                          ? 'All generated changes'
+                          : reviewSplitChatLabel,
+                      })}
                       reviewScopeNoteCount={visibleReviewSplitNoteCount}
                       onTextSelectionChange={(selectionState) => {
                         if (editorInlineCommentOpenRef.current || !selectionState?.rect) {
@@ -34658,6 +34749,12 @@ export default function App() {
                     onPlanMarkerClick={handleActivePlanMarkerClick}
                     onReturnToChat={handlePlanDiffReturnToChat}
                     onEditSource={openActiveDiffSourceTabToRight}
+                    onCommitScope={(scope) => openCommitToolWindow({
+                      ...scope,
+                      name: scope.scopeId === 'all-project-changes'
+                        ? 'All generated changes'
+                        : (planDiffContextChatTitle || scope.scopeLabel),
+                    })}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
                     reviewNav={null}
@@ -34700,7 +34797,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
