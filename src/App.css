@@ -6022,19 +6022,17 @@ body {
 }
 
 .plan-diff-commit-button.button {
-  min-width: 88px;
-  height: 28px;
-  padding-inline: 9px 5px;
+  flex: 0 0 auto;
 }
 
-.plan-diff-commit-button .button-content {
+.plan-diff-commit-button-content {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   white-space: nowrap;
 }
 
-.plan-diff-commit-button .icon {
+.plan-diff-commit-button-content .icon {
   flex: 0 0 16px;
   color: var(--icon-secondary, #b4b8bf);
 }
@@ -22106,11 +22104,6 @@ button.aiux543-answer-change-card:focus-visible {
    file navigator from colliding with the commit action group. */
 .ai-review-editor-split-pane.is-review .plan-diff-change-scope-counts {
   display: none;
-}
-
-.ai-review-editor-split-pane.is-review .plan-diff-commit-button.button {
-  min-width: 78px;
-  padding-inline: 7px 4px;
 }
 
 .ai-review-editor-split-pane.is-review .plan-diff-change-scope-button {

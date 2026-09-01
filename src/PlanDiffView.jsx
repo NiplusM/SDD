@@ -630,8 +630,10 @@ function PlanDiffCommitDropdown({ onCommitScope = null }) {
           current ? null : triggerRef.current?.getBoundingClientRect() ?? null
         ))}
       >
-        <span>{selected.label}</span>
-        <Icon name="general/chevronDown" size={16} />
+        <span className="plan-diff-commit-button-content">
+          <span>{selected.label}</span>
+          <Icon name="general/chevronDown" size={16} />
+        </span>
       </Button>
       {triggerRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
@@ -6018,10 +6020,7 @@ export function PlanDiffEditorToolbar({
           </div>
           <div className="plan-diff-toolbar-right">
           {onCommitScope && (
-            <>
-              <PlanDiffCommitDropdown onCommitScope={onCommitScope} />
-              <ToolbarSeparator className="plan-diff-toolbar-separator" />
-            </>
+            <PlanDiffCommitDropdown onCommitScope={onCommitScope} />
           )}
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
@@ -6228,17 +6227,14 @@ export function PlanDiffEditorArea({
                 </div>
                 <div className="plan-diff-toolbar-right">
                 {onCommitScope && (
-                  <>
-                    <PlanDiffCommitDropdown
-                      onCommitScope={(commitOptions) => onCommitScope({
-                        scopeId: selectedChangeScopeId,
-                        scopeLabel: selectedChangeScope?.label ?? 'Current scope',
-                        files: demoScopeFiles,
-                        ...commitOptions,
-                      })}
-                    />
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                  </>
+                  <PlanDiffCommitDropdown
+                    onCommitScope={(commitOptions) => onCommitScope({
+                      scopeId: selectedChangeScopeId,
+                      scopeLabel: selectedChangeScope?.label ?? 'Current scope',
+                      files: demoScopeFiles,
+                      ...commitOptions,
+                    })}
+                  />
                 )}
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
