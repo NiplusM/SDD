@@ -623,17 +623,23 @@ function PlanDiffCommitDropdown({ onCommitScope = null }) {
         type="secondary"
         size="slim"
         className="plan-diff-commit-button"
-        aria-label={`${selected.label}. Open commit actions`}
+        aria-label={`${selected.label}. Open Commit tool window`}
+        onClick={() => onCommitScope?.({ action: selected.id })}
+      >
+        <span>{selected.label}</span>
+      </Button>
+      <Button
+        type="secondary"
+        size="slim"
+        className="plan-diff-commit-chevron-button"
+        aria-label="Open commit actions"
         aria-haspopup="menu"
         aria-expanded={Boolean(triggerRect)}
         onClick={() => setTriggerRect((current) => (
           current ? null : triggerRef.current?.getBoundingClientRect() ?? null
         ))}
       >
-        <span className="plan-diff-commit-button-content">
-          <span>{selected.label}</span>
-          <Icon name="general/chevronDown" size={16} />
-        </span>
+        <Icon name="general/chevronDown" size={16} />
       </Button>
       {triggerRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
