@@ -5882,10 +5882,13 @@ body {
 .plan-diff-toolbar-primary-row {
   display: flex;
   min-width: 0;
+  height: 40px;
   min-height: 40px;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 16px;
+  overflow: hidden;
   padding: 0 10px 0 18px;
   box-sizing: border-box;
 }
