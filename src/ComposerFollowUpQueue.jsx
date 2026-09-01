@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Popup, PopupCell } from '@jetbrains/int-ui-kit';
+import { Button, Icon, Popup, PopupCell } from '@jetbrains/int-ui-kit';
 import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
 
@@ -78,20 +78,21 @@ function EditedFileQueueRow({ item }) {
 }
 
 function VcsSummaryFileRow({ file, onOpenFile }) {
+  const status = file.status ?? 'unknown';
+
   return (
     <button
       type="button"
-      className="ij-air-follow-up-queue__vcs-file"
+      className={`ij-air-follow-up-queue__vcs-file is-${status}`}
       onClick={() => onOpenFile?.(file)}
     >
+      <Icon
+        name={file.icon ?? 'fileTypes/text'}
+        size={16}
+        className="ij-air-follow-up-queue__vcs-file-icon"
+        aria-hidden="true"
+      />
       <span className="ij-air-follow-up-queue__vcs-file-label">{file.label}</span>
-      <span
-        className="ij-air-follow-up-queue__vcs-file-counts"
-        aria-label={`Changes: plus ${file.added}, minus ${file.removed}`}
-      >
-        <span className="is-added">+{file.added}</span>
-        <span className="is-removed">-{file.removed}</span>
-      </span>
     </button>
   );
 }
@@ -548,19 +549,19 @@ export function ComposerFollowUpQueue({
             >
               Skip
             </button>
-            <button
-              type="button"
-              className="ij-air-follow-up-queue__vcs-counts"
+            <Button
+              type="secondary"
+              size="slim"
+              className="ij-air-follow-up-queue__vcs-review"
               disabled={Boolean(vcsTab.reviewDisabled)}
-              aria-label={`Open ${vcsTab.label}. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
+              aria-label={`Review ${vcsTab.label}. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
               onClick={(event) => {
                 event.stopPropagation();
                 vcsTab.onRunReview?.();
               }}
             >
-              <span className="is-added">+{vcsTab.added}</span>
-              <span className="is-removed">-{vcsTab.removed}</span>
-            </button>
+              Review
+            </Button>
           </span>
         )}
         <span
