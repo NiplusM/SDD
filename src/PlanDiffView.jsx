@@ -606,8 +606,8 @@ function PlanDiffCommitDropdown({ onCommitScope = null }) {
   const [triggerRect, setTriggerRect] = useState(null);
   const [selectedAction, setSelectedAction] = useState('commit');
   const actions = [
-    { id: 'commit', label: 'Commit', icon: 'vcs/commit' },
-    { id: 'commit-and-push', label: 'Commit and Push', icon: 'vcs/push' },
+    { id: 'commit', label: 'Commit' },
+    { id: 'commit-and-push', label: 'Commit and Push' },
   ];
   const selected = actions.find((action) => action.id === selectedAction) ?? actions[0];
 
@@ -652,7 +652,6 @@ function PlanDiffCommitDropdown({ onCommitScope = null }) {
               {actions.map((action) => (
                 <PopupCell
                   key={action.id}
-                  icon={action.icon}
                   selected={action.id === selectedAction}
                   onClick={() => chooseAction(action)}
                 >
