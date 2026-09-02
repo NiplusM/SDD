@@ -922,6 +922,58 @@ function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange 
   );
 }
 
+// The changed-files picker follows the VCS model rather than the filesystem:
+// a file belongs to the project/branch it was changed in, then to the agent
+// session (or the unassigned bucket) that produced it.  Keeping this model in
+// the picker makes a broad "All Changes" scope navigable without losing the
+// provenance that the user sees in the Changes tool window.
+function buildPlanDiffChangeTree(files = []) {
+  const rootsById = new Map();
+
+  files.forEach((file, index) => {
+    const project = String(file.changeProject || 'spring-petclinic').trim() || 'spring-petclinic';
+    const branch = String(file.changeBranch || 'code-notes-v3-release').trim() || 'code-notes-v3-release';
+    const rootId = `${project}\u0000${branch}`;
+    if (!rootsById.has(rootId)) {
+      rootsById.set(rootId, {
+        id: rootId,
+        project,
+        branch,
+        groupsById: new Map(),
+        groups: [],
+      });
+    }
+
+    const root = rootsById.get(rootId);
+    const groupLabel = String(
+      file.changeGroupLabel
+      || (file.changeGroupKind === 'outside-session' ? 'Changed outside this session' : 'Changed in current session'),
+    ).trim();
+    const groupId = String(file.changeGroupId || groupLabel).trim() || 'current-session';
+    if (!root.groupsById.has(groupId)) {
+      const group = {
+        id: `${rootId}\u0000${groupId}`,
+        label: groupLabel,
+        icon: file.changeGroupIcon || (file.changeGroupKind === 'outside-session'
+          ? 'fileTypes/text'
+          : 'aiAssistant/aiAssistant'),
+        files: [],
+      };
+      root.groupsById.set(groupId, group);
+      root.groups.push(group);
+    }
+    root.groupsById.get(groupId).files.push({ ...file, index });
+  });
+
+  return [...rootsById.values()].map(({ groupsById: _groupsById, ...root }) => root);
+}
+
+function getPlanDiffProjectBadge(project = '') {
+  const parts = String(project).trim().split(/[\s_-]+/u).filter(Boolean);
+  if (parts.length > 1) return parts.slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  return String(project).trim().slice(0, 2).toUpperCase();
+}
+
 function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
@@ -939,7 +991,7 @@ function PlanDiffViewingScopeControl({
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
   const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
-  const [treeExpanded, setTreeExpanded] = useState(true);
+  const [expandedTreeNodes, setExpandedTreeNodes] = useState(() => new Set());
   const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
     ? changeScopeOptions
     : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
@@ -973,6 +1025,12 @@ function PlanDiffViewingScopeControl({
         icon: item.icon ?? 'fileTypes/java',
         status: item.status ?? (String(item.label ?? item.name ?? '').includes('Tests') ? 'added' : 'modified'),
         tabId: item.tabId ?? item.id ?? null,
+        changeProject: item.changeProject,
+        changeBranch: item.changeBranch,
+        changeGroupId: item.changeGroupId,
+        changeGroupLabel: item.changeGroupLabel,
+        changeGroupIcon: item.changeGroupIcon,
+        changeGroupKind: item.changeGroupKind,
       }))
     : [
         { id: 'current', label: currentFileLabel, status: 'modified' },
@@ -990,7 +1048,24 @@ function PlanDiffViewingScopeControl({
             : 'fileTypes/text';
         return { ...item, icon, tabId: null };
       });
+  const changeTree = useMemo(() => buildPlanDiffChangeTree(fileOptions), [fileOptions]);
+  const allChangeTreeNodeIds = useMemo(() => changeTree.flatMap((root) => [
+    root.id,
+    ...root.groups.map((group) => group.id),
+  ]), [changeTree]);
+  const changeTreeKey = allChangeTreeNodeIds.join('\u0001');
+  useEffect(() => {
+    if (!filesRect) return;
+    // Open the current project only; its session buckets remain collapsed so
+    // this first frame matches the compact VCS grouping from the reference.
+    setExpandedTreeNodes(new Set(changeTree.slice(0, 1).map((root) => root.id)));
+  }, [changeTreeKey, filesRect]);
   const closeFiles = () => setFilesRect(null);
+  const toggleTreeNode = (id) => setExpandedTreeNodes((previous) => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const navigateFiles = (delta) => {
     if (usesProvidedFiles) {
       (delta < 0 ? onNavigatePrevious : onNavigateNext)?.();
@@ -1052,54 +1127,72 @@ function PlanDiffViewingScopeControl({
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
             <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
               <div className="plan-diff-files-popup-header">
-                <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
-                  <Icon name="actions/preview" size={16} />
+                <span className="plan-diff-files-popup-preview" aria-label={`${resolvedCurrentFileIndex + 1} of ${selectedFileCount} files viewed`}>
+                  {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} viewed`}
                 </span>
                 <span className="plan-diff-files-popup-actions">
-                  <button type="button" aria-label="Expand all" disabled={treeExpanded} onClick={() => setTreeExpanded(true)}>
+                  <button type="button" aria-label="Expand all" disabled={expandedTreeNodes.size === allChangeTreeNodeIds.length} onClick={() => setExpandedTreeNodes(new Set(allChangeTreeNodeIds))}>
                     <Icon name="general/expandAll" size={16} />
                   </button>
-                  <button type="button" aria-label="Collapse all" disabled={!treeExpanded} onClick={() => setTreeExpanded(false)}>
+                  <button type="button" aria-label="Collapse all" disabled={expandedTreeNodes.size === 0} onClick={() => setExpandedTreeNodes(new Set())}>
                     <Icon name="general/collapseAll" size={16} />
                   </button>
                 </span>
               </div>
               <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
-                <div className="plan-diff-files-folder-row is-root" role="treeitem" aria-expanded={treeExpanded}>
-                  <Icon name={treeExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
-                  <Icon name="nodes/folder" size={16} />
-                  <span className="plan-diff-files-tree-label">spring-petclinic</span>
-                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                </div>
-                {treeExpanded && (
-                  <>
-                    <div className="plan-diff-files-folder-row is-level-2" role="treeitem" aria-expanded="true">
-                      <Icon name="general/chevronDown" size={16} />
-                      <Icon name="nodes/folder" size={16} />
-                      <span className="plan-diff-files-tree-label">src/main/java/org/springframework/samples/petclinic</span>
-                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                    </div>
-                    <div className="plan-diff-files-folder-row is-level-3" role="treeitem" aria-expanded="true">
-                      <Icon name="general/chevronDown" size={16} />
-                      <Icon name="nodes/folder" size={16} />
-                      <span className="plan-diff-files-tree-label">owner</span>
-                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                    </div>
-                    {fileOptions.map((item, index) => (
+                {changeTree.map((root) => {
+                  const rootExpanded = expandedTreeNodes.has(root.id);
+                  const rootFileCount = root.groups.reduce((total, group) => total + group.files.length, 0);
+                  return (
+                    <div className="plan-diff-files-project" key={root.id}>
                       <button
                         type="button"
-                        key={item.id}
-                        className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === index ? ' is-selected' : ''}`}
+                        className="plan-diff-files-folder-row is-root"
                         role="treeitem"
-                        aria-selected={resolvedCurrentFileIndex === index}
-                        onClick={() => selectFile(item, index)}
+                        aria-expanded={rootExpanded}
+                        onClick={() => toggleTreeNode(root.id)}
                       >
-                        <Icon name={item.icon} size={16} />
-                        <span>{item.label}</span>
+                        <Icon name={rootExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+                        <span className="plan-diff-files-project-badge" aria-hidden="true">{getPlanDiffProjectBadge(root.project)}</span>
+                        <span className="plan-diff-files-tree-label">{root.project}</span>
+                        <span className="plan-diff-files-branch">[{root.branch}]</span>
+                        <span className="plan-diff-files-tree-count">{rootFileCount} {rootFileCount === 1 ? 'file' : 'files'}</span>
                       </button>
-                    ))}
-                  </>
-                )}
+                      {rootExpanded && root.groups.map((group) => {
+                        const groupExpanded = expandedTreeNodes.has(group.id);
+                        return (
+                          <div className="plan-diff-files-session" key={group.id}>
+                            <button
+                              type="button"
+                              className="plan-diff-files-folder-row is-session"
+                              role="treeitem"
+                              aria-expanded={groupExpanded}
+                              onClick={() => toggleTreeNode(group.id)}
+                            >
+                              <Icon name={groupExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
+                              <Icon name={group.icon} size={16} className="plan-diff-files-session-icon" />
+                              <span className="plan-diff-files-tree-label">{group.label}</span>
+                              <span className="plan-diff-files-tree-count">{group.files.length} {group.files.length === 1 ? 'file' : 'files'}</span>
+                            </button>
+                            {groupExpanded && group.files.map((item) => (
+                              <button
+                                type="button"
+                                key={item.id}
+                                className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === item.index ? ' is-selected' : ''}`}
+                                role="treeitem"
+                                aria-selected={resolvedCurrentFileIndex === item.index}
+                                onClick={() => selectFile(item, item.index)}
+                              >
+                                <Icon name={item.icon} size={16} />
+                                <span>{item.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
             </Popup>
           </PositionedPopup>

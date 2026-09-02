@@ -15633,8 +15633,32 @@ function buildChatReviewScopeRequests(scenario) {
   // All of this chat's own changed-file cards belong in its "last turn"
   // scope — no recency cap, since a single turn can (and here does) touch
   // more than 3 files and every one of them needs to stay reviewable.
-  const chatDiffRequests = getChatChangeCards(scenario).map((card) => card?.diffRequest).filter(Boolean);
-  const seenDiffRequests = new Set(chatDiffRequests);
+  const chatChangeCards = getChatChangeCards(scenario);
+  const rawChatDiffRequests = chatChangeCards.map((card) => card?.diffRequest).filter(Boolean);
+  const chatDiffRequests = chatChangeCards.reduce((requests, card) => {
+    const request = card?.diffRequest;
+    if (!request) return requests;
+    const isExternalProjectChange = Boolean(card?.agentTaskId) || /\.md$/iu.test(card?.name ?? '');
+    requests.push({
+      ...request,
+      // Files that the current turn shares with earlier sessions are kept in
+      // one explicit bucket. The VCS picker can then show the same provenance
+      // hierarchy as the Changes tool window instead of a flat directory list.
+      reviewChangeProject: isExternalProjectChange ? 'vet-scheduling-service' : PROJECT_NAME,
+      reviewChangeBranch: REVIEW_CURRENT_BRANCH_NAME,
+      reviewChangeGroupId: isExternalProjectChange ? 'vet-scheduling-service' : 'multiple-sessions',
+      reviewChangeGroupLabel: isExternalProjectChange
+        ? 'Changes in vet-scheduling-service'
+        : 'Changed by multiple sessions',
+      reviewChangeGroupIcon: isExternalProjectChange ? 'vcs/changelist' : 'aiAssistant/aiAssistant',
+      reviewChangeGroupKind: isExternalProjectChange ? 'session' : 'multiple-sessions',
+    });
+    return requests;
+  }, []);
+  const seenDiffRequests = new Set(rawChatDiffRequests);
+  const chatChangedLabels = new Set(chatDiffRequests.map((request) => (
+    String(request?.source?.label ?? '').trim().toLowerCase()
+  )).filter(Boolean));
   // Project-wide extras (e.g. Vet-Schedules.md when it isn't already one of
   // this chat's own cards) fill out the "All Project Changes" scope without
   // duplicating a request the chat already contributed.
@@ -15642,7 +15666,11 @@ function buildChatReviewScopeRequests(scenario) {
   return [
     ...chatDiffRequests,
     ...extraDiffRequests,
-    ...buildCommitReviewScopeRequests(),
+    // A current-turn file that was also touched in an older session appears
+    // once, under "Changed by multiple sessions", instead of once per source.
+    ...buildCommitReviewScopeRequests().filter((request) => !chatChangedLabels.has(
+      String(request?.source?.label ?? '').trim().toLowerCase(),
+    )),
   ];
 }
 
@@ -15761,6 +15789,12 @@ function buildCommitReviewScopeRequests() {
       reviewCommitCategory: getCommitReviewScopeCategory(file, index),
       reviewVcsStatus: file.status,
       reviewAttribution: file.groupId ? 'session' : 'unassigned',
+      reviewChangeProject: PROJECT_NAME,
+      reviewChangeBranch: REVIEW_CURRENT_BRANCH_NAME,
+      reviewChangeGroupId: file.groupId ?? 'outside-session',
+      reviewChangeGroupLabel: file.groupLabel ?? 'Changed outside this session',
+      reviewChangeGroupIcon: file.groupId ? 'aiAssistant/aiAssistant' : 'fileTypes/text',
+      reviewChangeGroupKind: file.groupId ? 'session' : 'outside-session',
     };
   });
 }
@@ -17198,6 +17232,15 @@ function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabConte
     if (labelKey) seenLabels.add(labelKey);
     result.push(file);
   };
+  const changeGroupingForAttachment = (attachment = {}) => ({
+    status: attachment.reviewVcsStatus ?? attachment.status ?? 'modified',
+    changeProject: attachment.reviewChangeProject ?? attachment.changeProject ?? null,
+    changeBranch: attachment.reviewChangeBranch ?? attachment.changeBranch ?? null,
+    changeGroupId: attachment.reviewChangeGroupId ?? attachment.changeGroupId ?? null,
+    changeGroupLabel: attachment.reviewChangeGroupLabel ?? attachment.changeGroupLabel ?? null,
+    changeGroupIcon: attachment.reviewChangeGroupIcon ?? attachment.changeGroupIcon ?? null,
+    changeGroupKind: attachment.reviewChangeGroupKind ?? attachment.changeGroupKind ?? null,
+  });
 
   (Array.isArray(scopeAttachments) ? scopeAttachments : [])
     .filter((attachment) => attachment && !attachment.isChatContext)
@@ -17219,7 +17262,7 @@ function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabConte
         ))[0]
         ?? null;
       if (reviewFile) {
-        appendFile(reviewFile);
+        appendFile({ ...reviewFile, ...changeGroupingForAttachment(attachment) });
         return;
       }
 
@@ -17254,6 +17297,7 @@ function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabConte
         severityTotals: { critical: 0, warning: 0, info: 0 },
         summary: 'No findings',
         path: reviewDiffFilePath(name),
+        ...changeGroupingForAttachment(attachment),
       });
     });
 
@@ -18496,7 +18540,14 @@ function AiReviewSplitFileView({
           tabId: scopeFile.tabId,
           label: scopeFile.name,
           icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
+          status: scopeFile.status ?? 'modified',
           modifiedAfterSession: Boolean(scopeFile.modifiedAfterSession),
+          changeProject: scopeFile.changeProject ?? null,
+          changeBranch: scopeFile.changeBranch ?? null,
+          changeGroupId: scopeFile.changeGroupId ?? null,
+          changeGroupLabel: scopeFile.changeGroupLabel ?? null,
+          changeGroupIcon: scopeFile.changeGroupIcon ?? null,
+          changeGroupKind: scopeFile.changeGroupKind ?? null,
         }))}
         currentFileIndex={currentFileIndex}
         onSelectFile={onNavigateFile}
@@ -23882,7 +23933,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewVcsStatus = 'modified', reviewChangeProject = null, reviewChangeBranch = null, reviewChangeGroupId = null, reviewChangeGroupLabel = null, reviewChangeGroupIcon = null, reviewChangeGroupKind = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -23988,6 +24039,13 @@ export default function App() {
           diffContextChatId: contextChatId,
           reviewAttribution,
           reviewModifiedAfterSession: Boolean(reviewModifiedAfterSession),
+          reviewVcsStatus,
+          reviewChangeProject,
+          reviewChangeBranch,
+          reviewChangeGroupId,
+          reviewChangeGroupLabel,
+          reviewChangeGroupIcon,
+          reviewChangeGroupKind,
           diffSessionCommentsByChatId: nextSessionComments,
         },
       };
@@ -28504,6 +28562,13 @@ export default function App() {
       commentsReadOnly: Boolean(content?.diffCommentsReadOnly),
       attribution: content?.reviewAttribution ?? null,
       modifiedAfterSession: Boolean(content?.reviewModifiedAfterSession),
+      status: content?.reviewVcsStatus ?? 'modified',
+      changeProject: content?.reviewChangeProject ?? null,
+      changeBranch: content?.reviewChangeBranch ?? null,
+      changeGroupId: content?.reviewChangeGroupId ?? null,
+      changeGroupLabel: content?.reviewChangeGroupLabel ?? null,
+      changeGroupIcon: content?.reviewChangeGroupIcon ?? null,
+      changeGroupKind: content?.reviewChangeGroupKind ?? null,
     };
   }, [ideTabContents, ideTabs, reviewSplitChatId]);
   const selectedReviewSplitChangeScope = reviewSplitChangeScopeOptions.find(
