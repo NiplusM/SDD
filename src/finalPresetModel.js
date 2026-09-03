@@ -174,8 +174,8 @@ export const FINAL_CODE_REVIEW_PRESET = {
 // preset, it does not require "Add Agents"/"Manage Presets".
 export const FINAL_SDD_PRESET = {
   id: 'sdd',
-  label: 'Task',
-  buttonLabel: 'Task',
+  label: 'Task Mode',
+  buttonLabel: 'Task Mode',
   agentId: 'codex',
   runInId: 'this-mac',
   launchTarget: 'chat',
