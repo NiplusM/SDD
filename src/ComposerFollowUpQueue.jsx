@@ -1,8 +1,48 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Icon, Popup, PopupCell, Tooltip } from '@jetbrains/int-ui-kit';
+import { Button, Icon, Popup, PopupCell } from '@jetbrains/int-ui-kit';
 import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
+
+function ComposerActionTooltip({ text, children }) {
+  const triggerRef = useRef(null);
+  const [rect, setRect] = useState(null);
+  const showTimerRef = useRef(null);
+
+  const scheduleShow = () => {
+    window.clearTimeout(showTimerRef.current);
+    showTimerRef.current = window.setTimeout(() => {
+      setRect(triggerRef.current?.getBoundingClientRect() ?? null);
+    }, 650);
+  };
+  const hide = () => {
+    window.clearTimeout(showTimerRef.current);
+    setRect(null);
+  };
+
+  useEffect(() => () => window.clearTimeout(showTimerRef.current), []);
+
+  return (
+    <span
+      ref={triggerRef}
+      className="ij-air-follow-up-queue__action-tooltip-trigger"
+      onMouseEnter={scheduleShow}
+      onMouseLeave={hide}
+    >
+      {children}
+      {rect && typeof document !== 'undefined' && createPortal(
+        <div
+          className="ij-air-follow-up-queue__action-tooltip"
+          role="tooltip"
+          style={{ top: rect.bottom + 6, left: rect.left + rect.width / 2 }}
+        >
+          {text}
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
+}
 
 const QUEUE_ITEM_MENU_WIDTH = 231;
 // One fixed height for every tab's expanded body — it never changes based
@@ -532,7 +572,7 @@ export function ComposerFollowUpQueue({
             {/* "Dismiss" is temporary (reappears on new changes), "Hide" is
                 permanent — ordering and tooltips make that distinction explicit
                 instead of relying on the label alone. */}
-            <Tooltip text="Hide this list until new changes arrive." placement="bottom" delay={650}>
+            <ComposerActionTooltip text="Hide this list until new changes arrive.">
               <button
                 type="button"
                 className="ij-air-follow-up-queue__vcs-skip"
@@ -543,8 +583,8 @@ export function ComposerFollowUpQueue({
               >
                 Dismiss
               </button>
-            </Tooltip>
-            <Tooltip text="Never show this list again in this chat." placement="bottom" delay={650}>
+            </ComposerActionTooltip>
+            <ComposerActionTooltip text="Never show this list again in this chat.">
               <button
                 type="button"
                 className="ij-air-follow-up-queue__vcs-skip"
@@ -555,7 +595,7 @@ export function ComposerFollowUpQueue({
               >
                 Hide
               </button>
-            </Tooltip>
+            </ComposerActionTooltip>
             <Button
               type="secondary"
               size="slim"
