@@ -554,6 +554,9 @@ async function runScenario(page) {
   await page.getByText(updatedPlanItemText, { exact: false }).last().waitFor({ state: 'visible' });
   const updatedTestPlanRow = page.locator('.spec-done-row:visible').filter({ hasText: updatedPlanItemText }).first();
   await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+  if (await updatedTestPlanRow.locator('.spec-check-status-pending:visible').count() !== 1) {
+    throw new Error('The updated Plan item must retain its checklist checkbox.');
+  }
   if (await document.getByText(noteText, { exact: false }).count() !== 0) {
     throw new Error('The note must disappear from the document after it is applied.');
   }

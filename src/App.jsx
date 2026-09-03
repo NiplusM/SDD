@@ -14752,15 +14752,16 @@ function appendNoteAddressedClause(line = '', noteText = '') {
 function rephrasePlanLineAfterNote(line = '', noteText = '') {
   const normalizedLine = String(line).trim();
   const normalizedNote = String(noteText).trim();
+  const checklistPrefix = String(line).match(/^(\s*-\s+\[[ x]\]\s+)/i)?.[1] ?? '';
   // The boundary note refines the scope of the entire regression-test item.
   // Keep the item as one concise requirement after the note is applied.
   if (
     /off-hours rejection tests.*controller validation/iu.test(normalizedLine)
     && /exclusive end(?: boundary)?/iu.test(normalizedNote)
   ) {
-    return 'Add off-hours rejection tests in VisitControllerTests.java for controller validation, cover the exclusive end boundary in the regression tests.';
+    return `${checklistPrefix}Add off-hours rejection tests in VisitControllerTests.java for controller validation, cover the exclusive end boundary in the regression tests.`;
   }
-  return appendNoteAddressedClause(normalizedLine, normalizedNote);
+  return `${checklistPrefix}${appendNoteAddressedClause(normalizedLine.replace(/^\s*-\s+\[[ x]\]\s+/i, ''), normalizedNote)}`;
 }
 
 function getAiChatAttachmentSequenceKey(attachment = null, index = 0) {
