@@ -6016,35 +6016,10 @@ body {
   height: 16px;
 }
 
-.plan-diff-commit-trigger {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  margin-right: 5px;
-}
-
+/* Nothing left to join to, so the button keeps the kit's own shape. */
 .plan-diff-commit-button.button {
   flex: 0 0 auto;
-  padding-right: 5px;
-  border-radius: 4px 0 0 4px;
-}
-
-.plan-diff-commit-chevron-button.button {
-  width: 24px;
-  min-width: 24px;
-  padding: 0 4px;
-  margin-left: -1px;
-  border-radius: 0 4px 4px 0;
-}
-
-.plan-diff-commit-chevron-button .icon {
-  flex: 0 0 16px;
-  color: var(--icon-secondary, #b4b8bf);
-}
-
-.plan-diff-commit-popup {
-  width: 180px;
-  max-width: 180px;
+  margin-right: 5px;
 }
 
 .plan-diff-toolbar-settings-icon {
@@ -6402,14 +6377,11 @@ body {
 
 .plan-diff-files-folder-row {
   padding: 0 8px;
+  cursor: pointer;
 }
 
-.plan-diff-files-folder-row.is-level-2 {
-  padding-left: 28px;
-}
-
-.plan-diff-files-folder-row.is-level-3 {
-  padding-left: 48px;
+.plan-diff-files-folder-row:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .plan-diff-files-tree-label {
@@ -6433,9 +6405,9 @@ body {
   height: 28px;
   align-items: center;
   gap: 5px;
-  padding: 0 8px 0 76px;
+  padding: 0 8px;
   border-radius: 4px;
-  color: #6ea2f8;
+  color: #78a9ff;
   cursor: pointer;
   font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -6445,15 +6417,289 @@ body {
   background: rgba(84, 138, 247, 0.24);
 }
 
-.plan-diff-files-file-row.is-added {
-  color: #74c38b;
+.plan-diff-files-file-row.is-added,
+.plan-diff-files-file-row.is-untracked {
+  color: #78c98d;
 }
 
-.plan-diff-files-file-row span {
+.plan-diff-files-file-row.is-deleted {
+  color: #e06c75;
+}
+
+.plan-diff-files-file-row.is-renamed {
+  color: #c2a5ff;
+}
+
+/* Status letter, same glyphs and colours the Commit tool window uses so one
+   file reads identically in both surfaces. */
+.plan-diff-files-file-status {
+  flex: 0 0 14px;
+  margin-left: 2px;
+  color: #78a9ff;
+  font: 600 10px/14px "JetBrains Mono", monospace;
+  text-align: center;
+}
+
+.plan-diff-files-file-status.is-added,
+.plan-diff-files-file-status.is-untracked { color: #78c98d; }
+.plan-diff-files-file-status.is-deleted { color: #e06c75; }
+.plan-diff-files-file-status.is-renamed { color: #c2a5ff; }
+
+/* Only the name truncates. This used to target every `span` in the row, but the
+   kit's Icon is itself a span, so the rule squeezed and clipped each glyph. */
+.plan-diff-files-file-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Icons hold their box in a flex row that is otherwise free to shrink. */
+.plan-diff-files-file-row > .icon,
+.plan-diff-files-folder-row > .icon,
+.plan-diff-files-group-row > .icon {
+  flex: 0 0 16px;
+}
+
+/* Review progress ("viewed") controls in the changed-files list. The indicator
+   is pushed to the trailing edge so the VCS-coloured file name on the left and
+   the progress marker on the right never compete for the same spot. */
+.plan-diff-files-file-name {
+  flex: 0 1 auto;
+}
+
+.plan-diff-files-file-viewed {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--text-secondary, #8b8e94);
+  cursor: pointer;
+}
+
+/* No hover plate here on purpose: a filled rounded square behind the mark
+   reads as a checkbox, and this is a progress marker, not an input. */
+.plan-diff-files-file-viewed:hover {
+  color: var(--text-default, #d1d3d9);
+}
+
+.plan-diff-files-file-row.is-viewed .plan-diff-files-file-viewed:hover {
+  color: #9bd7ac;
+}
+
+/* Not-viewed marker: the same blue dot the IDE uses for unread/unvisited
+   items. */
+.plan-diff-files-file-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #548AF7;
+}
+
+.plan-diff-files-file-row.is-viewed .plan-diff-files-file-name {
+  opacity: 0.5;
+}
+
+.plan-diff-files-file-row.is-viewed .plan-diff-files-file-viewed {
+  color: #74c38b;
+}
+
+/* "Do Not Highlight": the IDE keeps the change markers in the gutter but drops
+   the coloured line and inline emphasis, for files rewritten so heavily that
+   highlighting stops helping the review. */
+.aiux-review-split-file-body.is-highlight-none .plan-diff-row-added,
+.aiux-review-split-file-body.is-highlight-none .plan-diff-row-removed {
+  background: transparent;
+}
+
+.aiux-review-split-file-body.is-highlight-none .plan-diff-fragment.is-added,
+.aiux-review-split-file-body.is-highlight-none .plan-diff-fragment.is-removed {
+  background: transparent;
+}
+
+/* "Show All Files in One Diff View": one scrollable stream, each file behind a
+   sticky heading so the boundary stays obvious while scrolling. */
+.aiux-review-split-file-body.is-all-in-one {
+  overflow: auto;
+}
+
+/* One overlay per file normally pins itself to the pane (position: absolute;
+   inset: 0). Stacked, they would all land on the same box and only the last
+   would show, so in this mode each diff returns to normal flow and takes its
+   natural height while the stream itself scrolls. */
+.aiux-review-split-file-body.is-all-in-one .plan-diff-overlay {
+  position: static;
+  inset: auto;
+  overflow: visible;
+}
+
+.aiux-review-split-file-body.is-all-in-one .plan-diff-scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.aiux-review-all-in-one-file {
+  border-bottom: 1px solid #2b2d30;
+}
+
+.aiux-review-all-in-one-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border-bottom: 1px solid #33353b;
+  background: #2b2d30;
+  color: #78a9ff;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux-review-all-in-one-header.is-current {
+  background: #313640;
+}
+
+.aiux-review-all-in-one-header.is-added .aiux-review-all-in-one-name,
+.aiux-review-all-in-one-header.is-untracked .aiux-review-all-in-one-name { color: #78c98d; }
+.aiux-review-all-in-one-header.is-deleted .aiux-review-all-in-one-name { color: #e06c75; }
+.aiux-review-all-in-one-header.is-renamed .aiux-review-all-in-one-name { color: #c2a5ff; }
+
+.aiux-review-all-in-one-status {
+  flex: 0 0 14px;
+  color: inherit;
+  font: 600 10px/14px "JetBrains Mono", monospace;
+  text-align: center;
+}
+
+.aiux-review-all-in-one-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary, #868a91);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Grouping levels above the path tree — project, branch/worktree, session.
+   They read as headings rather than directories, so the two kinds of grouping
+   stay distinguishable at a glance. */
+.plan-diff-files-group-row {
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: #d1d3d9;
+  cursor: pointer;
+  /* Same weight and size as every other row in the tree: the multiproject
+     sidebar this mirrors does not bold its project rows, and bolding them here
+     made the grouping shout over the files it groups. */
+  font: 400 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-files-group-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.plan-diff-files-group-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The checkout's name identifies it, so it keeps its width and the branch
+   beside it ellipsizes instead. */
+.plan-diff-files-group-row.is-checkout .plan-diff-files-group-label {
+  flex: 0 0 auto;
+}
+
+/* The sidebar's badge is 20px for a 24px row; here the row is 28px and sits
+   among 16px icons, so it is scaled to match without forking the look. */
+.plan-diff-files-group-row .agent-sessions-project-avatar {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  line-height: 18px;
+}
+
+/* A checkout and a session are both real things being grouped by, so both read
+   as ordinary rows; only the two synthetic groups are toned down. */
+.plan-diff-files-group-row.is-checkout .plan-diff-files-group-label,
+.plan-diff-files-group-row.is-session .plan-diff-files-group-label {
+  color: #d1d3d9;
+}
+
+/* The branch qualifies the checkout it sits next to, so it is the same type at
+   a quieter colour — not a different family at a different size. */
+.plan-diff-files-group-branch {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary, #868a91);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Neither of these is a session — one is a bucket for files several sessions
+   share, the other for files with no known origin. They are dimmed so a real
+   session name stays the thing you read. */
+.plan-diff-files-group-row.is-multi-session .plan-diff-files-group-label,
+.plan-diff-files-group-row.is-unknown-session .plan-diff-files-group-label {
+  color: var(--text-secondary, #868a91);
+}
+
+/* Reads like the "N files" counts on the group rows rather than a badge: a
+   bordered capsule made it the loudest thing in a row whose subject is the
+   file name. */
+.plan-diff-files-file-sessions {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+  color: var(--text-secondary, #868a91);
+  cursor: pointer;
+  font: 400 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+}
+
+.plan-diff-files-file-sessions:hover {
+  color: var(--text-default, #d1d3d9);
+  text-decoration: underline;
+}
+
+/* With a badge present the viewed marker must not also claim the auto margin,
+   or the two fight over the trailing edge. */
+.plan-diff-files-file-sessions ~ .plan-diff-files-file-viewed {
+  margin-left: 0;
+}
+
+.plan-diff-files-popup-progress {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #8b8e94);
+  font: 500 11px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-diff-files-popup-progress.is-complete {
+  color: #74c38b;
 }
 
 /* The kit's default popup-cell hover reuses the same blue as the selected-item
@@ -7391,17 +7637,26 @@ body {
   line-height: 16px;
 }
 
+/* One header per pane rather than a stacked caption: in side-by-side each sits
+   over its own half, on the same column grid as the code below. */
 .plan-diff-content-labels {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 0 10px 0;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.plan-diff-content-labels.is-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  padding: 8px 18px;
 }
 
 .plan-diff-content-label {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   width: max-content;
   color: #CED0D6;
   font-size: 13px;
@@ -7693,6 +7948,47 @@ body {
   min-width: 0;
   width: 100%;
 }
+
+/* Side-by-side gives each half its own scroller. Sharing one, as the unified
+   view does, makes the two sides physically inseparable: it looks synchronised
+   but there is no line correspondence behind it, and with alignment off the
+   halves have different row counts, so the shared offset puts unrelated lines
+   opposite each other. */
+.plan-diff-overlay--split .plan-diff-scroll {
+  overflow: hidden;
+}
+
+.plan-diff-overlay--split .plan-diff-code {
+  height: 100%;
+  min-height: 0;
+}
+
+.plan-diff-overlay--split .plan-diff-split-code {
+  /* The implicit grid row is auto-sized and would grow to the content, leaving
+     the panes with nothing to scroll. */
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.plan-diff-overlay--split .plan-diff-split-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 28px;
+}
+
+/* With scrolling synchronised the right half is driven from the left, so its
+   own scrollbar would be misleading furniture. */
+.aiux-review-split-file-body.is-sync-scroll .plan-diff-split-pane-right {
+  scrollbar-width: none;
+}
+
+.aiux-review-split-file-body.is-sync-scroll .plan-diff-split-pane-right::-webkit-scrollbar {
+  width: 0;
+}
+
+
 
 .plan-diff-split-pane .plan-diff-row {
   width: 100%;
@@ -24044,4 +24340,96 @@ button.aiux543-answer-change-card:focus-visible {
   .aiux-review-panel-cat-head.is-pending-update .aiux-review-panel-cat-dot {
     animation: none;
   }
+}
+
+
+/* Spec 15: the working tree moved off the branch this scope was opened on, so
+   the diff is withheld rather than rebuilt against a base it never described.
+   The three ways out are the ones the spec names. */
+.aiux-review-branch-guard {
+  display: flex;
+  gap: 12px;
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid #4a4029;
+  border-radius: 8px;
+  background: #2b2620;
+}
+
+.aiux-review-branch-guard-icon {
+  flex: 0 0 20px;
+  color: #d9a343;
+}
+
+.aiux-review-branch-guard-body {
+  min-width: 0;
+}
+
+.aiux-review-branch-guard-title {
+  margin: 0 0 4px;
+  color: #fff;
+  font: 600 14px/20px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux-review-branch-guard-text {
+  margin: 0 0 12px;
+  max-width: 62ch;
+  color: #b6b9bf;
+  font: 400 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.aiux-review-branch-guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+
+/* The base side is a revision, so it reads as one; the local side is the file
+   you can edit, so it is not dressed as a revision. */
+.plan-diff-content-label.is-mono span {
+  color: #b0a7f5;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.plan-diff-content-label.is-read-only {
+  cursor: help;
+}
+
+.plan-diff-content-label.is-editable {
+  color: var(--text-secondary, #9fa2a8);
+}
+
+
+/* Chosen options in the Diff Viewer settings are marked, not highlighted: the
+   kit's `selected` state paints the row with the active-selection background,
+   which reads as focus. The mark keeps its column when unchecked so the labels
+   stay on one line. */
+.plan-diff-settings-mark {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: var(--text-default, #d1d3d9);
+  visibility: hidden;
+}
+
+.plan-diff-settings-mark.is-checked {
+  visibility: visible;
+}
+
+
+/* Agent icon in a session row: same 16px slot the folder and file glyphs use,
+   so the tree keeps one rhythm. */
+.plan-diff-files-group-agent {
+  display: inline-flex;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px;
 }

@@ -361,6 +361,10 @@ function PlanDiffGutterAiNoteTooltip({ children }) {
 }
 
 const PLAN_DIFF_GUTTER_CONTEXT_MENU_ITEMS = [
+  // The IDE exposes blame only from the gutter's context menu — it is not a
+  // Diff Viewer gear-menu option, so it is placed here rather than there.
+  { label: 'Annotate with Git Blame' },
+  { type: 'separator' },
   { label: 'Add Bookmark', shortcut: 'F3' },
   { label: 'Add Mnemonic Bookmark...', shortcut: '⌥F3' },
   { type: 'separator' },
@@ -601,69 +605,336 @@ function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
   );
 }
 
-function PlanDiffCommitDropdown({ onCommitScope = null }) {
+// Diff Viewer settings, matching the IDE's own gear menu: the section names,
+// the option labels and their order come from the Diff Viewer docs
+// (jetbrains.com/help/idea/differences-viewer.html), so the prototype does not
+// invent a parallel vocabulary. "Show all files in one diff view" belongs here
+// because this is a code-review context, which is where IJ exposes it.
+const PLAN_DIFF_IGNORE_POLICIES = [
+  { id: 'none', label: 'None' },
+  { id: 'trim', label: 'Trim whitespaces' },
+  { id: 'whitespaces', label: 'Ignore whitespaces' },
+  { id: 'whitespaces-empty', label: 'Ignore whitespaces and empty lines' },
+  { id: 'imports', label: 'Ignore imports and formatting' },
+];
+
+// Granularity is one choice of four; "Split changes" is a separate modifier in
+// the IDE, not a fifth granularity, so it is a toggle below the group.
+const PLAN_DIFF_HIGHLIGHT_MODES = [
+  { id: 'words', label: 'Words' },
+  { id: 'lines', label: 'Lines' },
+  { id: 'characters', label: 'Characters' },
+  { id: 'none', label: 'None' },
+];
+
+const isPlanDiffEmptyLine = (text) => String(text ?? '').trim() === '';
+const isPlanDiffImportLine = (text) => /^\s*import\s/u.test(String(text ?? ''));
+const planDiffTrimEqual = (left, right) => String(left ?? '').trim() === String(right ?? '').trim();
+const planDiffWhitespaceEqual = (left, right) => (
+  String(left ?? '').replace(/\s+/gu, '') === String(right ?? '').replace(/\s+/gu, '')
+);
+
+// Whether a removed/added pair stops being a difference under the chosen
+// "Ignore Differences" policy. Mirrors the IDE's own escalation: trimming only
+// touches the ends of a line, ignoring whitespace disregards it anywhere, and
+// the imports policy additionally forgives rewritten import statements.
+function isPlanDiffPairIgnored(beforeText, afterText, policy) {
+  if (policy === 'none') return false;
+  if (policy === 'trim') return planDiffTrimEqual(beforeText, afterText);
+  if (policy === 'whitespaces' || policy === 'whitespaces-empty') {
+    return planDiffWhitespaceEqual(beforeText, afterText);
+  }
+  if (policy === 'imports') {
+    if (planDiffWhitespaceEqual(beforeText, afterText)) return true;
+    return isPlanDiffImportLine(beforeText) && isPlanDiffImportLine(afterText);
+  }
+  return false;
+}
+
+// Whether a lone added or removed line stops being a difference.
+function isPlanDiffSingleRowIgnored(text, policy) {
+  if (policy === 'whitespaces-empty') return isPlanDiffEmptyLine(text);
+  if (policy === 'imports') return isPlanDiffEmptyLine(text) || isPlanDiffImportLine(text);
+  return false;
+}
+
+function toPlanDiffContextRow(row, text) {
+  const resolved = text ?? row.text;
+  return {
+    ...row,
+    kind: 'context',
+    text: resolved,
+    fragments: [{ text: resolved || ' ', tone: 'plain' }],
+    ignoredByPolicy: true,
+  };
+}
+
+// Re-granulates a row's inline highlight. The rows arrive word-level (that is
+// the IDE's default), so "Lines" flattens the emphasis to the row background,
+// "Characters" splits each emphasised run per character, and "None" drops
+// inline emphasis altogether.
+function reHighlightPlanDiffRow(row, mode) {
+  if (mode === 'words' || row.kind === 'context') return row;
+  const fragments = row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }];
+  if (mode === 'lines' || mode === 'none') {
+    return { ...row, fragments: [{ text: row.text || ' ', tone: 'plain' }] };
+  }
+  if (mode === 'characters') {
+    return {
+      ...row,
+      fragments: fragments.flatMap((fragment) => (
+        fragment.tone && fragment.tone !== 'plain'
+          ? [...String(fragment.text)].map((char) => ({ text: char, tone: fragment.tone }))
+          : [fragment]
+      )),
+    };
+  }
+  return row;
+}
+
+// Applies the Diff Viewer settings to a diff payload: rows the active ignore
+// policy forgives become plain context, the inline highlight is re-granulated,
+// and the difference count is recomputed so the toolbar and the
+// Previous/Next Difference cursor agree with what is on screen.
+export function applyPlanDiffViewerSettings(diffData, settings = null) {
+  if (!diffData || !settings) return diffData;
+  const rows = Array.isArray(diffData.rows) ? diffData.rows : [];
+  if (rows.length === 0) return diffData;
+
+  const policy = settings.ignorePolicy ?? 'none';
+  const next = [];
+  let index = 0;
+  while (index < rows.length) {
+    const row = rows[index];
+    if (row.kind !== 'removed' && row.kind !== 'added') {
+      next.push(row);
+      index += 1;
+      continue;
+    }
+    // Collect the whole change group: the builder emits every removed line of
+    // a hunk before its added lines, so pairing is positional.
+    const removed = [];
+    const added = [];
+    let cursor = index;
+    while (cursor < rows.length && rows[cursor].kind === 'removed') removed.push(rows[cursor++]);
+    while (cursor < rows.length && rows[cursor].kind === 'added') added.push(rows[cursor++]);
+
+    // Walk the group in order and flush what has been kept whenever an ignored
+    // line lands in the middle: that line becomes context, which correctly
+    // splits one hunk into two instead of silently reordering the file.
+    let pendingRemoved = [];
+    let pendingAdded = [];
+    const flushPending = () => {
+      pendingRemoved.forEach((kept) => next.push(kept));
+      pendingAdded.forEach((kept) => next.push(kept));
+      pendingRemoved = [];
+      pendingAdded = [];
+    };
+    const pairCount = Math.min(removed.length, added.length);
+    for (let offset = 0; offset < pairCount; offset += 1) {
+      if (isPlanDiffPairIgnored(removed[offset].text, added[offset].text, policy)) {
+        flushPending();
+        next.push(toPlanDiffContextRow(added[offset], added[offset].text));
+      } else {
+        pendingRemoved.push(removed[offset]);
+        pendingAdded.push(added[offset]);
+      }
+    }
+    removed.slice(pairCount).forEach((extra) => {
+      if (isPlanDiffSingleRowIgnored(extra.text, policy)) {
+        flushPending();
+        next.push(toPlanDiffContextRow(extra));
+      } else pendingRemoved.push(extra);
+    });
+    added.slice(pairCount).forEach((extra) => {
+      if (isPlanDiffSingleRowIgnored(extra.text, policy)) {
+        flushPending();
+        next.push(toPlanDiffContextRow(extra));
+      } else pendingAdded.push(extra);
+    });
+    flushPending();
+    index = cursor;
+  }
+
+  const highlightMode = settings.highlightMode ?? 'words';
+  const highlighted = next.map((row) => reHighlightPlanDiffRow(row, highlightMode));
+
+  // Count remaining change groups; "Split changes" counts each changed line on
+  // its own instead of collapsing a hunk into one difference.
+  let differenceCount = 0;
+  let inGroup = false;
+  highlighted.forEach((row) => {
+    const isChange = row.kind === 'removed' || row.kind === 'added';
+    if (!isChange) {
+      inGroup = false;
+      return;
+    }
+    if (settings.splitChanges) differenceCount += 1;
+    else if (!inGroup) differenceCount += 1;
+    inGroup = true;
+  });
+
+  return { ...diffData, rows: highlighted, differenceCount };
+}
+
+export const PLAN_DIFF_DEFAULT_VIEWER_SETTINGS = {
+  ignorePolicy: 'none',
+  highlightMode: 'words',
+  splitChanges: false,
+  alignChanges: true,
+  syncScroll: true,
+  collapseUnchanged: false,
+  showInEditorTab: true,
+  allInOne: false,
+  goToNextFileAfterLastChange: true,
+};
+
+function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
-  const [selectedAction, setSelectedAction] = useState('commit');
-  const actions = [
-    { id: 'commit', label: 'Commit' },
-    { id: 'commit-and-push', label: 'Commit and Push' },
-  ];
-  const selected = actions.find((action) => action.id === selectedAction) ?? actions[0];
-
-  const chooseAction = (action) => {
-    setSelectedAction(action.id);
-    setTriggerRect(null);
-    onCommitScope?.({ action: action.id });
-  };
+  const update = (patch) => onSettingsChange?.({ ...settings, ...patch });
+  // The kit's `selected` prop paints the whole row with the active-selection
+  // background, which reads as "this row is focused" — three of those at once
+  // is not how a menu shows chosen options. The IDE marks them with a
+  // checkmark, so the mark lives in a reserved column instead and the labels
+  // line up whether an item is checked or not.
+  const mark = (checked) => (
+    <span className={`plan-diff-settings-mark${checked ? ' is-checked' : ''}`} aria-hidden="true">
+      <Icon name="general/checkmark" size={16} />
+    </span>
+  );
 
   return (
-    <span ref={triggerRef} className="plan-diff-commit-trigger">
-      <Button
-        type="secondary"
-        size="slim"
-        className="plan-diff-commit-button"
-        aria-label={`${selected.label}. Open Commit tool window`}
-        onClick={() => onCommitScope?.({ action: selected.id })}
-      >
-        <span>{selected.label}</span>
-      </Button>
-      <Button
-        type="secondary"
-        size="slim"
-        className="plan-diff-commit-chevron-button"
-        aria-label="Open commit actions"
+    <span ref={triggerRef} className="plan-diff-settings-trigger">
+      <ToolbarButton
+        icon={<PlanDiffToolbarIcon type="settings" />}
+        className="plan-diff-toolbar-icon-btn"
+        title="Settings"
         aria-haspopup="menu"
         aria-expanded={Boolean(triggerRect)}
         onClick={() => setTriggerRect((current) => (
           current ? null : triggerRef.current?.getBoundingClientRect() ?? null
         ))}
-      >
-        <Icon name="general/chevronDown" size={16} />
-      </Button>
+      />
       {triggerRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={triggerRect} onDismiss={() => setTriggerRect(null)} gap={4}>
-            <Popup
-              visible
-              className="plan-diff-popover plan-diff-commit-popup text-ui-default"
-              onClose={() => setTriggerRect(null)}
-            >
-              {actions.map((action) => (
+            <Popup visible className="plan-diff-popover plan-diff-settings-popup text-ui-default" onClose={() => setTriggerRect(null)}>
+              <PopupCell type="separator" text="Ignore Differences" />
+              {PLAN_DIFF_IGNORE_POLICIES.map((policy) => (
                 <PopupCell
-                  key={action.id}
-                  selected={action.id === selectedAction}
-                  onClick={() => chooseAction(action)}
+                  key={policy.id}
+                  role="menuitemradio"
+                  aria-checked={settings.ignorePolicy === policy.id}
+                  onClick={() => update({ ignorePolicy: policy.id })}
                 >
-                  {action.label}
+                  {mark(settings.ignorePolicy === policy.id)}
+                  {policy.label}
                 </PopupCell>
               ))}
+              <PopupCell type="separator" text="Highlighting Differences" />
+              {PLAN_DIFF_HIGHLIGHT_MODES.map((mode) => (
+                <PopupCell
+                  key={mode.id}
+                  role="menuitemradio"
+                  aria-checked={settings.highlightMode === mode.id}
+                  onClick={() => update({ highlightMode: mode.id })}
+                >
+                  {mark(settings.highlightMode === mode.id)}
+                  {mode.label}
+                </PopupCell>
+              ))}
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.splitChanges}
+                onClick={() => update({ splitChanges: !settings.splitChanges })}
+              >
+                {mark(settings.splitChanges)}
+                Split changes
+              </PopupCell>
+              <PopupCell type="separator" />
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.alignChanges}
+                onClick={() => update({ alignChanges: !settings.alignChanges })}
+              >
+                {mark(settings.alignChanges)}
+                Align Changes in Side-by-Side Diff
+              </PopupCell>
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.syncScroll}
+                onClick={() => update({ syncScroll: !settings.syncScroll })}
+              >
+                {mark(settings.syncScroll)}
+                Synchronize Scrolling
+              </PopupCell>
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.collapseUnchanged}
+                onClick={() => update({ collapseUnchanged: !settings.collapseUnchanged })}
+              >
+                {mark(settings.collapseUnchanged)}
+                Collapse Unchanged Fragments
+              </PopupCell>
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.goToNextFileAfterLastChange}
+                onClick={() => update({
+                  goToNextFileAfterLastChange: !settings.goToNextFileAfterLastChange,
+                })}
+              >
+                {mark(settings.goToNextFileAfterLastChange)}
+                Go to the Next File After Reaching Last Change
+              </PopupCell>
+              <PopupCell type="separator" />
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.showInEditorTab}
+                onClick={() => update({ showInEditorTab: true })}
+              >
+                {mark(settings.showInEditorTab)}
+                Show Diff in Editor Tab
+              </PopupCell>
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={!settings.showInEditorTab}
+                onClick={() => update({ showInEditorTab: false })}
+              >
+                {mark(!settings.showInEditorTab)}
+                Show Diff in Separate Window
+              </PopupCell>
+              <PopupCell
+                role="menuitemcheckbox"
+                aria-checked={settings.allInOne}
+                onClick={() => update({ allInOne: !settings.allInOne })}
+              >
+                {mark(settings.allInOne)}
+                Show All Files in One Diff View
+              </PopupCell>
             </Popup>
           </PositionedPopup>
         </div>,
         document.body,
       )}
     </span>
+  );
+}
+
+// A plain secondary button: this opens the Commit tool window, and choosing
+// between Commit and Commit and Push belongs there, next to the message and the
+// file selection — not in a split button on the diff toolbar.
+function PlanDiffCommitButton({ onCommitScope = null }) {
+  return (
+    <Button
+      type="secondary"
+      size="slim"
+      className="plan-diff-commit-button"
+      aria-label="Commit. Open Commit tool window"
+      onClick={() => onCommitScope?.({ action: 'commit' })}
+    >
+      Commit
+    </Button>
   );
 }
 
@@ -922,6 +1193,159 @@ function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange 
   );
 }
 
+const PLAN_DIFF_VCS_STATUS_LETTER = {
+  modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U',
+};
+
+// Builds the changed-files tree the way the IDE does: real directories nest,
+// and a chain of directories holding nothing but one more directory collapses
+// into a single row ("compact middle packages"), so deep Java packages stay
+// readable instead of costing one indent level per segment.
+function buildPlanDiffFileTree(files = []) {
+  const root = { name: '', dirs: new Map(), files: [] };
+  files.forEach((file, index) => {
+    const segments = String(file?.path ?? '').split('/').filter(Boolean);
+    let node = root;
+    segments.forEach((segment) => {
+      if (!node.dirs.has(segment)) {
+        node.dirs.set(segment, { name: segment, dirs: new Map(), files: [] });
+      }
+      node = node.dirs.get(segment);
+    });
+    // Keep an index assigned upstream: after de-duplication it addresses the
+    // collapsed list, and per-group re-indexing would break selection.
+    node.files.push({ ...file, index: file.index ?? index });
+  });
+
+  const compact = (node, key, names) => {
+    let current = node;
+    const merged = [...names];
+    while (current.files.length === 0 && current.dirs.size === 1) {
+      const [child] = [...current.dirs.values()];
+      merged.push(child.name);
+      current = child;
+    }
+    const dirs = [...current.dirs.entries()].map(([childName, child]) => (
+      compact(child, `${key}/${childName}`, [childName])
+    ));
+    const count = current.files.length + dirs.reduce((total, dir) => total + dir.count, 0);
+    return {
+      key,
+      // The "~/projects" prefix is the same for every file and only steals
+      // width, so the top row reads as the project folder.
+      label: merged.filter(Boolean).join('/').replace(/^~\/[^/]+\//u, ''),
+      files: current.files,
+      dirs,
+      count,
+    };
+  };
+
+  return compact(root, 'root', ['']);
+}
+
+const PLAN_DIFF_MULTI_SESSION_GROUP_ID = '__multi-session__';
+const PLAN_DIFF_UNKNOWN_SESSION_GROUP_ID = '__outside-session__';
+
+function groupPlanDiffFilesBy(files, keyOf) {
+  const buckets = new Map();
+  files.forEach((file) => {
+    const key = keyOf(file) ?? '';
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(file);
+    buckets.set(key, bucket);
+  });
+  return [...buckets.entries()];
+}
+
+// Session level of an aggregated review: one group per session, a leading group
+// for files more than one session changed (counted once, not once per session),
+// and a neutral trailing group for files whose provenance cannot be
+// established — guessing an owner would also mean guessing a comment's
+// recipient.
+function buildPlanDiffSessionNodes(files, keyPrefix) {
+  const bySession = new Map();
+  const multiSession = [];
+  const unknown = [];
+
+  files.forEach((file) => {
+    const sessions = Array.isArray(file.sessions) ? file.sessions.filter(Boolean) : [];
+    if (sessions.length > 1) return void multiSession.push(file);
+    if (sessions.length === 0) return void unknown.push(file);
+    const [session] = sessions;
+    const bucket = bySession.get(session.id)
+      ?? { id: session.id, label: session.label, agent: session.agent, files: [] };
+    bucket.files.push(file);
+    bySession.set(session.id, bucket);
+  });
+
+  const nodes = [];
+  if (multiSession.length > 0) {
+    nodes.push({
+      kind: 'multi-session',
+      id: `${keyPrefix}/${PLAN_DIFF_MULTI_SESSION_GROUP_ID}`,
+      label: 'Changed by multiple sessions',
+      files: multiSession,
+    });
+  }
+  bySession.forEach((bucket) => nodes.push({
+    kind: 'session',
+    id: `${keyPrefix}/session:${bucket.id}`,
+    label: bucket.label,
+    agent: bucket.agent,
+    files: bucket.files,
+  }));
+  if (unknown.length > 0) {
+    nodes.push({
+      kind: 'unknown-session',
+      id: `${keyPrefix}/${PLAN_DIFF_UNKNOWN_SESSION_GROUP_ID}`,
+      label: 'Changed outside this session',
+      files: unknown,
+    });
+  }
+  return nodes;
+}
+
+// Builds the grouping above the path tree: checkout, then session. A branch is
+// a property of a checkout, not a level of its own — so one row reads
+// "project [branch]" rather than nesting a branch under a project. Two branches
+// of one repository are two checkouts and therefore two sibling rows, which is
+// also what makes the same path in each of them a separate review item.
+//
+// A level is only introduced when it discriminates: a single-checkout,
+// single-session scope stays a plain path tree, so the structure never charges
+// the reviewer for distinctions they do not have.
+function buildPlanDiffScopeNodes(files, keyPrefix = 'scope') {
+  const byCheckout = groupPlanDiffFilesBy(files, (file) => `${file.project ?? ''}\u0000${file.branch ?? ''}`);
+  if (byCheckout.length > 1) {
+    return byCheckout.map(([key, checkoutFiles]) => {
+      const [project, branch] = key.split('\u0000');
+      return {
+        kind: 'checkout',
+        id: `${keyPrefix}/checkout:${key}`,
+        label: project,
+        branch,
+        projectInitials: checkoutFiles[0]?.projectInitials ?? project.slice(0, 2).toUpperCase(),
+        projectColor: checkoutFiles[0]?.projectColor ?? 'neutral',
+        // A worktree is the reason two branches of one repository are checked
+        // out at once, so name it where it explains the duplication.
+        detail: checkoutFiles[0]?.worktree ?? null,
+        files: checkoutFiles,
+        children: buildPlanDiffScopeNodes(checkoutFiles, `${keyPrefix}/checkout:${key}`),
+      };
+    });
+  }
+
+  const sessionNodes = buildPlanDiffSessionNodes(files, keyPrefix);
+  if (sessionNodes.length > 1) return sessionNodes;
+  return [];
+}
+
+function collectPlanDiffTreeDirKeys(node, keys = []) {
+  keys.push(node.key);
+  node.dirs.forEach((dir) => collectPlanDiffTreeDirKeys(dir, keys));
+  return keys;
+}
+
 function PlanDiffViewingScopeControl({
   fileCount = 3,
   currentFileLabel = 'VisitController.java',
@@ -935,11 +1359,20 @@ function PlanDiffViewingScopeControl({
   onNavigateNext = null,
   selectedCompareBranch = null,
   onCompareBranchChange = null,
+  // Review progress ("viewed" / "not viewed") per file. Pass an array to let
+  // the host own it (so it survives file switches and can be reset when the
+  // agent rewrites a file); omit it and the control keeps its own state, which
+  // is what the standalone demo diff tab does.
+  viewedFileIds = null,
+  onToggleFileViewed = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
   const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
-  const [treeExpanded, setTreeExpanded] = useState(true);
+  const [collapsedDirKeys, setCollapsedDirKeys] = useState(() => new Set());
+  const [rowMenu, setRowMenu] = useState(null);
+  const [sessionsPopup, setSessionsPopup] = useState(null);
+  const [internalViewedIds, setInternalViewedIds] = useState([]);
   const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
     ? changeScopeOptions
     : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
@@ -971,7 +1404,16 @@ function PlanDiffViewingScopeControl({
         id: item.id ?? item.tabId ?? `file-${index}`,
         label: item.label ?? item.name ?? `File ${index + 1}`,
         icon: item.icon ?? 'fileTypes/java',
-        status: item.status ?? (String(item.label ?? item.name ?? '').includes('Tests') ? 'added' : 'modified'),
+        status: item.status ?? 'modified',
+        previousLabel: item.previousLabel ?? null,
+        modifiedAfterSession: Boolean(item.modifiedAfterSession),
+        sessions: Array.isArray(item.sessions) ? item.sessions : [],
+        project: item.project ?? '',
+        projectInitials: item.projectInitials ?? '',
+        projectColor: item.projectColor ?? 'neutral',
+        branch: item.branch ?? '',
+        worktree: item.worktree ?? null,
+        path: item.path ?? '',
         tabId: item.tabId ?? item.id ?? null,
       }))
     : [
@@ -990,6 +1432,47 @@ function PlanDiffViewingScopeControl({
             : 'fileTypes/text';
         return { ...item, icon, tabId: null };
       });
+  // Spec 12: a file two sessions changed is one review item, not two. The
+  // aggregated scope can hold the same physical file twice (once from the
+  // reviewed session, once from an older one), so collapse by name and union
+  // the sessions — otherwise N counts it twice and the reviewer sees a
+  // phantom duplicate. The entry currently open wins, so selection survives.
+  const dedupedFileOptions = (() => {
+    const byLabel = new Map();
+    fileOptions.forEach((item, index) => {
+      // Spec 12 collapses a file two sessions changed; spec 14 keeps the same
+      // path in two branches apart. Both hold if the identity of a review item
+      // is project + branch + name, not the name alone.
+      const key = [
+        item.project ?? '',
+        item.branch ?? '',
+        String(item.label ?? '').trim().toLowerCase(),
+      ].join('\u0000');
+      const existing = byLabel.get(key);
+      if (!existing) {
+        byLabel.set(key, { ...item, sourceIndexes: [index] });
+        return;
+      }
+      const sessions = [...(existing.sessions ?? [])];
+      (item.sessions ?? []).forEach((session) => {
+        if (!sessions.some((known) => known.id === session.id)) sessions.push(session);
+      });
+      const preferIncoming = index === activeFileIndex;
+      byLabel.set(key, {
+        ...(preferIncoming ? item : existing),
+        sessions,
+        sourceIndexes: [...existing.sourceIndexes, index],
+      });
+    });
+    return [...byLabel.values()].map((item, index) => ({ ...item, index }));
+  })();
+  const visibleFileCount = dedupedFileOptions.length || selectedFileCount;
+  // The host's index addresses the original list, so translate it through the
+  // collapsed one.
+  const currentDedupedIndex = Math.max(0, dedupedFileOptions.findIndex((item) => (
+    item.sourceIndexes.includes(activeFileIndex)
+  )));
+
   const closeFiles = () => setFilesRect(null);
   const navigateFiles = (delta) => {
     if (usesProvidedFiles) {
@@ -1002,6 +1485,233 @@ function PlanDiffViewingScopeControl({
     if (item.tabId) onSelectFile?.(item.tabId);
     else setFallbackFileIndex(index);
     closeFiles();
+  };
+
+  // A file is keyed by tabId where the host provides one, so the viewed flag
+  // follows the actual review target rather than its position in the list.
+  const isViewedControlled = Array.isArray(viewedFileIds);
+  const viewedIdSet = new Set(isViewedControlled ? viewedFileIds : internalViewedIds);
+  const fileViewedKey = (item) => item?.tabId ?? item?.id ?? null;
+  const isFileViewed = (item) => {
+    const key = fileViewedKey(item);
+    return key ? viewedIdSet.has(key) : false;
+  };
+  const setFileViewed = (item, nextViewed) => {
+    const key = fileViewedKey(item);
+    if (!key) return;
+    if (isViewedControlled) {
+      onToggleFileViewed?.(key, nextViewed);
+      return;
+    }
+    setInternalViewedIds((ids) => (nextViewed
+      ? (ids.includes(key) ? ids : [...ids, key])
+      : ids.filter((id) => id !== key)));
+  };
+  const scopeNodes = buildPlanDiffScopeNodes(dedupedFileOptions);
+  // A single-project, single-branch, single-session scope has nothing to group
+  // by and keeps the plain path tree.
+  const isGroupedScope = scopeNodes.length > 0;
+  const fileTree = buildPlanDiffFileTree(dedupedFileOptions);
+  // Every group holds its own path tree, so the file structure survives inside
+  // each project, branch and session.
+  const attachTrees = (nodes) => nodes.map((node) => ({
+    ...node,
+    children: node.children?.length ? attachTrees(node.children) : null,
+    tree: node.children?.length ? null : buildPlanDiffFileTree(node.files),
+  }));
+  const scopeTrees = attachTrees(scopeNodes);
+  const collectGroupKeys = (nodes) => nodes.flatMap((node) => [
+    node.id,
+    ...(node.children ? collectGroupKeys(node.children) : collectPlanDiffTreeDirKeys(node.tree)),
+  ]);
+  const allTreeDirKeys = isGroupedScope
+    ? collectGroupKeys(scopeTrees)
+    : collectPlanDiffTreeDirKeys(fileTree);
+  const isTreeFullyExpanded = collapsedDirKeys.size === 0;
+  const toggleDirCollapsed = (key) => setCollapsedDirKeys((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+  const viewedFileCount = dedupedFileOptions.filter((item) => isFileViewed(item)).length;
+  const allFilesViewed = dedupedFileOptions.length > 0
+    && viewedFileCount === dedupedFileOptions.length;
+
+  const renderFileRow = (item, depth) => {
+    const index = item.index ?? 0;
+    const isSelected = currentDedupedIndex === index;
+    const viewed = isFileViewed(item);
+    const status = item.status ?? 'modified';
+    return (
+      // A div rather than a button: the row carries its own nested
+      // viewed-toggle button, which a button can't.
+      <div
+        key={item.id}
+        className={`plan-diff-files-file-row is-${status}${isSelected ? ' is-selected' : ''}${viewed ? ' is-viewed' : ''}`}
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
+        role="treeitem"
+        tabIndex={0}
+        aria-selected={isSelected}
+        onClick={() => selectFile(item, index)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          selectFile(item, index);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setRowMenu({ item, viewed, rect: event.currentTarget.getBoundingClientRect() });
+        }}
+      >
+        <Icon name={item.icon} size={16} />
+        <span className="plan-diff-files-file-name">
+          {status === 'renamed' && item.previousLabel ? `${item.previousLabel} → ${item.label}` : item.label}
+        </span>
+        <span
+          className={`plan-diff-files-file-status is-${status}`}
+          aria-label={`VCS status: ${status}`}
+          title={status === 'renamed' && item.previousLabel
+            ? `${item.previousLabel} → ${item.label} · ${status}`
+            : status}
+        >
+          {PLAN_DIFF_VCS_STATUS_LETTER[status] ?? 'M'}
+        </span>
+        {/* A file more than one session changed carries the count; the popup
+            behind it names them, because "2 sessions" alone does not tell the
+            reviewer whose change they are reading. */}
+        {(item.sessions?.length ?? 0) > 1 && (
+          <button
+            type="button"
+            className="plan-diff-files-file-sessions"
+            // The count is also the answer to "why did my viewed mark go away":
+            // a file more than one session changed was changed outside this one.
+            // A separate warning glyph next to it said the same thing again
+            // without being able to name anyone.
+            title={item.modifiedAfterSession
+              ? `Changed by ${item.sessions.length} sessions, including outside this session`
+              : `Changed by ${item.sessions.length} sessions`}
+            aria-label={`Changed by ${item.sessions.length} sessions`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setSessionsPopup({
+                item,
+                rect: event.currentTarget.getBoundingClientRect(),
+              });
+            }}
+          >
+            {`${item.sessions.length} sessions`}
+          </button>
+        )}
+        {/* Viewed state is review progress only — it never touches file
+            content or the VCS status shown next to it. */}
+        <button
+          type="button"
+          className="plan-diff-files-file-viewed"
+          aria-pressed={viewed}
+          aria-label={`${item.label}: ${viewed ? 'Mark as Not Viewed' : 'Mark as Viewed'}`}
+          title={viewed ? 'Mark as Not Viewed' : 'Mark as Viewed'}
+          onClick={(event) => {
+            event.stopPropagation();
+            setFileViewed(item, !viewed);
+          }}
+        >
+          {viewed
+            ? <Icon name="general/checkmark" size={16} />
+            : <span className="plan-diff-files-file-dot" aria-hidden="true" />}
+        </button>
+      </div>
+    );
+  };
+
+  const PLAN_DIFF_GROUP_ICONS = {
+    session: 'aiAssistant/toolWindowChat',
+    'multi-session': 'general/listFiles',
+    'unknown-session': 'general/listFiles',
+  };
+
+  const renderScopeGroup = (group, depth) => {
+    const collapsed = collapsedDirKeys.has(group.id);
+    const count = group.files.length;
+    return (
+      <Fragment key={group.id}>
+        <div
+          className={`plan-diff-files-group-row is-${group.kind}`}
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          title={group.detail ? `${group.label} · ${group.branch} · ${group.detail}` : undefined}
+          role="treeitem"
+          tabIndex={0}
+          aria-expanded={!collapsed}
+          onClick={() => toggleDirCollapsed(group.id)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            toggleDirCollapsed(group.id);
+          }}
+        >
+          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
+          {group.kind === 'checkout' ? (
+            <span className={`agent-sessions-project-avatar is-${group.projectColor ?? 'neutral'}`}>
+              {group.projectInitials}
+            </span>
+          ) : group.kind === 'session' ? (
+            // The agent that ran the session, the way the sessions list shows
+            // it — one generic chat glyph for every session tells the reviewer
+            // nothing about whose change they are about to read.
+            <span className="plan-diff-files-group-agent">
+              <AiChatAgentIcon icon={group.agent} title={group.label} />
+            </span>
+          ) : (
+            <Icon name={PLAN_DIFF_GROUP_ICONS[group.kind] ?? 'general/listFiles'} size={16} />
+          )}
+          <span className="plan-diff-files-group-label">{group.label}</span>
+          {group.branch && (
+            <span className="plan-diff-files-group-branch">{`[${group.branch}]`}</span>
+          )}
+          <span className="plan-diff-files-tree-count">
+            {`${count} ${count === 1 ? 'file' : 'files'}`}
+          </span>
+        </div>
+        {!collapsed && (group.children
+          ? group.children.map((child) => renderScopeGroup(child, depth + 1))
+          : renderTreeNode(group.tree, depth + 1))}
+      </Fragment>
+    );
+  };
+
+  const renderTreeNode = (node, depth) => {
+    const collapsed = collapsedDirKeys.has(node.key);
+    return (
+      <Fragment key={node.key}>
+        <div
+          className="plan-diff-files-folder-row"
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          role="treeitem"
+          tabIndex={0}
+          aria-expanded={!collapsed}
+          onClick={() => toggleDirCollapsed(node.key)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            toggleDirCollapsed(node.key);
+          }}
+        >
+          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
+          <Icon name="nodes/folder" size={16} />
+          <span className="plan-diff-files-tree-label">{node.label}</span>
+          <span className="plan-diff-files-tree-count">
+            {`${node.count} ${node.count === 1 ? 'file' : 'files'}`}
+          </span>
+        </div>
+        {!collapsed && (
+          <>
+            {node.dirs.map((dir) => renderTreeNode(dir, depth + 1))}
+            {node.files.map((item) => renderFileRow(item, depth + 1))}
+          </>
+        )}
+      </Fragment>
+    );
   };
 
   return (
@@ -1018,12 +1728,13 @@ function PlanDiffViewingScopeControl({
           onChange={onCompareBranchChange}
         />
       )}
+      <ToolbarSeparator className="plan-diff-toolbar-separator" />
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
           className="plan-diff-viewing-file-arrow"
-          title="Previous file"
-          disabled={resolvedCurrentFileIndex <= 0}
+          title="Compare Previous File (⌥←)"
+          disabled={currentDedupedIndex <= 0}
           onClick={() => navigateFiles(-1)}
         />
         <span ref={filesRef} className="plan-diff-viewing-files-trigger">
@@ -1037,14 +1748,14 @@ function PlanDiffViewingScopeControl({
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
             }}
           >
-            {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} Files`}
+            {`${currentDedupedIndex + 1} of ${visibleFileCount} files`}
           </button>
         </span>
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
           className="plan-diff-viewing-file-arrow"
-          title="Next file"
-          disabled={resolvedCurrentFileIndex >= selectedFileCount - 1}
+          title="Compare Next File (⌥→)"
+          disabled={currentDedupedIndex >= visibleFileCount - 1}
           onClick={() => navigateFiles(1)}
         />
       {filesRect && typeof document !== 'undefined' && createPortal(
@@ -1055,52 +1766,73 @@ function PlanDiffViewingScopeControl({
                 <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
                   <Icon name="actions/preview" size={16} />
                 </span>
+                <span
+                  className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
+                  aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+                >
+                  {allFilesViewed && <Icon name="general/checkmark" size={16} />}
+                  {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
+                </span>
                 <span className="plan-diff-files-popup-actions">
-                  <button type="button" aria-label="Expand all" disabled={treeExpanded} onClick={() => setTreeExpanded(true)}>
+                  <button
+                    type="button"
+                    aria-label="Expand all"
+                    disabled={isTreeFullyExpanded}
+                    onClick={() => setCollapsedDirKeys(new Set())}
+                  >
                     <Icon name="general/expandAll" size={16} />
                   </button>
-                  <button type="button" aria-label="Collapse all" disabled={!treeExpanded} onClick={() => setTreeExpanded(false)}>
+                  <button
+                    type="button"
+                    aria-label="Collapse all"
+                    disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
+                    onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
+                  >
                     <Icon name="general/collapseAll" size={16} />
                   </button>
                 </span>
               </div>
               <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
-                <div className="plan-diff-files-folder-row is-root" role="treeitem" aria-expanded={treeExpanded}>
-                  <Icon name={treeExpanded ? 'general/chevronDown' : 'general/chevronRight'} size={16} />
-                  <Icon name="nodes/folder" size={16} />
-                  <span className="plan-diff-files-tree-label">spring-petclinic</span>
-                  <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                </div>
-                {treeExpanded && (
-                  <>
-                    <div className="plan-diff-files-folder-row is-level-2" role="treeitem" aria-expanded="true">
-                      <Icon name="general/chevronDown" size={16} />
-                      <Icon name="nodes/folder" size={16} />
-                      <span className="plan-diff-files-tree-label">src/main/java/org/springframework/samples/petclinic</span>
-                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                    </div>
-                    <div className="plan-diff-files-folder-row is-level-3" role="treeitem" aria-expanded="true">
-                      <Icon name="general/chevronDown" size={16} />
-                      <Icon name="nodes/folder" size={16} />
-                      <span className="plan-diff-files-tree-label">owner</span>
-                      <span className="plan-diff-files-tree-count">{selectedFileCount} files</span>
-                    </div>
-                    {fileOptions.map((item, index) => (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className={`plan-diff-files-file-row is-${item.status}${resolvedCurrentFileIndex === index ? ' is-selected' : ''}`}
-                        role="treeitem"
-                        aria-selected={resolvedCurrentFileIndex === index}
-                        onClick={() => selectFile(item, index)}
-                      >
-                        <Icon name={item.icon} size={16} />
-                        <span>{item.label}</span>
-                      </button>
-                    ))}
-                  </>
-                )}
+                {isGroupedScope
+                  ? scopeTrees.map((group) => renderScopeGroup(group, 0))
+                  : renderTreeNode(fileTree, 0)}
               </div>
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+      {sessionsPopup && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={sessionsPopup.rect} onDismiss={() => setSessionsPopup(null)} gap={4}>
+            <Popup visible className="plan-diff-popover text-ui-default" onClose={() => setSessionsPopup(null)}>
+              <PopupCell type="separator" text="Changed by" />
+              {(sessionsPopup.item.sessions ?? []).map((session) => (
+                <PopupCell key={session.id}>
+                  <span className="plan-diff-files-group-agent">
+                    <AiChatAgentIcon icon={session.agent} title={session.label} />
+                  </span>
+                  {session.label}
+                </PopupCell>
+              ))}
+            </Popup>
+          </PositionedPopup>
+        </div>,
+        document.body,
+      )}
+      {rowMenu && typeof document !== 'undefined' && createPortal(
+        <div className="theme-dark">
+          <PositionedPopup triggerRect={rowMenu.rect} onDismiss={() => setRowMenu(null)} gap={4}>
+            <Popup visible className="plan-diff-popover text-ui-default" onClose={() => setRowMenu(null)}>
+              <PopupCell
+                icon={rowMenu.viewed ? 'general/close' : 'general/checkmark'}
+                onClick={() => {
+                  setFileViewed(rowMenu.item, !rowMenu.viewed);
+                  setRowMenu(null);
+                }}
+              >
+                {rowMenu.viewed ? 'Mark as Not Viewed' : 'Mark as Viewed'}
+              </PopupCell>
             </Popup>
           </PositionedPopup>
         </div>,
@@ -1626,12 +2358,22 @@ export function PlanDiffNewReviewButton({
   );
 }
 
-function PlanDiffContentLabel({ children }) {
+// One header per pane, the way the Diff Viewer labels them: the base side is
+// read-only and identified by its commit hash (details in the tooltip), the
+// local side is the one you can edit.
+function PlanDiffContentLabel({ children, tooltip = '', variant = 'read-only', mono = false }) {
   return (
-    <div className="plan-diff-content-label text-ui-default">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M4 7V5C4 2.79086 5.79086 1 8 1C10.2091 1 12 2.79086 12 5V7H12.5C13.3284 7 14 7.67157 14 8.5V13.5C14 14.3284 13.3284 15 12.5 15H3.5C2.67157 15 2 14.3284 2 13.5V8.5C2 7.67157 2.67157 7 3.5 7H4ZM5 7H11V5C11 3.34315 9.65685 2 8 2C6.34315 2 5 3.34315 5 5V7ZM3.5 8C3.22386 8 3 8.22386 3 8.5V13.5C3 13.7761 3.22386 14 3.5 14H12.5C12.7761 14 13 13.7761 13 13.5V8.5C13 8.22386 12.7761 8 12.5 8H3.5Z" fill="currentColor" />
-      </svg>
+    <div
+      className={`plan-diff-content-label text-ui-default is-${variant}${mono ? ' is-mono' : ''}`}
+      title={tooltip || undefined}
+    >
+      {variant === 'read-only' ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M4 7V5C4 2.79086 5.79086 1 8 1C10.2091 1 12 2.79086 12 5V7H12.5C13.3284 7 14 7.67157 14 8.5V13.5C14 14.3284 13.3284 15 12.5 15H3.5C2.67157 15 2 14.3284 2 13.5V8.5C2 7.67157 2.67157 7 3.5 7H4ZM5 7H11V5C11 3.34315 9.65685 2 8 2C6.34315 2 5 3.34315 5 5V7ZM3.5 8C3.22386 8 3 8.22386 3 8.5V13.5C3 13.7761 3.22386 14 3.5 14H12.5C12.7761 14 13 13.7761 13 13.5V8.5C13 8.22386 12.7761 8 12.5 8H3.5Z" fill="currentColor" />
+        </svg>
+      ) : (
+        <PlanDiffToolbarIcon type="edit" />
+      )}
       <span>{children}</span>
     </div>
   );
@@ -1744,6 +2486,12 @@ export function DiffInlineCommentPopup({
   showCompose = true,
   commentsReadOnly = false,
   defaultSubmitAttachMode = 'current',
+  // Set when this file has more than one candidate session, so a send must
+  // pick one rather than defaulting.
+  requireSubmitTargetChoice = false,
+  // The candidate sessions themselves, so the forced choice offers the actual
+  // recipients rather than attach modes.
+  submitSessionChoices = [],
   submitAttachModes = ['current', 'new', 'document'],
   submitButtonLabel = '',
   defaultSubmitTargetLabel = '',
@@ -2042,10 +2790,30 @@ export function DiffInlineCommentPopup({
   }, [normalizedDefaultSubmitAttachMode, normalizedDefaultSubmitTargetKey]);
 
   const handleSubmit = (attachMode = submitAttachMode, submitAction = selectedSubmitAction) => {
+    if (!canSubmitComment) return;
+    // Spec 12: when several sessions changed this file and the selected lines
+    // do not pin the comment to one of them, the recipient cannot be guessed —
+    // ask instead of sending somewhere plausible. Only the first attempt is
+    // interrupted; once a target is picked the send goes through.
+    if (requireSubmitTargetChoice && !submitAttachTarget) {
+      // Anchor on the target chip when this form shows one, otherwise on the
+      // submit button — the compact note form has no chip. If neither is on
+      // screen there is nowhere to ask, and trapping the comment would be worse
+      // than sending it, so the send proceeds.
+      const anchor = submitTargetRef.current
+        ?? ref.current?.querySelector('[data-demo-id="diff-comment-submit"]')
+        ?? null;
+      const rect = anchor?.getBoundingClientRect() ?? null;
+      if (rect) {
+        setSubmitActionMenuRect(null);
+        setSubmitOptionsWidth(resolveSubmitOptionsWidth(rect));
+        setSubmitOptionsRect(rect);
+        return;
+      }
+    }
     setSubmitOptionsRect(null);
     setSubmitOptionsWidth(null);
     setSubmitActionMenuRect(null);
-    if (!canSubmitComment) return;
     onSubmit?.({
       attachMode,
       submitAction,
@@ -2875,7 +3643,33 @@ export function DiffInlineCommentPopup({
             document.body,
           )}
           */}
-          {canChooseSubmitAttachMode && submitOptionsRect && createPortal(
+          {requireSubmitTargetChoice && !submitAttachTarget && submitOptionsRect && submitSessionChoices.length > 1 && createPortal(
+            <div className="theme-dark">
+              <PositionedPopup triggerRect={submitOptionsRect} onDismiss={() => setSubmitOptionsRect(null)} gap={4}>
+                <Popup visible className="diff-comment-submit-options-popup" onClose={() => setSubmitOptionsRect(null)}>
+                  <PopupCell type="separator" text="Send to" />
+                  {submitSessionChoices.map((session) => (
+                    <PopupCell
+                      key={session.id}
+                      onClick={() => handleSubmitTargetSelect({
+                        attachMode: 'current',
+                        targetChatId: session.id,
+                        targetDocumentTabId: null,
+                        label: session.label,
+                      })}
+                    >
+                      <span className="plan-diff-files-group-agent">
+                        <AiChatAgentIcon icon={session.agent} title={session.label} />
+                      </span>
+                      {session.label}
+                    </PopupCell>
+                  ))}
+                </Popup>
+              </PositionedPopup>
+            </div>,
+            document.body,
+          )}
+          {(canChooseSubmitAttachMode || requireSubmitTargetChoice) && submitOptionsRect && !(requireSubmitTargetChoice && !submitAttachTarget && submitSessionChoices.length > 1) && createPortal(
             typeof renderSubmitTargetPicker === 'function'
               ? renderSubmitTargetPicker({
                   triggerRect: submitOptionsRect,
@@ -3144,6 +3938,10 @@ function normalizePlanDiffSeverityFilter(value = 'all') {
 
 export function PlanDiffOverlay({
   diffData,
+  // "Align Changes in Side-by-Side Diff": the padding rows that keep matching
+  // lines opposite each other. Turning it off lets each side pack tightly,
+  // which is exactly what the IDE's option does.
+  alignChanges = true,
   contextSelections = [],
   initialDiffComments = {},
   documentDiffComments = {},
@@ -3152,6 +3950,10 @@ export function PlanDiffOverlay({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  // Set when this file has more than one candidate session, so a send must
+  // pick one rather than defaulting.
+  requireSubmitTargetChoice = false,
+  submitSessionChoices = [],
   defaultSubmitTargetLabel = '',
   defaultSubmitTargetIcon = '',
   defaultSubmitTargetKey = '',
@@ -5217,6 +6019,7 @@ export function PlanDiffOverlay({
 	              ));
 	              return (
 	              <div
+	                data-plan-diff-row-id={row.id}
 	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${contextSelectionRanges.length > 0 ? ' has-context-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
@@ -5384,6 +6187,8 @@ export function PlanDiffOverlay({
                           showCompose={showGroupCompose}
                           commentsReadOnly={commentsReadOnly}
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
+                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          submitSessionChoices={submitSessionChoices}
                           submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
                           submitButtonLabel={reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : ''}
                           showSubmitTargetLabel={!reviewNoteComposer}
@@ -5477,6 +6282,8 @@ export function PlanDiffOverlay({
                         showCompose
                         commentsReadOnly={commentsReadOnly}
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
+                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          submitSessionChoices={submitSessionChoices}
                         submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
                         submitButtonLabel={reviewNoteComposer ? 'Add Note' : ''}
                         showSubmitTargetLabel={!reviewNoteComposer}
@@ -5511,7 +6318,11 @@ export function PlanDiffOverlay({
 		                </div>
 			              ));
 	            const renderSplitPlaceholderRow = (splitSide) => (
-	              <div className={`plan-diff-row plan-diff-row-split-placeholder plan-diff-row--split-${splitSide}`} aria-hidden="true">
+	              <div
+	                data-plan-diff-row-id={row.id}
+	                className={`plan-diff-row plan-diff-row-split-placeholder plan-diff-row--split-${splitSide}`}
+	                aria-hidden="true"
+	              >
 	                <div className="plan-diff-row-gutter">
 	                  <span className="plan-diff-line-number" />
 	                  <span className="plan-diff-gutter-icon-slot" />
@@ -5522,7 +6333,11 @@ export function PlanDiffOverlay({
 	              </div>
 	            );
 	            if (renderMode === 'split-left') {
-	              if (row.kind === 'added') return <Fragment key={`left-placeholder-${row.id}`}>{renderSplitPlaceholderRow('left')}</Fragment>;
+	              if (row.kind === 'added') {
+	                return alignChanges
+	                  ? <Fragment key={`left-placeholder-${row.id}`}>{renderSplitPlaceholderRow('left')}</Fragment>
+	                  : null;
+	              }
 	              return (
 	                <Fragment key={`left-${row.id}`}>
 	                  {renderCodeRow('left')}
@@ -5532,11 +6347,13 @@ export function PlanDiffOverlay({
 	            }
 	            if (renderMode === 'split-right') {
 	              if (row.kind === 'removed') {
-	                return (
-	                  <Fragment key={`right-${row.id}`}>
-	                    {renderSplitPlaceholderRow('right')}
-	                  </Fragment>
-	                );
+	                return alignChanges
+	                  ? (
+	                    <Fragment key={`right-${row.id}`}>
+	                      {renderSplitPlaceholderRow('right')}
+	                    </Fragment>
+	                  )
+	                  : null;
 	              }
 	              return (
 	                <Fragment key={`right-${row.id}`}>
@@ -5990,9 +6807,79 @@ export function PlanDiffEditorToolbar({
   changeScopeOptions = null,
   selectedCompareBranch = null,
   onCompareBranchChange = null,
+  viewedFileIds = null,
+  onToggleFileViewed = null,
+  // Some settings (notably "Show All Files in One Diff View") can only be
+  // honoured by whoever owns the scope files, so the host may take them over.
+  viewerSettings: controlledViewerSettings = null,
+  onViewerSettingsChange = null,
+  // The base revision this file is compared against, per project, so a
+  // cross-project scope does not read as one shared base.
+  baseRevision = null,
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
+  const [localViewerSettings, setLocalViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
+  const viewerSettings = controlledViewerSettings ?? localViewerSettings;
+  const setViewerSettings = (next) => {
+    const resolved = typeof next === 'function' ? next(viewerSettings) : next;
+    if (controlledViewerSettings) onViewerSettingsChange?.(resolved);
+    else setLocalViewerSettings(resolved);
+  };
+  // Which difference inside the current file the user is on. Tracked here so
+  // "Next Difference" past the last one can continue into the next file, which
+  // is the behaviour the spec asks for.
+  const differenceCount = Math.max(1, diffData?.differenceCount ?? 1);
+  const [differenceIndex, setDifferenceIndex] = useState(0);
+  // The IDE does not silently leave the file at the last difference — it offers
+  // to continue into the next modified file, and the next press takes the
+  // offer. This holds which direction is currently being offered.
+  const [pendingFileJump, setPendingFileJump] = useState(null);
+  useEffect(() => {
+    setDifferenceIndex(0);
+    setPendingFileJump(null);
+  }, [diffData?.sourceTabLabel, diffData?.title]);
+  const atFirstDifference = differenceIndex <= 0;
+  const atLastDifference = differenceIndex >= differenceCount - 1;
+  const goToPreviousDifference = () => {
+    if (!atFirstDifference) {
+      setDifferenceIndex(differenceIndex - 1);
+      setPendingFileJump(null);
+      onNavigatePrevious?.();
+      return;
+    }
+    const canLeaveFile = viewerSettings.goToNextFileAfterLastChange && currentFileIndex > 0;
+    if (canLeaveFile && pendingFileJump === 'previous') {
+      setPendingFileJump(null);
+      onNavigatePreviousFile?.();
+      return;
+    }
+    if (canLeaveFile) {
+      setPendingFileJump('previous');
+      return;
+    }
+    onNavigatePrevious?.();
+  };
+  const goToNextDifference = () => {
+    if (!atLastDifference) {
+      setDifferenceIndex(differenceIndex + 1);
+      setPendingFileJump(null);
+      onNavigateNext?.();
+      return;
+    }
+    const canLeaveFile = viewerSettings.goToNextFileAfterLastChange
+      && currentFileIndex < fileCount - 1;
+    if (canLeaveFile && pendingFileJump === 'next') {
+      setPendingFileJump(null);
+      onNavigateNextFile?.();
+      return;
+    }
+    if (canLeaveFile) {
+      setPendingFileJump('next');
+      return;
+    }
+    onNavigateNext?.();
+  };
 
   return (
     <div className="plan-diff-toolbar-shell">
@@ -6000,12 +6887,34 @@ export function PlanDiffEditorToolbar({
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
           <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
-            <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
+            <PlanDiffToolbarIconButton
+              label={atFirstDifference && pendingFileJump === 'previous'
+                ? 'Press again to compare the previous file'
+                : 'Previous Difference (⇧F7)'}
+              icon="up"
+              onClick={goToPreviousDifference}
+            />
+            <PlanDiffToolbarIconButton
+              label={atLastDifference && pendingFileJump === 'next'
+                ? 'Press again to compare the next file'
+                : 'Next Difference (F7)'}
+              icon="down"
+              onClick={goToNextDifference}
+            />
           </div>
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Edit source" icon="edit" onClick={onEditSource} />
+            <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+            <PlanDiffToolbarIconButton
+              label={viewerSettings.collapseUnchanged
+                ? 'Expand Unchanged Fragments'
+                : 'Collapse Unchanged Fragments'}
+              icon="collapse"
+              onClick={() => setViewerSettings((prev) => ({
+                ...prev,
+                collapseUnchanged: !prev.collapseUnchanged,
+              }))}
+            />
           </div>
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <PlanDiffViewingScopeControl
@@ -6021,16 +6930,17 @@ export function PlanDiffEditorToolbar({
             changeScopeOptions={changeScopeOptions}
             selectedCompareBranch={selectedCompareBranch}
             onCompareBranchChange={onCompareBranchChange}
+            viewedFileIds={viewedFileIds}
+            onToggleFileViewed={onToggleFileViewed}
           />
           </div>
           <div className="plan-diff-toolbar-right">
           {onCommitScope && (
-            <PlanDiffCommitDropdown onCommitScope={onCommitScope} />
+            <PlanDiffCommitButton onCommitScope={onCommitScope} />
           )}
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
           </span>
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <SegmentedControl
             className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
             value={viewMode}
@@ -6040,13 +6950,17 @@ export function PlanDiffEditorToolbar({
               { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
             ]}
           />
-            <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+            <PlanDiffSettingsMenu settings={viewerSettings} onSettingsChange={setViewerSettings} />
           </div>
         </div>
       </div>
-      <div className="plan-diff-content-labels">
-        <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
-        <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+      {/* Spec 13: each item is compared against its own project's base, so the
+          hash — and the checkout behind its tooltip — identifies which one. */}
+      <div className={`plan-diff-content-labels${viewMode === 'split' ? ' is-split' : ''}`}>
+        <PlanDiffContentLabel tooltip={baseRevision?.tooltip} variant="read-only" mono>
+          {baseRevision?.hash ?? 'Base revision'}
+        </PlanDiffContentLabel>
+        <PlanDiffContentLabel variant="editable">Local changes</PlanDiffContentLabel>
       </div>
     </div>
   );
@@ -6098,6 +7012,10 @@ export function PlanDiffEditorArea({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  // Set when this file has more than one candidate session, so a send must
+  // pick one rather than defaulting.
+  requireSubmitTargetChoice = false,
+  submitSessionChoices = [],
   defaultSubmitTargetLabel = '',
   defaultSubmitTargetIcon = '',
   defaultSubmitTargetKey = '',
@@ -6150,19 +7068,23 @@ export function PlanDiffEditorArea({
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
   const [selectedChangeScopeId, setSelectedChangeScopeId] = useState('last-turn');
+  const [areaViewerSettings, setAreaViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
   const demoScopeFiles = useMemo(() => {
+    const owner = '~/projects/spring-petclinic/src/main/java/org/springframework/samples/petclinic/owner';
+    const ownerTests = '~/projects/spring-petclinic/src/test/java/org/springframework/samples/petclinic/owner';
+    const resources = '~/projects/spring-petclinic/src/main/resources';
     const files = [
-      { id: 'visit-controller', label: toolbarFileLabel, icon: 'fileTypes/java', status: 'modified' },
-      { id: 'visit-repository', label: 'VisitRepository.java', icon: 'fileTypes/java', status: 'modified' },
-      { id: 'visit-controller-tests', label: 'VisitControllerTests.java', icon: 'fileTypes/java', status: 'added' },
-      { id: 'vet-schedules', label: 'Vet-Schedules.md', icon: 'fileTypes/markdown', status: 'modified' },
-      { id: 'visit-model', label: 'Visit.java', icon: 'fileTypes/java', status: 'modified' },
-      { id: 'visit-form', label: 'createOrUpdateVisitForm.html', icon: 'fileTypes/html', status: 'modified' },
-      { id: 'schema', label: 'schema.sql', icon: 'fileTypes/sql', status: 'modified' },
-      { id: 'pom', label: 'pom.xml', icon: 'fileTypes/xml', status: 'modified' },
+      { id: 'visit-controller', label: toolbarFileLabel, icon: 'fileTypes/java', status: 'modified', path: owner },
+      { id: 'visit-repository', label: 'VisitRepository.java', icon: 'fileTypes/java', status: 'modified', path: owner },
+      { id: 'visit-controller-tests', label: 'VisitControllerTests.java', icon: 'fileTypes/java', status: 'added', path: ownerTests },
+      { id: 'vet-schedules', label: 'Vet-Schedules.md', icon: 'fileTypes/markdown', status: 'modified', path: '~/projects/spring-petclinic/Agent Specifications' },
+      { id: 'visit-model', label: 'Visit.java', icon: 'fileTypes/java', status: 'modified', path: owner },
+      { id: 'visit-form', label: 'createOrUpdateVisitForm.html', icon: 'fileTypes/html', status: 'modified', path: `${resources}/templates/pets` },
+      { id: 'schema', label: 'schema.sql', icon: 'fileTypes/sql', status: 'modified', path: `${resources}/db/h2` },
+      { id: 'pom', label: 'pom.xml', icon: 'fileTypes/xml', status: 'modified', path: '~/projects/spring-petclinic' },
     ];
     const lastTurnCount = Math.max(1, Math.min(files.length, toolbarFileCount));
     if (selectedChangeScopeId === 'session-changes') return files.slice(0, Math.max(lastTurnCount, 6));
@@ -6202,7 +7124,7 @@ export function PlanDiffEditorArea({
                   {reviewNav}
                 </div>
                 <div className="plan-diff-toolbar-right">
-                  <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+                  <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
             </div>
@@ -6214,12 +7136,22 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
                 <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
-                  <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
+                  <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
+                  <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" onClick={onEditSource} />
+                  <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                  <PlanDiffToolbarIconButton
+                    label={areaViewerSettings.collapseUnchanged
+                      ? 'Expand Unchanged Fragments'
+                      : 'Collapse Unchanged Fragments'}
+                    icon="collapse"
+                    onClick={() => setAreaViewerSettings((prev) => ({
+                      ...prev,
+                      collapseUnchanged: !prev.collapseUnchanged,
+                    }))}
+                  />
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <PlanDiffViewingScopeControl
@@ -6232,7 +7164,7 @@ export function PlanDiffEditorArea({
                 </div>
                 <div className="plan-diff-toolbar-right">
                 {onCommitScope && (
-                  <PlanDiffCommitDropdown
+                  <PlanDiffCommitButton
                     onCommitScope={(commitOptions) => onCommitScope({
                       scopeId: selectedChangeScopeId,
                       scopeLabel: selectedChangeScope?.label ?? 'Current scope',
@@ -6242,7 +7174,6 @@ export function PlanDiffEditorArea({
                   />
                 )}
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 {viewMode !== 'aside' && (
                   <SegmentedControl
                     className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
@@ -6254,7 +7185,7 @@ export function PlanDiffEditorArea({
                     ]}
                   />
                 )}
-                <PlanDiffToolbarIconButton label="Settings" icon="settings" />
+                <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
             </div>
@@ -6276,6 +7207,8 @@ export function PlanDiffEditorArea({
           documentContextSessionLabel={documentContextSessionLabel}
           documentContextSourceTabId={documentContextSourceTabId}
           defaultSubmitAttachMode={defaultSubmitAttachMode}
+                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          submitSessionChoices={submitSessionChoices}
           defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
           defaultSubmitTargetKey={defaultSubmitTargetKey}

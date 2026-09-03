@@ -13,6 +13,8 @@ import {
   AiReviewComposerDialog,
   REVIEW_FINDING_STATUS_IDS,
   getReviewFindingStatus,
+  PLAN_DIFF_DEFAULT_VIEWER_SETTINGS,
+  applyPlanDiffViewerSettings,
 } from './PlanDiffView.jsx';
 import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
@@ -120,7 +122,17 @@ import './App.css';
 const PROJECT_NAME = 'spring-petclinic';
 const REVIEW_BASE_BRANCH_NAME = 'main';
 const REVIEW_CURRENT_BRANCH_NAME = 'code-notes-v3-release';
-const PROJECT_ROOT_PATH = '~/projects/payment-service';
+const PROJECT_ROOT_PATH = `~/projects/${PROJECT_NAME}`;
+// The parallel Vet Schedules track the demo already talks about lives in its
+// own service, so a session that wires real availability checks into visits
+// legitimately spans two projects.
+const VET_SERVICE_PROJECT_NAME = 'vet-scheduling-service';
+const VET_SERVICE_ROOT_PATH = `~/projects/${VET_SERVICE_PROJECT_NAME}`;
+// A backport session runs in its own worktree on the release branch and touches
+// the same paths as the mainline work, which is what makes one path two
+// independent review items.
+const RELEASE_BRANCH_NAME = 'release/3.2';
+const RELEASE_WORKTREE_PATH = `~/worktrees/${PROJECT_NAME}-3.2`;
 const PRIMARY_BREADCRUMBS = [PROJECT_NAME, 'src/main/java', 'VisitController.java'];
 const TOOLBAR_INPUT_IS_EDITABLE = false;
 const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
@@ -487,9 +499,9 @@ const MainToolbarAiDropdown = forwardRef(function MainToolbarAiDropdown({ style 
 });
 
 const MY_PROJECTS = [
-  { id: '1', name: 'payment-service', path: '~/projects/payment-service', initials: 'PS', gradient: ['#22c55e', '#15803d'] },
-  { id: '2', name: 'auth-module',     path: '~/projects/auth-module',     initials: 'AM', gradient: ['#8b5cf6', '#6d28d9'] },
-  { id: '3', name: 'api-gateway',     path: '~/projects/api-gateway',     initials: 'AG', gradient: ['#10b981', '#059669'] },
+  { id: '1', name: PROJECT_NAME, path: PROJECT_ROOT_PATH, initials: 'SP', gradient: ['#22c55e', '#15803d'] },
+  { id: '2', name: VET_SERVICE_PROJECT_NAME, path: VET_SERVICE_ROOT_PATH, initials: 'VS', gradient: ['#8b5cf6', '#6d28d9'] },
+  { id: '3', name: 'petclinic-api-client', path: '~/projects/petclinic-api-client', initials: 'AC', gradient: ['#10b981', '#059669'] },
 ];
 
 const MY_EDITOR_TABS = [
@@ -731,6 +743,7 @@ const COMMIT_CHAT_GROUPS = [
   {
     id: 'request-logging',
     label: 'Add request logging to visit workflows',
+    agent: 'codex',
     files: [
       {
         label: 'VisitController.java',
@@ -757,6 +770,7 @@ const COMMIT_CHAT_GROUPS = [
   {
     id: 'understand-codebase',
     label: 'Review the PetClinic domain model',
+    agent: 'claude',
     files: [
       {
         label: 'Owner.java',
@@ -778,6 +792,7 @@ const COMMIT_CHAT_GROUPS = [
   {
     id: 'class-three-params',
     label: 'Add vet scheduling domain support',
+    agent: 'junie',
     files: [
       {
         label: 'VetSchedule.java',
@@ -799,6 +814,7 @@ const COMMIT_CHAT_GROUPS = [
   {
     id: 'solver-test-fixtures',
     label: 'Refresh visit booking test fixtures',
+    agent: 'codex',
     files: [
       {
         label: 'data.sql',
@@ -825,6 +841,7 @@ const COMMIT_CHAT_GROUPS = [
   {
     id: 'polynomial-nullability',
     label: 'Review repository nullability contracts',
+    agent: 'claude',
     files: [
       {
         label: 'VisitRepository.java',
@@ -839,8 +856,26 @@ const COMMIT_CHAT_GROUPS = [
     ],
   },
   {
+    id: 'visit-slot-backport',
+    label: 'Backport visit slot fix to 3.2',
+    agent: 'junie',
+    files: [
+      {
+        label: 'VisitController.java',
+        path: `${RELEASE_WORKTREE_PATH}/src/main/java/org/springframework/samples/petclinic/owner`,
+        status: 'modified',
+      },
+      {
+        label: 'VisitControllerTests.java',
+        path: `${RELEASE_WORKTREE_PATH}/src/test/java/org/springframework/samples/petclinic/owner`,
+        status: 'modified',
+      },
+    ],
+  },
+  {
     id: 'related-chat-ranking',
     label: 'Update visit and owner templates',
+    agent: 'gemini',
     files: [
       {
         label: 'createOrUpdateVisitForm.html',
@@ -1369,7 +1404,15 @@ public class Visit extends BaseEntity {
   4: {
     fileLabel: 'VisitController.java',
     language: 'java',
-    beforeCode: `@ModelAttribute("timeSlots")
+    // The import swap, the extra blank line and the re-indented signature are
+    // here on purpose: they are the changes the Diff Viewer's "Ignore
+    // Differences" policies are supposed to hide, so each policy has something
+    // real to act on. They also match the refactoring — dropping ArrayList and
+    // the loop in favour of IntStream genuinely rewrites these imports.
+    beforeCode: `import java.util.ArrayList;
+import java.util.List;
+
+@ModelAttribute("timeSlots")
 public List<LocalTime> populateTimeSlots() {
     List<LocalTime> slots = new ArrayList<>();
     for (int hour = 9; hour <= 16; hour++) {
@@ -1377,7 +1420,10 @@ public List<LocalTime> populateTimeSlots() {
     }
     return slots;
 }`,
-    afterCode: `private final List<LocalTime> timeSlots;
+    afterCode: `import java.util.List;
+import java.util.stream.IntStream;
+
+private final List<LocalTime> timeSlots;
 
 public VisitController(...) {
     this.timeSlots = IntStream.rangeClosed(9, 16)
@@ -1385,8 +1431,9 @@ public VisitController(...) {
         .toList();
 }
 
+
 @ModelAttribute("timeSlots")
-public List<LocalTime> populateTimeSlots() {
+  public List<LocalTime> populateTimeSlots() {
     return this.timeSlots;
 }`,
   },
@@ -1553,6 +1600,202 @@ const MY_PROJECT_TREE = [
 ];
 
 const AGENT_SPECS_PATH = `${PROJECT_ROOT_PATH}/Agent Specifications`;
+
+// Commit is the source of truth for a file's VCS status and directory (the same
+// rule getAllProjectChangesFiles already follows). Review surfaces resolve by
+// label so the diff's file list shows exactly the statuses and paths the Commit
+// tool window shows, instead of guessing from the file name.
+const REVIEW_FILE_VCS_META_BY_LABEL = (() => {
+  const byLabel = new Map();
+  [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES].forEach((file) => {
+    const existing = byLabel.get(file.label);
+    // The same name can exist in more than one checkout. A lookup by name
+    // alone means the caller has no path, which is the mainline case, so the
+    // mainline entry wins over a worktree copy.
+    if (existing && String(existing.path ?? '').startsWith(PROJECT_ROOT_PATH)) return;
+    byLabel.set(file.label, file);
+  });
+  return byLabel;
+})();
+
+// Which chat sessions changed a given file. Built from the same Commit groups
+// that own the statuses, so a file touched by two sessions is discoverable
+// without threading provenance through every review builder.
+const reviewFileSessionKey = (path, label) => `${path ?? ''}\u0000${String(label ?? '').trim()}`;
+
+// Two indexes: one keyed by checkout path + name, which is the real identity of
+// a review item, and one keyed by name alone for entries that arrive without a
+// path. Without the first, a file backported into a worktree would inherit the
+// mainline copy's sessions and claim owners that never touched it.
+const REVIEW_FILE_SESSIONS_BY_PATH = new Map();
+const REVIEW_FILE_SESSIONS_BY_LABEL = new Map();
+COMMIT_CHAT_GROUPS.forEach((group) => {
+  group.files.forEach((file) => {
+    const session = { id: group.id, label: group.label, agent: group.agent ?? 'claude' };
+    [
+      [REVIEW_FILE_SESSIONS_BY_PATH, reviewFileSessionKey(file.path, file.label)],
+      [REVIEW_FILE_SESSIONS_BY_LABEL, file.label],
+    ].forEach(([index, key]) => {
+      const current = index.get(key) ?? [];
+      if (!current.some((known) => known.id === session.id)) current.push(session);
+      index.set(key, current);
+    });
+  });
+});
+
+// The sessions to attribute a file to: the ones recorded in Commit, plus the
+// session the review was opened from when that session changed the file too.
+// A file with more than one belongs in the "Changed by multiple sessions"
+// group rather than being counted once per session.
+function getReviewFileSessions(label = '', path = '', currentSession = null) {
+  const key = String(label ?? '').trim();
+  // Prefer the checkout-specific owners; only fall back to the name when the
+  // entry carries no path of its own.
+  const recorded = REVIEW_FILE_SESSIONS_BY_PATH.get(reviewFileSessionKey(path, key))
+    ?? REVIEW_FILE_SESSIONS_BY_LABEL.get(key)
+    ?? [];
+  const sessions = recorded.map((session) => ({ ...session }));
+  // The reviewed session works in one checkout, so it can only claim the copy
+  // that lives there. Without this it would also claim a backport of the same
+  // path in another worktree, which it never touched.
+  const isCurrentCheckout = getReviewFileLocation(key, path).branch === REVIEW_CURRENT_BRANCH_NAME;
+  // ownsLabels is keyed by the normalized label, so match on that rather than
+  // the raw file name.
+  if (
+    isCurrentCheckout
+    && currentSession?.id
+    && currentSession?.ownsLabels?.has(normalizeReviewScopeLabel(key))
+  ) {
+    if (!sessions.some((session) => session.id === currentSession.id)) {
+      sessions.push({
+        id: currentSession.id,
+        label: currentSession.label,
+        agent: currentSession.agent ?? 'claude',
+      });
+    }
+  }
+  // No provenance anywhere: return nothing rather than pinning the file on the
+  // session being reviewed. The list then shows it under the neutral "Changed
+  // outside this session" group, which is what the spec requires — guessing an
+  // owner here would also mean guessing where a comment on it should go.
+  return sessions;
+}
+
+// Where a review item lives. Derived from the file's own path rather than from
+// its session: a checkout root is what actually decides which project and which
+// branch an item is reviewed against, and it distinguishes two copies of one
+// path — the mainline one and the one in a release worktree — without needing
+// to guess which session produced which entry.
+const REVIEW_CHECKOUT_ROOTS = [
+  {
+    root: RELEASE_WORKTREE_PATH,
+    project: PROJECT_NAME,
+    branch: RELEASE_BRANCH_NAME,
+    worktree: RELEASE_WORKTREE_PATH,
+  },
+  {
+    root: VET_SERVICE_ROOT_PATH,
+    project: VET_SERVICE_PROJECT_NAME,
+    branch: REVIEW_CURRENT_BRANCH_NAME,
+    worktree: null,
+  },
+  {
+    root: PROJECT_ROOT_PATH,
+    project: PROJECT_NAME,
+    branch: REVIEW_CURRENT_BRANCH_NAME,
+    worktree: null,
+  },
+];
+
+// The Vet Schedules spec belongs to the scheduling service, not to the clinic
+// app — which is what makes the current session span two projects.
+const REVIEW_FILE_PROJECT_OVERRIDES = {
+  'Vet-Schedules.md': { project: VET_SERVICE_PROJECT_NAME, root: VET_SERVICE_ROOT_PATH },
+};
+
+// The base revision each project's diff is computed against. In the IDE the
+// left pane is identified by this commit hash, with the commit details behind
+// its tooltip — which is also where the branch and project belong, rather than
+// spelled out next to the words "Initial content".
+const REVIEW_BASE_COMMITS = {
+  [PROJECT_NAME]: {
+    hash: 'af31c07',
+    fullHash: 'af31c07be2419a0d7c5f8ad46b1e0c93d7a2f815',
+    message: 'Merge visit booking fixtures into main',
+    date: '28 Aug 2026 18:12',
+  },
+  [VET_SERVICE_PROJECT_NAME]: {
+    hash: '5d9e412',
+    fullHash: '5d9e412c8ab37f10d4e6b95c2a0f18e7d3c46b02',
+    message: 'Seed vet availability fixtures',
+    date: '27 Aug 2026 11:40',
+  },
+};
+
+function getReviewBaseRevision(project = '', branch = REVIEW_BASE_BRANCH_NAME) {
+  const commit = REVIEW_BASE_COMMITS[project] ?? REVIEW_BASE_COMMITS[PROJECT_NAME];
+  return {
+    hash: commit.hash,
+    // The IDE's tooltip carries the commit message, author, date and full hash.
+    // The demo has no author for a base commit that predates every session, so
+    // it carries everything else plus the checkout this base belongs to.
+    tooltip: [
+      commit.message,
+      commit.date,
+      commit.fullHash,
+      `${branch} · ${project}`,
+    ].join('\n'),
+  };
+}
+
+// The project's own badge, so a checkout row in the review list is identified
+// the same way the multiproject sidebar identifies it — icon, name, branch —
+// instead of a generic folder glyph.
+function getReviewProjectBadge(projectName = '') {
+  const known = MY_PROJECTS.find((project) => project.name === projectName) ?? null;
+  return {
+    initials: known?.initials
+      ?? String(projectName ?? '').replace(/[^A-Za-z]/gu, '').slice(0, 2).toUpperCase()
+      ?? '',
+    color: projectName === PROJECT_NAME ? 'blue' : 'neutral',
+  };
+}
+
+function getReviewFileLocation(label = '', path = '') {
+  const key = String(label ?? '').trim();
+  const override = REVIEW_FILE_PROJECT_OVERRIDES[key] ?? null;
+  const normalizedPath = String(override?.root ?? path ?? '');
+  const checkout = REVIEW_CHECKOUT_ROOTS.find((candidate) => normalizedPath.startsWith(candidate.root))
+    ?? REVIEW_CHECKOUT_ROOTS[REVIEW_CHECKOUT_ROOTS.length - 1];
+  return {
+    project: override?.project ?? checkout.project,
+    branch: checkout.branch,
+    worktree: checkout.worktree,
+  };
+}
+
+function getReviewFileVcsMeta(label = '') {
+  const key = String(label ?? '').trim();
+  const match = REVIEW_FILE_VCS_META_BY_LABEL.get(key);
+  if (match) {
+    return {
+      path: match.path ?? PROJECT_ROOT_PATH,
+      status: match.status ?? 'modified',
+      previousLabel: match.previousLabel ?? null,
+    };
+  }
+  // Spec-track documents (the parallel Vet-Schedules work) never belong to a
+  // prepared commit scope, so point them at where they actually live.
+  if (key.toLowerCase().endsWith('.md')) {
+    const override = REVIEW_FILE_PROJECT_OVERRIDES[key] ?? null;
+    return {
+      path: override ? `${override.root}/Agent Specifications` : AGENT_SPECS_PATH,
+      status: 'modified',
+      previousLabel: null,
+    };
+  }
+  return { path: PROJECT_ROOT_PATH, status: 'modified', previousLabel: null };
+}
 const PROBLEMS_SECONDARY_GAP = '\u00A0\u00A0\u00A0';
 const TERMINAL_RUN_INPUT = { path: AGENT_SPECS_PATH, branch: REVIEW_CURRENT_BRANCH_NAME };
 const TERMINAL_RUN_VISIBLE_DELAY_MS = 110;
@@ -15760,6 +16003,12 @@ function buildCommitReviewScopeRequests() {
       reviewCommitGroupLabel: file.groupLabel ?? null,
       reviewCommitCategory: getCommitReviewScopeCategory(file, index),
       reviewVcsStatus: file.status,
+      // Carried with the entry so review surfaces stop resolving path and
+      // status by file name. Two copies of one path in different checkouts are
+      // indistinguishable by name, and the checkout root is also what decides
+      // the project and branch an item is reviewed against.
+      reviewFilePath: file.path ?? null,
+      reviewPreviousLabel: file.previousLabel ?? null,
       reviewAttribution: file.groupId ? 'session' : 'unassigned',
     };
   });
@@ -18144,13 +18393,19 @@ function BranchContextIcon({ size = 16 }) {
   );
 }
 
-function ReviewBranchFlyout({ onClose = null, uncommittedFileCount = 0 }) {
+function ReviewBranchFlyout({
+  onClose = null,
+  uncommittedFileCount = 0,
+  currentBranch = REVIEW_CURRENT_BRANCH_NAME,
+  onSelectBranch = null,
+}) {
   const [query, setQuery] = useState('');
   const branches = [
-    { id: REVIEW_CURRENT_BRANCH_NAME, label: REVIEW_CURRENT_BRANCH_NAME, current: true },
+    { id: REVIEW_CURRENT_BRANCH_NAME, label: REVIEW_CURRENT_BRANCH_NAME },
     { id: REVIEW_BASE_BRANCH_NAME, label: REVIEW_BASE_BRANCH_NAME },
+    { id: RELEASE_BRANCH_NAME, label: RELEASE_BRANCH_NAME },
     { id: 'visit-controller-refactor', label: 'feature/visit-controller-refactor' },
-  ];
+  ].map((branch) => ({ ...branch, current: branch.label === currentBranch }));
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleBranches = normalizedQuery
     ? branches.filter((branch) => branch.label.toLocaleLowerCase().includes(normalizedQuery))
@@ -18160,7 +18415,10 @@ function ReviewBranchFlyout({ onClose = null, uncommittedFileCount = 0 }) {
       key={branch.id}
       type="line"
       icon="vcs/vcs"
-      onClick={onClose}
+      onClick={() => {
+        onSelectBranch?.(branch.label);
+        onClose?.();
+      }}
     >
       <span className="ai-review-branch-popup-cell-content">
         <span className="ai-review-branch-primary">
@@ -18377,7 +18635,16 @@ function AiReviewEditorSplit({
   onRightTabClose = null,
   onCloseReview,
   showReviewTab = true,
+  // Spec 4 names two places for "Mark as Not Viewed": the file's context menu
+  // and the current file header's More menu. This is the second one.
+  reviewPaneMoreMenu = null,
+  // Overlay owned by the review pane, so it is present wherever the review is
+  // rather than depending on which top-level screen rendered.
+  paneOverlay = null,
 }) {
+  const reviewMoreRef = useRef(null);
+  const [reviewMoreRect, setReviewMoreRect] = useState(null);
+  const reviewMoreItems = Array.isArray(reviewPaneMoreMenu) ? reviewPaneMoreMenu.filter(Boolean) : [];
   const reviewTab = {
     label: reviewLabel,
     icon: <Icon name={AI_REVIEW_ICON_NAME} size={16} />,
@@ -18418,16 +18685,38 @@ function AiReviewEditorSplit({
             direction="horizontal"
             focused
           />
-          <div className="editor-tabs-more-slot">
+          <div className="editor-tabs-more-slot" ref={reviewMoreRef}>
             <IconButton
               icon="general/moreVertical"
               aria-label="More"
               className="editor-tabs-more-button"
+              onClick={reviewMoreItems.length === 0 ? undefined : () => setReviewMoreRect((current) => (
+                current ? null : reviewMoreRef.current?.getBoundingClientRect() ?? null
+              ))}
             />
+            {reviewMoreRect && reviewMoreItems.length > 0 && (
+              <PositionedPopup triggerRect={reviewMoreRect} onDismiss={() => setReviewMoreRect(null)} gap={4}>
+                <Popup visible className="text-ui-default" onClose={() => setReviewMoreRect(null)}>
+                  {reviewMoreItems.map((menuItem) => (
+                    <PopupCell
+                      key={menuItem.id}
+                      icon={menuItem.icon}
+                      onClick={() => {
+                        menuItem.onClick?.();
+                        setReviewMoreRect(null);
+                      }}
+                    >
+                      {menuItem.label}
+                    </PopupCell>
+                  ))}
+                </Popup>
+              </PositionedPopup>
+            )}
           </div>
         </div>
         <div className="ai-review-editor-split-body is-review">{rightPane}</div>
       </section>
+      {paneOverlay}
     </div>
   );
 }
@@ -18459,22 +18748,141 @@ function AiReviewSplitFileView({
   externalCommentRequest = null,
   onInlineCommentOpenChange = null,
   onCommitScope = null,
+  viewedFileIds = null,
+  onToggleFileViewed = null,
+  // Identity of the session this review was opened from, plus the labels it
+  // changed, so a file it shares with an older session reads as belonging to
+  // both instead of only to the older one.
+  currentSession = null,
+  // Spec 15: the branch the scope was opened against versus the one the
+  // working tree is on now.
+  onJumpToSource = null,
+  scopeBranch = null,
+  workingBranch = null,
+  onSwitchBranch = null,
+  onOpenWorktree = null,
 }) {
   const [viewMode, setViewMode] = useState('unified');
+  const [viewerSettings, setViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
+  // Opening the saved diff read-only is the reviewer's explicit choice to look
+  // at the scope as it was, so it is remembered until the branches match again.
+  const [acceptedStaleScope, setAcceptedStaleScope] = useState(false);
+  const branchMismatch = Boolean(scopeBranch && workingBranch && scopeBranch !== workingBranch);
+  useEffect(() => {
+    if (!branchMismatch) setAcceptedStaleScope(false);
+  }, [branchMismatch]);
+  // Opening a file is the act of reviewing it, so its dot clears on open
+  // instead of needing a separate click. Keyed on the file itself: marking it
+  // not viewed again by hand must not be undone on the next render, and a file
+  // the agent rewrites stays not viewed until you come back to it.
+  useEffect(() => {
+    if (!file?.tabId) return;
+    onToggleFileViewed?.(file.tabId, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file?.tabId]);
+  const splitScrollSyncRef = useRef(null);
+  // "Synchronize Scrolling": drive the opposite half so the *corresponding*
+  // line stays across from the one being read. Matching offsets is not enough —
+  // with alignment off the halves hold different rows, so the anchor row is
+  // looked up by id and, when a row exists on only one side (a removal has no
+  // counterpart on the right), the nearest preceding shared row is used.
+  useEffect(() => {
+    const host = splitScrollSyncRef.current;
+    if (!host || !viewerSettings.syncScroll || viewerSettings.allInOne) return undefined;
+    const left = host.querySelector('.plan-diff-split-pane-left');
+    const right = host.querySelector('.plan-diff-split-pane-right');
+    if (!left || !right) return undefined;
+
+    // Offset of a row inside its own pane's scrollable content.
+    const rowTopWithin = (row, pane) => (
+      row.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop
+    );
+
+    let echo = false;
+    const mirror = (from, to) => () => {
+      if (echo) return;
+      const rows = Array.from(from.querySelectorAll('[data-plan-diff-row-id]'));
+      if (rows.length === 0) return;
+      // Topmost row still at or above the viewport edge is the anchor.
+      let anchorIndex = 0;
+      for (let index = 0; index < rows.length; index += 1) {
+        if (rowTopWithin(rows[index], from) <= from.scrollTop + 1) anchorIndex = index;
+        else break;
+      }
+      let counterpart = null;
+      for (let index = anchorIndex; index >= 0 && !counterpart; index -= 1) {
+        const rowId = rows[index].getAttribute('data-plan-diff-row-id');
+        if (rowId) counterpart = to.querySelector(`[data-plan-diff-row-id="${CSS.escape(rowId)}"]`);
+        if (counterpart) anchorIndex = index;
+      }
+      if (!counterpart) return;
+      const withinAnchor = from.scrollTop - rowTopWithin(rows[anchorIndex], from);
+      echo = true;
+      to.scrollTop = rowTopWithin(counterpart, to) + withinAnchor;
+      requestAnimationFrame(() => { echo = false; });
+    };
+
+    const onLeft = mirror(left, right);
+    const onRight = mirror(right, left);
+    left.addEventListener('scroll', onLeft);
+    right.addEventListener('scroll', onRight);
+    return () => {
+      left.removeEventListener('scroll', onLeft);
+      right.removeEventListener('scroll', onRight);
+    };
+  }, [
+    viewerSettings.syncScroll,
+    viewerSettings.allInOne,
+    viewerSettings.alignChanges,
+    viewerSettings.ignorePolicy,
+    viewMode,
+    file?.tabId,
+  ]);
   if (!file) return null;
 
   const focusedRows = Array.isArray(focusRowIds) ? focusRowIds : [];
-  const diffData = {
+  // One transform feeds both the toolbar and the diff body, so the difference
+  // count, the Previous/Next Difference cursor and the rows on screen can never
+  // disagree about what the active ignore policy hides.
+  const diffData = applyPlanDiffViewerSettings({
     ...(file.fullDiffData ?? file.diffData),
     focusRowId: focusedRows[0] ?? null,
     fileCount: Math.max(1, scopeFiles.length),
     reviewAttribution: file.attribution ?? null,
     modifiedAfterSession: Boolean(file.modifiedAfterSession),
-  };
+  }, viewerSettings);
   const visibleComments = mergeStoredDiffCommentsStates(
     normalizeStoredDiffCommentsState(pendingComments),
     normalizeStoredDiffCommentsState(file.comments),
   );
+  // Spec 11: a comment goes to the session that changed the file being read,
+  // not blindly to the session the review was opened from. With one owner that
+  // is unambiguous; with several the reviewer has to be asked, so the default
+  // stays the reviewed session and the file's badge says how many claim it.
+  // An entry without its own path is the mainline copy, so resolve it that way
+  // rather than letting the name-based index pull in claimants from other
+  // checkouts — a backport on another branch is not a candidate recipient here.
+  const fileLocation = getReviewFileLocation(
+    file.name,
+    file.filePath ?? getReviewFileVcsMeta(file.name).path,
+  );
+  const fileSessions = getReviewFileSessions(
+    file.name,
+    file.filePath ?? getReviewFileVcsMeta(file.name).path,
+    currentSession,
+  );
+  // Spec 10: a review opened from a session sends every comment to that
+  // session — there is nothing to choose, even when an older session happens to
+  // have touched the same file. Only the project-wide scope is not tied to one
+  // session, so only there can a file's owner differ from the review's.
+  const isAggregatedScope = selectedChangeScopeId === 'all-project-changes';
+  const soleFileSession = fileSessions.length === 1 ? fileSessions[0] : null;
+  const commentTargetChatId = isAggregatedScope
+    ? (soleFileSession?.id ?? activeChatId)
+    : activeChatId;
+  const commentTargetLabel = isAggregatedScope
+    ? (soleFileSession?.label ?? activeChatTitle)
+    : activeChatTitle;
   const currentFileLabel = normalizeReviewScopeLabel(file.name);
   const currentFileIndex = Math.max(0, scopeFiles.findIndex((scopeFile) => (
     scopeFile.tabId === file.tabId
@@ -18492,12 +18900,52 @@ function AiReviewSplitFileView({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         scopeId="all"
-        scopeFiles={scopeFiles.map((scopeFile) => ({
-          tabId: scopeFile.tabId,
-          label: scopeFile.name,
-          icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
-          modifiedAfterSession: Boolean(scopeFile.modifiedAfterSession),
-        }))}
+        scopeFiles={scopeFiles.map((scopeFile) => {
+          const nameMeta = getReviewFileVcsMeta(scopeFile.name);
+          const vcsMeta = {
+            path: scopeFile.filePath ?? nameMeta.path,
+            status: scopeFile.vcsStatus ?? nameMeta.status,
+            previousLabel: scopeFile.previousLabel ?? nameMeta.previousLabel,
+          };
+          const sessions = getReviewFileSessions(scopeFile.name, vcsMeta.path, currentSession);
+          const location = getReviewFileLocation(scopeFile.name, vcsMeta.path);
+          const projectBadge = getReviewProjectBadge(location.project);
+          return {
+            sessions,
+            project: location.project,
+            projectInitials: projectBadge.initials,
+            projectColor: projectBadge.color,
+            branch: location.branch,
+            worktree: location.worktree,
+            tabId: scopeFile.tabId,
+            label: scopeFile.name,
+            // Every review entry is a diff, so keying the icon off that gave
+            // all of them the same glyph. In a list of changed files the icon
+            // is there to say what kind of file it is — same rule the Commit
+            // window and the chat's changed-files block already use.
+            icon: getCommitFileIcon(scopeFile.name),
+            modifiedAfterSession: Boolean(scopeFile.modifiedAfterSession),
+            path: vcsMeta.path,
+            status: vcsMeta.status,
+            previousLabel: vcsMeta.previousLabel,
+          };
+        })}
+        viewedFileIds={viewedFileIds}
+        onToggleFileViewed={onToggleFileViewed}
+        viewerSettings={viewerSettings}
+        onViewerSettingsChange={setViewerSettings}
+        baseRevision={getReviewBaseRevision(fileLocation.project, REVIEW_BASE_BRANCH_NAME)}
+        // Side-scenario 3: the source is the file the diff was built from, so
+        // it is resolved by name, and the caret lands on the difference being
+        // read rather than at the top of the file.
+        onEditSource={() => {
+          const rows = Array.isArray(diffData?.rows) ? diffData.rows : [];
+          const focusedRow = rows.find((row) => row.id === diffData?.focusRowId)
+            ?? rows.find((row) => row.kind === 'added')
+            ?? rows.find((row) => row.kind === 'removed')
+            ?? null;
+          onJumpToSource?.(file.name, focusedRow?.newNumber ?? focusedRow?.oldNumber ?? null);
+        }}
         currentFileIndex={currentFileIndex}
         onSelectFile={onNavigateFile}
         onNavigatePreviousFile={() => openAdjacentFile(-1)}
@@ -18518,17 +18966,117 @@ function AiReviewSplitFileView({
           ...commitOptions,
         })}
       />
-      <div className="aiux-review-split-file-body">
+      <div
+        className={[
+          'aiux-review-split-file-body',
+          viewerSettings.allInOne ? 'is-all-in-one' : '',
+          viewerSettings.highlightMode === 'none' ? 'is-highlight-none' : '',
+          viewerSettings.alignChanges ? 'is-aligned' : '',
+          viewerSettings.syncScroll ? 'is-sync-scroll' : '',
+        ].filter(Boolean).join(' ')}
+        ref={splitScrollSyncRef}
+      >
+        {branchMismatch && !acceptedStaleScope ? (
+          <div className="aiux-review-branch-guard" role="alert">
+            <Icon name="status/warning" size={20} className="aiux-review-branch-guard-icon" />
+            <div className="aiux-review-branch-guard-body">
+              <h3 className="aiux-review-branch-guard-title">
+                {`This review scope was opened on ${scopeBranch}`}
+              </h3>
+              <p className="aiux-review-branch-guard-text">
+                {`The working tree is now on ${workingBranch}. Rebuilding the diff against this
+                  base would compare the wrong versions, so it is left as it was. Your comments
+                  and viewed marks for the original scope are kept.`}
+              </p>
+              <div className="aiux-review-branch-guard-actions">
+                <Button type="primary" onClick={() => onSwitchBranch?.(scopeBranch)}>
+                  {`Switch to ${scopeBranch}`}
+                </Button>
+                <Button type="secondary" onClick={() => onOpenWorktree?.(scopeBranch)}>
+                  Open worktree
+                </Button>
+                <Button type="secondary" onClick={() => setAcceptedStaleScope(true)}>
+                  Open saved diff read-only
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {/* "Show All Files in One Diff View": the whole scope becomes one
+            scrollable stream with a heading per file, the way a code review
+            reads it, instead of one file per tab. Comments keep going to the
+            file they were written on. */}
+        {branchMismatch && !acceptedStaleScope ? null : viewerSettings.allInOne ? scopeFiles.map((scopeFile) => {
+          const scopeMeta = getReviewFileVcsMeta(scopeFile.name);
+          // In one stream each file still answers to its own session, so the
+          // target is resolved per file rather than taken from the active one.
+          const scopeSessions = getReviewFileSessions(
+            scopeFile.name,
+            scopeFile.filePath ?? getReviewFileVcsMeta(scopeFile.name).path,
+            currentSession,
+          );
+          const scopeSoleSession = scopeSessions.length === 1 ? scopeSessions[0] : null;
+          const scopeDiffData = applyPlanDiffViewerSettings({
+            ...(scopeFile.fullDiffData ?? scopeFile.diffData),
+            focusRowId: null,
+            fileCount: Math.max(1, scopeFiles.length),
+          }, viewerSettings);
+          if (!scopeDiffData || Object.keys(scopeDiffData).length <= 2) return null;
+          const isCurrent = scopeFile.tabId === file.tabId;
+          return (
+            <section className="aiux-review-all-in-one-file" key={scopeFile.tabId}>
+              <header
+                className={`aiux-review-all-in-one-header is-${scopeMeta.status}${isCurrent ? ' is-current' : ''}`}
+              >
+                <Icon name={getCommitFileIcon(scopeFile.name)} size={16} />
+                <span className="aiux-review-all-in-one-name">{scopeFile.name}</span>
+                <span className="aiux-review-all-in-one-status">
+                  {{ modified: 'M', added: 'A', deleted: 'D', renamed: 'R', untracked: 'U' }[scopeMeta.status] ?? 'M'}
+                </span>
+                <span className="aiux-review-all-in-one-path">{scopeMeta.path}</span>
+              </header>
+              <PlanDiffOverlay
+                diffData={scopeDiffData}
+                alignChanges={viewerSettings.alignChanges}
+                initialDiffComments={normalizeStoredDiffCommentsState(scopeFile.comments)}
+                singleLineNumbers={scopeFile.isPlain}
+                showGutterComments
+                requireSubmitTargetChoice={isAggregatedScope && scopeSessions.length > 1}
+                submitSessionChoices={scopeSessions}
+                commentContextLabel={isAggregatedScope
+                  ? (scopeSoleSession?.label ?? activeChatTitle)
+                  : activeChatTitle}
+                commentContextIcon={agentIcon}
+                commentContextSessionLabel="Active"
+                commentSessionActiveChatId={isAggregatedScope
+                  ? (scopeSoleSession?.id ?? activeChatId)
+                  : activeChatId}
+                renderSubmitTargetPicker={renderSubmitTargetPicker}
+                severityFilter={severityFilter}
+                resolveKeepsComment
+                allowInlineCommentCompose={!readOnly}
+                allowCommentReplies={!readOnly}
+                commentsReadOnly={readOnly}
+                viewMode={scopeFile.isPlain ? 'unified' : viewMode}
+                onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(scopeFile.tabId, comments, metadata)}
+                onReviewAction={onReviewAction}
+              />
+            </section>
+          );
+        }) : (
         <PlanDiffOverlay
           diffData={diffData}
+          alignChanges={viewerSettings.alignChanges}
           contextSelections={contextSelections}
           initialDiffComments={visibleComments}
           singleLineNumbers={file.isPlain}
           showGutterComments
-          commentContextLabel={activeChatTitle}
+          requireSubmitTargetChoice={isAggregatedScope && fileSessions.length > 1}
+          submitSessionChoices={fileSessions}
+          commentContextLabel={commentTargetLabel}
           commentContextIcon={agentIcon}
           commentContextSessionLabel="Active"
-          commentSessionActiveChatId={activeChatId}
+          commentSessionActiveChatId={commentTargetChatId}
           renderSubmitTargetPicker={renderSubmitTargetPicker}
           severityFilter={severityFilter}
           expandedInlineCommentRowId={expandedCommentRowId}
@@ -18547,6 +19095,7 @@ function AiReviewSplitFileView({
           externalCommentRequest={externalCommentRequest}
           onInlineCommentOpenChange={onInlineCommentOpenChange}
         />
+        )}
       </div>
     </div>
   );
@@ -21900,10 +22449,36 @@ export default function App() {
   const [reviewSplitChatId, setReviewSplitChatId] = useState(null);
   const [reviewSplitFileTabIds, setReviewSplitFileTabIds] = useState([]);
   const [reviewSplitActiveTabId, setReviewSplitActiveTabId] = useState(REVIEW_DIFF_TAB_ID);
+  // Review progress per file: tabId -> true once the user has marked the file
+  // viewed. Lives here rather than in the diff toolbar so it survives file
+  // switches and can be cleared when the agent rewrites a file.
+  const [reviewViewedFileTabIds, setReviewViewedFileTabIds] = useState({});
+  const reviewViewedFileTabIdList = useMemo(
+    () => Object.keys(reviewViewedFileTabIds).filter((tabId) => reviewViewedFileTabIds[tabId]),
+    [reviewViewedFileTabIds],
+  );
+  const setReviewFileViewed = useCallback((tabId, nextViewed) => {
+    if (!tabId) return;
+    setReviewViewedFileTabIds((prev) => {
+      if (nextViewed) {
+        if (prev[tabId]) return prev;
+        return { ...prev, [tabId]: true };
+      }
+      if (!prev[tabId]) return prev;
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
   const [reviewSplitFileFocusByTabId, setReviewSplitFileFocusByTabId] = useState({});
   const [reviewSplitExpandedCommentRowByTabId, setReviewSplitExpandedCommentRowByTabId] = useState({});
   const [reviewSplitChangeScopeId, setReviewSplitChangeScopeId] = useState('last-turn');
   const [reviewSplitCompareBranch, setReviewSplitCompareBranch] = useState(REVIEW_CURRENT_BRANCH_NAME);
+  // Spec 15: the branch this working tree is on, and the branch each review
+  // scope was opened against. When they diverge the diff must not be silently
+  // rebuilt against the new base.
+  const [workingTreeBranch, setWorkingTreeBranch] = useState(REVIEW_CURRENT_BRANCH_NAME);
+  const [reviewScopeBranchByChatId, setReviewScopeBranchByChatId] = useState({});
   const [reviewSplitChangeScopeOptions, setReviewSplitChangeScopeOptions] = useState([]);
   // Mirrors reviewSplit* above but for opening a spec (agent-task tab) in a
   // split next to a chat, driven by openSpecInSplitView/closeSpecSplitView.
@@ -23882,7 +24457,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -23988,6 +24563,13 @@ export default function App() {
           diffContextChatId: contextChatId,
           reviewAttribution,
           reviewModifiedAfterSession: Boolean(reviewModifiedAfterSession),
+          // Kept so the review surfaces can tell which session produced this
+          // entry — two sessions on two branches touching one path have to
+          // stay two review items.
+          reviewCommitGroupId,
+          reviewFilePath,
+          reviewPreviousLabel,
+          reviewVcsStatus,
           diffSessionCommentsByChatId: nextSessionComments,
         },
       };
@@ -28504,6 +29086,12 @@ export default function App() {
       commentsReadOnly: Boolean(content?.diffCommentsReadOnly),
       attribution: content?.reviewAttribution ?? null,
       modifiedAfterSession: Boolean(content?.reviewModifiedAfterSession),
+      // Provenance travelling with the entry: the checkout the file came from,
+      // so path, status, project and branch no longer have to be guessed from
+      // the file name.
+      filePath: content?.reviewFilePath ?? null,
+      previousLabel: content?.reviewPreviousLabel ?? null,
+      vcsStatus: content?.reviewVcsStatus ?? null,
     };
   }, [ideTabContents, ideTabs, reviewSplitChatId]);
   const selectedReviewSplitChangeScope = reviewSplitChangeScopeOptions.find(
@@ -28549,6 +29137,69 @@ export default function App() {
   const visibleReviewSplitScopeFiles = isReviewSplitOverviewMode
     ? reviewSplitScopeFiles
     : reviewSplitFiles;
+  // Spec 10: a file another session touched is not just flagged — it goes back
+  // to not viewed. This is a one-shot transition per file, not a standing rule,
+  // so the user can review it and mark it viewed again afterwards.
+  const outsideSessionResetRef = useRef(new Set());
+  const outsideSessionTabIds = visibleReviewSplitScopeFiles
+    .filter((file) => file?.modifiedAfterSession && file?.tabId)
+    .map((file) => file.tabId);
+  const outsideSessionSignature = outsideSessionTabIds.join('|');
+  useEffect(() => {
+    const fresh = outsideSessionTabIds.filter((tabId) => !outsideSessionResetRef.current.has(tabId));
+    if (fresh.length === 0) return;
+    // Handled the moment the flag appears — including for the file that happens
+    // to be open. Otherwise the reset would wait for you to navigate away and
+    // then strip the mark you earned by reviewing it, which is the opposite of
+    // what it is for: un-signing files you signed off *before* someone else
+    // changed them.
+    fresh.forEach((tabId) => outsideSessionResetRef.current.add(tabId));
+    const activeTabId = activeReviewSplitFile?.tabId ?? null;
+    setReviewViewedFileTabIds((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      fresh.forEach((tabId) => {
+        if (tabId === activeTabId || !next[tabId]) return;
+        delete next[tabId];
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+    // outsideSessionTabIds is derived each render; the signature is the stable key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outsideSessionSignature, activeReviewSplitFile?.tabId]);
+
+  // Spec: a file the agent rewrites drops back to not viewed. In this prototype
+  // the agent edits exactly the files that carried comments, so an iteration
+  // bump clears the viewed flag for those files and leaves the rest alone.
+  const reviewSplitRunIteration = agentRunByChatId[reviewSplitChatId]?.iteration ?? 0;
+  const reviewSplitCommentedTabIdsRef = useRef([]);
+  reviewSplitCommentedTabIdsRef.current = visibleReviewSplitScopeFiles
+    .filter((file) => Object.values(normalizeStoredDiffCommentsState(file?.comments)).flat().some((comment) => (
+      !(comment && typeof comment === 'object' && comment.author === 'agent')
+    )))
+    .map((file) => file?.tabId)
+    .filter(Boolean);
+  const reviewViewedIterationRef = useRef(null);
+  useEffect(() => {
+    const previousIteration = reviewViewedIterationRef.current;
+    reviewViewedIterationRef.current = reviewSplitRunIteration;
+    // Only an increment counts: commenting on a file must not un-view it on
+    // its own, and remounting at the same iteration must not either.
+    if (previousIteration === null || reviewSplitRunIteration <= previousIteration) return;
+    const touchedTabIds = reviewSplitCommentedTabIdsRef.current;
+    if (touchedTabIds.length === 0) return;
+    setReviewViewedFileTabIds((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      touchedTabIds.forEach((tabId) => {
+        if (!next[tabId]) return;
+        delete next[tabId];
+        changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [reviewSplitRunIteration]);
   const visibleReviewSplitNoteCount = visibleReviewSplitScopeFiles.reduce((total, file) => (
     total + Object.values(normalizeStoredDiffCommentsState(file?.comments)).flat().filter((comment) => (
       !(comment && typeof comment === 'object' && comment.author === 'agent')
@@ -28758,6 +29409,30 @@ export default function App() {
     });
   }, []);
   const reviewSplitScenario = reviewSplitChatId ? getAiChatScenarioById(reviewSplitChatId) : null;
+  // The reviewed session's own identity and file set, used to attribute files
+  // it shares with older sessions to both.
+  const reviewScopeBranch = reviewSplitChatId
+    ? (reviewScopeBranchByChatId[reviewSplitChatId] ?? workingTreeBranch)
+    : workingTreeBranch;
+  useEffect(() => {
+    if (!reviewSplitChatId) return;
+    setReviewScopeBranchByChatId((prev) => (
+      prev[reviewSplitChatId] ? prev : { ...prev, [reviewSplitChatId]: workingTreeBranch }
+    ));
+    // Deliberately not depending on workingTreeBranch: the scope keeps the
+    // branch it was opened against, which is the whole point of the check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewSplitChatId]);
+  const reviewSplitCurrentSession = useMemo(() => (reviewSplitChatId ? {
+    id: reviewSplitChatId,
+    label: reviewSplitScenario?.title || 'This session',
+    agent: reviewSplitScenario?.icon ?? 'claude',
+    ownsLabels: new Set(
+      getChatChangeCards(reviewSplitScenario)
+        .map((card) => normalizeReviewScopeLabel(card?.name))
+        .filter(Boolean),
+    ),
+  } : null), [reviewSplitChatId, reviewSplitScenario]);
   const reviewSplitListItem = reviewSplitChatId ? getAiChatListItemById(reviewSplitChatId) : null;
   const reviewSplitChatLabel = String(
     reviewSplitScenario?.title || reviewSplitListItem?.title || 'AI Chat',
@@ -34323,6 +34998,32 @@ export default function App() {
                 chatIcon={<AiChatAgentIcon icon={reviewSplitListItem?.icon ?? reviewSplitScenario?.icon ?? 'claude'} title={reviewSplitChatLabel} />}
                 onCloseReview={closeReviewSplitView}
                 showReviewTab={isReviewSplitOverviewMode}
+                reviewPaneMoreMenu={activeReviewSplitFile ? [{
+                  id: 'switch-branch',
+                  icon: 'vcs/vcs',
+                  label: `Switch Branch: ${workingTreeBranch} → ${
+                    workingTreeBranch === REVIEW_CURRENT_BRANCH_NAME
+                      ? RELEASE_BRANCH_NAME
+                      : REVIEW_CURRENT_BRANCH_NAME
+                  }`,
+                  onClick: () => setWorkingTreeBranch((current) => (
+                    current === REVIEW_CURRENT_BRANCH_NAME
+                      ? RELEASE_BRANCH_NAME
+                      : REVIEW_CURRENT_BRANCH_NAME
+                  )),
+                }, {
+                  id: 'toggle-viewed',
+                  icon: reviewViewedFileTabIds[activeReviewSplitFile.tabId]
+                    ? 'general/close'
+                    : 'general/checkmark',
+                  label: reviewViewedFileTabIds[activeReviewSplitFile.tabId]
+                    ? 'Mark as Not Viewed'
+                    : 'Mark as Viewed',
+                  onClick: () => setReviewFileViewed(
+                    activeReviewSplitFile.tabId,
+                    !reviewViewedFileTabIds[activeReviewSplitFile.tabId],
+                  ),
+                }] : null}
                 rightTabs={displayedReviewSplitFiles.map((file) => ({
                   label: file.name,
                   icon: file.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(file.name),
@@ -34418,6 +35119,30 @@ export default function App() {
                         includeDocuments: false,
                       })}
                       onNavigateFile={navigateReviewSplitFileTab}
+                      viewedFileIds={reviewViewedFileTabIdList}
+                      onToggleFileViewed={setReviewFileViewed}
+                      currentSession={reviewSplitCurrentSession}
+                      onJumpToSource={(label, line) => {
+                        // The split covers the editor, so opening the source
+                        // behind it would leave the reviewer looking at the
+                        // diff. Leave the split, show the file; returning to
+                        // the review from chat restores the scope, its
+                        // comments and its viewed marks.
+                        setScreen('ide');
+                        closeReviewSplitView();
+                        // Closing the split restores its own active tab, so the
+                        // source has to be activated after that commit lands or
+                        // it would be overridden immediately.
+                        requestAnimationFrame(() => openEditorTabByLabel(label, { line }));
+                      }}
+                      scopeBranch={reviewScopeBranch}
+                      workingBranch={workingTreeBranch}
+                      onSwitchBranch={(branch) => setWorkingTreeBranch(branch)}
+                      onOpenWorktree={(branch) => {
+                        // Opening the scope's own worktree puts this session
+                        // back on its branch without moving the other checkout.
+                        setWorkingTreeBranch(branch);
+                      }}
                       selectedChangeScopeId={reviewSplitChangeScopeId}
                       onChangeScope={handleReviewSplitChangeScope}
                       changeScopeOptions={reviewSplitChangeScopeOptions}
