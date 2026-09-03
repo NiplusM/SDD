@@ -13999,7 +13999,7 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed working hours for all six demo vets in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Validate requested visit_time against half-open schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-7', type: 'check', checked: false, text: 'Add controller regression tests in @VisitControllerTests.java that reject bookings outside working hours' },
+        { id: 'plan-7', type: 'check', checked: false, text: 'Add off-hours rejection tests in VisitControllerTests.java for controller validation' },
       ],
     },
     {
@@ -14753,13 +14753,12 @@ function rephrasePlanLineAfterNote(line = '', noteText = '') {
   const normalizedLine = String(line).trim();
   const normalizedNote = String(noteText).trim();
   // The boundary note refines the scope of the entire regression-test item.
-  // Render one coherent requirement rather than appending the user's sentence
-  // verbatim to the end of the existing plan line.
+  // Keep the item as one concise requirement after the note is applied.
   if (
-    /controller regression tests.*reject bookings outside working hours/iu.test(normalizedLine)
+    /off-hours rejection tests.*controller validation/iu.test(normalizedLine)
     && /exclusive end(?: boundary)?/iu.test(normalizedNote)
   ) {
-    return 'Add controller regression tests in @VisitControllerTests.java that reject bookings outside working hours, including a booking at the exclusive end of the schedule window.';
+    return 'Add off-hours rejection tests in VisitControllerTests.java for controller validation, cover the exclusive end boundary in the regression tests.';
   }
   return appendNoteAddressedClause(normalizedLine, normalizedNote);
 }

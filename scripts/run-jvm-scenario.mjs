@@ -462,7 +462,7 @@ async function finishOptionalSpecificationLaunch(page, beat) {
 async function runScenario(page) {
   const prompt = 'Add vet working hours, and reject bookings outside them';
   const noteText = 'cover the exclusive end boundary in the regression tests';
-  const updatedPlanItemText = 'including a booking at the exclusive end of the schedule window.';
+  const updatedPlanItemText = 'Add off-hours rejection tests in VisitControllerTests.java for controller validation, cover the exclusive end boundary in the regression tests.';
 
   console.log('Running JVM scenario automation…');
   await updateOverlay(page, { beat: 'Beat 1', text: 'Loading the welcome screen…' });
@@ -546,10 +546,17 @@ async function runScenario(page) {
   await demoClick(page, sendToAgent, 'Beat 3', 'Apply the targeted note without opening a chat split.');
   const noteLoading = page.locator('.agent-task-toolbar .at-generating-label:visible').first();
   await noteLoading.waitFor({ state: 'visible', timeout: 10000 });
+  const executeWhileApplyingNote = page.getByRole('button', { name: 'Execute', exact: true }).first();
+  if (!(await executeWhileApplyingNote.isDisabled())) {
+    throw new Error('Execute must be disabled while the document applies a note.');
+  }
   await noteLoading.waitFor({ state: 'hidden', timeout: 30000 });
   await page.getByText(updatedPlanItemText, { exact: false }).last().waitFor({ state: 'visible' });
   const updatedTestPlanRow = page.locator('.spec-done-row:visible').filter({ hasText: updatedPlanItemText }).first();
   await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+  if (await document.getByText(noteText, { exact: false }).count() !== 0) {
+    throw new Error('The note must disappear from the document after it is applied.');
+  }
   await capture(page, 'beat-3-note-applied');
 
   await updatedTestPlanRow.hover();
