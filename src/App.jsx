@@ -19558,7 +19558,7 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [selectedEditMode, setSelectedEditMode] = useState('Accepts Edits');
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
-  // SDD mode: On by default (AIUX-639) — a Codex-style-agent-only toggle shown at the
+  // Task Mode is on by default (AIUX-639) — a Codex-style-agent-only toggle shown at the
   // bottom-right of the composer footer, next to the model/effort/mode pills.
   const [sddModeOn, setSddModeOn] = useState(true);
   const composerRef = useRef(null);
@@ -20819,11 +20819,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="sdd-mode"
-                    label={sddModeOn ? 'SDD mode: On' : 'SDD mode: Off'}
-                    options={['SDD mode: On', 'SDD mode: Off']}
+                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
+                    options={['Task Mode: On', 'Task Mode: Off']}
                     open={newSessionSettingsMenu === 'sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'SDD mode: On')}
+                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
                   />
                 </>
               ) : (
@@ -20888,11 +20888,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="chat-sdd-mode"
-                    label={sddModeOn ? 'SDD mode: On' : 'SDD mode: Off'}
-                    options={['SDD mode: On', 'SDD mode: Off']}
+                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
+                    options={['Task Mode: On', 'Task Mode: Off']}
                     open={newSessionSettingsMenu === 'chat-sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'SDD mode: On')}
+                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
                   />
                 </>
               )}
