@@ -139,6 +139,30 @@ const ATTACHED_FILES_SYNC_WITH_EDITOR = false;
 const DIFF_TAB_ICON_NAME = 'vcs/diff';
 const AI_REVIEW_ICON_NAME = 'general/balloon';
 const COMPOSER_ATTACHMENT_COLLAPSED_LIMIT = 18;
+
+// Turns a commit scope's files into the "<project> (<branch>)" targets named
+// in the standard commit composer message below, deduped and defaulting to
+// the primary project/branch when a file doesn't carry its own (e.g. ad hoc
+// scope entries built outside the review-file location model).
+function describeCommitScopeTargets(files = []) {
+  const seen = new Set();
+  const targets = [];
+  (Array.isArray(files) ? files : []).forEach((file) => {
+    const project = file?.project || PROJECT_NAME;
+    const branch = file?.branch || REVIEW_CURRENT_BRANCH_NAME;
+    const key = `${project}::${branch}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push(`${project} (${branch})`);
+  });
+  if (targets.length === 0) return `${PROJECT_NAME} (${REVIEW_CURRENT_BRANCH_NAME})`;
+  if (targets.length === 1) return targets[0];
+  return `${targets.slice(0, -1).join(', ')} and ${targets[targets.length - 1]}`;
+}
+
+function buildCommitComposerMessage(scope) {
+  return `I want to commit these changes to ${describeCommitScopeTargets(scope?.files)}.`;
+}
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
   { id: 'claude', label: 'Claude Agent', buttonLabel: 'Claude Agent', model: 'Claude Sonnet 4.1', badge: 'New' },
@@ -18892,6 +18916,40 @@ function AiReviewSplitFileView({
     const nextFile = scopeFiles[currentFileIndex + delta];
     if (nextFile) onNavigateFile?.(nextFile.tabId);
   };
+  // Computed once and shared by the toolbar's file list and the Commit
+  // button's message: two separate mappings over the same files is exactly
+  // how a field (like which project/branch a file belongs to) quietly stops
+  // reaching one of the two consumers.
+  const enrichedScopeFiles = scopeFiles.map((scopeFile) => {
+    const nameMeta = getReviewFileVcsMeta(scopeFile.name);
+    const vcsMeta = {
+      path: scopeFile.filePath ?? nameMeta.path,
+      status: scopeFile.vcsStatus ?? nameMeta.status,
+      previousLabel: scopeFile.previousLabel ?? nameMeta.previousLabel,
+    };
+    const sessions = getReviewFileSessions(scopeFile.name, vcsMeta.path, currentSession);
+    const location = getReviewFileLocation(scopeFile.name, vcsMeta.path);
+    const projectBadge = getReviewProjectBadge(location.project);
+    return {
+      sessions,
+      project: location.project,
+      projectInitials: projectBadge.initials,
+      projectColor: projectBadge.color,
+      branch: location.branch,
+      worktree: location.worktree,
+      tabId: scopeFile.tabId,
+      label: scopeFile.name,
+      // Every review entry is a diff, so keying the icon off that gave
+      // all of them the same glyph. In a list of changed files the icon
+      // is there to say what kind of file it is — same rule the Commit
+      // window and the chat's changed-files block already use.
+      icon: getCommitFileIcon(scopeFile.name),
+      modifiedAfterSession: Boolean(scopeFile.modifiedAfterSession),
+      path: vcsMeta.path,
+      status: vcsMeta.status,
+      previousLabel: vcsMeta.previousLabel,
+    };
+  });
 
   return (
     <div className="aiux-review-split-file-view">
@@ -18900,36 +18958,7 @@ function AiReviewSplitFileView({
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         scopeId="all"
-        scopeFiles={scopeFiles.map((scopeFile) => {
-          const nameMeta = getReviewFileVcsMeta(scopeFile.name);
-          const vcsMeta = {
-            path: scopeFile.filePath ?? nameMeta.path,
-            status: scopeFile.vcsStatus ?? nameMeta.status,
-            previousLabel: scopeFile.previousLabel ?? nameMeta.previousLabel,
-          };
-          const sessions = getReviewFileSessions(scopeFile.name, vcsMeta.path, currentSession);
-          const location = getReviewFileLocation(scopeFile.name, vcsMeta.path);
-          const projectBadge = getReviewProjectBadge(location.project);
-          return {
-            sessions,
-            project: location.project,
-            projectInitials: projectBadge.initials,
-            projectColor: projectBadge.color,
-            branch: location.branch,
-            worktree: location.worktree,
-            tabId: scopeFile.tabId,
-            label: scopeFile.name,
-            // Every review entry is a diff, so keying the icon off that gave
-            // all of them the same glyph. In a list of changed files the icon
-            // is there to say what kind of file it is — same rule the Commit
-            // window and the chat's changed-files block already use.
-            icon: getCommitFileIcon(scopeFile.name),
-            modifiedAfterSession: Boolean(scopeFile.modifiedAfterSession),
-            path: vcsMeta.path,
-            status: vcsMeta.status,
-            previousLabel: vcsMeta.previousLabel,
-          };
-        })}
+        scopeFiles={enrichedScopeFiles}
         viewedFileIds={viewedFileIds}
         onToggleFileViewed={onToggleFileViewed}
         viewerSettings={viewerSettings}
@@ -18957,12 +18986,10 @@ function AiReviewSplitFileView({
         onCompareBranchChange={onCompareBranchChange}
         onCommitScope={(commitOptions) => onCommitScope?.({
           scopeId: selectedChangeScopeId,
-          files: scopeFiles.map((scopeFile) => ({
-            id: scopeFile.tabId,
-            label: scopeFile.name,
-            icon: scopeFile.isDiff ? DIFF_TAB_ICON_NAME : agentRunFileIconName(scopeFile.name),
-            status: scopeFile.status ?? 'modified',
-          })),
+          // Same enriched list the toolbar reads, so the commit message
+          // names every project/branch actually in scope instead of only
+          // the id/label/icon/status a leaner rebuild would carry.
+          files: enrichedScopeFiles,
           ...commitOptions,
         })}
       />
@@ -20031,6 +20058,8 @@ function AiChatTabView({
   sentMessages = [],
   composerDraft = null,
   onComposerDraftChange = null,
+  pendingComposerText = null,
+  pendingComposerTextToken = null,
   onSendMessage = null,
   onAgentChange = null,
   onOpenDiffTab = null,
@@ -20382,6 +20411,21 @@ function AiChatTabView({
       dismissedAttachmentKeys: [...dismissedComposerAttachmentKeys],
     });
   }, [chatId, composerContentParts, composerText, dismissedComposerAttachmentKeys, onComposerDraftChange]);
+
+  // Lets an action outside this composer (e.g. the diff's Commit button)
+  // drop a standard message into an already-mounted chat's input. Draft
+  // persistence alone (onComposerDraftChange, above) only reaches a chat
+  // that remounts afterward, which isn't the case when this panel is
+  // already open beside the diff — so this applies the text live, keyed on
+  // a token rather than the text itself so the same message can be sent
+  // twice in a row without the effect silently no-oping the second time.
+  const appliedComposerTextTokenRef = useRef(null);
+  useEffect(() => {
+    if (pendingComposerTextToken == null || pendingComposerTextToken === appliedComposerTextTokenRef.current) return;
+    appliedComposerTextTokenRef.current = pendingComposerTextToken;
+    setComposerText(pendingComposerText ?? '');
+    focusComposerAtEnd();
+  }, [focusComposerAtEnd, pendingComposerText, pendingComposerTextToken]);
 
   useEffect(() => {
     setResolvedReviewDecisionId(null);
@@ -22531,6 +22575,18 @@ export default function App() {
       return { ...prev, [chatId]: nextDraft };
     });
   }, []);
+  // Drives the diff's Commit button: drops a standard "commit these changes
+  // to <project> (<branch>)" message into the composer of the chat the diff
+  // was opened from, in place of jumping to the Commit tool window. Persists
+  // to the draft store (for a chat that isn't mounted yet) and also carries
+  // a token so an already-open composer (e.g. the review split panel) picks
+  // it up live — see the pendingComposerText effect in AiChatTabView.
+  const [pendingComposerCommitRequest, setPendingComposerCommitRequest] = useState(null);
+  const requestCommitComposerMessage = useCallback((targetChatId, text) => {
+    if (!targetChatId || !text) return;
+    handleAiChatComposerDraftChange(targetChatId, { text, contentParts: [], dismissedAttachmentKeys: [] });
+    setPendingComposerCommitRequest({ chatId: targetChatId, text, token: Date.now() });
+  }, [handleAiChatComposerDraftChange]);
   const aiChatDraftSessionCounterRef = useRef(0);
   const [pendingDiffCommentRowsByTabId, setPendingDiffCommentRowsByTabId] = useState({});
   const [pendingDiffCommentSnapshotsByTabId, setPendingDiffCommentSnapshotsByTabId] = useState({});
@@ -35053,6 +35109,8 @@ export default function App() {
                       sentMessages={aiChatSentMessagesByChatId[reviewSplitChatId] ?? []}
                       composerDraft={aiChatComposerDraftByChatId[reviewSplitChatId] ?? null}
                       onComposerDraftChange={handleAiChatComposerDraftChange}
+                      pendingComposerText={pendingComposerCommitRequest?.chatId === reviewSplitChatId ? pendingComposerCommitRequest.text : null}
+                      pendingComposerTextToken={pendingComposerCommitRequest?.chatId === reviewSplitChatId ? pendingComposerCommitRequest.token : null}
                       composerState={aiChatComposerStateByChatId[reviewSplitChatId] ?? null}
                       onComposerStateChange={setAiChatComposerStateByChatId}
                       fallbackTitle={reviewSplitChatLabel}
@@ -35148,12 +35206,7 @@ export default function App() {
                       changeScopeOptions={reviewSplitChangeScopeOptions}
                       selectedCompareBranch={reviewSplitCompareBranch}
                       onCompareBranchChange={setReviewSplitCompareBranch}
-                      onCommitScope={(scope) => openCommitToolWindow({
-                        ...scope,
-                        name: scope.scopeId === 'all-project-changes'
-                          ? 'All generated changes'
-                          : reviewSplitChatLabel,
-                      })}
+                      onCommitScope={(scope) => requestCommitComposerMessage(reviewSplitChatId, buildCommitComposerMessage(scope))}
                       reviewScopeNoteCount={visibleReviewSplitNoteCount}
                       onTextSelectionChange={(selectionState) => {
                         if (editorInlineCommentOpenRef.current || !selectionState?.rect) {
@@ -35241,6 +35294,8 @@ export default function App() {
                       sentMessages={aiChatSentMessagesByChatId[specSplitChatId] ?? []}
                       composerDraft={aiChatComposerDraftByChatId[specSplitChatId] ?? null}
                       onComposerDraftChange={handleAiChatComposerDraftChange}
+                      pendingComposerText={pendingComposerCommitRequest?.chatId === specSplitChatId ? pendingComposerCommitRequest.text : null}
+                      pendingComposerTextToken={pendingComposerCommitRequest?.chatId === specSplitChatId ? pendingComposerCommitRequest.token : null}
                       composerState={aiChatComposerStateByChatId[specSplitChatId] ?? null}
                       onComposerStateChange={setAiChatComposerStateByChatId}
                       fallbackTitle={specSplitChatLabel}
@@ -35327,6 +35382,8 @@ export default function App() {
                   sentMessages={aiChatSentMessagesByChatId[activeAiChatTabChatId] ?? []}
                   composerDraft={aiChatComposerDraftByChatId[activeAiChatTabChatId] ?? null}
                   onComposerDraftChange={handleAiChatComposerDraftChange}
+                  pendingComposerText={pendingComposerCommitRequest?.chatId === activeAiChatTabChatId ? pendingComposerCommitRequest.text : null}
+                  pendingComposerTextToken={pendingComposerCommitRequest?.chatId === activeAiChatTabChatId ? pendingComposerCommitRequest.token : null}
                   composerState={aiChatComposerStateByChatId[activeAiChatTabChatId] ?? null}
                   onComposerStateChange={setAiChatComposerStateByChatId}
                   fallbackTitle={activeEditorTabMeta?.label ?? 'AI Chat'}
@@ -35480,12 +35537,10 @@ export default function App() {
                     onPlanMarkerClick={handleActivePlanMarkerClick}
                     onReturnToChat={handlePlanDiffReturnToChat}
                     onEditSource={openActiveDiffSourceTabToRight}
-                    onCommitScope={(scope) => openCommitToolWindow({
-                      ...scope,
-                      name: scope.scopeId === 'all-project-changes'
-                        ? 'All generated changes'
-                        : (planDiffContextChatTitle || scope.scopeLabel),
-                    })}
+                    onCommitScope={(scope) => {
+                      requestCommitComposerMessage(planDiffContextChatId, buildCommitComposerMessage(scope));
+                      handlePlanDiffReturnToChat({ source: 'diff-comment-context', chatId: planDiffContextChatId });
+                    }}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
                     reviewNav={null}
