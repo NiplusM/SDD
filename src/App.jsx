@@ -19558,6 +19558,7 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [selectedEditMode, setSelectedEditMode] = useState('Accepts Edits');
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
+  const [sddModeOn, setSddModeOn] = useState(true);
   const composerRef = useRef(null);
   const composerDraftRef = useRef(composerDraft);
   composerDraftRef.current = composerDraft;
@@ -20816,11 +20817,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="sdd-mode"
-                    label="Task Mode"
-                    options={['Task Mode']}
+                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
+                    options={['Task Mode: On', 'Task Mode: Off']}
                     open={newSessionSettingsMenu === 'sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={() => {}}
+                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
                   />
                 </>
               ) : (
@@ -20885,11 +20886,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="chat-sdd-mode"
-                    label="Task Mode"
-                    options={['Task Mode']}
+                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
+                    options={['Task Mode: On', 'Task Mode: Off']}
                     open={newSessionSettingsMenu === 'chat-sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={() => {}}
+                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
                   />
                 </>
               )}
