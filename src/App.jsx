@@ -160,25 +160,11 @@ function describeCommitScopeTargets(files = []) {
   return `${targets.slice(0, -1).join(', ')} and ${targets[targets.length - 1]}`;
 }
 
-// Names the actual files the commit request covers, so the composer message
-// reflects what the reviewer checked rather than just where it's going.
-function describeCommitScopeFileList(files = []) {
-  const labels = (Array.isArray(files) ? files : [])
-    .map((file) => file?.label)
-    .filter(Boolean);
-  if (labels.length === 0) return '';
-  if (labels.length === 1) return labels[0];
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
-}
-
+// Deliberately doesn't name individual files — the checkboxes decide what's
+// in scope, but the chat message stays a short, generic commit request
+// rather than an enumerated file list (and nothing gets attached either).
 function buildCommitComposerMessage(scope) {
-  const files = scope?.files;
-  const fileList = describeCommitScopeFileList(files);
-  const targets = describeCommitScopeTargets(files);
-  return fileList
-    ? `I want to commit these changes to ${targets}: ${fileList}.`
-    : `I want to commit these changes to ${targets}.`;
+  return `I want to commit these changes to ${describeCommitScopeTargets(scope?.files)}.`;
 }
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
@@ -20160,6 +20146,23 @@ function AiChatTabView({
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full Access';
   const [composerText, setComposerText] = useState(persistedComposerText);
   const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
+  // Checkboxes on the "All Changes" summary bar's file list, checked unless
+  // told otherwise — same default the review split's own checkboxes use, but
+  // scoped to this chat's composer since the bar lives here, not in App.
+  const [vcsSummaryUncheckedFileTabIds, setVcsSummaryUncheckedFileTabIds] = useState({});
+  const setVcsSummaryFileChecked = useCallback((tabId, nextChecked) => {
+    if (!tabId) return;
+    setVcsSummaryUncheckedFileTabIds((prev) => {
+      if (!nextChecked) {
+        if (prev[tabId]) return prev;
+        return { ...prev, [tabId]: true };
+      }
+      if (!prev[tabId]) return prev;
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
   // Attachments (diff/comment/spec chips) the user has already sent from this
   // composer. Keyed by content, not just id, so a chip that gets new comments
   // after being dismissed resurfaces instead of staying hidden forever.
@@ -21328,6 +21331,14 @@ function AiChatTabView({
                 reviewDisabled: isAgentRunProcessing,
                 onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
                 onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
+                checkedFileIds: vcsFiles
+                  .map((file) => file.tabId)
+                  .filter((tabId) => tabId && !vcsSummaryUncheckedFileTabIds[tabId]),
+                onToggleFileChecked: setVcsSummaryFileChecked,
+                onCommitScope: (checkedFiles) => {
+                  setComposerText(buildCommitComposerMessage({ files: checkedFiles }));
+                  focusComposerAtEnd();
+                },
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}
@@ -35259,7 +35270,9 @@ export default function App() {
                       changeScopeOptions={reviewSplitChangeScopeOptions}
                       selectedCompareBranch={reviewSplitCompareBranch}
                       onCompareBranchChange={setReviewSplitCompareBranch}
-                      onCommitScope={(scope) => requestCommitComposerMessage(reviewSplitChatId, buildCommitComposerMessage(scope))}
+                      onCommitScope={(scope) => {
+                        requestCommitComposerMessage(reviewSplitChatId, buildCommitComposerMessage(scope));
+                      }}
                       reviewScopeNoteCount={visibleReviewSplitNoteCount}
                       onTextSelectionChange={(selectionState) => {
                         if (editorInlineCommentOpenRef.current || !selectionState?.rect) {

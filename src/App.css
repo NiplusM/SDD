@@ -6461,53 +6461,30 @@ body {
   flex: 0 0 16px;
 }
 
-/* Review progress ("viewed") controls in the changed-files list. The indicator
-   is pushed to the trailing edge so the VCS-coloured file name on the left and
-   the progress marker on the right never compete for the same spot. */
 .plan-diff-files-file-name {
   flex: 0 1 auto;
 }
 
-.plan-diff-files-file-viewed {
-  all: unset;
-  box-sizing: border-box;
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  margin-left: auto;
-  border-radius: 4px;
-  color: var(--text-secondary, #8b8e94);
-  cursor: pointer;
-}
-
-/* No hover plate here on purpose: a filled rounded square behind the mark
-   reads as a checkbox, and this is a progress marker, not an input. */
-.plan-diff-files-file-viewed:hover {
-  color: var(--text-default, #d1d3d9);
-}
-
-.plan-diff-files-file-row.is-viewed .plan-diff-files-file-viewed:hover {
-  color: #9bd7ac;
-}
-
-/* Not-viewed marker: the same blue dot the IDE uses for unread/unvisited
-   items. */
-.plan-diff-files-file-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #548AF7;
-}
-
+/* Review progress ("viewed"): a file is viewed once it's been opened, so
+   there's no separate toggle control, just the dimmed name once it's read
+   and, until then, the same blue dot the IDE uses for unread/unvisited items. */
 .plan-diff-files-file-row.is-viewed .plan-diff-files-file-name {
   opacity: 0.5;
 }
 
-.plan-diff-files-file-row.is-viewed .plan-diff-files-file-viewed {
-  color: #74c38b;
+.plan-diff-files-file-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #548AF7;
+}
+
+/* With a badge present the dot must not also claim the auto margin, or the
+   two fight over the trailing edge. */
+.plan-diff-files-file-sessions ~ .plan-diff-files-file-dot {
+  margin-left: 0;
 }
 
 /* "Do Not Highlight": the IDE keeps the change markers in the gutter but drops
@@ -6680,12 +6657,6 @@ body {
 .plan-diff-files-file-sessions:hover {
   color: var(--text-default, #d1d3d9);
   text-decoration: underline;
-}
-
-/* With a badge present the viewed marker must not also claim the auto margin,
-   or the two fight over the trailing edge. */
-.plan-diff-files-file-sessions ~ .plan-diff-files-file-viewed {
-  margin-left: 0;
 }
 
 .plan-diff-files-popup-progress {

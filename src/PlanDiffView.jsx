@@ -921,9 +921,10 @@ function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
   );
 }
 
-// A plain secondary button: this opens the Commit tool window, and choosing
-// between Commit and Commit and Push belongs there, next to the message and the
-// file selection — not in a split button on the diff toolbar.
+// A plain secondary button. There's no second action to pair it with here
+// (unlike the composer's All Changes bar, which has Review alongside it) —
+// a chevron whose only menu item repeats the button's own action is dead
+// weight, not a real choice.
 function PlanDiffCommitButton({ onCommitScope = null, checkedCount = null }) {
   // checkedCount is only meaningful once the caller actually knows how many
   // files are checked; omitting it (null) keeps the button enabled, which is
@@ -1679,23 +1680,10 @@ function PlanDiffViewingScopeControl({
             {`${item.sessions.length} sessions`}
           </button>
         )}
-        {/* Viewed state is review progress only — it never touches file
-            content or the VCS status shown next to it. */}
-        <button
-          type="button"
-          className="plan-diff-files-file-viewed"
-          aria-pressed={viewed}
-          aria-label={`${item.label}: ${viewed ? 'Mark as Not Viewed' : 'Mark as Viewed'}`}
-          title={viewed ? 'Mark as Not Viewed' : 'Mark as Viewed'}
-          onClick={(event) => {
-            event.stopPropagation();
-            setFileViewed(item, !viewed);
-          }}
-        >
-          {viewed
-            ? <Icon name="general/checkmark" size={16} />
-            : <span className="plan-diff-files-file-dot" aria-hidden="true" />}
-        </button>
+        {/* Not-viewed marker only — a file becomes viewed by opening it, so
+            there's nothing to click here, and once viewed the dimmed name is
+            the only mark left; a checkmark next to it would be redundant. */}
+        {!viewed && <span className="plan-diff-files-file-dot" aria-hidden="true" title="Not viewed" />}
       </div>
     );
   };
@@ -1727,6 +1715,7 @@ function PlanDiffViewingScopeControl({
             toggleDirCollapsed(group.id);
           }}
         >
+          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           <Checkbox
             checked={groupCheckState === 'checked'}
             indeterminate={groupCheckState === 'indeterminate'}
@@ -1734,7 +1723,6 @@ function PlanDiffViewingScopeControl({
             onClick={(event) => event.stopPropagation()}
             onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
           />
-          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           {group.kind === 'checkout' ? (
             <span className={`agent-sessions-project-avatar is-${group.projectColor ?? 'neutral'}`}>
               {group.projectInitials}
@@ -1783,6 +1771,7 @@ function PlanDiffViewingScopeControl({
             toggleDirCollapsed(node.key);
           }}
         >
+          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           <Checkbox
             checked={dirCheckState === 'checked'}
             indeterminate={dirCheckState === 'indeterminate'}
@@ -1790,7 +1779,6 @@ function PlanDiffViewingScopeControl({
             onClick={(event) => event.stopPropagation()}
             onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
           />
-          <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           <Icon name="nodes/folder" size={16} />
           <span className="plan-diff-files-tree-label">{node.label}</span>
           <span className="plan-diff-files-tree-count">

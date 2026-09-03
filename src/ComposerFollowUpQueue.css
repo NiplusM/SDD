@@ -73,6 +73,42 @@
   opacity: 1;
 }
 
+.ij-air-follow-up-queue__vcs-review-split {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* One button, chevron included — same secondary-slim look as a kit Button,
+   built by hand only because the trigger also needs to be the thing that
+   opens the menu (matching PlanDiffChangeScopeControl's "Last Turn ⌄"). */
+.ij-air-follow-up-queue__vcs-review {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--button-secondary-border, #43454a);
+  border-radius: 4px;
+  background: var(--button-secondary-bg, transparent);
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.ij-air-follow-up-queue__vcs-review:hover,
+.ij-air-follow-up-queue__vcs-review.open {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ij-air-follow-up-queue__vcs-review:disabled {
+  border-color: var(--control-border-disabled, #43454a);
+  color: var(--text-disabled, #5f6269);
+  cursor: not-allowed;
+}
+
 .ij-air-follow-up-queue__vcs-actions {
   display: inline-flex;
   min-width: 0;
@@ -158,17 +194,28 @@
   width: 100%;
   height: 24px;
   padding: 0 4px;
-  border: 0;
   border-radius: 3px;
-  background: transparent;
   color: #c4c6cc;
-  cursor: pointer;
   font: 500 12px/16px Inter, system-ui, sans-serif;
-  text-align: left;
 }
 
 .ij-air-follow-up-queue__vcs-file:hover {
   background: #34363b6b;
+}
+
+.ij-air-follow-up-queue__vcs-file-open {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
 .ij-air-follow-up-queue__vcs-file-icon {
