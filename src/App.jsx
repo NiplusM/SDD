@@ -127,7 +127,7 @@ const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
   { id: 'claude', label: 'Claude Agent', buttonLabel: 'Claude Agent', model: 'Claude Sonnet 4.1', badge: 'New' },
   { id: 'codex', label: 'Codex', buttonLabel: 'Codex', model: 'GPT-5.6-Sol', badge: 'Free usage' },
-  { id: 'sdd', label: 'SDD', buttonLabel: 'SDD', model: 'GPT-5.6-Sol' },
+  { id: 'sdd', label: 'Task Mode', buttonLabel: 'Task Mode', model: 'GPT-5.6-Sol' },
   { id: 'gemini', label: 'Gemini CLI', buttonLabel: 'Gemini CLI', model: 'Gemini 2.5 Pro' },
   { id: 'copilot', label: 'GitHub Copilot', buttonLabel: 'GitHub Copilot', model: 'GPT-5.2-Codex' },
 ];
@@ -16691,7 +16691,7 @@ function SddSpecGenerationStreamingMessage({ message }) {
           : 'I’m creating Vet-Schedules.md for this booking change.')}
         <span className="ai-chat-streaming-caret" aria-hidden="true" />
       </p>
-      <div className="sdd-generation-stream-steps" role="status" aria-label="SDD generation activity">
+      <div className="sdd-generation-stream-steps" role="status" aria-label="Task Mode generation activity">
         {visibleSteps.map((step, index) => {
           const isDone = index < progressStep;
           const isActive = index === progressStep && progressStep < steps.length;

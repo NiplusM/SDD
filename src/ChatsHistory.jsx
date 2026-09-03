@@ -156,8 +156,8 @@ function ChatsHistoryToolWindow({
       },
       {
         id: 'sdd-mvp',
-        name: 'SDD-mvp',
-        initials: 'SD',
+        name: 'Task Mode',
+        initials: 'TM',
         status: 'Attached',
         color: 'neutral',
         rows: sessionRows.slice(5, 9),

@@ -170,12 +170,12 @@ export const FINAL_CODE_REVIEW_PRESET = {
   lockedPreset: true,
 };
 
-// SDD (AIUX-639): Codex in Chat on its defaults. Ships by default — unlike a user-added
+// Task Mode (AIUX-639): Codex in Chat on its defaults. Ships by default — unlike a user-added
 // preset, it does not require "Add Agents"/"Manage Presets".
 export const FINAL_SDD_PRESET = {
   id: 'sdd',
-  label: 'SDD',
-  buttonLabel: 'SDD',
+  label: 'Task Mode',
+  buttonLabel: 'Task Mode',
   agentId: 'codex',
   runInId: 'this-mac',
   launchTarget: 'chat',

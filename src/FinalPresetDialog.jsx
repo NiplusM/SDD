@@ -506,9 +506,9 @@ export function FinalPresetDialog({
                   {advancedOpen ? (
                     <>
                       <div className="aiux550f4-final-final-preset-parameters aiux550f4-final-final-preset-parameters-sdd">
-                        <span>SDD mode:</span>
+                        <span>Task Mode:</span>
                         <FinalSessionSelect
-                          ariaLabel="SDD mode"
+                          ariaLabel="Task Mode"
                           options={sddModeOptions}
                           value={draft.sddMode ? 'on' : 'off'}
                           onChange={(nextValue) => update('sddMode', nextValue === 'on')}
