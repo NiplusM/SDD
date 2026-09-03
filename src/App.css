@@ -2415,6 +2415,15 @@ body {
   font-weight: 400;
 }
 
+/* A streaming specification is prose, not a syntax-highlighted source file.
+   Prism was still tinting individual markdown tokens, which made one active
+   line look partly bright and partly muted while it was being generated. */
+.editor:has(.agent-task-editor-area[data-gen-state="generating"]) .editor-code .prism-code-editor .pce-line,
+.editor:has(.agent-task-editor-area[data-gen-state="generating"]) .editor-code .prism-code-editor .pce-line *,
+.editor:has(.agent-task-editor-area[data-gen-state="generating"]) .editor-code .prism-code-editor .token {
+  color: #CED0D6 !important;
+}
+
 .editor:has(.agent-task-editor-area[data-gen-state="done"]) .editor-code {
   position: relative;
 }
@@ -3720,7 +3729,7 @@ body {
 .spec-changed-files-section {
   box-sizing: border-box;
   width: min(760px, calc(100% - 72px));
-  margin: 8px 0 22px 56px;
+  margin: 22px 0 22px 56px;
   color: rgba(223, 225, 229, 0.9);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
@@ -3740,17 +3749,15 @@ body {
 
 .spec-changed-files-list {
   margin: 0 0 0 0;
-  padding-left: 17px;
+  padding-left: 21px;
+  list-style: disc outside;
   color: inherit;
   font: inherit;
 }
 
 .spec-changed-files-item {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
+  display: list-item;
   min-height: calc(1em * 1.55);
-  padding-left: 2px;
   margin: 0 0 2px;
   min-width: 0;
 }
@@ -3898,6 +3905,14 @@ body {
   min-height: 22px;
   align-self: center;
   user-select: none;
+}
+
+/* Align the gutter actions with the plan row's visual center. The editor
+   gutter's inherited line box otherwise leaves the Run and comment controls
+   a few pixels below the checkbox and its text. */
+.spec-done-gutter-cell .spec-done-gutter-line-number-run,
+.spec-done-gutter-cell .spec-done-gutter-comment-slot {
+  transform: translateY(-3px);
 }
 
 .spec-done-gutter-cell *,
@@ -4051,9 +4066,7 @@ body {
   transition: opacity var(--motion-duration-fast) var(--motion-ease-soft);
 }
 
-.spec-done-active-line .spec-done-gutter-line-number-run,
-.spec-done-gutter-cell:hover .spec-done-gutter-line-number-run,
-.spec-done-gutter-line-number-run:focus-visible {
+.spec-done-gutter-cell:hover .spec-done-gutter-line-number-run {
   opacity: 1;
 }
 
@@ -6179,7 +6192,7 @@ body {
   color: #d1d3d9;
 }
 
-.plan-diff-ai-review-button {
+.plan-diff-code-review-button {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -6195,7 +6208,7 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-button::before {
+.plan-diff-code-review-button::before {
   position: absolute;
   z-index: 0;
   inset: 2px;
@@ -6204,33 +6217,33 @@ body {
   content: "";
 }
 
-.plan-diff-ai-review-button:hover::before,
-.plan-diff-ai-review-button:active::before,
-.plan-diff-ai-review-button.is-open::before {
+.plan-diff-code-review-button:hover::before,
+.plan-diff-code-review-button:active::before,
+.plan-diff-code-review-button.is-open::before {
   background: var(--icon-button-hover-bg, rgba(255, 255, 255, 0.09));
 }
 
-.plan-diff-ai-review-button:focus-visible {
+.plan-diff-code-review-button:focus-visible {
   outline: 2px solid var(--control-focus-border-brand, #548af7);
   outline-offset: -1px;
 }
 
-.plan-diff-ai-review-button-main {
+.plan-diff-code-review-button-main {
   min-width: 94px;
   padding: 0 8px 0 7px;
 }
 
-.plan-diff-ai-review-single-trigger {
+.plan-diff-code-review-single-trigger {
   min-width: 116px;
   padding: 0 6px;
 }
 
-.plan-diff-ai-review-button-menu {
+.plan-diff-code-review-button-menu {
   width: 28px;
   padding: 0 6px;
 }
 
-.plan-diff-ai-review-button-content {
+.plan-diff-code-review-button-content {
   position: relative;
   z-index: 1;
   display: inline-flex;
@@ -6239,7 +6252,7 @@ body {
   min-width: 0;
 }
 
-.plan-diff-ai-review-button-icon {
+.plan-diff-code-review-button-icon {
   flex: 0 0 20px;
   display: inline-flex;
   align-items: center;
@@ -6247,18 +6260,18 @@ body {
   color: #d1d3d9;
 }
 
-.plan-diff-ai-review-button-icon svg,
-.plan-diff-ai-review-button-icon .icon {
+.plan-diff-code-review-button-icon svg,
+.plan-diff-code-review-button-icon .icon {
   width: 20px;
   height: 20px;
 }
 
-.plan-diff-ai-review-button-label {
+.plan-diff-code-review-button-label {
   color: #d1d3d9;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-button-separator {
+.plan-diff-code-review-button-separator {
   display: inline-block;
   width: 1px;
   height: 18px;
@@ -6266,30 +6279,30 @@ body {
   background: rgba(255, 255, 255, 0.18);
 }
 
-.plan-diff-ai-review-button-chevron {
+.plan-diff-code-review-button-chevron {
   position: relative;
   z-index: 1;
   flex: 0 0 16px;
   color: #9fa2a8;
 }
 
-.plan-diff-ai-review-popup {
+.plan-diff-code-review-popup {
   width: 420px;
   max-width: 420px;
 }
 
-.plan-diff-ai-review-popup .popup-options {
+.plan-diff-code-review-popup .popup-options {
   padding: 0;
 }
 
-.plan-diff-ai-review-panel {
+.plan-diff-code-review-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 10px;
 }
 
-.plan-diff-ai-review-panel-head {
+.plan-diff-code-review-panel-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -6297,23 +6310,23 @@ body {
   padding: 2px 4px 0;
 }
 
-.plan-diff-ai-review-panel-title {
+.plan-diff-code-review-panel-title {
   color: var(--text-default, #d1d3d9);
 }
 
-.plan-diff-ai-review-panel-summary {
+.plan-diff-code-review-panel-summary {
   overflow: hidden;
   color: var(--text-secondary, #8b8e94);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-panel > .plan-diff-ai-review-dropdown {
+.plan-diff-code-review-panel > .plan-diff-code-review-dropdown {
   display: block;
   width: 100%;
 }
 
-.plan-diff-ai-review-scope-summary {
+.plan-diff-code-review-scope-summary {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) auto 16px;
   align-items: center;
@@ -6330,16 +6343,16 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-scope-summary:hover,
-.plan-diff-ai-review-scope-summary:focus-visible,
-.plan-diff-ai-review-agent-row:hover,
-.plan-diff-ai-review-agent-row:focus-visible {
+.plan-diff-code-review-scope-summary:hover,
+.plan-diff-code-review-scope-summary:focus-visible,
+.plan-diff-code-review-agent-row:hover,
+.plan-diff-code-review-agent-row:focus-visible {
   border-color: #596273;
   background: #2d3036;
   outline: none;
 }
 
-.plan-diff-ai-review-scope-visual {
+.plan-diff-code-review-scope-visual {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6350,46 +6363,46 @@ body {
   box-shadow: inset 0 0 0 1px #363a42;
 }
 
-.plan-diff-ai-review-scope-file {
+.plan-diff-code-review-scope-file {
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 26px;
 }
 
-.plan-diff-ai-review-scope-file span {
+.plan-diff-code-review-scope-file span {
   display: block;
   height: 3px;
   border-radius: 2px;
 }
 
-.plan-diff-ai-review-scope-file .is-muted { width: 100%; background: #5f6269; }
-.plan-diff-ai-review-scope-file .is-removed { width: 72%; background: #d46b68; }
-.plan-diff-ai-review-scope-file .is-added { width: 92%; background: #5fb865; }
-.plan-diff-ai-review-scope-file .is-added.short { width: 62%; }
+.plan-diff-code-review-scope-file .is-muted { width: 100%; background: #5f6269; }
+.plan-diff-code-review-scope-file .is-removed { width: 72%; background: #d46b68; }
+.plan-diff-code-review-scope-file .is-added { width: 92%; background: #5fb865; }
+.plan-diff-code-review-scope-file .is-added.short { width: 62%; }
 
-.plan-diff-ai-review-scope-main {
+.plan-diff-code-review-scope-main {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.plan-diff-ai-review-scope-name {
+.plan-diff-code-review-scope-name {
   overflow: hidden;
   color: #dfe1e5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-scope-path {
+.plan-diff-code-review-scope-path {
   overflow: hidden;
   color: var(--text-secondary, #8b8e94);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-scope-stats {
+.plan-diff-code-review-scope-stats {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -6400,12 +6413,12 @@ body {
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-scope-stats b {
+.plan-diff-code-review-scope-stats b {
   color: #a7d6aa;
   font-weight: 600;
 }
 
-.plan-diff-ai-review-agent-row {
+.plan-diff-code-review-agent-row {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 16px;
   align-items: center;
@@ -6422,9 +6435,9 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-choice-icon,
-.plan-diff-ai-review-choice-icon > .icon,
-.plan-diff-ai-review-choice-icon > svg {
+.plan-diff-code-review-choice-icon,
+.plan-diff-code-review-choice-icon > .icon,
+.plan-diff-code-review-choice-icon > svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6432,55 +6445,55 @@ body {
   height: 24px;
 }
 
-.plan-diff-ai-review-choice-copy {
+.plan-diff-code-review-choice-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 1px;
 }
 
-.plan-diff-ai-review-choice-label,
-.plan-diff-ai-review-choice-meta {
+.plan-diff-code-review-choice-label,
+.plan-diff-code-review-choice-meta {
   overflow: hidden;
   color: var(--text-secondary, #8b8e94);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-choice-title {
+.plan-diff-code-review-choice-title {
   overflow: hidden;
   color: var(--text-default, #d1d3d9);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-choice-chevron {
+.plan-diff-code-review-choice-chevron {
   color: var(--icon-secondary-stroke, #9fa2a8);
 }
 
-.plan-diff-ai-review-instructions {
+.plan-diff-code-review-instructions {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 0;
 }
 
-.plan-diff-ai-review-field-head {
+.plan-diff-code-review-field-head {
   display: flex;
   justify-content: space-between;
   gap: 8px;
   color: var(--text-secondary, #8b8e94);
 }
 
-.plan-diff-ai-review-instructions .input-wrapper {
+.plan-diff-code-review-instructions .input-wrapper {
   width: 100%;
 }
 
-.plan-diff-ai-review-instructions .input {
+.plan-diff-code-review-instructions .input {
   width: 100%;
 }
 
-.plan-diff-ai-review-library-actions {
+.plan-diff-code-review-library-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
@@ -6489,7 +6502,7 @@ body {
   border-top: 1px solid var(--border-secondary, #33353b);
 }
 
-.plan-diff-ai-review-attachments {
+.plan-diff-code-review-attachments {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -6498,7 +6511,7 @@ body {
   padding: 0;
 }
 
-.plan-diff-ai-review-attachment-chip {
+.plan-diff-code-review-attachment-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -6512,13 +6525,13 @@ body {
   line-height: 16px;
 }
 
-.plan-diff-ai-review-attachment-chip > span {
+.plan-diff-code-review-attachment-chip > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-attachment-chip button {
+.plan-diff-code-review-attachment-chip button {
   display: inline-flex;
   flex: 0 0 auto;
   padding: 0;
@@ -6528,48 +6541,48 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-attachment-chip button:hover { color: #d1d3d9; }
+.plan-diff-code-review-attachment-chip button:hover { color: #d1d3d9; }
 
-.plan-diff-ai-review-attachments-empty {
+.plan-diff-code-review-attachments-empty {
   padding: 10px;
   color: var(--text-secondary, #8b8e94);
   font-size: 12px;
 }
 
 /* Dropdown = library trigger + library Popup anchored under it, inside this popup. */
-.plan-diff-ai-review-dropdown {
+.plan-diff-code-review-dropdown {
   position: relative;
   display: inline-flex;
   min-width: 0;
 }
 
-.plan-diff-ai-review-submenu {
+.plan-diff-code-review-submenu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 5;
 }
 
-.plan-diff-ai-review-submenu-popup {
+.plan-diff-code-review-submenu-popup {
   width: max-content;
   min-width: 180px;
   max-width: 260px;
 }
 
-.plan-diff-ai-review-submenu-agent {
+.plan-diff-code-review-submenu-agent {
   left: -8px;
 }
 
-.plan-diff-ai-review-submenu-agent .plan-diff-ai-review-submenu-popup {
+.plan-diff-code-review-submenu-agent .plan-diff-code-review-submenu-popup {
   width: 360px;
   max-width: 360px;
 }
 
-.plan-diff-ai-review-agent-menu {
+.plan-diff-code-review-agent-menu {
   padding: 0;
 }
 
-.plan-diff-ai-review-recommended {
+.plan-diff-code-review-recommended {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) 16px;
   align-items: start;
@@ -6585,52 +6598,52 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-recommended:hover,
-.plan-diff-ai-review-recommended:focus-visible {
+.plan-diff-code-review-recommended:hover,
+.plan-diff-code-review-recommended:focus-visible {
   background: rgba(255, 255, 255, 0.06);
   outline: none;
 }
 
-.plan-diff-ai-review-recommended > .icon,
-.plan-diff-ai-review-recommended > svg {
+.plan-diff-code-review-recommended > .icon,
+.plan-diff-code-review-recommended > svg {
   width: 24px;
   height: 24px;
   margin-top: 1px;
 }
 
-.plan-diff-ai-review-recommended-copy {
+.plan-diff-code-review-recommended-copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.plan-diff-ai-review-recommended-title {
+.plan-diff-code-review-recommended-title {
   color: var(--text-default, #ced0d6);
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
 }
 
-.plan-diff-ai-review-recommended-model,
-.plan-diff-ai-review-recommended-description {
+.plan-diff-code-review-recommended-model,
+.plan-diff-code-review-recommended-description {
   color: var(--text-secondary, #a0a3a9);
   font-size: 12px;
   line-height: 16px;
 }
 
-.plan-diff-ai-review-recommended-link {
+.plan-diff-code-review-recommended-link {
   margin-top: 2px;
   color: #6b9bf7;
   font-size: 12px;
   line-height: 16px;
 }
 
-/* ── AI Review popup — Figma 501:57949 "Popup / Find in Files" ─────────────
+/* ── Code Review popup — Figma 501:57949 "Popup / Find in Files" ─────────────
    Header pickers (agent / session / location) + a focused composer island +
    the model/effort/edit-mode row. Tokens straight from the frame:
    650px wide, 8px radius, #26282C on a #33353B hairline, 13/16 Inter 500. */
-.plan-diff-ai-review-dialog-backdrop {
+.plan-diff-code-review-dialog-backdrop {
   position: fixed;
   z-index: 12000;
   inset: 0;
@@ -6642,7 +6655,7 @@ body {
   background: rgba(0, 0, 0, 0.64);
 }
 
-.plan-diff-ai-review-dialog {
+.plan-diff-code-review-dialog {
   position: relative;
   display: flex;
   width: min(650px, calc(100vw - 48px));
@@ -6659,7 +6672,7 @@ body {
   font: 500 13px/16px Inter, system-ui, sans-serif;
 }
 
-.plan-diff-ai-review-dialog-header {
+.plan-diff-code-review-dialog-header {
   display: flex;
   flex: 0 0 auto;
   align-items: stretch;
@@ -6671,7 +6684,7 @@ body {
   border-radius: 8px 8px 0 0;
 }
 
-.plan-diff-ai-review-dialog-title {
+.plan-diff-code-review-dialog-title {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -6679,14 +6692,14 @@ body {
   font: 650 15px/20px Inter, system-ui, sans-serif;
 }
 
-.plan-diff-ai-review-dialog-title > .icon,
-.plan-diff-ai-review-dialog-title > svg {
+.plan-diff-code-review-dialog-title > .icon,
+.plan-diff-code-review-dialog-title > svg {
   width: 18px;
   height: 18px;
   color: #548af7;
 }
 
-.plan-diff-ai-review-dialog-pickers {
+.plan-diff-code-review-dialog-pickers {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -6694,7 +6707,7 @@ body {
   flex-wrap: wrap;
 }
 
-.plan-diff-ai-review-dialog-scope-note {
+.plan-diff-code-review-dialog-scope-note {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
@@ -6708,12 +6721,12 @@ body {
   font: 500 12px/16px Inter, system-ui, sans-serif;
 }
 
-.plan-diff-ai-review-dialog-scope-note > span:first-child {
+.plan-diff-code-review-dialog-scope-note > span:first-child {
   color: #d1d3d9;
   font-weight: 650;
 }
 
-.plan-diff-ai-review-dialog-scope-note > strong {
+.plan-diff-code-review-dialog-scope-note > strong {
   padding: 1px 6px;
   border-radius: 8px;
   background: #3a3c41;
@@ -6721,12 +6734,12 @@ body {
   font-size: 11px;
 }
 
-.plan-diff-ai-review-dialog-scope-note > span:last-child {
+.plan-diff-code-review-dialog-scope-note > span:last-child {
   text-align: right;
 }
 
 /* Header and footer share one picker shape: text + chevron, hover-only background. */
-.plan-diff-ai-review-dialog-picker {
+.plan-diff-code-review-dialog-picker {
   all: unset;
   display: inline-flex;
   box-sizing: border-box;
@@ -6740,30 +6753,30 @@ body {
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-dialog-picker:hover,
-.plan-diff-ai-review-dialog-picker:focus-visible,
-.plan-diff-ai-review-dialog-picker.is-open {
+.plan-diff-code-review-dialog-picker:hover,
+.plan-diff-code-review-dialog-picker:focus-visible,
+.plan-diff-code-review-dialog-picker.is-open {
   background: rgb(255 255 255 / 8%);
   outline: none;
 }
 
-.plan-diff-ai-review-dialog-picker > .icon,
-.plan-diff-ai-review-dialog-picker > svg,
-.plan-diff-ai-review-dialog-picker > img {
+.plan-diff-code-review-dialog-picker > .icon,
+.plan-diff-code-review-dialog-picker > svg,
+.plan-diff-code-review-dialog-picker > img {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
 }
 
-.plan-diff-ai-review-dialog-picker .ai-chat-agent-icon,
-.plan-diff-ai-review-dialog-picker .ai-chat-agent-mark,
-.plan-diff-ai-review-dialog-picker .ai-chat-codex-mark {
+.plan-diff-code-review-dialog-picker .ai-chat-agent-icon,
+.plan-diff-code-review-dialog-picker .ai-chat-agent-mark,
+.plan-diff-code-review-dialog-picker .ai-chat-codex-mark {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
 }
 
-.plan-diff-ai-review-dialog-pin {
+.plan-diff-code-review-dialog-pin {
   all: unset;
   display: inline-flex;
   width: 26px;
@@ -6776,18 +6789,18 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-pin:hover,
-.plan-diff-ai-review-dialog-pin:focus-visible {
+.plan-diff-code-review-dialog-pin:hover,
+.plan-diff-code-review-dialog-pin:focus-visible {
   background: rgb(255 255 255 / 8%);
   outline: none;
 }
 
-.plan-diff-ai-review-dialog-pin-icon {
+.plan-diff-code-review-dialog-pin-icon {
   width: 16px;
   height: 16px;
 }
 
-.plan-diff-ai-review-dialog-quick-actions {
+.plan-diff-code-review-dialog-quick-actions {
   display: flex;
   min-width: 0;
   height: 34px;
@@ -6802,7 +6815,7 @@ body {
   color: var(--text-muted, #9fa2a8);
 }
 
-.plan-diff-ai-review-dialog-quick-actions > button {
+.plan-diff-code-review-dialog-quick-actions > button {
   all: unset;
   display: inline-flex;
   min-width: 0;
@@ -6818,21 +6831,21 @@ body {
   white-space: nowrap;
 }
 
-.plan-diff-ai-review-dialog-quick-actions > button:hover,
-.plan-diff-ai-review-dialog-quick-actions > button:focus-visible {
+.plan-diff-code-review-dialog-quick-actions > button:hover,
+.plan-diff-code-review-dialog-quick-actions > button:focus-visible {
   background: rgb(255 255 255 / 8%);
   color: var(--text-default, #d1d3d9);
   outline: none;
 }
 
-.plan-diff-ai-review-dialog-quick-actions > button > .icon,
-.plan-diff-ai-review-dialog-quick-actions > button > svg {
+.plan-diff-code-review-dialog-quick-actions > button > .icon,
+.plan-diff-code-review-dialog-quick-actions > button > svg {
   width: 16px;
   height: 16px;
   flex: 0 0 16px;
 }
 
-.plan-diff-ai-review-dialog-quick-actions > .plan-diff-ai-review-dialog-quick-actions-close {
+.plan-diff-code-review-dialog-quick-actions > .plan-diff-code-review-dialog-quick-actions-close {
   width: 28px;
   flex: 0 0 28px;
   justify-content: center;
@@ -6842,7 +6855,7 @@ body {
 
 /* The composer island: 2px brand border, the input on top and the +/mic/send row pinned
    to the bottom. It stays tall enough to read as the dialog's primary work area. */
-.plan-diff-ai-review-dialog-main {
+.plan-diff-code-review-dialog-main {
   position: relative;
   display: flex;
   min-height: 182px;
@@ -6857,7 +6870,7 @@ body {
   border-radius: 6px;
 }
 
-.plan-diff-ai-review-dialog-composer-header {
+.plan-diff-code-review-dialog-composer-header {
   display: flex;
   /* The commit launcher pins a dozen files here: the chips must push the input down
      instead of being squeezed and overlapping it. */
@@ -6867,26 +6880,26 @@ body {
   gap: 8px;
 }
 
-.plan-diff-ai-review-dialog-composer-header:empty {
+.plan-diff-code-review-dialog-composer-header:empty {
   display: none;
 }
 
 /* The popup's own background is #26282C, the same colour the chip fill uses in the chat, so a chip
    would read as unstyled text here. Inside the popup chips sit on the inline-surface token. */
-.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip {
+.plan-diff-code-review-dialog-main .ai-chat-attachment-chip {
   background: var(--tab-tab-selected-bg-inactive, #2B2D30);
 }
 
-.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:hover,
-.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:focus-visible {
+.plan-diff-code-review-dialog-main .ai-chat-attachment-chip:hover,
+.plan-diff-code-review-dialog-main .ai-chat-attachment-chip:focus-visible {
   background: var(--tab-tab-bg-hovered, #393B40);
 }
 
-.plan-diff-ai-review-dialog-main .ai-chat-attachment-chip:active {
+.plan-diff-code-review-dialog-main .ai-chat-attachment-chip:active {
   background: var(--toolbar-toolbar-bg-pressed, var(--toolbar-bg-pressed, #4E5157));
 }
 
-.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments {
+.plan-diff-code-review-dialog-main .plan-diff-code-review-dialog-attachments {
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
@@ -6901,19 +6914,19 @@ body {
   overflow: visible;
 }
 
-.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments.is-expanded {
+.plan-diff-code-review-dialog-main .plan-diff-code-review-dialog-attachments.is-expanded {
   max-height: 176px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments:empty {
+.plan-diff-code-review-dialog-main .plan-diff-code-review-dialog-attachments:empty {
   display: none;
 }
 
 /* Figma 501:57949 keeps this button in the first row of the input, flush right and centred on
    the caret line — so it is pinned to the top-right corner instead of sitting in its own row. */
-.plan-diff-ai-review-dialog-context-side {
+.plan-diff-code-review-dialog-context-side {
   position: absolute;
   z-index: 1;
   /* 3px = the input's own top padding, so the 22px button centres on the first 16px text line. */
@@ -6928,13 +6941,13 @@ body {
   color: var(--icon-muted, #b4b8bf);
 }
 
-.plan-diff-ai-review-dialog-context-side > .icon,
-.plan-diff-ai-review-dialog-context-side > svg {
+.plan-diff-code-review-dialog-context-side > .icon,
+.plan-diff-code-review-dialog-context-side > svg {
   width: 16px;
   height: 16px;
 }
 
-.plan-diff-ai-review-dialog-main > textarea {
+.plan-diff-code-review-dialog-main > textarea {
   all: unset;
   display: block;
   min-height: 72px;
@@ -6947,12 +6960,12 @@ body {
   white-space: pre-wrap;
 }
 
-.plan-diff-ai-review-dialog-main > textarea::placeholder {
+.plan-diff-code-review-dialog-main > textarea::placeholder {
   color: var(--text-secondary, #73767c);
 }
 
 /* Chat / Input Toolbar Island */
-.plan-diff-ai-review-dialog-main-actions {
+.plan-diff-code-review-dialog-main-actions {
   display: flex;
   height: 30px;
   flex: 0 0 auto;
@@ -6960,14 +6973,14 @@ body {
   justify-content: space-between;
 }
 
-.plan-diff-ai-review-dialog-main-actions-right {
+.plan-diff-code-review-dialog-main-actions-right {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
-.plan-diff-ai-review-dialog-plus,
-.plan-diff-ai-review-dialog-mic {
+.plan-diff-code-review-dialog-plus,
+.plan-diff-code-review-dialog-mic {
   all: unset;
   display: inline-flex;
   width: 26px;
@@ -6980,15 +6993,15 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-plus:hover,
-.plan-diff-ai-review-dialog-plus:focus-visible,
-.plan-diff-ai-review-dialog-mic:hover,
-.plan-diff-ai-review-dialog-mic:focus-visible {
+.plan-diff-code-review-dialog-plus:hover,
+.plan-diff-code-review-dialog-plus:focus-visible,
+.plan-diff-code-review-dialog-mic:hover,
+.plan-diff-code-review-dialog-mic:focus-visible {
   background: rgb(255 255 255 / 8%);
   outline: none;
 }
 
-.plan-diff-ai-review-dialog-send {
+.plan-diff-code-review-dialog-send {
   all: unset;
   display: inline-flex;
   width: 32px;
@@ -7002,7 +7015,7 @@ body {
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start {
+.plan-diff-code-review-dialog-send.plan-diff-code-review-dialog-start {
   width: auto;
   min-width: 96px;
   flex-basis: auto;
@@ -7011,40 +7024,40 @@ body {
   font: 600 13px/16px Inter, system-ui, sans-serif;
 }
 
-.plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start.is-active {
+.plan-diff-code-review-dialog-send.plan-diff-code-review-dialog-start.is-active {
   color: #fff;
 }
 
-.plan-diff-ai-review-dialog-send:hover,
-.plan-diff-ai-review-dialog-send:focus-visible {
+.plan-diff-code-review-dialog-send:hover,
+.plan-diff-code-review-dialog-send:focus-visible {
   color: var(--icon-muted, #b4b8bf);
   outline: none;
 }
 
-.plan-diff-ai-review-dialog-send.is-active {
+.plan-diff-code-review-dialog-send.is-active {
   background: #3574f0;
   color: #fff;
   cursor: pointer;
 }
 
-.plan-diff-ai-review-dialog-send.is-active:hover,
-.plan-diff-ai-review-dialog-send.is-active:focus-visible {
+.plan-diff-code-review-dialog-send.is-active:hover,
+.plan-diff-code-review-dialog-send.is-active:focus-visible {
   background: #4a82f2;
   color: #fff;
 }
 
-.plan-diff-ai-review-dialog-send.is-active .plan-diff-ai-review-dialog-send-icon path {
+.plan-diff-code-review-dialog-send.is-active .plan-diff-code-review-dialog-send-icon path {
   fill: #fff;
 }
 
-.plan-diff-ai-review-dialog-plus > .icon,
-.plan-diff-ai-review-dialog-mic > .icon,
-.plan-diff-ai-review-dialog-send-icon {
+.plan-diff-code-review-dialog-plus > .icon,
+.plan-diff-code-review-dialog-mic > .icon,
+.plan-diff-code-review-dialog-send-icon {
   width: 16px;
   height: 16px;
 }
 
-.plan-diff-ai-review-dialog-footer {
+.plan-diff-code-review-dialog-footer {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -7053,14 +7066,14 @@ body {
   padding: 4px 8px 6px;
 }
 
-.plan-diff-ai-review-dialog-footer .plan-diff-ai-review-dropdown + .plan-diff-ai-review-dropdown {
+.plan-diff-code-review-dialog-footer .plan-diff-code-review-dropdown + .plan-diff-code-review-dropdown {
   margin-left: 4px;
 }
 
 /* Every picker in the popup drops its menu below the trigger. The submenu wrapper is a
    zero-size anchor (the kit Popup lays itself out inside it), so a `bottom`-based flip
    would not actually move the menu above the button — it would only shift the anchor. */
-.plan-diff-ai-review-dialog .plan-diff-ai-review-submenu {
+.plan-diff-code-review-dialog .plan-diff-code-review-submenu {
   top: calc(100% + 4px);
   bottom: auto;
 }
@@ -7625,7 +7638,7 @@ body {
   padding: 12px;
 }
 
-/* Aggregated AI Review is a triage surface: findings are ranked by severity,
+/* Aggregated Code Review is a triage surface: findings are ranked by severity,
    while the full source diff opens from an individual comment. */
 .aiux-review-overview-scroll.is-comments-only {
   overflow: auto;
@@ -13992,7 +14005,7 @@ button.aiux543-answer-change-card:focus-visible {
   container-name: aiux543-composer;
 }
 
-.aiux543-ai-review-prompt {
+.aiux543-code-review-prompt {
   box-sizing: border-box;
   display: inline-flex;
   flex: 0 0 auto;
@@ -14009,7 +14022,7 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-.aiux543-ai-review-prompt-button {
+.aiux543-code-review-prompt-button {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -14024,17 +14037,17 @@ button.aiux543-answer-change-card:focus-visible {
   cursor: pointer;
 }
 
-.aiux543-ai-review-prompt-button:hover,
-.aiux543-ai-review-prompt-button:focus-visible {
+.aiux543-code-review-prompt-button:hover,
+.aiux543-code-review-prompt-button:focus-visible {
   background: #34363a;
   outline: none;
 }
 
-.aiux543-ai-review-prompt-button:active {
+.aiux543-code-review-prompt-button:active {
   background: #202124;
 }
 
-.aiux543-ai-review-prompt-divider {
+.aiux543-code-review-prompt-divider {
   width: 1px;
   height: 16px;
   margin: 0;
@@ -19010,7 +19023,7 @@ button.aiux543-answer-change-card:focus-visible {
   color: #b4b8bf;
 }
 
-/* Scope totals in the preview head stay muted next to the "AI Review" label. */
+/* Scope totals in the preview head stay muted next to the "Code Review" label. */
 .aiux550-review-summary-message-sep,
 .aiux550-review-summary-message-total {
   flex: 0 0 auto;
@@ -20093,7 +20106,7 @@ button.aiux543-answer-change-card:focus-visible {
   font: 400 12px/18px Inter, system-ui, sans-serif;
 }
 
-/* AI Review is a non-expandable summary row (icon + label + status badge). While
+/* Code Review is a non-expandable summary row (icon + label + status badge). While
    processing, a loader sits in the action column; when done it becomes the
    "Open review" link. */
 .aiux550-ainotes-summary {
@@ -20108,7 +20121,7 @@ button.aiux543-answer-change-card:focus-visible {
   overflow: hidden;
 }
 
-/* The "AI Review" word yields first (it has the balloon icon next to it); the
+/* The "Code Review" word yields first (it has the balloon icon next to it); the
    status badge keeps its full size. */
 .aiux550-ainotes-summary-label > :first-child {
   flex: 0 1 auto;
@@ -20231,7 +20244,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* Expressive "Done" status — a green sibling of the blue Approval pill. Reused by
-   the composer review card and the Chat History AI Review row. */
+   the composer review card and the Chat History Code Review row. */
 .aiux550-review-done-badge {
   display: inline-flex;
   flex: 0 0 auto;
@@ -20321,58 +20334,58 @@ button.aiux543-answer-change-card:focus-visible {
   background: #3a3d42;
 }
 
-.commit-ai-review-entry {
+.commit-code-review-entry {
   display: inline-flex;
   align-items: center;
   margin-left: 1px;
 }
 
-.commit-ai-review-entry .plan-diff-new-review-trigger {
+.commit-code-review-entry .plan-diff-new-review-trigger {
   height: 24px;
 }
 
-.commit-ai-review-entry .plan-diff-ai-review-button {
+.commit-code-review-entry .plan-diff-code-review-button {
   height: 24px;
 }
 
-.commit-ai-review-trigger.plan-diff-ai-review-button {
+.commit-code-review-trigger.plan-diff-code-review-button {
   min-width: 50px;
   padding: 0 3px;
 }
 
-.commit-ai-review-trigger .plan-diff-ai-review-button-content {
+.commit-code-review-trigger .plan-diff-code-review-button-content {
   gap: 3px;
 }
 
-.commit-ai-review-trigger .plan-diff-ai-review-button-icon {
+.commit-code-review-trigger .plan-diff-code-review-button-icon {
   width: 16px;
   height: 16px;
   flex-basis: 16px;
 }
 
-.commit-ai-review-trigger .plan-diff-ai-review-button-icon svg,
-.commit-ai-review-trigger .plan-diff-ai-review-button-icon .icon {
+.commit-code-review-trigger .plan-diff-code-review-button-icon svg,
+.commit-code-review-trigger .plan-diff-code-review-button-icon .icon {
   width: 16px;
   height: 16px;
 }
 
-.commit-ai-review-trigger .plan-diff-ai-review-button-label {
+.commit-code-review-trigger .plan-diff-code-review-button-label {
   font-size: 12px;
   line-height: 16px;
 }
 
-.commit-ai-review-trigger .plan-diff-ai-review-button-chevron {
+.commit-code-review-trigger .plan-diff-code-review-button-chevron {
   width: 14px;
   height: 14px;
   flex-basis: 14px;
 }
 
-.commit-ai-review-entry .plan-diff-ai-review-button:disabled {
+.commit-code-review-entry .plan-diff-code-review-button:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.commit-ai-review-entry .plan-diff-ai-review-button:disabled::before {
+.commit-code-review-entry .plan-diff-code-review-button:disabled::before {
   background: transparent;
 }
 
@@ -20457,7 +20470,7 @@ button.aiux543-answer-change-card:focus-visible {
   gap: 8px;
 }
 
-/* Per-file severity breakdown in the AI Review folder (Critical/Warning/Info). */
+/* Per-file severity breakdown in the Code Review folder (Critical/Warning/Info). */
 .aiux550-ainotes-file-severity {
   display: inline-flex;
   align-items: center;
@@ -20539,11 +20552,11 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* ─── Aggregated review-diff overview tab ──────────────────────────────────── */
-.ai-review-editor-split-active .main-window-editor-tabs:not(.ai-review-editor-split-tabbar) {
+.code-review-editor-split-active .main-window-editor-tabs:not(.code-review-editor-split-tabbar) {
   display: none;
 }
 
-.editor-top-bar:has(.ai-review-editor-split) {
+.editor-top-bar:has(.code-review-editor-split) {
   display: flex;
   width: 100%;
   height: 100%;
@@ -20553,18 +20566,18 @@ button.aiux543-answer-change-card:focus-visible {
   border: 0;
 }
 
-.editor:has(.ai-review-editor-split) .editor-body {
+.editor:has(.code-review-editor-split) .editor-body {
   display: none;
 }
 
 /* The chat pane grows in from the left edge, like a tool window/split
    opening in the real IDE, instead of a generic fade. */
-@keyframes aiReviewEditorSplitReveal {
+@keyframes codeReviewEditorSplitReveal {
   from { grid-template-columns: 0px 1px 100%; }
   to { grid-template-columns: 30% 1px 70%; }
 }
 
-.ai-review-editor-split {
+.code-review-editor-split {
   display: grid;
   width: 100%;
   height: 100%;
@@ -20573,10 +20586,10 @@ button.aiux543-answer-change-card:focus-visible {
   grid-template-columns: minmax(280px, 30%) 1px minmax(360px, 70%);
   overflow: hidden;
   background: #191a1c;
-  animation: aiReviewEditorSplitReveal var(--motion-duration-medium) var(--motion-ease-soft);
+  animation: codeReviewEditorSplitReveal var(--motion-duration-medium) var(--motion-ease-soft);
 }
 
-.ai-review-editor-split-pane {
+.code-review-editor-split-pane {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -20585,20 +20598,20 @@ button.aiux543-answer-change-card:focus-visible {
   background: #191a1c;
 }
 
-.ai-review-editor-split-divider {
+.code-review-editor-split-divider {
   width: 1px;
   min-height: 0;
   background: #34363b;
 }
 
-.ai-review-editor-split-tabbar {
+.code-review-editor-split-tabbar {
   position: relative;
   width: 100%;
   flex: 0 0 auto;
   padding-right: 34px;
 }
 
-.ai-review-editor-split-body {
+.code-review-editor-split-body {
   position: relative;
   display: flex;
   min-width: 0;
@@ -20607,11 +20620,11 @@ button.aiux543-answer-change-card:focus-visible {
   overflow: hidden;
 }
 
-.ai-review-editor-split-body > .aiux543-chat-editor-host {
+.code-review-editor-split-body > .aiux543-chat-editor-host {
   flex: 1 1 auto;
 }
 
-.ai-review-editor-split-body > .ai-spec-split-editor-host {
+.code-review-editor-split-body > .ai-spec-split-editor-host {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -20619,7 +20632,7 @@ button.aiux543-answer-change-card:focus-visible {
   min-height: 0;
 }
 
-/* `.editor:has(.ai-review-editor-split) .editor-body` (above) blanket-hides
+/* `.editor:has(.code-review-editor-split) .editor-body` (above) blanket-hides
    every .editor-body nested anywhere inside the outer editor while a split
    is active — including this local one used as AgentTaskEditorArea's portal
    target. Force it back on; !important is needed to beat that :has() rule's
@@ -20635,7 +20648,7 @@ button.aiux543-answer-change-card:focus-visible {
   min-height: 0;
 }
 
-.ai-review-editor-split-body.is-review .aiux-review-overview {
+.code-review-editor-split-body.is-review .aiux-review-overview {
   position: absolute;
   inset: 0;
 }
@@ -20651,7 +20664,7 @@ button.aiux543-answer-change-card:focus-visible {
   display: flex;
   flex-direction: column;
   background: #1b1c1f;
-  container-name: ai-review;
+  container-name: code-review;
   container-type: inline-size;
 }
 
@@ -21398,7 +21411,7 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* Review status pill uses the shared green `aiux550-review-done-badge` style so
-   it matches the "Open" badge in Chats History and the AI Review card; only the
+   it matches the "Open" badge in Chats History and the Code Review card; only the
    text changes ("Open" → "All resolved") as findings are handled. */
 
 .aiux-review-overview-check {
@@ -22307,7 +22320,7 @@ button.aiux543-answer-change-card:focus-visible {
   100% { background-color: transparent; }
 }
 
-/* AI Review adapts to the editor pane, not only the browser viewport. This is
+/* Code Review adapts to the editor pane, not only the browser viewport. This is
    important when Full Review is opened in a narrow IDE split. */
 .aiux-review-overview-toolbar .aiux550-review-final-state {
   width: auto;
@@ -22317,14 +22330,14 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-@container ai-review (max-width: 1120px) {
+@container code-review (max-width: 1120px) {
   .aiux-review-overview-viewtoggle .segmented-button {
     min-width: 30px;
     padding-inline: 6px;
   }
 }
 
-@container ai-review (max-width: 760px) {
+@container code-review (max-width: 760px) {
   .aiux-review-overview-summary-total {
     max-width: 38%;
     overflow: hidden;
@@ -22384,7 +22397,7 @@ button.aiux543-answer-change-card:focus-visible {
   }
 }
 
-@container ai-review (max-width: 520px) {
+@container code-review (max-width: 520px) {
   .aiux-review-overview-summary-total,
   .aiux-review-overview-sep {
     display: none;
@@ -22421,95 +22434,95 @@ button.aiux543-answer-change-card:focus-visible {
 /* The shared launch dialog remains usable at compact IDE/window sizes: scope,
    configuration, attachments, and Start Review stay reachable without overlap. */
 @media (max-width: 720px) {
-  .plan-diff-ai-review-dialog-backdrop {
+  .plan-diff-code-review-dialog-backdrop {
     align-items: flex-start;
     justify-content: center;
     padding: 8px;
     overflow-y: auto;
   }
 
-  .plan-diff-ai-review-dialog {
+  .plan-diff-code-review-dialog {
     width: 100%;
     max-width: 100%;
     max-height: none;
     margin: auto 0;
   }
 
-  .plan-diff-ai-review-dialog-pickers {
+  .plan-diff-code-review-dialog-pickers {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 4px 8px;
   }
 
-  .plan-diff-ai-review-dialog-picker {
+  .plan-diff-code-review-dialog-picker {
     min-width: 0;
     overflow: hidden;
   }
 
-  .plan-diff-ai-review-dialog-picker > span:not(.icon) {
+  .plan-diff-code-review-dialog-picker > span:not(.icon) {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .plan-diff-ai-review-dialog-scope-note {
+  .plan-diff-code-review-dialog-scope-note {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .plan-diff-ai-review-dialog-scope-note > span:last-child {
+  .plan-diff-code-review-dialog-scope-note > span:last-child {
     grid-column: 1 / -1;
     text-align: left;
   }
 
-  .plan-diff-ai-review-dialog-quick-actions {
+  .plan-diff-code-review-dialog-quick-actions {
     overflow-x: auto;
     scrollbar-width: thin;
   }
 
-  .plan-diff-ai-review-dialog-main {
+  .plan-diff-code-review-dialog-main {
     min-height: 140px;
   }
 
-  .plan-diff-ai-review-dialog-footer {
+  .plan-diff-code-review-dialog-footer {
     flex-wrap: wrap;
     row-gap: 2px;
   }
 }
 
 @media (max-width: 440px) {
-  .plan-diff-ai-review-dialog-pickers {
+  .plan-diff-code-review-dialog-pickers {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .plan-diff-ai-review-dialog-scope-note {
+  .plan-diff-code-review-dialog-scope-note {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .plan-diff-ai-review-dialog-main {
+  .plan-diff-code-review-dialog-main {
     min-height: 124px;
   }
 
-  .plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start {
+  .plan-diff-code-review-dialog-send.plan-diff-code-review-dialog-start {
     min-width: 84px;
     padding-inline: 9px;
   }
 }
 
 @media (max-height: 620px) {
-  .plan-diff-ai-review-dialog-backdrop {
+  .plan-diff-code-review-dialog-backdrop {
     align-items: flex-start;
     overflow-y: auto;
   }
 
-  .plan-diff-ai-review-dialog {
+  .plan-diff-code-review-dialog {
     max-height: none;
   }
 
-  .plan-diff-ai-review-dialog-main {
+  .plan-diff-code-review-dialog-main {
     min-height: 108px;
   }
 
-  .plan-diff-ai-review-dialog-main .plan-diff-ai-review-dialog-attachments.is-expanded {
+  .plan-diff-code-review-dialog-main .plan-diff-code-review-dialog-attachments.is-expanded {
     max-height: 88px;
   }
 }

@@ -1,4 +1,4 @@
-# AI Review for Changes in the IDE
+# Code Review for Changes in the IDE
 
 ## V1 User Flow: Two Review Scenarios
 
@@ -7,7 +7,7 @@
 
 ## Overview
 
-After the AI Review processes the selected changes, the user receives a Review Preview with the `Open` status. The Preview presents:
+After the Code Review processes the selected changes, the user receives a Review Preview with the `Open` status. The Preview presents:
 
 - a short and expanded summary;
 - the number of reviewed files and findings;
@@ -162,7 +162,7 @@ The user can then:
 
 - commit the changes;
 - continue working manually;
-- start a new AI Review.
+- start a new Code Review.
 
 A new review creates a new session and does not overwrite the completed review history.
 

@@ -734,19 +734,19 @@ function Aiux550HistoryList({
   // highlighted (avoids a default blue selection on load).
   const effectiveActiveChatId = activeChatId ?? null;
 
-  // Prepend an "AI Review" summary to explicit review sessions only. It remains
+  // Prepend an "Code Review" summary to explicit review sessions only. It remains
   // in history across active, result, and final phases, including no-findings
   // reviews; regular comment-to-agent runs keep their result in the chat/diff.
   const withAiNotes = (node) => {
     const run = agentRunByChatId[node.id];
-    // Only an explicit /review run gets an "AI Review" folder in history. A plain
+    // Only an explicit /review run gets an "Code Review" folder in history. A plain
     // "send comment to agent" run keeps its result in the chat + the diff/chip.
     // Do not key visibility to findings: a valid no-findings result still owns a
     // review lifecycle, summary, and immutable history entry.
     if (run?.kind !== 'review') return node;
     const aiNotesSection = {
       id: 'ai-notes',
-      label: 'AI Review',
+      label: 'Code Review',
       notes: Array.isArray(run.notes) ? run.notes : [],
       status: normalizeReviewLifecycleStatus(run.status),
       agentIcon: run.agentIcon || node.agent || 'codex',
@@ -1207,7 +1207,7 @@ function Aiux550HistoryRowChildren({ sections, rowId, expandedSections, onToggle
         const isExpanded = expandedSections[sectionKey] ?? false;
         const isAiNotes = section.id === 'ai-notes';
         const reviewLifecycle = isAiNotes ? getReviewLifecycleMeta(section.status) : null;
-        // The AI Review section is a single, non-expandable summary row: it shows
+        // The Code Review section is a single, non-expandable summary row: it shows
         // the file/comment totals and a "See list" escape hatch. The per-file /
         // per-comment detail lives in the diff gutters and the Commit tool window,
         // so we don't render a file tree here (it doesn't scale to large reviews).

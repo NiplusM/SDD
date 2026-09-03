@@ -3158,6 +3158,19 @@ function buildDisplayRowSerializedLineMatches(displayRows = [], serializedLines 
       }
     }
 
+    // A note can refine the wording of a checklist item without changing its
+    // position or its identity. In that case there is no exact source-text
+    // match, but the next checkbox still represents the same serialized item.
+    // Preserve its metadata so its gutter actions and run state remain usable.
+    if (matchedIndex === -1 && /^\s*-\s+\[[ x]\]\s+/i.test(line)) {
+      for (let index = searchStart; index < serializedLines.length; index += 1) {
+        if (/^\s*-\s+\[[ x]\]\s+/i.test(serializedLines[index])) {
+          matchedIndex = index;
+          break;
+        }
+      }
+    }
+
     if (matchedIndex === -1) {
       return;
     }
@@ -6011,7 +6024,6 @@ function normalizeLegacyVisitBookingGoalCode(code = '') {
 
 function normalizeDocumentHeadingTitleCase(code = '') {
   return String(code)
-    .replace(/^##\s+Reference files\s*$/gim, '## Reference Files')
     .replace(/^##\s+Generated diffs\s*$/gim, '## Generated Diffs');
 }
 
@@ -6181,17 +6193,6 @@ function createSpecDocument() {
         { id: 'ac-4', type: 'check', checked: false, text: 'Vet and time are persisted with the visit.' },
         { id: 'ac-5', type: 'check', checked: false, text: 'Existing visit display (owner details page) shows the assigned vet and time.' },
         { id: 'ac-6', type: 'check', checked: false, text: 'All three DB schemas (H2, MySQL, PostgreSQL) and seed data are updated.' },
-      ],
-    },
-    {
-      id: 'implementation',
-      title: 'Reference Files',
-      items: [
-        { id: 'impl-1', type: 'bullet', text: 'Current Visit entity has only date (LocalDate) and description (String). No relationship to Vet.' },
-        { id: 'impl-2', type: 'bullet', text: 'Visits persisted via cascade (Owner \u2192 Pet \u2192 Visit). No VisitRepository exists.' },
-        { id: 'impl-3', type: 'bullet', text: 'VetRepository.findAll() is @Cacheable("vets"). Returns Collection<Vet>.' },
-        { id: 'impl-4', type: 'bullet', text: 'Project uses Formatter<T> for form selects (see PetTypeFormatter).' },
-        { id: 'impl-5', type: 'bullet', text: 'Spring MVC reference: [Controller method validation](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-validation.html).' },
       ],
     },
     {
@@ -10472,8 +10473,10 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
         }
       }
 
-      if (effectiveIsCheckLine && inPlanSection && statusMeta?.kind === 'plan') {
-        const originalIndex = statusMeta.originalIndex;
+      if (effectiveIsCheckLine && inPlanSection && serializedLineMeta?.itemType === 'check') {
+        const originalIndex = statusMeta?.kind === 'plan'
+          ? statusMeta.originalIndex
+          : mapVisibleIssueIndexToOriginal('plan', serializedLineMeta.itemIndex ?? 0, removedIssueIndices);
         const isVetSchedulesDoc = commentContextLabel.trim().toLowerCase() === 'vet-schedules.md';
         const diffIndex = isVetSchedulesDoc ? remapVetSchedulesPlanDiffIndex(originalIndex) : originalIndex;
         if (Number.isInteger(diffIndex)) {
@@ -13996,7 +13999,7 @@ function createVetSchedulesSpecDocument() {
         { id: 'plan-4', type: 'check', checked: false, text: 'Seed working hours for all six demo vets in H2 data.sql' },
         { id: 'plan-5', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
         { id: 'plan-6', type: 'check', checked: false, text: 'Validate requested visit_time against half-open schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-7', type: 'check', checked: false, text: 'Add off-hours rejection tests in @VisitControllerTests.java for controller validation' },
+        { id: 'plan-7', type: 'check', checked: false, text: 'Add controller regression tests in @VisitControllerTests.java that reject bookings outside working hours' },
       ],
     },
     {
@@ -14007,18 +14010,6 @@ function createVetSchedulesSpecDocument() {
         { id: 'ac-2', type: 'check', checked: false, text: 'Validation rejects a slot unless it falls within at least one of the selected vet\'s [start, end) windows.' },
         { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one valid schedule window for each of the six seeded vets.' },
         { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan keeps the existing static hourly slot picker; this change adds server-side validation.' },
-      ],
-    },
-    {
-      id: 'references',
-      title: 'Reference Files',
-      items: [
-        { id: 'ref-1', type: 'bullet', text: 'Existing visit date, time, and vet fields: @Visit.java#L5-L20' },
-        { id: 'ref-2', type: 'bullet', text: 'Existing booking POST flow: @VisitController.processNewVisitForm()' },
-        { id: 'ref-3', type: 'bullet', text: 'Existing vet and time inputs: @createOrUpdateVisitForm.html#L13-L30' },
-        { id: 'ref-4', type: 'bullet', text: 'Existing H2 visits table and constraints: @schema.sql#L39-L50' },
-        { id: 'ref-5', type: 'bullet', text: 'Spring Data reference: [Query Methods](https://docs.spring.io/spring-data/jpa/reference/repositories/query-methods-details.html).' },
-        { id: 'ref-6', type: 'bullet', text: 'Canonical formatter pattern: [PetTypeFormatter](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java).' },
       ],
     },
   ].map((section) => withDerivedPlanChildren(section));
@@ -14146,26 +14137,10 @@ const DEFAULT_OPEN_CHAT_ID = 'refactor-time-slots';
 const DEFAULT_OPEN_CHAT_TAB_ID = `ai-chat-${DEFAULT_OPEN_CHAT_ID}`;
 
 function buildInitialEditorTabs() {
-  const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
-  const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
-
-  return [
-    {
-      id: DEFAULT_OPEN_CHAT_TAB_ID,
-      label: 'Refactor VisitController.java time slots',
-      icon: <AiChatAgentIcon icon="claude" title="Refactor VisitController.java time slots" />,
-      closable: true,
-    },
-    visitControllerTab,
-    {
-      id: INITIAL_PLAN_DIFF_TAB_ID,
-      label: 'Diff VisitController.java',
-      icon: DIFF_TAB_ICON_NAME,
-      closable: true,
-      sourceTabId: INITIAL_PLAN_DIFF_SOURCE_TAB_ID,
-    },
-    ...remainingEditorTabs,
-  ];
+  // Start with a clean editor. The initial SDD session opens its own tab after
+  // mount; documents, source files and diffs are added only when generated or
+  // explicitly opened by the user.
+  return [];
 }
 
 function buildInitialEditorTabContents() {
@@ -14772,6 +14747,21 @@ function appendNoteAddressedClause(line = '', noteText = '') {
   const core = hasTrailingPunctuation ? trimmedEnd.slice(0, -1) : trimmedEnd;
   const clause = getNoteClauseFromText(noteText);
   return clause ? `${core}, ${clause}.` : `${core}, addressing the note.`;
+}
+
+function rephrasePlanLineAfterNote(line = '', noteText = '') {
+  const normalizedLine = String(line).trim();
+  const normalizedNote = String(noteText).trim();
+  // The boundary note refines the scope of the entire regression-test item.
+  // Render one coherent requirement rather than appending the user's sentence
+  // verbatim to the end of the existing plan line.
+  if (
+    /controller regression tests.*reject bookings outside working hours/iu.test(normalizedLine)
+    && /exclusive end(?: boundary)?/iu.test(normalizedNote)
+  ) {
+    return 'Add controller regression tests in @VisitControllerTests.java that reject bookings outside working hours, including a booking at the exclusive end of the schedule window.';
+  }
+  return appendNoteAddressedClause(normalizedLine, normalizedNote);
 }
 
 function getAiChatAttachmentSequenceKey(attachment = null, index = 0) {
@@ -32353,7 +32343,7 @@ export default function App() {
                 : getRawLineIndexFromDisplayRowIndex(persistedCode, noteSourceRowIndex);
               if (rawLineIndex != null) {
                 const lines = persistedCode.split(/\r?\n/);
-                lines[rawLineIndex] = appendNoteAddressedClause(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
+                lines[rawLineIndex] = rephrasePlanLineAfterNote(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
                 const nextCode = lines.join('\n');
                 setManualDocumentDraftsByTabId((prev) => ({ ...prev, [noteSourceTabId]: nextCode }));
                 setIdeTabContents((prev) => ({
@@ -32364,6 +32354,18 @@ export default function App() {
                     code: nextCode,
                   },
                 }));
+                setInteractiveTaskStates((prev) => {
+                  const taskState = prev[noteSourceTabId];
+                  if (!taskState?.documentSections) return prev;
+                  return {
+                    ...prev,
+                    [noteSourceTabId]: {
+                      ...taskState,
+                      documentSections: parseSpecCodeToDocumentSections(nextCode, taskState.documentSections)
+                        .map((section) => withDerivedPlanChildren(section)),
+                    },
+                  };
+                });
               }
             }
           }

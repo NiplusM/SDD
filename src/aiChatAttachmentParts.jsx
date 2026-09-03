@@ -1,4 +1,4 @@
-// Attachment chip primitives shared by the chat composer (App.jsx) and the AI Review popup
+// Attachment chip primitives shared by the chat composer (App.jsx) and the Code Review popup
 // (PlanDiffView.jsx), so a chip looks and reads the same wherever it is rendered.
 import { Button, Icon, TooltipHelp } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
@@ -205,7 +205,7 @@ export function AiChatImageAttachmentPreview({ attachment = null }) {
   );
 }
 
-// One attachment strip for every composer: the chat tab input and the AI Review popup render
+// One attachment strip for every composer: the chat tab input and the Code Review popup render
 // this component, so chips look and behave identically in both.
 export function AiChatAttachmentStrip({
   attachments = [],

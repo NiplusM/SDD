@@ -34,7 +34,7 @@ Code Notes is a proposed feature that builds on a pattern that has emerged acros
 
 Existing task-assignment mechanics are already relatively mature across the industry (selection-to-chat, inline edit, `@`-mentions, context actions) and are actively used by users today. Current research and metrics do not yet show a strong signal that an entirely new interaction model is needed on the task-assignment side.
 
-Review workflows for agent-generated changes, on the other hand, remain fragmented and underdeveloped. Users still struggle to precisely communicate requested fixes inside diffs, while feedback is often split between chat, VCS, and code. Most modern AI-review tools are already moving toward iterative review workflows, creating a strong market expectation in this area.
+Review workflows for agent-generated changes, on the other hand, remain fragmented and underdeveloped. Users still struggle to precisely communicate requested fixes inside diffs, while feedback is often split between chat, VCS, and code. Most modern Code-review tools are already moving toward iterative review workflows, creating a strong market expectation in this area.
 
 Additionally, review comments for agent-generated diffs are easier to scope, prototype, validate, and measure. The mechanics introduced in this flow can later become reusable primitives for broader Code Notes workflows, including task assignment and SDD flows.
 

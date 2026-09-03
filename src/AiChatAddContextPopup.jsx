@@ -1,4 +1,4 @@
-// The "Add context" popup behind the composer's "+" button. Shared so the AI Review popup's "+"
+// The "Add context" popup behind the composer's "+" button. Shared so the Code Review popup's "+"
 // opens exactly the same thing instead of a bespoke menu.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';

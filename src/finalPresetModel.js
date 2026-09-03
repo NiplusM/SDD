@@ -154,8 +154,8 @@ export const FINAL_MANAGED_RECOMMENDED_PRESET = {
 
 // Ships with the prototype's own "Default Review Agent" preset: Codex in Chat on its
 // defaults (5.6 Luna • Full • Medium) with `/review` as the injected instruction.
-export const FINAL_AI_REVIEW_PRESET = {
-  id: 'ai-review',
+export const FINAL_CODE_REVIEW_PRESET = {
+  id: 'code-review',
   label: 'Default Review Agent',
   buttonLabel: 'Default Review Agent',
   agentId: 'codex',
@@ -189,7 +189,7 @@ export const FINAL_SDD_PRESET = {
   lockedPreset: true,
 };
 
-export const FINAL_INITIAL_PRESETS = [FINAL_AI_REVIEW_PRESET, FINAL_SDD_PRESET];
+export const FINAL_INITIAL_PRESETS = [FINAL_CODE_REVIEW_PRESET, FINAL_SDD_PRESET];
 
 export function getFinalModelOptions(agentId) {
   if (agentId === 'copilot') return FINAL_COPILOT_MODEL_OPTIONS;

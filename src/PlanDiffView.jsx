@@ -19,7 +19,7 @@ const REVIEW_FINDING_STATUS_LABELS = {
 };
 
 // Canonical V1 finding status. `resolved` / `resolvedKind` are retained as a
-// compatibility layer for the older Code Notes renderer, while every AI Review
+// compatibility layer for the older Code Notes renderer, while every Code Review
 // surface reads the same five-state model through this helper.
 export function getReviewFindingStatus(comment = null) {
   const explicit = typeof comment?.reviewStatus === 'string'
@@ -848,7 +848,7 @@ function PlanDiffViewingScopeControl({
 
 // The diff top bar's "Quick Actions" entry point. Also reused outside the diff (the
 // Commit tool window), hence the class hooks for host-specific sizing.
-const AI_REVIEW_AGENT_OPTIONS = [
+const CODE_REVIEW_AGENT_OPTIONS = [
   {
     id: 'codex',
     label: 'Codex',
@@ -869,35 +869,35 @@ const AI_REVIEW_AGENT_OPTIONS = [
   },
 ];
 
-function getAiReviewAgentLabel(icon = 'codex') {
-  return AI_REVIEW_AGENT_OPTIONS.find((agent) => agent.icon === icon || agent.id === icon)?.label
+function getCodeReviewAgentLabel(icon = 'codex') {
+  return CODE_REVIEW_AGENT_OPTIONS.find((agent) => agent.icon === icon || agent.id === icon)?.label
     ?? 'Claude Agent';
 }
 
-const AI_REVIEW_EXISTING_SESSIONS = [
+const CODE_REVIEW_EXISTING_SESSIONS = [
   { id: 'current-session', label: 'Current Session', time: 'Current' },
 ];
 
 // Header/footer pickers of the Figma popup (501:57949). They carry no behaviour of their own
 // beyond the value they hand to onStartReview.
 // Chips shown before the strip collapses behind a "Show all +N" toggle.
-const AI_REVIEW_ATTACHMENT_COLLAPSED_LIMIT = 6;
+const CODE_REVIEW_ATTACHMENT_COLLAPSED_LIMIT = 6;
 
-const AI_REVIEW_LOCATION_OPTIONS = [
+const CODE_REVIEW_LOCATION_OPTIONS = [
   { id: 'local', label: 'Local' },
   { id: 'cloud', label: 'Cloud' },
 ];
-const AI_REVIEW_MODEL_OPTIONS = [
+const CODE_REVIEW_MODEL_OPTIONS = [
   { id: 'sol', label: '5.6 Sol · Suggested' },
   { id: 'sonnet', label: 'Claude Sonnet 4.1' },
   { id: 'codex', label: 'GPT-5.2-Codex' },
 ];
-const AI_REVIEW_EFFORT_OPTIONS = [
+const CODE_REVIEW_EFFORT_OPTIONS = [
   { id: 'high', label: 'High' },
   { id: 'medium', label: 'Medium' },
   { id: 'low', label: 'Low' },
 ];
-const AI_REVIEW_EDIT_MODE_OPTIONS = [
+const CODE_REVIEW_EDIT_MODE_OPTIONS = [
   { id: 'accepts-edits', label: 'Accepts Edits' },
   { id: 'ask-before-edits', label: 'Ask Before Edits' },
   { id: 'read-only', label: 'Read Only' },
@@ -937,7 +937,7 @@ function PlanDiffRefactorIcon() {
 
 // The popup itself, controlled from outside: the toolbar button below mounts one, and App
 // mounts a global one that the Control+Control shortcut opens over whatever is on screen.
-export function AiReviewComposerDialog({
+export function CodeReviewComposerDialog({
   open = false,
   onClose = null,
   initialAgentId = 'codex',
@@ -958,9 +958,9 @@ export function AiReviewComposerDialog({
   popupClassName = '',
 }) {
   const resolveInitialAgentId = () => (
-    AI_REVIEW_AGENT_OPTIONS.some((item) => item.id === initialAgentId)
+    CODE_REVIEW_AGENT_OPTIONS.some((item) => item.id === initialAgentId)
       ? initialAgentId
-      : AI_REVIEW_AGENT_OPTIONS[0].id
+      : CODE_REVIEW_AGENT_OPTIONS[0].id
   );
   const [selectedAgentId, setSelectedAgentId] = useState(resolveInitialAgentId);
   const [selectedSessionId, setSelectedSessionId] = useState(initialSession?.id ?? null);
@@ -968,8 +968,8 @@ export function AiReviewComposerDialog({
   const [addContextRect, setAddContextRect] = useState(null);
   const [instructions, setInstructions] = useState(initialInstructions);
   const [scopeId, setScopeId] = useState(initialScopeId);
-  const [modelId, setModelId] = useState(AI_REVIEW_MODEL_OPTIONS[0].id);
-  const [effortId, setEffortId] = useState(AI_REVIEW_EFFORT_OPTIONS[0].id);
+  const [modelId, setModelId] = useState(CODE_REVIEW_MODEL_OPTIONS[0].id);
+  const [effortId, setEffortId] = useState(CODE_REVIEW_EFFORT_OPTIONS[0].id);
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(initialShowQuickActions);
   const isCommitLaunch = launchSource === 'commit';
@@ -994,11 +994,11 @@ export function AiReviewComposerDialog({
     setAddContextRect(null);
   }, [initialAgentId, initialInstructions, initialScopeId, initialSession?.id, initialShowQuickActions, open]);
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
-  const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
-    ?? AI_REVIEW_AGENT_OPTIONS[0];
+  const selectedAgent = CODE_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
+    ?? CODE_REVIEW_AGENT_OPTIONS[0];
   const sessionOptions = initialSession
-    ? [initialSession, ...AI_REVIEW_EXISTING_SESSIONS.filter((item) => item.id !== initialSession.id)]
-    : AI_REVIEW_EXISTING_SESSIONS;
+    ? [initialSession, ...CODE_REVIEW_EXISTING_SESSIONS.filter((item) => item.id !== initialSession.id)]
+    : CODE_REVIEW_EXISTING_SESSIONS;
   const selectedSession = sessionOptions.find((item) => item.id === selectedSessionId) ?? null;
   const canStartReview = attachments.length > 0 && Boolean(selectedAgent?.id) && Boolean(modelId);
   const selectAgent = (agent) => {
@@ -1050,8 +1050,8 @@ export function AiReviewComposerDialog({
   const renderMenu = (menu, children) => (
     openMenu === menu
       ? (
-        <div className={`plan-diff-ai-review-submenu plan-diff-ai-review-submenu-${menu}`}>
-          <Popup visible className="plan-diff-popover plan-diff-ai-review-submenu-popup text-ui-default" onClose={() => setOpenMenu(null)}>
+        <div className={`plan-diff-code-review-submenu plan-diff-code-review-submenu-${menu}`}>
+          <Popup visible className="plan-diff-popover plan-diff-code-review-submenu-popup text-ui-default" onClose={() => setOpenMenu(null)}>
             {children}
           </Popup>
         </div>
@@ -1059,24 +1059,24 @@ export function AiReviewComposerDialog({
       : null
   );
   const renderAgentMenu = () => renderMenu('agent', (
-    <div className="plan-diff-ai-review-agent-menu">
+    <div className="plan-diff-code-review-agent-menu">
       <PopupCell type="separator" text="Select agent" />
       <button
         type="button"
-        className="plan-diff-ai-review-recommended"
-        onClick={() => selectAgent(AI_REVIEW_AGENT_OPTIONS[0])}
+        className="plan-diff-code-review-recommended"
+        onClick={() => selectAgent(CODE_REVIEW_AGENT_OPTIONS[0])}
       >
         <PlanDiffReviewAgentIcon icon="codex" />
-        <span className="plan-diff-ai-review-recommended-copy">
-          <span className="plan-diff-ai-review-recommended-title">Recommended Agent</span>
-          <span className="plan-diff-ai-review-recommended-model">Codex · Recommended for code review</span>
-          <span className="plan-diff-ai-review-recommended-description">Picks the best performance-to-cost agent and model.</span>
-          <span className="plan-diff-ai-review-recommended-link">How the agent is selected ↗</span>
+        <span className="plan-diff-code-review-recommended-copy">
+          <span className="plan-diff-code-review-recommended-title">Recommended Agent</span>
+          <span className="plan-diff-code-review-recommended-model">Codex · Recommended for code review</span>
+          <span className="plan-diff-code-review-recommended-description">Picks the best performance-to-cost agent and model.</span>
+          <span className="plan-diff-code-review-recommended-link">How the agent is selected ↗</span>
         </span>
         {selectedAgent.id === 'codex' && <Icon name="general/checkmark" size={16} />}
       </button>
       <PopupCell type="separator" />
-      {AI_REVIEW_AGENT_OPTIONS.slice(1).map((item) => (
+      {CODE_REVIEW_AGENT_OPTIONS.slice(1).map((item) => (
         <PopupCell
           key={item.id}
           type="multiline"
@@ -1097,7 +1097,7 @@ export function AiReviewComposerDialog({
 
   return createPortal(
         <div
-          className="theme-dark plan-diff-ai-review-dialog-backdrop"
+          className="theme-dark plan-diff-code-review-dialog-backdrop"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) closePopup();
           }}
@@ -1107,20 +1107,20 @@ export function AiReviewComposerDialog({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Configure AI Review"
+            aria-label="Configure Code Review"
             data-launch-source={launchSource}
-            className={`plan-diff-ai-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
+            className={`plan-diff-code-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
           >
-            <div className="plan-diff-ai-review-dialog-header">
-              <div className="plan-diff-ai-review-dialog-title">
+            <div className="plan-diff-code-review-dialog-header">
+              <div className="plan-diff-code-review-dialog-title">
                 <Icon name="general/balloon" size={16} />
-                <span>AI Review</span>
+                <span>Code Review</span>
               </div>
-              <div className="plan-diff-ai-review-dialog-pickers">
-                <span className="plan-diff-ai-review-dropdown">
+              <div className="plan-diff-code-review-dialog-pickers">
+                <span className="plan-diff-code-review-dropdown">
                   <button
                     type="button"
-                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'agent' ? ' is-open' : ''}`}
+                    className={`plan-diff-code-review-dialog-picker${openMenu === 'agent' ? ' is-open' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={openMenu === 'agent'}
                     onClick={() => toggleMenu('agent')}
@@ -1131,10 +1131,10 @@ export function AiReviewComposerDialog({
                   </button>
                   {renderAgentMenu()}
                 </span>
-                <span className="plan-diff-ai-review-dropdown">
+                <span className="plan-diff-code-review-dropdown">
                   <button
                     type="button"
-                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'session' ? ' is-open' : ''}`}
+                    className={`plan-diff-code-review-dialog-picker${openMenu === 'session' ? ' is-open' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={openMenu === 'session'}
                     onClick={() => toggleMenu('session')}
@@ -1164,10 +1164,10 @@ export function AiReviewComposerDialog({
                     </>
                   ))}
                 </span>
-                <span className="plan-diff-ai-review-dropdown">
+                <span className="plan-diff-code-review-dropdown">
                   <button
                     type="button"
-                    className={`plan-diff-ai-review-dialog-picker${openMenu === 'scope' ? ' is-open' : ''}`}
+                    className={`plan-diff-code-review-dialog-picker${openMenu === 'scope' ? ' is-open' : ''}`}
                     aria-haspopup="menu"
                     aria-expanded={openMenu === 'scope'}
                     onClick={() => toggleMenu('scope')}
@@ -1201,7 +1201,7 @@ export function AiReviewComposerDialog({
               </div>
             </div>
 
-            <div className="plan-diff-ai-review-dialog-scope-note">
+            <div className="plan-diff-code-review-dialog-scope-note">
               <span>Review scope</span>
               <strong>{attachments.length > 0
                 ? `${attachments.length} file${attachments.length === 1 ? '' : 's'}`
@@ -1211,19 +1211,19 @@ export function AiReviewComposerDialog({
                 : 'Add a changed file or return to a context with prepared changes.'}</span>
             </div>
 
-            <div className="plan-diff-ai-review-dialog-main">
-              <span className="plan-diff-ai-review-dialog-context-side" aria-hidden="true">
+            <div className="plan-diff-code-review-dialog-main">
+              <span className="plan-diff-code-review-dialog-context-side" aria-hidden="true">
                 <Icon name="general/listFiles" size={16} />
               </span>
-              <div className="plan-diff-ai-review-dialog-composer-header">
+              <div className="plan-diff-code-review-dialog-composer-header">
                 <AiChatAttachmentStrip
                   attachments={attachments}
-                  collapsedLimit={AI_REVIEW_ATTACHMENT_COLLAPSED_LIMIT}
+                  collapsedLimit={CODE_REVIEW_ATTACHMENT_COLLAPSED_LIMIT}
                   expanded={attachmentsExpanded}
                   onExpandedChange={setAttachmentsExpanded}
                   onOpen={onOpenAttachment ?? undefined}
                   onRemove={(attachment) => removeAttachment(attachment.id)}
-                  className="plan-diff-ai-review-dialog-attachments"
+                  className="plan-diff-code-review-dialog-attachments"
                 />
               </div>
 
@@ -1236,9 +1236,9 @@ export function AiReviewComposerDialog({
                 onChange={(event) => setInstructions(event.target.value)}
               />
 
-              <div className="plan-diff-ai-review-dialog-main-actions">
+              <div className="plan-diff-code-review-dialog-main-actions">
                 <button
-                  className="plan-diff-ai-review-dialog-plus"
+                  className="plan-diff-code-review-dialog-plus"
                   type="button"
                   aria-label="Add context"
                   aria-haspopup="dialog"
@@ -1254,10 +1254,10 @@ export function AiReviewComposerDialog({
                 >
                   <Icon name="general/add" size={16} />
                 </button>
-                <span className="plan-diff-ai-review-dialog-main-actions-right">
+                <span className="plan-diff-code-review-dialog-main-actions-right">
                   <button
                     type="button"
-                    className="plan-diff-ai-review-dialog-mic"
+                    className="plan-diff-code-review-dialog-mic"
                     aria-label="Dictate"
                     title="Dictate"
                   >
@@ -1265,7 +1265,7 @@ export function AiReviewComposerDialog({
                   </button>
                   <button
                     type="button"
-                    className={`plan-diff-ai-review-dialog-send plan-diff-ai-review-dialog-start${canStartReview ? ' is-active' : ''}`}
+                    className={`plan-diff-code-review-dialog-send plan-diff-code-review-dialog-start${canStartReview ? ' is-active' : ''}`}
                     aria-label="Start Review"
                     title={canStartReview ? 'Start Review' : 'No changes to review'}
                     disabled={!canStartReview}
@@ -1277,15 +1277,15 @@ export function AiReviewComposerDialog({
               </div>
             </div>
 
-            <div className="plan-diff-ai-review-dialog-footer">
+            <div className="plan-diff-code-review-dialog-footer">
               {[
-                { menu: 'model', options: AI_REVIEW_MODEL_OPTIONS, value: modelId, onSelect: setModelId, label: 'Model' },
-                { menu: 'effort', options: AI_REVIEW_EFFORT_OPTIONS, value: effortId, onSelect: setEffortId, label: 'Effort' },
+                { menu: 'model', options: CODE_REVIEW_MODEL_OPTIONS, value: modelId, onSelect: setModelId, label: 'Model' },
+                { menu: 'effort', options: CODE_REVIEW_EFFORT_OPTIONS, value: effortId, onSelect: setEffortId, label: 'Effort' },
               ].map(({ menu, options, value, onSelect, label }) => (
-                <span className="plan-diff-ai-review-dropdown" key={menu}>
+                <span className="plan-diff-code-review-dropdown" key={menu}>
                   <button
                     type="button"
-                    className={`plan-diff-ai-review-dialog-picker${openMenu === menu ? ' is-open' : ''}`}
+                    className={`plan-diff-code-review-dialog-picker${openMenu === menu ? ' is-open' : ''}`}
                     aria-label={label}
                     aria-haspopup="menu"
                     aria-expanded={openMenu === menu}
@@ -1332,10 +1332,10 @@ export function PlanDiffNewReviewButton({
     <div className="plan-diff-new-review">
       <span className="plan-diff-new-review-trigger" title={disabled ? disabledReason : undefined}>
         <button
-          className={`plan-diff-ai-review-button plan-diff-ai-review-single-trigger${dialogOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
+          className={`plan-diff-code-review-button plan-diff-code-review-single-trigger${dialogOpen ? ' is-open' : ''}${triggerClassName ? ` ${triggerClassName}` : ''}`}
           type="button"
-          title={disabled ? disabledReason : 'AI Review'}
-          aria-label={disabled ? `AI Review — ${disabledReason}` : 'AI Review'}
+          title={disabled ? disabledReason : 'Code Review'}
+          aria-label={disabled ? `Code Review — ${disabledReason}` : 'Code Review'}
           aria-haspopup="dialog"
           aria-expanded={dialogOpen}
           disabled={disabled}
@@ -1343,15 +1343,15 @@ export function PlanDiffNewReviewButton({
             if (!disabled) setDialogOpen((prev) => !prev);
           }}
         >
-          <span className="plan-diff-ai-review-button-content">
-            <span className="plan-diff-ai-review-button-icon">
+          <span className="plan-diff-code-review-button-content">
+            <span className="plan-diff-code-review-button-icon">
               <Icon name="general/balloon" size={16} />
             </span>
-            <span className="plan-diff-ai-review-button-label">AI Review</span>
+            <span className="plan-diff-code-review-button-label">Code Review</span>
           </span>
         </button>
       </span>
-      <AiReviewComposerDialog
+      <CodeReviewComposerDialog
         {...dialogProps}
         initialInstructions={initialInstructions}
         open={dialogOpen}
@@ -1592,7 +1592,7 @@ export function DiffInlineCommentPopup({
   const normalizedCommentContextLabel = typeof commentContextLabel === 'string'
     ? commentContextLabel.trim()
     : '';
-  const commentAgentLabel = getAiReviewAgentLabel(commentContextIcon);
+  const commentAgentLabel = getCodeReviewAgentLabel(commentContextIcon);
   const normalizedFooterMetaLabel = typeof footerMetaLabel === 'string' ? footerMetaLabel.trim() : '';
   // Non-empty in the simplified "review note" mode — suppresses the chat/doc
   // context header and target picker in favor of just the line reference.
@@ -5355,7 +5355,7 @@ export function PlanDiffOverlay({
 	                                              ? <AiChatAgentIcon icon={commentContextIcon} />
 	                                              : <Icon name="general/user" size={16} />}
 	                                        </span>
-	                                        <span className="spec-done-comment-agent-reply-name">{isAgentAuthored ? getAiReviewAgentLabel(commentContextIcon) : 'You'}</span>
+	                                        <span className="spec-done-comment-agent-reply-name">{isAgentAuthored ? getCodeReviewAgentLabel(commentContextIcon) : 'You'}</span>
                                         {resolveKeepsComment && ['critical', 'warning', 'info'].includes(String(comment?.severity || '').toLowerCase()) && (
                                           <span className={`spec-done-status-severity is-${String(comment.severity).toLowerCase()}`}>
                                             {String(comment.severity).toLowerCase()}
@@ -5432,7 +5432,7 @@ export function PlanDiffOverlay({
 	                                            <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
 	                                              <AiChatAgentIcon icon={commentContextIcon} />
 	                                            </span>
-	                                            <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
+	                                            <span className="spec-done-comment-agent-reply-name">{getCodeReviewAgentLabel(commentContextIcon)}</span>
 	                                          </div>
 	                                          <p className="spec-done-comment-agent-reply-text">{agentReply}</p>
 	                                        </div>
@@ -5454,7 +5454,7 @@ export function PlanDiffOverlay({
 	                                            <span className="spec-done-comment-agent-reply-avatar" aria-hidden="true">
 	                                              <AiChatAgentIcon icon={commentContextIcon} />
 	                                            </span>
-	                                            <span className="spec-done-comment-agent-reply-name">{getAiReviewAgentLabel(commentContextIcon)}</span>
+	                                            <span className="spec-done-comment-agent-reply-name">{getCodeReviewAgentLabel(commentContextIcon)}</span>
 	                                          </div>
 	                                          <p className="spec-done-comment-agent-reply-text">{agentFollowUpReply}</p>
 	                                        </div>
@@ -5734,7 +5734,7 @@ export function PlanDiffInline({ diffData }) {
 export function PlanDiffEditorArea({
   diffData,
   contextSelections = [],
-  // Attachments exactly as the chat composer renders them, so the AI Review popup opens with the
+  // Attachments exactly as the chat composer renders them, so the Code Review popup opens with the
   // same chips (same notes, selections and hover cards) instead of a locally rebuilt one.
   composerAttachments = null,
   viewerData = null,
@@ -5904,26 +5904,6 @@ export function PlanDiffEditorArea({
                   <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
                   <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
                 </div>
-                {onStartReview && (
-                  <>
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    <div className="plan-diff-review-action-group" aria-label="Review controls">
-                      <PlanDiffNewReviewButton
-                        disabled={!hasReviewableChanges}
-                        disabledReason="No changes to review"
-                        currentScopeLabel="New changes"
-                        currentFileLabel={toolbarFileLabel}
-                        initialScopeId={reviewDialogScopeId}
-                        contextLabel={viewingScope.label}
-                        contextMeta={viewingScope.meta}
-                        contextIcon="general/listFiles"
-                        sourceAttachments={reviewSourceAttachments}
-                        onStartReview={onStartReview}
-                        launchSource="diff"
-                      />
-                    </div>
-                  </>
-                )}
               </div>
               <div className="plan-diff-toolbar-right">
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>

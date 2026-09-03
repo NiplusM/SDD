@@ -462,6 +462,7 @@ async function finishOptionalSpecificationLaunch(page, beat) {
 async function runScenario(page) {
   const prompt = 'Add vet working hours, and reject bookings outside them';
   const noteText = 'cover the exclusive end boundary in the regression tests';
+  const updatedPlanItemText = 'including a booking at the exclusive end of the schedule window.';
 
   console.log('Running JVM scenario automation…');
   await updateOverlay(page, { beat: 'Beat 1', text: 'Loading the welcome screen…' });
@@ -487,11 +488,13 @@ async function runScenario(page) {
   await finishOptionalSpecificationLaunch(page, 'Beat 1');
   await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 1', 'Open the generated Vet-Schedules.md document.');
   const document = page.locator('.spec-done-overlay:visible').first();
-  await document.getByRole('heading', { name: 'Reference Files', exact: true }).waitFor({ state: 'visible' });
+  if (await document.getByRole('heading', { name: 'Reference Files', exact: true }).count() !== 0) {
+    throw new Error('The generated document must not contain a Reference Files section.');
+  }
   await document.getByText('Demo seed data includes at least one valid schedule window for each of the six seeded vets.', { exact: true }).waitFor({ state: 'visible' });
   await capture(page, 'beat-1-generated-spec');
 
-  const testPlanRow = page.locator('[data-demo-id="spec-row-plan-14"]').first();
+  const testPlanRow = page.locator('[data-demo-id="spec-row-plan-14"]:visible').first();
   await testPlanRow.hover();
   const testSourceChip = testPlanRow.locator('[data-ref-target="VisitControllerTests.java"]').first();
   await demoClick(page, testSourceChip, 'Beat 2', 'Open the linked VisitControllerTests.java source next to the document.');
@@ -544,12 +547,13 @@ async function runScenario(page) {
   const noteLoading = page.locator('.agent-task-toolbar .at-generating-label:visible').first();
   await noteLoading.waitFor({ state: 'visible', timeout: 10000 });
   await noteLoading.waitFor({ state: 'hidden', timeout: 30000 });
-  await testPlanRow.getByText(noteText, { exact: false }).waitFor({ state: 'visible' });
+  await page.getByText(updatedPlanItemText, { exact: false }).last().waitFor({ state: 'visible' });
+  const updatedTestPlanRow = page.locator('.spec-done-row:visible').filter({ hasText: updatedPlanItemText }).first();
   await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
   await capture(page, 'beat-3-note-applied');
 
-  await testPlanRow.hover();
-  const planItemRun = testPlanRow.locator('.spec-done-gutter-item-run-btn:visible').first();
+  await updatedTestPlanRow.hover();
+  const planItemRun = updatedTestPlanRow.locator('.spec-done-gutter-item-run-btn:visible').first();
   await demoClick(page, planItemRun, 'Beat 4', 'Run only the regression-test Plan item.');
   const passedPlanItemsAfterSingleRun = await page.locator('.spec-done-row-plan-parent .spec-check-status-passed:visible').count();
   const passedAcItemsAfterPlanItemRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();

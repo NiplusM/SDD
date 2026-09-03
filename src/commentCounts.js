@@ -1,4 +1,4 @@
-// A stored AI-review comment can carry an inline agent reply and a user
+// A stored Code-review comment can carry an inline agent reply and a user
 // reply-to-agent as fields on a single object, so one stored comment can
 // represent a whole thread of up to three messages:
 //   your note → Claude Agent reply → your reply.

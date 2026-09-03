@@ -1,5 +1,5 @@
 // Comment/note preview data for attachment chips. Extracted from App.jsx so the chat composer and
-// the AI Review popup build previews with the very same code.
+// the Code Review popup build previews with the very same code.
 
 export function normalizeCommentTarget(target) {
   const kind = target?.kind;

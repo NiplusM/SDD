@@ -10,16 +10,16 @@ import { chromium } from 'playwright';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
-const outputDir = path.join(projectRoot, 'test-results', 'ai-review-scenario');
-const baseUrl = process.env.AI_REVIEW_SCENARIO_URL
+const outputDir = path.join(projectRoot, 'test-results', 'code-review-scenario');
+const baseUrl = process.env.CODE_REVIEW_SCENARIO_URL
   || process.env.SCENARIO_URL
   || 'http://127.0.0.1:4173/';
 const headless = !process.argv.includes('--headed');
 const reuseExistingServer = process.argv.includes('--reuse-existing')
-  || Boolean(process.env.AI_REVIEW_SCENARIO_URL)
+  || Boolean(process.env.CODE_REVIEW_SCENARIO_URL)
   || Boolean(process.env.SCENARIO_URL);
 const startupTimeoutMs = Number(process.env.SCENARIO_STARTUP_TIMEOUT_MS ?? 30000);
-const actionTimeoutMs = Number(process.env.AI_REVIEW_ACTION_TIMEOUT_MS ?? 20000);
+const actionTimeoutMs = Number(process.env.CODE_REVIEW_ACTION_TIMEOUT_MS ?? 20000);
 const screenshotMode = (
   process.env.SCENARIO_SCREENSHOT_MODE
   || (headless ? 'full' : 'off')
@@ -122,7 +122,7 @@ async function assertProcessingComposer(page, iteration, {
   await visible(running);
   await visible(running.getByText('Running...', { exact: true }));
   assert(
-    await page.getByRole('region', { name: 'AI Review scope' }).count() === 0,
+    await page.getByRole('region', { name: 'Code Review scope' }).count() === 0,
     `Iteration ${iteration}: custom review-scope card is still mounted`,
   );
 
@@ -145,28 +145,28 @@ async function assertProcessingComposer(page, iteration, {
   );
   await visible(page.locator('.aiux543-editor-footer:visible').last());
   assert(
-    await page.getByRole('region', { name: 'AI Review files' }).count() === 0,
+    await page.getByRole('region', { name: 'Code Review files' }).count() === 0,
     `Iteration ${iteration}: obsolete file-progress component is still mounted`,
   );
   assert(
     await page.locator('.ij-air-follow-up-queue__item-status').count() === 0,
     `Iteration ${iteration}: obsolete per-file status nodes are still mounted`,
   );
-  const queue = page.getByRole('region', { name: 'AI Review' }).last();
+  const queue = page.getByRole('region', { name: 'Code Review' }).last();
   await visible(queue);
-  await visible(queue.getByText('AI Review', { exact: true }));
+  await visible(queue.getByText('Code Review', { exact: true }));
   const scopeRows = queue.locator('[data-review-scope-file-status]');
   const scopeFileCount = await scopeRows.count();
-  assert(scopeFileCount > 0, `Iteration ${iteration}: review scope files are missing from AI Review`);
+  assert(scopeFileCount > 0, `Iteration ${iteration}: review scope files are missing from Code Review`);
   assert(
     (await queue.locator('[data-review-scope-file-status="processing"]').count()) === 1,
-    `Iteration ${iteration}: AI Review must show one actively processing file`,
+    `Iteration ${iteration}: Code Review must show one actively processing file`,
   );
   const count = queue.locator('.ij-air-follow-up-queue__count');
   await visible(count);
   assert(
     (await count.textContent())?.trim() === String(scopeFileCount),
-    `Iteration ${iteration}: AI Review count does not match the review scope`,
+    `Iteration ${iteration}: Code Review count does not match the review scope`,
   );
 
   for (const obsoleteLabel of ['Waiting…', 'Queued', 'Reviewed', 'Failed']) {
@@ -265,7 +265,7 @@ async function openFullReviewFileContaining(fullReview, rowSelector) {
     const fileView = reviewPane.locator('.aiux-review-split-file-view');
     await visible(fileView);
     if (await fileView.locator(rowSelector).count() > 0) return { fileView, reviewPane };
-    await reviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
+    await reviewPane.locator('.code-review-editor-split-tabbar .tab').first().click();
     await visible(fullReview);
   }
   throw new Error(`No reviewed file contained ${rowSelector}`);
@@ -319,12 +319,12 @@ async function selectOnlyCommitFiles(page, selectedFileNames) {
 }
 
 async function openCommitReviewDialog(page) {
-  const startReview = page.getByRole('button', { name: 'AI Review', exact: true });
+  const startReview = page.getByRole('button', { name: 'Code Review', exact: true });
   await visible(startReview);
-  assert(await startReview.isEnabled(), 'AI Review is disabled for a non-empty Commit selection');
+  assert(await startReview.isEnabled(), 'Code Review is disabled for a non-empty Commit selection');
   await startReview.click();
 
-  const dialog = page.getByRole('dialog', { name: 'Configure AI Review' });
+  const dialog = page.getByRole('dialog', { name: 'Configure Code Review' });
   await visible(dialog);
   assert(
     await dialog.getAttribute('data-launch-source') === 'commit',
@@ -481,7 +481,7 @@ async function assertCompletedReadOnly(page) {
 }
 
 async function runCommitLifecycleScenario(page) {
-  process.stdout.write('Running AI Review Commit lifecycle scenario…\n');
+  process.stdout.write('Running Code Review Commit lifecycle scenario…\n');
   await resetPrototype(page);
   assert(
     await page.locator('.aiux543-history-tool-window:visible').count() === 0,
@@ -512,7 +512,7 @@ async function runCommitLifecycleScenario(page) {
   });
   await visible(fullView);
   await fullView.click();
-  const reviewSplit = page.getByTestId('ai-review-editor-split');
+  const reviewSplit = page.getByTestId('code-review-editor-split');
   await visible(reviewSplit);
   await visible(reviewSplit.getByRole('region', { name: 'Review chat pane' }));
   const fullReviewPane = reviewSplit.getByRole('region', { name: 'Full Review pane' });
@@ -539,19 +539,19 @@ async function runCommitLifecycleScenario(page) {
   await splitFileView.getByRole('button', { name: 'Next file', exact: true }).click();
   await visible(splitFileView.getByText('2 of 3 files', { exact: true }));
   assert(
-    await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
+    await fullReviewPane.locator('.code-review-editor-split-tabbar .tab').count() === 2,
     'Scope navigation opened another editor tab instead of reusing the current file tab',
   );
-  await visible(fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').filter({
+  await visible(fullReviewPane.locator('.code-review-editor-split-tabbar .tab').filter({
     hasText: 'application.properties',
   }));
   await splitFileView.getByRole('button', { name: 'Next file', exact: true }).click();
   await visible(splitFileView.getByText('3 of 3 files', { exact: true }));
   assert(
-    await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
+    await fullReviewPane.locator('.code-review-editor-split-tabbar .tab').count() === 2,
     'Scope navigation did not keep a single reusable file tab',
   );
-  await visible(fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').filter({
+  await visible(fullReviewPane.locator('.code-review-editor-split-tabbar .tab').filter({
     hasText: 'VisitControllerTests.java',
   }));
   await splitFileView.getByText('3 of 3 files', { exact: true }).click();
@@ -560,8 +560,8 @@ async function runCommitLifecycleScenario(page) {
   await returnToFirstFilePopup.getByText('VisitController.java', { exact: false }).click();
   await visible(splitFileView.getByText('1 of 3 files', { exact: true }));
   assert(
-    await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() === 2,
-    'Clicking review code context did not open a file tab beside AI Review',
+    await fullReviewPane.locator('.code-review-editor-split-tabbar .tab').count() === 2,
+    'Clicking review code context did not open a file tab beside Code Review',
   );
   const addAiNote = splitFileView.getByRole('button', { name: 'Add AI Note', exact: true }).first();
   await visible(addAiNote);
@@ -587,7 +587,7 @@ async function runCommitLifecycleScenario(page) {
     await chatsList.locator('.ai-chat-list-document-row').count() === 0,
     'The Full Review note target picker incorrectly lists Agent MD files',
   );
-  const selectedChatTarget = chatsList.locator('.ai-chat-list-row').filter({ hasText: /AI Review/u }).first();
+  const selectedChatTarget = chatsList.locator('.ai-chat-list-row').filter({ hasText: /Code Review/u }).first();
   await visible(selectedChatTarget);
   const selectedChatTitle = (await selectedChatTarget.locator('.ai-chat-list-title').textContent())?.trim();
   await selectedChatTarget.click();
@@ -610,7 +610,7 @@ async function runCommitLifecycleScenario(page) {
     'A user-authored review comment renders an extra Pending update badge',
   );
   await capture(page, 'commit-review-file-tab-split');
-  await fullReviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
+  await fullReviewPane.locator('.code-review-editor-split-tabbar .tab').first().click();
   await visible(fullReviewPane.locator('.aiux-review-overview'));
   await fullReviewPane.locator('.tab-close').first().click();
 
@@ -632,22 +632,22 @@ async function runCommitLifecycleScenario(page) {
   const feedbackDiff = feedbackMessage.locator('.ai-chat-sent-attachment-chip').first();
   await visible(feedbackDiff);
   await feedbackDiff.click();
-  const reopenedReviewSplit = page.getByTestId('ai-review-editor-split');
+  const reopenedReviewSplit = page.getByTestId('code-review-editor-split');
   await visible(reopenedReviewSplit);
   const reopenedFullReviewPane = reopenedReviewSplit.getByRole('region', { name: 'Full Review pane' });
   await visible(reopenedFullReviewPane.locator('.aiux-review-split-file-view'));
   assert(
-    await reopenedFullReviewPane.locator('.ai-review-editor-split-tabbar .tab').count() >= 2,
+    await reopenedFullReviewPane.locator('.code-review-editor-split-tabbar .tab').count() >= 2,
     'Opening a review diff attachment replaced the chat instead of opening in split view',
   );
-  await reopenedFullReviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
+  await reopenedFullReviewPane.locator('.code-review-editor-split-tabbar .tab').first().click();
   await reopenedFullReviewPane.locator('.tab-close').first().click();
   await latestPreview(page, 'Updated');
 
   await confirmReviewDecision(page, 'Complete Review');
   await assertCompletedReadOnly(page);
   await capture(page, 'commit-review-completed-read-only');
-  process.stdout.write('AI Review Commit lifecycle scenario finished successfully.\n');
+  process.stdout.write('Code Review Commit lifecycle scenario finished successfully.\n');
 }
 
 async function runDirectCurrentChatScenario(page) {
@@ -664,7 +664,7 @@ async function runDirectCurrentChatScenario(page) {
   assert(await send.isEnabled(), 'The default chat Send action is disabled for /review');
   await send.click();
   assert(
-    await page.getByRole('dialog', { name: 'Configure AI Review' }).count() === 0,
+    await page.getByRole('dialog', { name: 'Configure Code Review' }).count() === 0,
     'Direct /review incorrectly opened the shared launch dialog',
   );
 
@@ -759,12 +759,12 @@ async function runStoppedReviewSmoke(page) {
     (await appliedRow.textContent())?.includes('this.timeSlots = timeSlotProvider.availableSlots();'),
     'The accepted fixture patch did not update the review code row',
   );
-  await reviewPane.locator('.ai-review-editor-split-tabbar .tab').first().click();
+  await reviewPane.locator('.code-review-editor-split-tabbar .tab').first().click();
   await visible(fullReview);
   await fullReview.getByRole('button', { name: 'Submit Review', exact: true }).click();
   const splitReviewQueue = page
     .getByRole('region', { name: 'Review chat pane' })
-    .getByRole('region', { name: 'AI Review' });
+    .getByRole('region', { name: 'Code Review' });
   await visible(splitReviewQueue, 15000);
   await visible(
     page
@@ -772,7 +772,7 @@ async function runStoppedReviewSmoke(page) {
       .getByText('Submitted review feedback.', { exact: true })
       .last(),
   );
-  await visible(splitReviewQueue.getByText('AI Review', { exact: true }));
+  await visible(splitReviewQueue.getByText('Code Review', { exact: true }));
   await visible(
     page
       .getByRole('region', { name: 'Review chat pane' })
@@ -784,7 +784,7 @@ async function runStoppedReviewSmoke(page) {
   await fullReview.getByRole('button', { name: 'Cancel Review', exact: true }).click();
 
   const reviewChatTab = page.locator('.main-window-editor-tabs .tab').filter({
-    hasText: /AI Review/u,
+    hasText: /Code Review/u,
   }).last();
   await visible(reviewChatTab);
   await reviewChatTab.click();
@@ -822,11 +822,11 @@ async function runDiffLaunchSmoke(page) {
 
   const diffEditor = page.locator('.plan-diff-editor-area:visible');
   await visible(diffEditor);
-  const openReview = diffEditor.getByRole('button', { name: 'AI Review', exact: true });
+  const openReview = diffEditor.getByRole('button', { name: 'Code Review', exact: true });
   await visible(openReview);
   await openReview.click();
 
-  const dialog = page.getByRole('dialog', { name: 'Configure AI Review' });
+  const dialog = page.getByRole('dialog', { name: 'Configure Code Review' });
   await assertLaunchDialogScope(dialog, 'diff');
   await page.keyboard.press('Escape');
   await dialog.waitFor({ state: 'hidden' });
@@ -841,7 +841,7 @@ async function runShortcutLaunchSmoke(page) {
   await page.waitForTimeout(80);
   await page.keyboard.press('Control');
 
-  const dialog = page.getByRole('dialog', { name: 'Configure AI Review' });
+  const dialog = page.getByRole('dialog', { name: 'Configure Code Review' });
   const startReview = await assertLaunchDialogScope(dialog, 'shortcut');
   await startReview.click();
 
@@ -849,7 +849,7 @@ async function runShortcutLaunchSmoke(page) {
   await latestPreview(page, 'Open');
   await confirmReviewDecision(page, 'Cancel Review');
   const reviewChatTab = page.locator('.main-window-editor-tabs .tab').filter({
-    hasText: /AI Review/u,
+    hasText: /Code Review/u,
   }).last();
   await visible(reviewChatTab);
   await reviewChatTab.click();
@@ -865,7 +865,7 @@ async function runScenario(page) {
   await runStoppedReviewSmoke(page);
   await runDiffLaunchSmoke(page);
   await runShortcutLaunchSmoke(page);
-  process.stdout.write('All AI Review V1 main-flow scenarios finished successfully.\n');
+  process.stdout.write('All Code Review V1 main-flow scenarios finished successfully.\n');
 }
 
 async function main() {
@@ -922,7 +922,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('\nAI Review lifecycle scenario failed.');
+  console.error('\nCode Review lifecycle scenario failed.');
   console.error(error);
   process.exit(1);
 });
