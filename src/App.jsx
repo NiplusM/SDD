@@ -19558,9 +19558,6 @@ function AiChatTabView({
   const [selectedAccess, setSelectedAccess] = useState(initialSessionAccess);
   const [selectedEditMode, setSelectedEditMode] = useState('Accepts Edits');
   const [isNewSessionComposerExpanded, setIsNewSessionComposerExpanded] = useState(false);
-  // Task Mode is on by default (AIUX-639) — a Codex-style-agent-only toggle shown at the
-  // bottom-right of the composer footer, next to the model/effort/mode pills.
-  const [sddModeOn, setSddModeOn] = useState(true);
   const composerRef = useRef(null);
   const composerDraftRef = useRef(composerDraft);
   composerDraftRef.current = composerDraft;
@@ -20819,11 +20816,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="sdd-mode"
-                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
-                    options={['Task Mode: On', 'Task Mode: Off']}
+                    label="Task"
+                    options={['Task']}
                     open={newSessionSettingsMenu === 'sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
+                    onSelect={() => {}}
                   />
                 </>
               ) : (
@@ -20888,11 +20885,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="chat-sdd-mode"
-                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
-                    options={['Task Mode: On', 'Task Mode: Off']}
+                    label="Task"
+                    options={['Task']}
                     open={newSessionSettingsMenu === 'chat-sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
+                    onSelect={() => {}}
                   />
                 </>
               )}
