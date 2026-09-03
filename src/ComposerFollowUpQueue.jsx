@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Icon, Popup, PopupCell } from '@jetbrains/int-ui-kit';
+import { Button, Icon, Popup, PopupCell, Tooltip } from '@jetbrains/int-ui-kit';
 import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
 
@@ -529,26 +529,30 @@ export function ComposerFollowUpQueue({
         </span>
         {resolvedActiveTab === 'vcs' && vcsTab && (
           <span className="ij-air-follow-up-queue__vcs-actions">
-            <button
-              type="button"
-              className="ij-air-follow-up-queue__vcs-skip"
-              onClick={(event) => {
-                event.stopPropagation();
-                vcsTab.onDismissForever?.();
-              }}
-            >
-              Don't ask
-            </button>
-            <button
-              type="button"
-              className="ij-air-follow-up-queue__vcs-skip"
-              onClick={(event) => {
-                event.stopPropagation();
-                vcsTab.onDismiss?.();
-              }}
-            >
-              Skip
-            </button>
+            <Tooltip text="Hide this list until new changes arrive." placement="bottom" delay={650}>
+              <button
+                type="button"
+                className="ij-air-follow-up-queue__vcs-skip"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  vcsTab.onDismiss?.();
+                }}
+              >
+                Dismiss
+              </button>
+            </Tooltip>
+            <Tooltip text="Never show this list again in this chat." placement="bottom" delay={650}>
+              <button
+                type="button"
+                className="ij-air-follow-up-queue__vcs-skip"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  vcsTab.onDismissForever?.();
+                }}
+              >
+                Hide
+              </button>
+            </Tooltip>
             <Button
               type="secondary"
               size="slim"

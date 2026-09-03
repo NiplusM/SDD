@@ -623,7 +623,7 @@ function PlanDiffCommitDropdown({ onCommitScope = null }) {
         type="secondary"
         size="slim"
         className="plan-diff-commit-button"
-        aria-label={`${selected.label}. Open Commit tool window`}
+        aria-label={`${selected.label}. Send a commit request to the chat.`}
         onClick={() => onCommitScope?.({ action: selected.id })}
       >
         <span>{selected.label}</span>
