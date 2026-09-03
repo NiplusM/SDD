@@ -160,8 +160,25 @@ function describeCommitScopeTargets(files = []) {
   return `${targets.slice(0, -1).join(', ')} and ${targets[targets.length - 1]}`;
 }
 
+// Names the actual files the commit request covers, so the composer message
+// reflects what the reviewer checked rather than just where it's going.
+function describeCommitScopeFileList(files = []) {
+  const labels = (Array.isArray(files) ? files : [])
+    .map((file) => file?.label)
+    .filter(Boolean);
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
+}
+
 function buildCommitComposerMessage(scope) {
-  return `I want to commit these changes to ${describeCommitScopeTargets(scope?.files)}.`;
+  const files = scope?.files;
+  const fileList = describeCommitScopeFileList(files);
+  const targets = describeCommitScopeTargets(files);
+  return fileList
+    ? `I want to commit these changes to ${targets}: ${fileList}.`
+    : `I want to commit these changes to ${targets}.`;
 }
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
