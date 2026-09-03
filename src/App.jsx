@@ -18774,6 +18774,10 @@ function AiReviewSplitFileView({
   onCommitScope = null,
   viewedFileIds = null,
   onToggleFileViewed = null,
+  // Commit scope: which files the Commit button will act on. Same
+  // controlled/uncontrolled duality as viewedFileIds above.
+  checkedFileIds = null,
+  onToggleFileChecked = null,
   // Identity of the session this review was opened from, plus the labels it
   // changed, so a file it shares with an older session reads as belonging to
   // both instead of only to the older one.
@@ -18961,6 +18965,8 @@ function AiReviewSplitFileView({
         scopeFiles={enrichedScopeFiles}
         viewedFileIds={viewedFileIds}
         onToggleFileViewed={onToggleFileViewed}
+        checkedFileIds={checkedFileIds}
+        onToggleFileChecked={onToggleFileChecked}
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
         baseRevision={getReviewBaseRevision(fileLocation.project, REVIEW_BASE_BRANCH_NAME)}
@@ -18986,10 +18992,13 @@ function AiReviewSplitFileView({
         onCompareBranchChange={onCompareBranchChange}
         onCommitScope={(commitOptions) => onCommitScope?.({
           scopeId: selectedChangeScopeId,
-          // Same enriched list the toolbar reads, so the commit message
-          // names every project/branch actually in scope instead of only
-          // the id/label/icon/status a leaner rebuild would carry.
-          files: enrichedScopeFiles,
+          // Same enriched list the toolbar reads, filtered to what the
+          // reviewer actually left checked — the commit message should not
+          // claim files whose checkbox is off, even though they're still
+          // part of the scope shown above.
+          files: enrichedScopeFiles.filter((scopeFile) => (
+            Array.isArray(checkedFileIds) ? checkedFileIds.includes(scopeFile.tabId) : true
+          )),
           ...commitOptions,
         })}
       />
@@ -22505,6 +22514,25 @@ export default function App() {
     if (!tabId) return;
     setReviewViewedFileTabIds((prev) => {
       if (nextViewed) {
+        if (prev[tabId]) return prev;
+        return { ...prev, [tabId]: true };
+      }
+      if (!prev[tabId]) return prev;
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
+  // Commit scope selection per file: tabId -> true once the user has
+  // unchecked it. Inverted from viewed state on purpose — a file the agent
+  // just added, or one a wider scope just pulled in, has no entry here and
+  // so reads as checked, matching the Commit tool window's own "everything
+  // checked" default without needing to seed an entry for every new file.
+  const [reviewUncheckedFileTabIds, setReviewUncheckedFileTabIds] = useState({});
+  const setReviewFileChecked = useCallback((tabId, nextChecked) => {
+    if (!tabId) return;
+    setReviewUncheckedFileTabIds((prev) => {
+      if (!nextChecked) {
         if (prev[tabId]) return prev;
         return { ...prev, [tabId]: true };
       }
@@ -29193,6 +29221,12 @@ export default function App() {
   const visibleReviewSplitScopeFiles = isReviewSplitOverviewMode
     ? reviewSplitScopeFiles
     : reviewSplitFiles;
+  // Everything in the current scope is checked unless its tabId is in the
+  // unchecked map — recomputed from the live scope so a file the agent just
+  // added shows up checked without needing an entry of its own.
+  const reviewCheckedFileTabIdList = visibleReviewSplitScopeFiles
+    .map((scopeFile) => scopeFile.tabId)
+    .filter((tabId) => tabId && !reviewUncheckedFileTabIds[tabId]);
   // Spec 10: a file another session touched is not just flagged — it goes back
   // to not viewed. This is a one-shot transition per file, not a standing rule,
   // so the user can review it and mark it viewed again afterwards.
@@ -35179,6 +35213,8 @@ export default function App() {
                       onNavigateFile={navigateReviewSplitFileTab}
                       viewedFileIds={reviewViewedFileTabIdList}
                       onToggleFileViewed={setReviewFileViewed}
+                      checkedFileIds={reviewCheckedFileTabIdList}
+                      onToggleFileChecked={setReviewFileChecked}
                       currentSession={reviewSplitCurrentSession}
                       onJumpToSource={(label, line) => {
                         // The split covers the editor, so opening the source

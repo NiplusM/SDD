@@ -924,13 +924,21 @@ function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
 // A plain secondary button: this opens the Commit tool window, and choosing
 // between Commit and Commit and Push belongs there, next to the message and the
 // file selection — not in a split button on the diff toolbar.
-function PlanDiffCommitButton({ onCommitScope = null }) {
+function PlanDiffCommitButton({ onCommitScope = null, checkedCount = null }) {
+  // checkedCount is only meaningful once the caller actually knows how many
+  // files are checked; omitting it (null) keeps the button enabled, which is
+  // what the standalone demo tab — with no real checkbox state to report —
+  // needs.
+  const disabled = checkedCount === 0;
   return (
     <Button
       type="secondary"
       size="slim"
       className="plan-diff-commit-button"
-      aria-label="Commit. Open Commit tool window"
+      disabled={disabled}
+      aria-label={Number.isInteger(checkedCount)
+        ? `Commit ${checkedCount} checked ${checkedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`
+        : 'Commit. Send a commit request to the chat.'}
       onClick={() => onCommitScope?.({ action: 'commit' })}
     >
       Commit
@@ -1365,6 +1373,13 @@ function PlanDiffViewingScopeControl({
   // is what the standalone demo diff tab does.
   viewedFileIds = null,
   onToggleFileViewed = null,
+  // Commit scope selection, same controlled/uncontrolled duality as viewed
+  // state above: the host owns it (so the Commit button can read exactly
+  // what's checked) when provided, otherwise every file defaults to checked
+  // and the control tracks it itself, matching the Commit tool window's own
+  // default of "everything checked".
+  checkedFileIds = null,
+  onToggleFileChecked = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1373,6 +1388,11 @@ function PlanDiffViewingScopeControl({
   const [rowMenu, setRowMenu] = useState(null);
   const [sessionsPopup, setSessionsPopup] = useState(null);
   const [internalViewedIds, setInternalViewedIds] = useState([]);
+  // Deselected rather than selected: new files that show up over the review
+  // (the agent adding one, or a wider scope pulling more in) default to
+  // checked without needing an explicit entry, the same way the Commit tool
+  // window's "select all" default behaves.
+  const [internalUncheckedIds, setInternalUncheckedIds] = useState([]);
   const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
     ? changeScopeOptions
     : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
@@ -1507,6 +1527,52 @@ function PlanDiffViewingScopeControl({
       ? (ids.includes(key) ? ids : [...ids, key])
       : ids.filter((id) => id !== key)));
   };
+  // Controlled if the host passed checkedFileIds (an explicit "checked"
+  // list); uncontrolled falls back to "checked unless explicitly unchecked"
+  // so new files default to included, matching the Commit tool window's own
+  // default of everything checked.
+  const isCheckedControlled = Array.isArray(checkedFileIds);
+  const checkedIdSet = isCheckedControlled ? new Set(checkedFileIds) : null;
+  const uncheckedIdSet = new Set(internalUncheckedIds);
+  const fileCheckKey = (item) => item?.tabId ?? item?.id ?? null;
+  const isFileChecked = (item) => {
+    const key = fileCheckKey(item);
+    if (!key) return true;
+    return isCheckedControlled ? checkedIdSet.has(key) : !uncheckedIdSet.has(key);
+  };
+  const setFileChecked = (item, nextChecked) => {
+    const key = fileCheckKey(item);
+    if (!key) return;
+    if (isCheckedControlled) {
+      onToggleFileChecked?.(key, nextChecked);
+      return;
+    }
+    setInternalUncheckedIds((ids) => (nextChecked
+      ? ids.filter((id) => id !== key)
+      : (ids.includes(key) ? ids : [...ids, key])));
+  };
+  // Toggles every file under a directory/group node at once — the same
+  // group-checkbox behaviour the Commit tool window uses: any file unchecked
+  // means the group shows as partial, clicking it checks (or clears) all of
+  // them together.
+  const collectFilesUnderNode = (node) => [
+    ...(node.files ?? []),
+    ...(node.dirs ?? []).flatMap(collectFilesUnderNode),
+  ];
+  // group.files is already the full flattened descendant list at every
+  // level (buildPlanDiffScopeNodes sets it before splitting into children),
+  // so there's no need to walk .children/.tree the way the plain path tree
+  // requires above.
+  const collectFilesUnderGroup = (group) => group.files;
+  const getNodeCheckState = (files) => {
+    if (files.length === 0) return 'checked';
+    const checkedCount = files.filter((file) => isFileChecked(file)).length;
+    if (checkedCount === 0) return 'unchecked';
+    if (checkedCount === files.length) return 'checked';
+    return 'indeterminate';
+  };
+  const setFilesChecked = (files, nextChecked) => files.forEach((file) => setFileChecked(file, nextChecked));
+
   const scopeNodes = buildPlanDiffScopeNodes(dedupedFileOptions);
   // A single-project, single-branch, single-session scope has nothing to group
   // by and keeps the plain path tree.
@@ -1565,6 +1631,15 @@ function PlanDiffViewingScopeControl({
           setRowMenu({ item, viewed, rect: event.currentTarget.getBoundingClientRect() });
         }}
       >
+        {/* Commit scope: which files this Commit button will actually act on.
+            Stopping propagation keeps a click here from also opening the file,
+            same as the viewed-toggle button below it. */}
+        <Checkbox
+          checked={isFileChecked(item)}
+          aria-label={`Include ${item.label} in commit`}
+          onClick={(event) => event.stopPropagation()}
+          onChange={() => setFileChecked(item, !isFileChecked(item))}
+        />
         <Icon name={item.icon} size={16} />
         <span className="plan-diff-files-file-name">
           {status === 'renamed' && item.previousLabel ? `${item.previousLabel} → ${item.label}` : item.label}
@@ -1634,6 +1709,8 @@ function PlanDiffViewingScopeControl({
   const renderScopeGroup = (group, depth) => {
     const collapsed = collapsedDirKeys.has(group.id);
     const count = group.files.length;
+    const groupFiles = collectFilesUnderGroup(group);
+    const groupCheckState = getNodeCheckState(groupFiles);
     return (
       <Fragment key={group.id}>
         <div
@@ -1650,6 +1727,13 @@ function PlanDiffViewingScopeControl({
             toggleDirCollapsed(group.id);
           }}
         >
+          <Checkbox
+            checked={groupCheckState === 'checked'}
+            indeterminate={groupCheckState === 'indeterminate'}
+            aria-label={`Include all files in ${group.label} in commit`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
+          />
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           {group.kind === 'checkout' ? (
             <span className={`agent-sessions-project-avatar is-${group.projectColor ?? 'neutral'}`}>
@@ -1682,6 +1766,8 @@ function PlanDiffViewingScopeControl({
 
   const renderTreeNode = (node, depth) => {
     const collapsed = collapsedDirKeys.has(node.key);
+    const dirFiles = collectFilesUnderNode(node);
+    const dirCheckState = getNodeCheckState(dirFiles);
     return (
       <Fragment key={node.key}>
         <div
@@ -1697,6 +1783,13 @@ function PlanDiffViewingScopeControl({
             toggleDirCollapsed(node.key);
           }}
         >
+          <Checkbox
+            checked={dirCheckState === 'checked'}
+            indeterminate={dirCheckState === 'indeterminate'}
+            aria-label={`Include all files in ${node.label} in commit`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
+          />
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
           <Icon name="nodes/folder" size={16} />
           <span className="plan-diff-files-tree-label">{node.label}</span>
@@ -6809,6 +6902,10 @@ export function PlanDiffEditorToolbar({
   onCompareBranchChange = null,
   viewedFileIds = null,
   onToggleFileViewed = null,
+  // Commit scope: which files the Commit button will act on, same
+  // controlled/uncontrolled duality as viewedFileIds above.
+  checkedFileIds = null,
+  onToggleFileChecked = null,
   // Some settings (notably "Show All Files in One Diff View") can only be
   // honoured by whoever owns the scope files, so the host may take them over.
   viewerSettings: controlledViewerSettings = null,
@@ -6932,11 +7029,16 @@ export function PlanDiffEditorToolbar({
             onCompareBranchChange={onCompareBranchChange}
             viewedFileIds={viewedFileIds}
             onToggleFileViewed={onToggleFileViewed}
+            checkedFileIds={checkedFileIds}
+            onToggleFileChecked={onToggleFileChecked}
           />
           </div>
           <div className="plan-diff-toolbar-right">
           {onCommitScope && (
-            <PlanDiffCommitButton onCommitScope={onCommitScope} />
+            <PlanDiffCommitButton
+              onCommitScope={onCommitScope}
+              checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
+            />
           )}
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
