@@ -25,6 +25,7 @@ export default defineConfig({
   plugins: [patchIntUiKitStyles(), react()],
   server: {
     host: 'localhost',
+    allowedHosts: ['ouhdmezu.orca-proxy-eu-west-1-03-prod.prod-eu-west-1.eks.intellij.net'],
   },
   preview: {
     host: 'localhost',
