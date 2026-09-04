@@ -237,7 +237,7 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
         .trim()
       : ''
   );
-  const addComment = (items, comment, sourceLabel = '', identityKey = null) => {
+  const addComment = (items, comment, sourceLabel = '', identityKey = null, rowId = null) => {
     const agentUserReply = comment && typeof comment === 'object' && comment.author === 'agent' && typeof comment.userReply === 'string'
       ? comment.userReply.trim()
       : '';
@@ -264,6 +264,9 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
       sourceLabel: normalizedSourceLabel,
       lineLabel,
       agentReply,
+      // Lets a hover-card note jump straight to its row, the same way a
+      // gutter balloon or a "N of M comments" toolbar control would.
+      ...(rowId ? { rowId, sourceTabId: attachment.sourceTabId ?? null } : {}),
     });
     return items;
   };
@@ -294,13 +297,15 @@ export function getAiChatAttachmentCommentPreviewItems(attachment = null) {
             lineLabel: getStoredCommentLineLabel(comment),
             agentReply: '',
             isAgentAuthored: true,
+            rowId,
+            sourceTabId: attachment.sourceTabId ?? null,
           });
           lastItem = items[items.length - 1];
         }
         return;
       }
       const before = items.length;
-      addComment(items, comment, attachment.label, rowId);
+      addComment(items, comment, attachment.label, rowId, rowId);
       if (items.length > before) lastItem = items[items.length - 1];
     });
   });

@@ -5889,8 +5889,34 @@ body {
   flex-wrap: nowrap;
   gap: 16px;
   overflow: hidden;
-  padding: 0 10px 0 18px;
+  padding: 0 10px;
   box-sizing: border-box;
+}
+
+.plan-diff-toolbar-secondary-row {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 16px;
+  overflow: hidden;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-top: 1px solid #2b2d31;
+}
+
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-left,
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-right {
+  flex: 0 0 auto;
+  gap: 4px;
 }
 
 .plan-diff-branch-comparison-row {
@@ -5969,7 +5995,7 @@ body {
 
 .plan-diff-toolbar-shell {
   width: 100%;
-  padding: 6px 9px 0;
+  padding: 6px 9px;
   box-sizing: border-box;
   border-bottom: 1px solid #2b2d31;
   background: #1b1c1f;
@@ -5999,6 +6025,54 @@ body {
   gap: 4px;
 }
 
+/* Which chat this diff belongs to — first thing in the toolbar, but the
+   least essential once space runs out, so it's the one control here allowed
+   to shrink and truncate rather than pushing navigation off the edge. */
+.plan-diff-toolbar-chat {
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 6px;
+  min-width: 32px;
+  color: var(--text-default, #d1d3d9);
+  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Clickable variant: navigates back to the chat this diff was opened from
+   (e.g. once the split closed and this diff is now a standalone tab). */
+.plan-diff-toolbar-chat.is-linked {
+  all: unset;
+  display: inline-flex;
+  overflow: hidden;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 6px;
+  min-width: 32px;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.plan-diff-toolbar-chat.is-linked:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-default, #d1d3d9);
+}
+
+.plan-diff-toolbar-chat .icon {
+  flex: 0 0 16px;
+}
+
+.plan-diff-toolbar-chat-label {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plan-diff-toolbar-icon-btn {
   width: 26px;
   min-width: 26px;
@@ -6018,6 +6092,11 @@ body {
 
 /* Nothing left to join to, so the button keeps the kit's own shape. */
 .plan-diff-commit-button.button {
+  flex: 0 0 auto;
+  margin-right: 5px;
+}
+
+.plan-diff-send-comments-button.button {
   flex: 0 0 auto;
   margin-right: 5px;
 }
@@ -6225,6 +6304,39 @@ body {
   height: 26px;
   padding: 0 4px;
   line-height: 26px;
+}
+
+.plan-diff-comment-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* Groups the chat label with its separator and the comment-nav control at
+   the same 8px rhythm as the reference file-nav group
+   (.plan-diff-review-scope-controls) — the toolbar-left gap it would
+   otherwise inherit (13px, sized for icon-button groups elsewhere in the
+   primary row) reads inconsistent next to that reference. */
+.plan-diff-toolbar-chat-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.plan-diff-toolbar-chat-group .plan-diff-toolbar-separator {
+  margin-left: 4px;
+}
+
+.plan-diff-comment-nav-count {
+  height: 26px;
+  padding: 0 4px;
+  line-height: 26px;
+  color: var(--text-secondary, #8b8e94);
+  font: 500 12px/26px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
 }
 
 .plan-diff-popover {
@@ -8741,9 +8853,12 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  width: clamp(300px, 54%, 420px);
+  /* 420px capped this well below the diff pane's actual free width in a
+     normal-size window, wrapping short comment text for no reason — the
+     diff area has plenty of room, the card just refused to use it. */
+  width: clamp(300px, 54%, 640px);
   min-width: 0;
-  max-width: min(100%, 420px);
+  max-width: min(100%, 640px);
   box-sizing: border-box;
 }
 
@@ -11998,6 +12113,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   right: 0;
 }
 
+
 .ai-chat-attachment-comment-preview-item {
   display: -webkit-box;
   overflow: hidden;
@@ -12066,9 +12182,32 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   max-width: 320px;
 }
 
-/* TooltipHelp ships a fixed 251px width; the note text needs the wrapper's range. */
+/* A note with a code-context panel needs the extra width for the second
+   card sitting next to it — grown here (rather than always) so a plain
+   text-only note stays compact. */
+.ai-chat-attachment-comment-preview.ai-chat-attachment-comment-preview-library:has(
+  .ai-chat-attachment-hover-code-panel
+) {
+  max-width: 640px;
+}
+
+/* The note card and the code-context card are two visually separate
+   components sitting side by side, not one merged box — each gets its own
+   background so neither one shows the page behind it through the other's
+   space. */
+.ai-chat-attachment-hover-card-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* TooltipHelp ships a fixed 251px width; the note text needs the wrapper's
+   range. flex: 1 1 auto (not width: 100%) so it shares the row with the
+   code-context card instead of claiming the whole thing. */
 .ai-chat-attachment-hover-tooltip {
-  width: 100%;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
   padding: 8px 10px;
   gap: 6px;
   font: 400 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -12100,6 +12239,58 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   gap: 6px;
 }
 
+.ai-chat-attachment-hover-note-body {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Standalone card for the code preview, sitting next to (not inside) the
+   note card — same chrome family as the note tooltip so the two read as a
+   matched pair rather than one blob. */
+.ai-chat-attachment-hover-code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  width: 260px;
+  padding: 8px;
+  border: 1px solid #393B40;
+  border-radius: 8px;
+  background: #26282C;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+}
+
+.ai-chat-attachment-hover-note-code {
+  min-width: 0;
+}
+
+/* Plain quick-doc-style code block: no diff gutter/line numbers, just the
+   lines themselves with the commented one picked out — closer to an IDE's
+   own hover-preview styling than the full diff-row chrome. */
+.ai-chat-attachment-hover-code-block {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  max-height: 140px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 6px 0;
+  font: 12px/18px "JetBrains Mono", monospace;
+  white-space: pre;
+}
+
+.ai-chat-attachment-hover-code-line {
+  padding: 0 8px;
+  color: var(--editor-text, #BCBEC4);
+}
+
+.ai-chat-attachment-hover-code-line.is-target {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .ai-chat-attachment-hover-message {
   display: flex;
   flex-direction: column;
@@ -12110,6 +12301,27 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   margin-top: 4px;
   padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+button.ai-chat-attachment-hover-note.is-navigable {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+button.ai-chat-attachment-hover-note.is-navigable + .ai-chat-attachment-hover-note {
+  margin-top: 4px;
+}
+
+button.ai-chat-attachment-hover-note.is-navigable:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .ai-chat-attachment-hover-meta {
@@ -12209,6 +12421,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 .ai-chat-sent-attachment-chip:focus-visible .ai-chat-attachment-comment-preview {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
 .ai-chat-assistant-copy {
@@ -12489,6 +12702,11 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 .ai-chat-attachment-chip:focus-within .ai-chat-attachment-comment-preview {
   opacity: 1;
   transform: translateY(0);
+  /* Without this the card stayed click-through even while visible: the
+     mouse would "leave" the chip the instant it crossed into the card
+     (nothing there to keep :hover alive), closing the card before a note
+     inside it could be clicked. */
+  pointer-events: auto;
 }
 
 /* While the nested comment-source list is open it replaces the hover card. */
@@ -23072,9 +23290,9 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-split-file-view .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
   --spec-done-comment-popup-inline-padding: 10px;
-  width: min(420px, 100%);
+  width: min(520px, 100%);
   min-width: 0;
-  max-width: min(420px, 100%);
+  max-width: min(520px, 100%);
 }
 
 .aiux-review-split-file-view .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups,
@@ -23789,7 +24007,7 @@ button.aiux543-answer-change-card:focus-visible {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 0 18px;
+  padding: 0 10px;
   color: #a7aab1;
 }
 

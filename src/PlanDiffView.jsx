@@ -605,6 +605,44 @@ function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
   );
 }
 
+// Same shape as the "N of M files" scope control, but for comments: a
+// reviewer works through drafted comments one at a time the same way they
+// work through files, so it gets the same prev/count/next pattern instead of
+// a bare counter on the send button.
+function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onNavigate = null }) {
+  if (!Array.isArray(commentRowIds) || commentRowIds.length === 0) return null;
+
+  const rawIndex = commentRowIds.indexOf(activeRowId);
+  const currentIndex = rawIndex >= 0 ? rawIndex : 0;
+
+  const goTo = (nextIndex) => {
+    const clamped = Math.max(0, Math.min(commentRowIds.length - 1, nextIndex));
+    onNavigate?.(commentRowIds[clamped]);
+  };
+
+  return (
+    <div className="plan-diff-comment-nav" aria-label="Comments navigation">
+      <ToolbarButton
+        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
+        className="plan-diff-viewing-file-arrow"
+        title="Previous Comment"
+        disabled={currentIndex <= 0}
+        onClick={() => goTo(currentIndex - 1)}
+      />
+      <span className="plan-diff-comment-nav-count">
+        {`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
+      </span>
+      <ToolbarButton
+        icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
+        className="plan-diff-viewing-file-arrow"
+        title="Next Comment"
+        disabled={currentIndex >= commentRowIds.length - 1}
+        onClick={() => goTo(currentIndex + 1)}
+      />
+    </div>
+  );
+}
+
 // Diff Viewer settings, matching the IDE's own gear menu: the section names,
 // the option labels and their order come from the Diff Viewer docs
 // (jetbrains.com/help/idea/differences-viewer.html), so the prototype does not
@@ -789,7 +827,16 @@ export const PLAN_DIFF_DEFAULT_VIEWER_SETTINGS = {
   goToNextFileAfterLastChange: true,
 };
 
-function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
+function PlanDiffSettingsMenu({
+  settings,
+  onSettingsChange,
+  // Optional: lets this menu also toggle the toolbar's secondary row
+  // (chat label, comment nav, Send Comments) — only rendered when a host
+  // actually has that row to hide, so plain settings-only callers see no
+  // extra section.
+  secondaryRowHidden = null,
+  onToggleSecondaryRow = null,
+}) {
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
   const update = (patch) => onSettingsChange?.({ ...settings, ...patch });
@@ -912,6 +959,19 @@ function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
                 {mark(settings.allInOne)}
                 Show All Files in One Diff View
               </PopupCell>
+              {onToggleSecondaryRow && (
+                <>
+                  <PopupCell type="separator" />
+                  <PopupCell
+                    role="menuitemcheckbox"
+                    aria-checked={Boolean(secondaryRowHidden)}
+                    onClick={() => onToggleSecondaryRow(!secondaryRowHidden)}
+                  >
+                    {mark(Boolean(secondaryRowHidden))}
+                    Hide Bottom Panel
+                  </PopupCell>
+                </>
+              )}
             </Popup>
           </PositionedPopup>
         </div>,
@@ -925,7 +985,7 @@ function PlanDiffSettingsMenu({ settings, onSettingsChange }) {
 // (unlike the composer's All Changes bar, which has Review alongside it) —
 // a chevron whose only menu item repeats the button's own action is dead
 // weight, not a real choice.
-function PlanDiffCommitButton({ onCommitScope = null, checkedCount = null }) {
+function PlanDiffCommitButton({ onCommitScope = null, checkedCount = null, scopeId = null, scopeLabel = null }) {
   // checkedCount is only meaningful once the caller actually knows how many
   // files are checked; omitting it (null) keeps the button enabled, which is
   // what the standalone demo tab — with no real checkbox state to report —
@@ -938,11 +998,11 @@ function PlanDiffCommitButton({ onCommitScope = null, checkedCount = null }) {
       className="plan-diff-commit-button"
       disabled={disabled}
       aria-label={Number.isInteger(checkedCount)
-        ? `Commit ${checkedCount} checked ${checkedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`
-        : 'Commit. Send a commit request to the chat.'}
-      onClick={() => onCommitScope?.({ action: 'commit' })}
+        ? `Commit with Agent for ${checkedCount} checked ${checkedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`
+        : 'Commit with Agent. Send a commit request to the chat.'}
+      onClick={() => onCommitScope?.({ action: 'commit', scopeId, scopeLabel })}
     >
-      Commit
+      Commit with Agent
     </Button>
   );
 }
@@ -1436,6 +1496,7 @@ function PlanDiffViewingScopeControl({
         worktree: item.worktree ?? null,
         path: item.path ?? '',
         tabId: item.tabId ?? item.id ?? null,
+        isPlain: Boolean(item.isPlain),
       }))
     : [
         { id: 'current', label: currentFileLabel, status: 'modified' },
@@ -1468,6 +1529,12 @@ function PlanDiffViewingScopeControl({
         item.project ?? '',
         item.branch ?? '',
         String(item.label ?? '').trim().toLowerCase(),
+        // A diff and its own already-open plain source file share all three
+        // fields above, but they are not "the same review item from two
+        // sessions" -- they're two distinct, intentionally paired tabs -- so
+        // isPlain has to be part of the key too, or the source tab silently
+        // disappears as a navigable neighbor.
+        item.isPlain ? 'plain' : 'diff',
       ].join('\u0000');
       const existing = byLabel.get(key);
       if (!existing) {
@@ -2490,6 +2557,8 @@ function PlanDiffCommentActionsMenu({ actions = [] }) {
                 <PopupCell
                   key={`${action.label}-${index}`}
                   icon={action.icon}
+                  disabled={Boolean(action.disabled)}
+                  aria-label={action.ariaLabel}
                   onClick={() => runAction(action)}
                 >
                   {action.label}
@@ -2582,6 +2651,7 @@ export function DiffInlineCommentPopup({
   showSubmitTargetLabel = true,
   showSubmitActionMenu = true,
   showSendToAgentAction = true,
+  sendToAgentLabel = 'Send Note to Agent',
   submitActionOptions = null,
   secondarySubmitAction = null,
   inputPlaceholder = 'Write a note',
@@ -3627,7 +3697,7 @@ export function DiffInlineCommentPopup({
                   disabled={!canSubmitComment}
                   onClick={handleSendToAgentSubmit}
                 >
-                  Send Note to Agent
+                  {sendToAgentLabel}
                 </Button>
               )}
               <Button
@@ -6042,7 +6112,12 @@ export function PlanDiffOverlay({
 	                && showRowCommentControls
 	                && (
 	                  singleLineNumbers
-	                    ? (isCommentComposeOpen || hasVisibleRowComments || hiddenRowCommentCount > 0)
+	                    ? (
+	                        isCommentComposeOpen
+	                        || hasVisibleRowComments
+	                        || hiddenRowCommentCount > 0
+	                        || (plainFileGutterCommentsEnabled && canCreateInlineComments)
+	                      )
 	                    : (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0)
 	                );
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
@@ -6270,13 +6345,16 @@ export function PlanDiffOverlay({
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
-                          submitButtonLabel={reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : ''}
-                          showSubmitTargetLabel={!reviewNoteComposer}
-                          showSendToAgentAction={!reviewNoteComposer}
-                          showSubmitActionMenu={!reviewNoteComposer}
-                          inputPlaceholder="Write a note"
-                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                          submitAttachModes={(reviewNoteComposer && !singleLineNumbers) ? ['current'] : undefined}
+                          submitButtonLabel={singleLineNumbers
+                            ? (Number.isInteger(commentEditingIndex) ? 'Save AI Note' : 'Attach AI Note')
+                            : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
+                          showSubmitTargetLabel={!(reviewNoteComposer && !singleLineNumbers)}
+                          showSendToAgentAction={!(reviewNoteComposer && !singleLineNumbers)}
+                          showSubmitActionMenu={!(reviewNoteComposer && !singleLineNumbers)}
+                          sendToAgentLabel={singleLineNumbers ? 'Send AI Note to Agent' : 'Send Note to Agent'}
+                          inputPlaceholder={singleLineNumbers ? 'Write an AI Note' : 'Write a note'}
+                          composeHeaderLabel={(reviewNoteComposer && !singleLineNumbers) ? 'Note' : ''}
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -6286,7 +6364,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={(reviewNoteComposer && !singleLineNumbers) ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6365,13 +6443,16 @@ export function PlanDiffOverlay({
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
-                        submitButtonLabel={reviewNoteComposer ? 'Add Note' : ''}
-                        showSubmitTargetLabel={!reviewNoteComposer}
-                        showSendToAgentAction={!reviewNoteComposer}
-                        showSubmitActionMenu={!reviewNoteComposer}
-                        inputPlaceholder="Write a note"
-                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                        submitAttachModes={(reviewNoteComposer && !singleLineNumbers) ? ['current'] : undefined}
+                        submitButtonLabel={singleLineNumbers
+                          ? 'Attach AI Note'
+                          : (reviewNoteComposer ? 'Add Note' : '')}
+                        showSubmitTargetLabel={!(reviewNoteComposer && !singleLineNumbers)}
+                        showSendToAgentAction={!(reviewNoteComposer && !singleLineNumbers)}
+                        showSubmitActionMenu={!(reviewNoteComposer && !singleLineNumbers)}
+                        sendToAgentLabel={singleLineNumbers ? 'Send AI Note to Agent' : 'Send Note to Agent'}
+                        inputPlaceholder={singleLineNumbers ? 'Write an AI Note' : 'Write a note'}
+                        composeHeaderLabel={(reviewNoteComposer && !singleLineNumbers) ? 'Note' : ''}
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
@@ -6381,7 +6462,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={(reviewNoteComposer && !singleLineNumbers) ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -6871,6 +6952,14 @@ function formatPlanDiffDifferenceLabel(count) {
 
 export function PlanDiffEditorToolbar({
   diffData,
+  // A plain source file has no differences to navigate, collapse, or
+  // view-toggle — the whole primary row is diff-only content, so it's
+  // dropped entirely rather than shown disabled/empty.
+  isPlainFile = false,
+  // A snapshot frozen at whatever turn produced it: no live scope to pick
+  // from (Last Turn / Session Changes / All Changes) and no bottom row tying
+  // it back to a chat, a commit, or a comments thread.
+  isArchivedSnapshot = false,
   viewMode = 'unified',
   onViewModeChange = null,
   onEditSource = null,
@@ -6901,9 +6990,28 @@ export function PlanDiffEditorToolbar({
   // The base revision this file is compared against, per project, so a
   // cross-project scope does not read as one shared base.
   baseRevision = null,
+  // Which chat this diff belongs to — shown first so the toolbar answers
+  // "whose changes am I looking at" before any of the navigation controls.
+  // When onOpenChat is provided the label doubles as a way back to that
+  // chat (e.g. after the split closed and this diff is now standalone).
+  chatTitle = '',
+  chatIcon = 'claude',
+  onOpenChat = null,
+  // Comments accumulate as a draft on the diff rather than sending the
+  // instant they're written — this is the one button that flushes all of
+  // them to the chat at once, so it only shows up once there's something to
+  // send.
+  commentCount = 0,
+  onSendComments = null,
+  // Lets the reviewer step through drafted comments one at a time, the same
+  // way they step through changed files.
+  commentRowIds = [],
+  activeCommentRowId = null,
+  onNavigateComment = null,
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
+  const [secondaryRowHidden, setSecondaryRowHidden] = useState(false);
   const [localViewerSettings, setLocalViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
   const viewerSettings = controlledViewerSettings ?? localViewerSettings;
   const setViewerSettings = (next) => {
@@ -6965,10 +7073,20 @@ export function PlanDiffEditorToolbar({
     }
     onNavigateNext?.();
   };
+  // Which scope (Last Turn / Session Changes / All Changes) Commit with
+  // Agent is about to commit — so the message it drops into the composer
+  // can name it, instead of leaving the reviewer to guess what "these
+  // changes" refers to.
+  const resolvedCommitScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
+    ? changeScopeOptions
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+  const selectedCommitScope = resolvedCommitScopeOptions.find((option) => option.id === selectedChangeScopeId)
+    ?? resolvedCommitScopeOptions[0];
 
   return (
     <div className="plan-diff-toolbar-shell">
       <div className="plan-diff-toolbar">
+        {!isPlainFile && (
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
           <div className="plan-diff-toolbar-group">
@@ -7001,33 +7119,31 @@ export function PlanDiffEditorToolbar({
               }))}
             />
           </div>
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
-          <PlanDiffViewingScopeControl
-            fileCount={fileCount}
-            currentFileLabel={fileLabel}
-            files={scopeFiles}
-            currentFileIndex={currentFileIndex}
-            onSelectFile={onSelectFile}
-            onNavigatePrevious={onNavigatePreviousFile}
-            onNavigateNext={onNavigateNextFile}
-            selectedChangeScopeId={selectedChangeScopeId}
-            onChangeScope={onChangeScope}
-            changeScopeOptions={changeScopeOptions}
-            selectedCompareBranch={selectedCompareBranch}
-            onCompareBranchChange={onCompareBranchChange}
-            viewedFileIds={viewedFileIds}
-            onToggleFileViewed={onToggleFileViewed}
-            checkedFileIds={checkedFileIds}
-            onToggleFileChecked={onToggleFileChecked}
-          />
+          {!isArchivedSnapshot && (
+            <>
+              <ToolbarSeparator className="plan-diff-toolbar-separator" />
+              <PlanDiffViewingScopeControl
+                fileCount={fileCount}
+                currentFileLabel={fileLabel}
+                files={scopeFiles}
+                currentFileIndex={currentFileIndex}
+                onSelectFile={onSelectFile}
+                onNavigatePrevious={onNavigatePreviousFile}
+                onNavigateNext={onNavigateNextFile}
+                selectedChangeScopeId={selectedChangeScopeId}
+                onChangeScope={onChangeScope}
+                changeScopeOptions={changeScopeOptions}
+                selectedCompareBranch={selectedCompareBranch}
+                onCompareBranchChange={onCompareBranchChange}
+                viewedFileIds={viewedFileIds}
+                onToggleFileViewed={onToggleFileViewed}
+                checkedFileIds={checkedFileIds}
+                onToggleFileChecked={onToggleFileChecked}
+              />
+            </>
+          )}
           </div>
           <div className="plan-diff-toolbar-right">
-          {onCommitScope && (
-            <PlanDiffCommitButton
-              onCommitScope={onCommitScope}
-              checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
-            />
-          )}
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
           </span>
@@ -7040,9 +7156,88 @@ export function PlanDiffEditorToolbar({
               { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
             ]}
           />
-            <PlanDiffSettingsMenu settings={viewerSettings} onSettingsChange={setViewerSettings} />
+            <PlanDiffSettingsMenu
+              settings={viewerSettings}
+              onSettingsChange={setViewerSettings}
+              secondaryRowHidden={secondaryRowHidden}
+              onToggleSecondaryRow={setSecondaryRowHidden}
+            />
           </div>
         </div>
+        )}
+        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (
+          <div className="plan-diff-toolbar-secondary-row">
+            <div className="plan-diff-toolbar-left">
+              <div className="plan-diff-toolbar-chat-group">
+              {!secondaryRowHidden && chatTitle && (
+                onOpenChat ? (
+                  <button
+                    type="button"
+                    className="plan-diff-toolbar-chat is-linked"
+                    title={chatTitle}
+                    aria-label={`Open chat: ${chatTitle}`}
+                    onClick={onOpenChat}
+                  >
+                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
+                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
+                  </button>
+                ) : (
+                  <span className="plan-diff-toolbar-chat" title={chatTitle}>
+                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
+                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
+                  </span>
+                )
+              )}
+              {!secondaryRowHidden && chatTitle && commentRowIds.length > 0 && (
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+              )}
+              {!secondaryRowHidden && (
+                <PlanDiffCommentNavControl
+                  commentRowIds={commentRowIds}
+                  activeRowId={activeCommentRowId}
+                  onNavigate={onNavigateComment}
+                />
+              )}
+              </div>
+            </div>
+            <div className="plan-diff-toolbar-right">
+              {!secondaryRowHidden && (
+                <>
+                  {onCommitScope && (
+                    <PlanDiffCommitButton
+                      onCommitScope={onCommitScope}
+                      checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
+                      scopeId={selectedCommitScope?.id}
+                      scopeLabel={selectedCommitScope?.label}
+                    />
+                  )}
+                  {onSendComments && (
+                    <Button
+                      type="primary"
+                      size="slim"
+                      className="plan-diff-send-comments-button"
+                      disabled={commentCount === 0}
+                      aria-label={commentCount > 0
+                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                        : 'No comments to send yet.'}
+                      onClick={() => onSendComments(commentCount)}
+                    >
+                      Send Comments
+                    </Button>
+                  )}
+                </>
+              )}
+              {isPlainFile && (
+                <PlanDiffSettingsMenu
+                  settings={viewerSettings}
+                  onSettingsChange={setViewerSettings}
+                  secondaryRowHidden={secondaryRowHidden}
+                  onToggleSecondaryRow={setSecondaryRowHidden}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </div>
       {/* Spec 13: each item is compared against its own project's base, so the
           hash — and the checkout behind its tooltip — identifies which one. */}
@@ -7112,6 +7307,11 @@ export function PlanDiffEditorArea({
   commentSessions = [],
   commentSessionActiveChatId = '',
   commentsReadOnly = false,
+  // A snapshot opened from a "files changed" card row: frozen at whatever
+  // turn produced it, not the live/current diff — so it has no scope to pick
+  // from (Last Turn / Session Changes / All Changes) and no bottom row tying
+  // it back to a chat, a commit, or a comments thread.
+  isArchivedSnapshot = false,
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
@@ -7122,6 +7322,20 @@ export function PlanDiffEditorArea({
   onRowFix = null,
   onPlanMarkerClick = null,
   onReturnToChat = null,
+  // Lets the standalone diff toolbar's chat label (using commentContextLabel
+  // as its text) navigate back to the chat this diff was opened from.
+  onOpenChat = null,
+  // Same "flush the draft comments to chat" button as the review split's
+  // toolbar — commentCount comes from the host since comment state here is
+  // owned by the nested PlanDiffOverlay, not this component.
+  commentCount = 0,
+  onSendComments = null,
+  // Prev/next through drafted comments, shown next to the chat label on the
+  // secondary toolbar row. The row id list and active id are owned by the
+  // host, same as commentCount above.
+  commentRowIds = [],
+  activeCommentRowId = null,
+  onNavigateComment = null,
   onEditSource = null,
   onCommitScope = null,
   onNavigatePrevious = null,
@@ -7159,6 +7373,7 @@ export function PlanDiffEditorArea({
   const [diffLayout, setDiffLayout] = useState('unified');
   const [selectedChangeScopeId, setSelectedChangeScopeId] = useState('last-turn');
   const [areaViewerSettings, setAreaViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
+  const [areaSecondaryRowHidden, setAreaSecondaryRowHidden] = useState(false);
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -7220,6 +7435,80 @@ export function PlanDiffEditorArea({
             </div>
           </div>
         )}
+        {/* Jumping "Jump to Source" out of a diff lands here: no diff nav to
+            show (reviewNav is null, there's no prev/next difference or file
+            scope on a plain source file), but the chat this file's diff came
+            from and the draft-comments send button still apply, so they get
+            their own reduced toolbar instead of disappearing entirely. */}
+        {singleLineNumbers && !reviewNav && (commentContextLabel || onSendComments) && (
+          <div className="plan-diff-toolbar-shell">
+            <div className="plan-diff-toolbar">
+              <div className="plan-diff-toolbar-primary-row">
+                <div className="plan-diff-toolbar-left">
+                  <div className="plan-diff-toolbar-chat-group">
+                  {commentContextLabel && (
+                    onOpenChat ? (
+                      <button
+                        type="button"
+                        className="plan-diff-toolbar-chat is-linked"
+                        title={commentContextLabel}
+                        aria-label={`Open chat: ${commentContextLabel}`}
+                        onClick={onOpenChat}
+                      >
+                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                      </button>
+                    ) : (
+                      <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
+                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                      </span>
+                    )
+                  )}
+                  {commentContextLabel && commentRowIds.length > 0 && (
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                  )}
+                  <PlanDiffCommentNavControl
+                    commentRowIds={commentRowIds}
+                    activeRowId={activeCommentRowId}
+                    onNavigate={onNavigateComment}
+                  />
+                  </div>
+                </div>
+                <div className="plan-diff-toolbar-right">
+                  {onCommitScope && (
+                    <Button
+                      type="secondary"
+                      size="slim"
+                      onClick={() => onCommitScope({
+                        scopeId: selectedChangeScopeId,
+                        scopeLabel: selectedChangeScope?.label ?? 'Current scope',
+                        files: demoScopeFiles,
+                      })}
+                    >
+                      Commit with Agent
+                    </Button>
+                  )}
+                  {onSendComments && (
+                    <Button
+                      type="primary"
+                      size="slim"
+                      className="plan-diff-send-comments-button"
+                      disabled={commentCount === 0}
+                      aria-label={commentCount > 0
+                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                        : 'No comments to send yet.'}
+                      onClick={() => onSendComments(commentCount)}
+                    >
+                      Send Comments
+                    </Button>
+                  )}
+                  <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
@@ -7243,26 +7532,20 @@ export function PlanDiffEditorArea({
                     }))}
                   />
                 </div>
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                <PlanDiffViewingScopeControl
-                  fileCount={demoScopeFiles.length}
-                  currentFileLabel={toolbarFileLabel}
-                  files={demoScopeFiles}
-                  selectedChangeScopeId={selectedChangeScopeId}
-                  onChangeScope={setSelectedChangeScopeId}
-                />
+                {!isArchivedSnapshot && (
+                  <>
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <PlanDiffViewingScopeControl
+                      fileCount={demoScopeFiles.length}
+                      currentFileLabel={toolbarFileLabel}
+                      files={demoScopeFiles}
+                      selectedChangeScopeId={selectedChangeScopeId}
+                      onChangeScope={setSelectedChangeScopeId}
+                    />
+                  </>
+                )}
                 </div>
                 <div className="plan-diff-toolbar-right">
-                {onCommitScope && (
-                  <PlanDiffCommitButton
-                    onCommitScope={(commitOptions) => onCommitScope({
-                      scopeId: selectedChangeScopeId,
-                      scopeLabel: selectedChangeScope?.label ?? 'Current scope',
-                      files: demoScopeFiles,
-                      ...commitOptions,
-                    })}
-                  />
-                )}
                 <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
                 {viewMode !== 'aside' && (
                   <SegmentedControl
@@ -7275,9 +7558,84 @@ export function PlanDiffEditorArea({
                     ]}
                   />
                 )}
-                <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
+                <PlanDiffSettingsMenu
+                  settings={areaViewerSettings}
+                  onSettingsChange={setAreaViewerSettings}
+                  secondaryRowHidden={areaSecondaryRowHidden}
+                  onToggleSecondaryRow={setAreaSecondaryRowHidden}
+                />
                 </div>
               </div>
+              {!isArchivedSnapshot && (commentContextLabel || onCommitScope || onSendComments) && (
+                <div className="plan-diff-toolbar-secondary-row">
+                  <div className="plan-diff-toolbar-left">
+                    <div className="plan-diff-toolbar-chat-group">
+                    {!areaSecondaryRowHidden && commentContextLabel && (
+                      onOpenChat ? (
+                        <button
+                          type="button"
+                          className="plan-diff-toolbar-chat is-linked"
+                          title={commentContextLabel}
+                          aria-label={`Open chat: ${commentContextLabel}`}
+                          onClick={onOpenChat}
+                        >
+                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                        </button>
+                      ) : (
+                        <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
+                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                        </span>
+                      )
+                    )}
+                    {!areaSecondaryRowHidden && commentContextLabel && commentRowIds.length > 0 && (
+                      <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    )}
+                    {!areaSecondaryRowHidden && (
+                      <PlanDiffCommentNavControl
+                        commentRowIds={commentRowIds}
+                        activeRowId={activeCommentRowId}
+                        onNavigate={onNavigateComment}
+                      />
+                    )}
+                    </div>
+                  </div>
+                  <div className="plan-diff-toolbar-right">
+                    {!areaSecondaryRowHidden && (
+                      <>
+                        {onCommitScope && (
+                          <Button
+                            type="secondary"
+                            size="slim"
+                            onClick={() => onCommitScope({
+                              scopeId: selectedChangeScopeId,
+                              scopeLabel: selectedChangeScope?.label ?? 'Current scope',
+                              files: demoScopeFiles,
+                            })}
+                          >
+                            Commit with Agent
+                          </Button>
+                        )}
+                        {onSendComments && (
+                          <Button
+                            type="primary"
+                            size="slim"
+                            className="plan-diff-send-comments-button"
+                            disabled={commentCount === 0}
+                            aria-label={commentCount > 0
+                              ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                              : 'No comments to send yet.'}
+                            onClick={() => onSendComments(commentCount)}
+                          >
+                            Send Comments
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="plan-diff-content-labels">
               <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>

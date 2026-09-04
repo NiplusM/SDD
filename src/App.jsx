@@ -38,6 +38,7 @@ import {
   AiChatAttachmentStrip,
   AiChatImageAttachmentPreview,
   AttachmentCommentHoverCard,
+  getAiChatAttachmentScopeLabel,
   getAiChatAttachmentInlineCount,
   getAiChatAttachmentDisplayLabel,
   getAiChatAttachmentFullLabel,
@@ -163,8 +164,24 @@ function describeCommitScopeTargets(files = []) {
 // Deliberately doesn't name individual files — the checkboxes decide what's
 // in scope, but the chat message stays a short, generic commit request
 // rather than an enumerated file list (and nothing gets attached either).
+// commitMessage is the actual commit message text to use, when the caller
+// has one worth suggesting (e.g. the chat/session title the changes came
+// from) — it rides along in quotes rather than replacing the request itself.
 function buildCommitComposerMessage(scope) {
-  return `I want to commit these changes to ${describeCommitScopeTargets(scope?.files)}.`;
+  const targets = describeCommitScopeTargets(scope?.files);
+  const commitMessage = typeof scope?.commitMessage === 'string' ? scope.commitMessage.trim() : '';
+  const scopeLabel = typeof scope?.scopeLabel === 'string' ? scope.scopeLabel.trim() : '';
+  const changesPhrase = scopeLabel ? `these changes (${scopeLabel})` : 'these changes';
+  return commitMessage
+    ? `I want to commit ${changesPhrase} to ${targets} with the commit message "${commitMessage}".`
+    : `I want to commit ${changesPhrase} to ${targets}.`;
+}
+
+// The comments themselves already reach the chat as an attachment as soon as
+// they're added — this message is just what prompts the agent to act on the
+// ones that piled up since the composer was last touched.
+function buildSendCommentsMessage(count) {
+  return `I left ${count} comment${count === 1 ? '' : 's'} on the diff. Please take a look.`;
 }
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
@@ -1293,7 +1310,7 @@ function CommitToolWindow({
                 <span>Amend</span>
               </label>
               <IconButton icon="general/history" tooltip="Show History" />
-              <IconButton icon="aiAssistant/aiAssistantColored" tooltip="Generate Commit Message" />
+              <IconButton icon="aiAssistant/aiAssistantColored" tooltip="Commit with Agent" />
             </div>
             <span className="commit-modified-count">{summary}</span>
           </div>
@@ -15256,8 +15273,10 @@ function ChatToolWindow({
     onChatMessageSent?.({ chatId: targetChatId, message: newMessage });
   }, [composerContentParts, composerText, currentChatId, hasComposerAttachment, onChatMessageSent, onClearAllDiffAttachments, onCommentAttachmentResponseComplete, onCommentAttachmentResponseStart, onSentChatMessagesChange, sentChatMessages.length, visibleComposerAttachments]);
 
-  const handleContextAttachmentOpen = useCallback((messageId, attachment, { archived = true } = {}) => {
-    const restoredRowId = Object.keys(attachment?.diffComments ?? {})[0] ?? null;
+  const handleContextAttachmentOpen = useCallback((messageId, attachment, { archived = true, rowId: rowIdOverride = null } = {}) => {
+    // A specific hover-card note picks its own row; otherwise fall back to
+    // whichever row the attachment as a whole would scroll to.
+    const restoredRowId = rowIdOverride ?? Object.keys(attachment?.diffComments ?? {})[0] ?? null;
     if (attachment?.isSddDocument) {
       onOpenSddDocument?.({
         attachment,
@@ -15399,7 +15418,7 @@ function ChatToolWindow({
             attachments={selectedChatMessageAttachments}
             onAttachmentOpen={
               selectedChatMessageAttachments.length > 0
-                ? (attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment)
+                ? (attachment, options) => handleContextAttachmentOpen(selectedChatMessageId, attachment, options)
                 : null
             }
           >
@@ -15417,7 +15436,7 @@ function ChatToolWindow({
               attachments={selectedChatMessageAttachments}
               onAttachmentOpen={
                 selectedChatMessageAttachments.length > 0
-                  ? (attachment) => handleContextAttachmentOpen(selectedChatMessageId, attachment)
+                  ? (attachment, options) => handleContextAttachmentOpen(selectedChatMessageId, attachment, options)
                   : null
               }
             >
@@ -15491,7 +15510,7 @@ function ChatToolWindow({
 	                  attachments={message.attachments}
 	                  attachmentsFirst={Boolean(message.attachmentsFirst)}
 	                  contentParts={message.contentParts}
-	                  onAttachmentOpen={(attachment) => handleContextAttachmentOpen(message.id, attachment, { archived: true })}
+	                  onAttachmentOpen={(attachment, options) => handleContextAttachmentOpen(message.id, attachment, { archived: true, ...options })}
 	                >
                   {message.text}
                 </ChatUserCard>
@@ -16630,7 +16649,12 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                     )}
                     {commentPreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                        <AttachmentCommentHoverCard items={commentPreviewItems} contextLabel={attachment.label} />
+                        <AttachmentCommentHoverCard
+                          items={commentPreviewItems}
+                          contextLabel={attachment.label}
+                          onNavigate={onAttachmentOpen ? (item) => onAttachmentOpen(attachment, { rowId: item.rowId }) : null}
+                          scopeLabel={getAiChatAttachmentScopeLabel(attachment)}
+                        />
                       </span>
                     ) : sourcePreviewItems.length > 0 ? (
                       <span className="ai-chat-attachment-comment-preview ai-chat-attachment-source-preview" role="tooltip">
@@ -18761,6 +18785,8 @@ function AiReviewSplitFileView({
   severityFilter = 'all',
   activeChatId = '',
   activeChatTitle = 'AI Review',
+  commentCount = 0,
+  onSendComments = null,
   renderSubmitTargetPicker = null,
   onNavigateFile = null,
   onCommentsChange = null,
@@ -18795,6 +18821,13 @@ function AiReviewSplitFileView({
 }) {
   const [viewMode, setViewMode] = useState('unified');
   const [viewerSettings, setViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
+  // Tracks the active row for the comment-nav control below, independent of
+  // the diff's own uncontrolled activeRowId — resets whenever the reviewer
+  // navigates to a different file in the scope.
+  const [fileCommentUiState, setFileCommentUiState] = useState(null);
+  useEffect(() => {
+    setFileCommentUiState(null);
+  }, [file.tabId]);
   // Opening the saved diff read-only is the reviewer's explicit choice to look
   // at the scope as it was, so it is remembered until the branches match again.
   const [acceptedStaleScope, setAcceptedStaleScope] = useState(false);
@@ -18886,12 +18919,13 @@ function AiReviewSplitFileView({
     normalizeStoredDiffCommentsState(pendingComments),
     normalizeStoredDiffCommentsState(file.comments),
   );
-  // Spec 11: a comment goes to the session that changed the file being read,
-  // not blindly to the session the review was opened from. With one owner that
-  // is unambiguous; with several the reviewer has to be asked, so the default
-  // stays the reviewed session and the file's badge says how many claim it.
-  // An entry without its own path is the mainline copy, so resolve it that way
-  // rather than letting the name-based index pull in claimants from other
+  // Same order the diff itself renders in, so "1 of N" walks top to bottom.
+  const fileCommentRowIds = (diffData?.rows ?? [])
+    .map((row) => row.id)
+    .filter((rowId) => (visibleComments[rowId] ?? []).length > 0);
+  // A comment always goes to the chat this diff was opened from — an entry
+  // without its own path is the mainline copy, so resolve it that way rather
+  // than letting the name-based index pull in claimants from other
   // checkouts — a backport on another branch is not a candidate recipient here.
   const fileLocation = getReviewFileLocation(
     file.name,
@@ -18902,18 +18936,6 @@ function AiReviewSplitFileView({
     file.filePath ?? getReviewFileVcsMeta(file.name).path,
     currentSession,
   );
-  // Spec 10: a review opened from a session sends every comment to that
-  // session — there is nothing to choose, even when an older session happens to
-  // have touched the same file. Only the project-wide scope is not tied to one
-  // session, so only there can a file's owner differ from the review's.
-  const isAggregatedScope = selectedChangeScopeId === 'all-project-changes';
-  const soleFileSession = fileSessions.length === 1 ? fileSessions[0] : null;
-  const commentTargetChatId = isAggregatedScope
-    ? (soleFileSession?.id ?? activeChatId)
-    : activeChatId;
-  const commentTargetLabel = isAggregatedScope
-    ? (soleFileSession?.label ?? activeChatTitle)
-    : activeChatTitle;
   const currentFileLabel = normalizeReviewScopeLabel(file.name);
   const currentFileIndex = Math.max(0, scopeFiles.findIndex((scopeFile) => (
     scopeFile.tabId === file.tabId
@@ -18955,6 +18977,10 @@ function AiReviewSplitFileView({
       path: vcsMeta.path,
       status: vcsMeta.status,
       previousLabel: vcsMeta.previousLabel,
+      // A diff and its own already-open plain source file share a label —
+      // Spec 12's same-file-two-sessions dedup would otherwise merge them
+      // into one entry, hiding the source as a navigable neighbor.
+      isPlain: Boolean(scopeFile.isPlain),
     };
   });
 
@@ -18962,6 +18988,8 @@ function AiReviewSplitFileView({
     <div className="aiux-review-split-file-view">
       <PlanDiffEditorToolbar
         diffData={diffData}
+        isPlainFile={Boolean(file.isPlain)}
+        isArchivedSnapshot={Boolean(file.isArchivedSnapshot)}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         scopeId="all"
@@ -18973,6 +19001,17 @@ function AiReviewSplitFileView({
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
         baseRevision={getReviewBaseRevision(fileLocation.project, REVIEW_BASE_BRANCH_NAME)}
+        chatTitle={activeChatTitle}
+        chatIcon={agentIcon}
+        commentCount={commentCount}
+        onSendComments={onSendComments}
+        commentRowIds={fileCommentRowIds}
+        activeCommentRowId={fileCommentUiState?.activeRowId ?? null}
+        onNavigateComment={(rowId) => setFileCommentUiState((prev) => ({
+          ...(prev ?? {}),
+          activeRowId: rowId,
+          caretState: { ...(prev?.caretState ?? {}), rowId },
+        }))}
         // Side-scenario 3: the source is the file the diff was built from, so
         // it is resolved by name, and the caret lands on the difference being
         // read rather than at the top of the file.
@@ -19047,14 +19086,11 @@ function AiReviewSplitFileView({
             file they were written on. */}
         {branchMismatch && !acceptedStaleScope ? null : viewerSettings.allInOne ? scopeFiles.map((scopeFile) => {
           const scopeMeta = getReviewFileVcsMeta(scopeFile.name);
-          // In one stream each file still answers to its own session, so the
-          // target is resolved per file rather than taken from the active one.
           const scopeSessions = getReviewFileSessions(
             scopeFile.name,
             scopeFile.filePath ?? getReviewFileVcsMeta(scopeFile.name).path,
             currentSession,
           );
-          const scopeSoleSession = scopeSessions.length === 1 ? scopeSessions[0] : null;
           const scopeDiffData = applyPlanDiffViewerSettings({
             ...(scopeFile.fullDiffData ?? scopeFile.diffData),
             focusRowId: null,
@@ -19080,16 +19116,12 @@ function AiReviewSplitFileView({
                 initialDiffComments={normalizeStoredDiffCommentsState(scopeFile.comments)}
                 singleLineNumbers={scopeFile.isPlain}
                 showGutterComments
-                requireSubmitTargetChoice={isAggregatedScope && scopeSessions.length > 1}
+                requireSubmitTargetChoice={false}
                 submitSessionChoices={scopeSessions}
-                commentContextLabel={isAggregatedScope
-                  ? (scopeSoleSession?.label ?? activeChatTitle)
-                  : activeChatTitle}
+                commentContextLabel={activeChatTitle}
                 commentContextIcon={agentIcon}
                 commentContextSessionLabel="Active"
-                commentSessionActiveChatId={isAggregatedScope
-                  ? (scopeSoleSession?.id ?? activeChatId)
-                  : activeChatId}
+                commentSessionActiveChatId={activeChatId}
                 renderSubmitTargetPicker={renderSubmitTargetPicker}
                 severityFilter={severityFilter}
                 resolveKeepsComment
@@ -19110,19 +19142,19 @@ function AiReviewSplitFileView({
           initialDiffComments={visibleComments}
           singleLineNumbers={file.isPlain}
           showGutterComments
-          requireSubmitTargetChoice={isAggregatedScope && fileSessions.length > 1}
+          requireSubmitTargetChoice={false}
           submitSessionChoices={fileSessions}
-          commentContextLabel={commentTargetLabel}
+          commentContextLabel={activeChatTitle}
           commentContextIcon={agentIcon}
           commentContextSessionLabel="Active"
-          commentSessionActiveChatId={commentTargetChatId}
+          commentSessionActiveChatId={activeChatId}
           renderSubmitTargetPicker={renderSubmitTargetPicker}
           severityFilter={severityFilter}
           expandedInlineCommentRowId={expandedCommentRowId}
           resolveKeepsComment
-          allowInlineCommentCompose={!readOnly}
-          allowCommentReplies={!readOnly}
-          commentsReadOnly={readOnly}
+          allowInlineCommentCompose={!readOnly && !file.commentsReadOnly}
+          allowCommentReplies={!readOnly && !file.commentsReadOnly}
+          commentsReadOnly={readOnly || Boolean(file.commentsReadOnly)}
           viewMode={file.isPlain ? 'unified' : viewMode}
           reviewNoteComposer
           reviewScopeNoteCount={reviewScopeNoteCount}
@@ -19133,6 +19165,8 @@ function AiReviewSplitFileView({
           onTextSelectionChange={onTextSelectionChange}
           externalCommentRequest={externalCommentRequest}
           onInlineCommentOpenChange={onInlineCommentOpenChange}
+          uiState={fileCommentUiState}
+          onUiStateChange={setFileCommentUiState}
         />
         )}
       </div>
@@ -20075,6 +20109,15 @@ function AiChatTabView({
   onSendMessage = null,
   onAgentChange = null,
   onOpenDiffTab = null,
+  // Opens a frozen, read-only snapshot of a past turn's diff as a plain tab —
+  // bypassing the review-split wrapper onOpenDiffTab normally goes through,
+  // since that wrapper resolves back to the live scoped diffRequest (losing
+  // the commentsReadOnly/isArchivedSnapshot overrides) and would show the
+  // live scope + chat/commit/comments controls this snapshot must not have.
+  onOpenArchivedSnapshot = null,
+  // (item) => ReactNode | null — a small code-context panel next to a
+  // hovered comment note, showing the lines it's actually about.
+  getCommentCodeSnippet = null,
   onOpenAllProjectChanges = null,
   onOpenFileInAllProjectChanges = null,
   onOpenChangeScope = null,
@@ -20847,6 +20890,7 @@ function AiChatTabView({
       onRemove={onRemoveComposerAttachment
         ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
         : null}
+      renderCodeSnippet={getCommentCodeSnippet}
       className="aiux543-composer-attachments is-inline-composer-attachments"
       chipClassName="aiux543-composer-attachment-chip"
       removeButtonClassName="aiux543-composer-attachment-remove"
@@ -20933,9 +20977,9 @@ function AiChatTabView({
               <ChatUserCard
                 messageId={messageId}
                 attachments={scenarioAttachments}
-                onAttachmentOpen={(attachment) => {
+                onAttachmentOpen={(attachment, options) => {
                   if (onOpenAttachment) {
-                    onOpenAttachment(attachment, { messageId, chatId, archived: true });
+                    onOpenAttachment(attachment, { messageId, chatId, archived: true, ...options });
                     return;
                   }
                   if (attachment?.diffRequest) onOpenDiffTab?.(attachment.diffRequest);
@@ -20979,7 +21023,11 @@ function AiChatTabView({
                       )}
                       {previewItems.length > 0 && (
                         <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                          <AttachmentCommentHoverCard items={previewItems} contextLabel={attachment.label} />
+                          <AttachmentCommentHoverCard
+                            items={previewItems}
+                            contextLabel={attachment.label}
+                            scopeLabel={getAiChatAttachmentScopeLabel(attachment)}
+                          />
                         </span>
                       )}
                     </button>
@@ -21126,7 +21174,11 @@ function AiChatTabView({
             an actual send (see the live/'file-edit-done' message branches
             below), matching a fresh chat that hasn't produced anything yet. */}
 
-        {sentMessages.map((message) => (
+        {(() => {
+          const latestFileEditDoneMessageId = [...sentMessages].reverse().find((candidate) => (
+            candidate.role === 'assistant' && candidate.kind === 'file-edit-done' && candidate.editedFiles?.length > 0
+          ))?.id ?? null;
+          return sentMessages.map((message) => (
           message.kind === 'review-command' ? null : message.role === 'assistant' && message.kind === 'review-summary' ? (
             <ReviewSummaryMessage
               key={message.id}
@@ -21192,8 +21244,12 @@ function AiChatTabView({
                 className="ai-chat-edited-files-card--live-entrance"
                 caption="Since last turn"
                 files={message.editedFiles}
-                onOpenFile={onOpenDiffTab ? (file) => onOpenDiffTab(file.diffRequest) : null}
-                onOpenReview={onOpenDiffTab ? () => {
+                onOpenFile={onOpenArchivedSnapshot ? (file) => onOpenArchivedSnapshot({
+                  ...file.diffRequest,
+                  commentsReadOnly: true,
+                  isArchivedSnapshot: true,
+                }) : null}
+                onOpenReview={(onOpenDiffTab && message.id === latestFileEditDoneMessageId) ? () => {
                   const firstDiffRequest = message.editedFiles
                     .map((card) => card?.diffRequest)
                     .find(Boolean);
@@ -21242,9 +21298,9 @@ function AiChatTabView({
               attachments={message.attachments}
               attachmentsFirst={Boolean(message.attachmentsFirst)}
               contentParts={message.contentParts}
-              onAttachmentOpen={(attachment) => {
+              onAttachmentOpen={(attachment, options) => {
                 if (onOpenAttachment) {
-                  onOpenAttachment(attachment, { messageId: message.id, chatId, archived: true });
+                  onOpenAttachment(attachment, { messageId: message.id, chatId, archived: true, ...options });
                   return;
                 }
                 if (attachment?.diffRequest) onOpenDiffTab?.(attachment.diffRequest);
@@ -21253,7 +21309,8 @@ function AiChatTabView({
               {message.text}
             </ChatUserCard>
           )
-        ))}
+          ));
+        })()}
       </div>
 
       <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
@@ -21327,7 +21384,7 @@ function AiChatTabView({
                 removed: vcsRemoved,
                 files: vcsFiles,
                 onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
-                onRunReview: () => (onOpenAllProjectChanges ? onOpenAllProjectChanges() : onOpenDiffTab?.(scenario?.diffRequest)),
+                onRunReview: (filterTabIds) => (onOpenAllProjectChanges ? onOpenAllProjectChanges(filterTabIds) : onOpenDiffTab?.(scenario?.diffRequest)),
                 reviewDisabled: isAgentRunProcessing,
                 onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
                 onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
@@ -21336,7 +21393,7 @@ function AiChatTabView({
                   .filter((tabId) => tabId && !vcsSummaryUncheckedFileTabIds[tabId]),
                 onToggleFileChecked: setVcsSummaryFileChecked,
                 onCommitScope: (checkedFiles) => {
-                  setComposerText(buildCommitComposerMessage({ files: checkedFiles }));
+                  setComposerText(buildCommitComposerMessage({ files: checkedFiles, commitMessage: scenario?.title }));
                   focusComposerAtEnd();
                 },
               }}
@@ -22185,14 +22242,15 @@ function ChatEditedFilesCard({ files = [], onOpenFile = null, onOpenReview = nul
           <span className="ai-chat-edited-files-decor-icon" aria-hidden="true" title="Show as tree">
             <Icon name="general/showAsTree" size={16} />
           </span>
-          <button
-            type="button"
-            className="ai-chat-edited-files-review-link"
-            onClick={onOpenReview ?? undefined}
-            disabled={!onOpenReview}
-          >
-            Review
-          </button>
+          {onOpenReview && (
+            <button
+              type="button"
+              className="ai-chat-edited-files-review-link"
+              onClick={onOpenReview}
+            >
+              Review
+            </button>
+          )}
         </span>
       </header>
       <div className="ai-chat-changed-files-list">
@@ -24569,7 +24627,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -24589,7 +24647,12 @@ export default function App() {
     const sourceCode = typeof source?.code === 'string'
       ? source.code
       : (sourceViewState?.code ?? ideTabContents[sourceTabId]?.code ?? '');
-    const diffTabId = buildPlanDiffTabId(sourceTabId);
+    // An archived snapshot needs its own tab identity — it's a frozen look at
+    // a past turn's diff, not the live one, so it must never collide with
+    // (or overwrite) the live diff tab for the same source file.
+    const diffTabId = isArchivedSnapshot
+      ? `${buildPlanDiffTabId(sourceTabId)}:archived:${contextMessageId ?? Date.now()}`
+      : buildPlanDiffTabId(sourceTabId);
     const diffData = buildPlanDiffData({
       sourceCode,
       text,
@@ -24671,6 +24734,10 @@ export default function App() {
           diffLineText: text,
           initialDiffComments: commentsReadOnly ? {} : initialDiffComments,
           diffCommentsReadOnly: Boolean(commentsReadOnly),
+          // A snapshot opened from a "files changed" card row: the exact diff
+          // as it stood at that turn, not the live/current one, so it has no
+          // "Last Turn" scope to speak of and shouldn't show that control.
+          diffIsArchivedSnapshot: Boolean(isArchivedSnapshot),
           diffContextMessageId: contextMessageId,
           diffContextChatId: contextChatId,
           reviewAttribution,
@@ -25543,7 +25610,7 @@ export default function App() {
       setScreen('ide');
       setActiveEditorTab(existingTabIndex);
       requestReveal(ideTabs[existingTabIndex].id);
-      return;
+      return ideTabs[existingTabIndex].id;
     }
 
     // Agent-task markdown docs (Visit-Booking.md, Vet-Schedules.md) need the
@@ -25613,6 +25680,7 @@ export default function App() {
     setScreen('ide');
     setActiveEditorTab(ideTabs.length);
     requestReveal(finalTab.id);
+    return finalTab.id;
   }, [ideTabs, handleAgentTaskSelect]);
 
   const openActiveDiffSourceTabToRight = useCallback(() => {
@@ -25646,12 +25714,46 @@ export default function App() {
       ...tabsWithoutSource.slice(insertIndex),
     ];
 
-    if (!ideTabContents[sourceTabId]) {
-      const sourceContent = getEditorTabContentByLabel(sourceLabel) ?? getSpecSourceFileContent(sourceLabel);
-      if (sourceContent) {
-        setIdeTabContents((prev) => ({ ...prev, [sourceTabId]: sourceContent }));
-      }
-    }
+    // Carry the diff's chat context onto the source tab too — otherwise the
+    // source view has no way to know which chat "return to chat" and "send
+    // comments" should target, since its own content is looked up generically
+    // by label and knows nothing about the diff it was jumped from.
+    setIdeTabContents((prev) => {
+      const existing = prev[sourceTabId]
+        ?? getEditorTabContentByLabel(sourceLabel)
+        ?? getSpecSourceFileContent(sourceLabel);
+      if (!existing) return prev;
+
+      // Union the diff's session comments into whatever the source tab
+      // already had, per chat id — overwriting (the previous behavior) would
+      // silently drop comments left directly on the source tab, or ones from
+      // an earlier jump tied to a different chat, the next time a comment
+      // got submitted anywhere on this file.
+      const existingSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+      const diffSessions = normalizeDiffSessionCommentsByChatId(diffContent.diffSessionCommentsByChatId);
+      const mergedSessions = { ...existingSessions };
+      Object.entries(diffSessions).forEach(([chatId, session]) => {
+        const existingSession = mergedSessions[chatId];
+        mergedSessions[chatId] = existingSession
+          ? { ...existingSession, comments: mergeStoredDiffCommentsStates(existingSession.comments, session.comments) }
+          : session;
+      });
+
+      return {
+        ...existing,
+        diffContextChatId: diffContent.diffContextChatId ?? existing.diffContextChatId ?? null,
+        diffActiveCommentChatId: diffContent.diffActiveCommentChatId ?? existing.diffActiveCommentChatId ?? null,
+        diffSessionCommentsByChatId: Object.keys(mergedSessions).length > 0
+          ? mergedSessions
+          : (existing.diffSessionCommentsByChatId ?? null),
+        // Distinguishes "actually jumped here from a diff this session" from
+        // a file that merely happens to carry plainFileData from initial
+        // seed data (e.g. VisitController.java) — only the former should get
+        // the diff-linked toolbar and gutter-comment-by-icon treatment when
+        // the reviewer just switches to this tab normally.
+        isDiffSourceOverlay: true,
+      };
+    });
     setIdeTabs(nextTabs);
     setScreen('ide');
     setActiveEditorTab(insertIndex);
@@ -26188,9 +26290,15 @@ export default function App() {
 
   const closeReviewSplitView = useCallback(() => {
     const reviewIndex = ideTabs.findIndex((tab) => tab.id === REVIEW_DIFF_TAB_ID);
-    const chatIndex = ideTabs.findIndex((tab) => tab.id === `ai-chat-${reviewSplitChatId}`);
-    const isClosingReviewOverview = ideTabs[activeEditorTab]?.id === REVIEW_DIFF_TAB_ID;
-    const nextChatIndex = reviewIndex >= 0 && chatIndex > reviewIndex ? chatIndex - 1 : chatIndex;
+    // Closing the chat side of a review split should leave the diff the
+    // reviewer was actually looking at in place, not tear it down along
+    // with the chat — so promote it to an ordinary tab (it already has
+    // content under ideTabContents, just never got registered while the
+    // split owned it) before the chat's own tab disappears.
+    const activeDiffTabId = reviewSplitActiveTabId !== REVIEW_DIFF_TAB_ID ? reviewSplitActiveTabId : null;
+    const activeDiffContent = activeDiffTabId ? ideTabContents[activeDiffTabId] : null;
+    const diffAlreadyRegistered = activeDiffTabId ? ideTabs.some((tab) => tab.id === activeDiffTabId) : false;
+
     setReviewSplitChatId(null);
     setReviewSplitFileTabIds([]);
     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
@@ -26198,9 +26306,32 @@ export default function App() {
     setReviewSplitExpandedCommentRowByTabId({});
     setReviewSplitChangeScopeId('last-turn');
     setReviewSplitChangeScopeOptions([]);
+
+    if (activeDiffTabId && (activeDiffContent || diffAlreadyRegistered)) {
+      let nextTabs = ideTabs.filter((tab) => tab.id !== REVIEW_DIFF_TAB_ID);
+      if (!diffAlreadyRegistered) {
+        const diffTab = {
+          id: activeDiffTabId,
+          label: activeDiffContent.diffData?.title || activeDiffContent.diffData?.sourceTabLabel || 'Diff',
+          icon: DIFF_TAB_ICON_NAME,
+          closable: true,
+          sourceTabId: activeDiffContent.diffData?.source?.tabId ?? null,
+        };
+        const insertAt = reviewIndex >= 0 ? Math.min(reviewIndex, nextTabs.length) : nextTabs.length;
+        nextTabs = [...nextTabs.slice(0, insertAt), diffTab, ...nextTabs.slice(insertAt)];
+      }
+      const activeIdx = nextTabs.findIndex((tab) => tab.id === activeDiffTabId);
+      setIdeTabs(nextTabs);
+      setActiveEditorTab(activeIdx >= 0 ? activeIdx : 0);
+      return;
+    }
+
+    const chatIndex = ideTabs.findIndex((tab) => tab.id === `ai-chat-${reviewSplitChatId}`);
+    const isClosingReviewOverview = ideTabs[activeEditorTab]?.id === REVIEW_DIFF_TAB_ID;
+    const nextChatIndex = reviewIndex >= 0 && chatIndex > reviewIndex ? chatIndex - 1 : chatIndex;
     if (reviewIndex >= 0 && isClosingReviewOverview) handleEditorTabClose(reviewIndex);
     if (nextChatIndex >= 0) requestAnimationFrame(() => setActiveEditorTab(nextChatIndex));
-  }, [activeEditorTab, handleEditorTabClose, ideTabs, reviewSplitChatId]);
+  }, [activeEditorTab, handleEditorTabClose, ideTabContents, ideTabs, reviewSplitActiveTabId, reviewSplitChatId]);
 
   // Apply a transform to every review comment (matching the run's note texts)
   // across all tabs' in-code + session comments.
@@ -29004,7 +29135,14 @@ export default function App() {
     setSelectedAiChatId((prev) => (prev === activeAiChatTabChatId ? prev : activeAiChatTabChatId));
   }, [activeAiChatTabChatId]);
   const isDiffTab = Boolean(activeTabContent?.diffData);
-  const isPlainFileOverlayTab = !isDiffTab && Boolean(activeTabContent?.plainFileData);
+  // plainFileData alone isn't enough to gate this — a couple of the demo
+  // files carry it from initial seed data regardless of how they were
+  // opened. isDiffSourceOverlay is only set by actually jumping here from a
+  // diff (openActiveDiffSourceTabToRight) this session, which is the only
+  // case that should get the diff-linked toolbar and gutter-comment icon.
+  const isPlainFileOverlayTab = !isDiffTab
+    && Boolean(activeTabContent?.plainFileData)
+    && Boolean(activeTabContent?.isDiffSourceOverlay);
   const isReviewDiffTab = Boolean(activeTabContent?.reviewDiffOverview);
   const getEditorQuoteSelectionsForTab = useCallback((tabId) => {
     if (!tabId) return [];
@@ -29196,6 +29334,7 @@ export default function App() {
       fullDiffData: { ...baseDiffData, focusRowId: null },
       comments,
       commentsReadOnly: Boolean(content?.diffCommentsReadOnly),
+      isArchivedSnapshot: Boolean(content?.diffIsArchivedSnapshot),
       attribution: content?.reviewAttribution ?? null,
       modifiedAfterSession: Boolean(content?.reviewModifiedAfterSession),
       // Provenance travelling with the entry: the checkout the file came from,
@@ -29209,9 +29348,18 @@ export default function App() {
   const selectedReviewSplitChangeScope = reviewSplitChangeScopeOptions.find(
     (option) => option.id === reviewSplitChangeScopeId,
   ) ?? reviewSplitChangeScopeOptions[0] ?? null;
-  const visibleReviewSplitFileTabIds = selectedReviewSplitChangeScope?.tabIds?.length
-    ? selectedReviewSplitChangeScope.tabIds
-    : reviewSplitFileTabIds;
+  // Archived snapshots (opened one at a time from a "files changed" card)
+  // aren't part of any chat scope's own tabIds list, but they must stay
+  // reachable regardless of which scope is currently selected.
+  const openReviewSplitArchivedSnapshotTabIds = reviewSplitFileTabIds.filter((tabId) => (
+    ideTabContents[tabId]?.diffIsArchivedSnapshot
+  ));
+  const visibleReviewSplitFileTabIds = [
+    ...(selectedReviewSplitChangeScope?.tabIds?.length
+      ? selectedReviewSplitChangeScope.tabIds
+      : reviewSplitFileTabIds),
+    ...openReviewSplitArchivedSnapshotTabIds,
+  ].filter((tabId, index, all) => all.indexOf(tabId) === index);
   const reviewSplitFiles = visibleReviewSplitFileTabIds
     .map((tabId) => (
       reviewScopeFiles.find((file) => file.tabId === tabId)
@@ -29323,8 +29471,44 @@ export default function App() {
       !(comment && typeof comment === 'object' && comment.author === 'agent')
     )).length
   ), 0);
-  const displayedReviewSplitFiles = activeReviewSplitFile ? [activeReviewSplitFile] : [];
-  const activeReviewSplitTabIndex = activeReviewSplitFile && isReviewSplitOverviewMode ? 1 : 0;
+  // A diff and its own plain source file are two distinct tabs on the same
+  // underlying file — when one is active, surface the other as a real
+  // neighboring tab too (instead of only reachable through the "N of M
+  // files" popup), so switching to one never makes the other disappear.
+  const reviewSplitPairedFile = (() => {
+    if (!activeReviewSplitFile || activeReviewSplitFile.isArchivedSnapshot) return null;
+    const pairedTabId = activeReviewSplitFile.isPlain
+      ? buildPlanDiffTabId(activeReviewSplitFile.tabId)
+      : (activeReviewSplitFile.tabId.startsWith('plan-diff-')
+        ? activeReviewSplitFile.tabId.slice('plan-diff-'.length)
+        : null);
+    if (!pairedTabId || pairedTabId === activeReviewSplitFile.tabId) return null;
+    return reviewSplitFiles.find((file) => file.tabId === pairedTabId) ?? null;
+  })();
+  // Archived snapshots (opened one at a time from a "files changed" card,
+  // read-only, frozen at whatever turn produced them) are their own tabs
+  // that stay open alongside the live diff regardless of which one is
+  // currently active — unlike the rest of the scope, which is only ever
+  // reachable one at a time through the "N of M files" popup.
+  const reviewSplitOpenArchivedSnapshotFiles = reviewSplitFiles.filter((file) => (
+    file.isArchivedSnapshot
+    && file.tabId !== activeReviewSplitFile?.tabId
+  ));
+  // Order is fixed (diff, then its source, then any archived snapshots in
+  // the order they were opened) regardless of which one is active —
+  // otherwise the tabs would swap places every time the reviewer switched
+  // between them, reading as the tabs "jumping" around.
+  const displayedReviewSplitFiles = activeReviewSplitFile
+    ? [activeReviewSplitFile, reviewSplitPairedFile, ...reviewSplitOpenArchivedSnapshotFiles]
+        .filter(Boolean)
+        .sort((a, b) => (a.isPlain === b.isPlain ? 0 : a.isPlain ? 1 : -1))
+    : [];
+  const activeReviewSplitFileIndex = Math.max(0, displayedReviewSplitFiles.findIndex(
+    (file) => file.tabId === activeReviewSplitFile?.tabId,
+  ));
+  const activeReviewSplitTabIndex = activeReviewSplitFile
+    ? activeReviewSplitFileIndex + (isReviewSplitOverviewMode ? 1 : 0)
+    : 0;
   const closeReviewSplitFileTab = useCallback((tabId) => {
     if (!tabId) return;
     setReviewSplitFileTabIds((current) => current.filter((entry) => entry !== tabId));
@@ -29425,7 +29609,16 @@ export default function App() {
       )) ?? openedTabIds[0] ?? null;
       if (!selectedTabId) return null;
       setReviewSplitChatId(targetChatId);
-      setReviewSplitFileTabIds(openedTabIds);
+      // Archived snapshots are ad-hoc tabs outside the chat's own scope list
+      // (openArchivedSnapshotInReviewScope appends them one at a time) — a
+      // fresh Review click must not silently drop one the reviewer already
+      // has open alongside the live diff.
+      setReviewSplitFileTabIds((prev) => [
+        ...openedTabIds,
+        ...prev.filter((tabId) => (
+          !openedTabIds.includes(tabId) && ideTabContents[tabId]?.diffIsArchivedSnapshot
+        )),
+      ]);
       setReviewSplitFileFocusByTabId(openedTabIds.reduce((next, tabId) => ({
         ...next,
         [tabId]: tabId === selectedTabId && diffRequest.navigation?.activeRowId
@@ -29469,16 +29662,23 @@ export default function App() {
   }, [
     agentRunByChatId,
     getAiChatScenarioById,
+    ideTabContents,
     isReviewDiffTab,
     openPlanDiffTab,
     openReviewDiffTab,
     reviewSplitChatId,
     selectedAiChatId,
   ]);
-  const openLatestChangedFilesReviewScope = useCallback((chatId, { initialScopeId = 'last-turn' } = {}) => {
+  // filterTabIds narrows the opened scope to specific files — the "All
+  // Changes" bar's checkboxes use this so unchecking a file there shrinks
+  // what Review actually opens, instead of always showing everything.
+  const openLatestChangedFilesReviewScope = useCallback((chatId, { initialScopeId = 'last-turn', filterTabIds = null } = {}) => {
     if (!chatId) return null;
     const scenario = getAiChatScenarioById(chatId);
-    const scopeRequests = buildChatReviewScopeRequests(scenario);
+    const allScopeRequests = buildChatReviewScopeRequests(scenario);
+    const scopeRequests = Array.isArray(filterTabIds)
+      ? allScopeRequests.filter((request) => filterTabIds.includes(request?.source?.tabId))
+      : allScopeRequests;
     const requestedScope = buildChatReviewScopePreviewOptions(scenario)
       .find((scope) => scope.id === initialScopeId) ?? null;
     const firstDiffRequest = scopeRequests.find((request) => (
@@ -29496,8 +29696,69 @@ export default function App() {
       request === diffRequest
       || (sourceTabId && request?.source?.tabId === sourceTabId)
     )) ?? diffRequest;
-    return openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, 'last-turn');
-  }, [getAiChatScenarioById, openPlanDiffInReviewSplit, selectedAiChatId]);
+    // Reopening the split (e.g. jumping back to it from the source file's own
+    // chat button) must not clobber a scope the reviewer already switched to
+    // — only fall back to 'last-turn' when the split wasn't already showing
+    // this chat.
+    const preservedScopeId = reviewSplitChatId === targetChatId ? reviewSplitChangeScopeId : 'last-turn';
+    const diffTabId = openPlanDiffInReviewSplit(scopedDiffRequest, targetChatId, scopeRequests, preservedScopeId);
+    // The plain source file is a distinct, real view of the same file as the
+    // diff (single line numbers, no added/removed markers) — pair it as a
+    // neighbor in the split's own file nav, but only when the reviewer was
+    // actually looking at it just now (e.g. its own chat/commit/send-comments
+    // button). A fresh Review click from a chat message's "files changed"
+    // card is not "returning from the source" and must open only the diff.
+    const sourceContent = sourceTabId ? ideTabContents[sourceTabId] : null;
+    const isViewingSourceNow = activeTabId === sourceTabId;
+    const sourceHasPlainContent = Boolean(sourceContent) && !sourceContent.diffData;
+    if (diffTabId && sourceTabId && sourceTabId !== diffTabId && isViewingSourceNow && sourceHasPlainContent) {
+      const insertAfter = (tabIds) => (
+        tabIds.includes(sourceTabId)
+          ? tabIds
+          : tabIds.flatMap((tabId) => (tabId === diffTabId ? [tabId, sourceTabId] : [tabId]))
+      );
+      setReviewSplitFileTabIds((prev) => insertAfter(prev));
+      setReviewSplitChangeScopeOptions((prev) => prev.map((option) => (
+        option.tabIds?.includes(diffTabId)
+          ? { ...option, tabIds: insertAfter(option.tabIds) }
+          : option
+      )));
+      // openPlanDiffInReviewSplit always activates the diff side of the pair.
+      // The reviewer was already looking at the plain source file when they
+      // opened chat (isViewingSourceNow) — keep showing that instead of
+      // swapping it out for the diff and making it look like it vanished.
+      setReviewSplitActiveTabId(sourceTabId);
+    }
+    return diffTabId;
+  }, [activeTabId, getAiChatScenarioById, ideTabContents, openPlanDiffInReviewSplit, reviewSplitChangeScopeId, reviewSplitChatId, selectedAiChatId]);
+  // A "files changed" card's file row: opens a frozen, read-only snapshot of
+  // that past turn's diff as its own tab inside the same split as the live
+  // diff/chat (so the reviewer can have both open together, and collapse the
+  // chat in either case) — unlike openChangedFileInReviewScope, this never
+  // substitutes the request for the chat's live scoped one, so the
+  // commentsReadOnly/isArchivedSnapshot overrides always stick.
+  const openArchivedSnapshotInReviewScope = useCallback((diffRequest, chatId = null) => {
+    const targetChatId = chatId ?? selectedAiChatId;
+    if (!diffRequest || !targetChatId) return null;
+    const snapshotTabId = openPlanDiffTab({
+      ...diffRequest,
+      commentsReadOnly: true,
+      isArchivedSnapshot: true,
+      contextChatId: targetChatId,
+      registerEditorTab: false,
+      activateTab: false,
+    });
+    if (!snapshotTabId) return null;
+    setReviewSplitChatId(targetChatId);
+    setReviewSplitFileTabIds((prev) => (prev.includes(snapshotTabId) ? prev : [...prev, snapshotTabId]));
+    setReviewSplitChangeScopeOptions((prev) => prev.map((option) => (
+      option.tabIds && !option.tabIds.includes(snapshotTabId)
+        ? { ...option, tabIds: [...option.tabIds, snapshotTabId] }
+        : option
+    )));
+    setReviewSplitActiveTabId(snapshotTabId);
+    return snapshotTabId;
+  }, [openPlanDiffTab, selectedAiChatId]);
   // Same as openChangedFileInReviewScope, but for a file picked from the VCS
   // summary's expanded file list: that file becomes the active diff, while
   // the scope stays the full All Project Changes set (every other file).
@@ -30452,11 +30713,30 @@ export default function App() {
 
     if (actionId !== 'comment' && actionId !== 'add-context-comment') return;
     const isReviewSplitSelection = Boolean(toolbarState?.reviewSplit && activeReviewSplitFile);
+    // An ordinary file tab (never touched by a diff) gets promoted to a
+    // session-linked overlay right here, the same way "Jump to Source"
+    // promotes one — commenting on it is the user's own signal that this
+    // file should now behave like a session-linked file.
+    const isPromotingPlainFile = !isReviewSplitSelection
+      && !isDiffTab
+      && !isPlainFileOverlayTab
+      && !isAgentTaskTab
+      && !isAiChatTab
+      && !isReviewDiffTab
+      && Boolean(activeTabId)
+      && Boolean(activeTabContent);
+    const promotedPlainFileData = isPromotingPlainFile
+      ? (activeTabContent?.plainFileData ?? buildPlainFileData(
+          activeTabContent?.code ?? '',
+          activeEditorTabMeta?.label ?? 'Untitled',
+          activeTabContent?.language ?? 'text',
+        ))
+      : null;
     const selectionDiffData = isReviewSplitSelection
       ? (activeReviewSplitFile.fullDiffData ?? activeReviewSplitFile.diffData)
-      : activePlanDiffData;
+      : (activePlanDiffData ?? promotedPlainFileData);
     const selectionTabId = isReviewSplitSelection ? activeReviewSplitFile.tabId : activeTabId;
-    if ((!isPlainFileOverlayTab && !isDiffTab && !isReviewSplitSelection) || !selectionTabId || !selectionDiffData) return;
+    if ((!isPlainFileOverlayTab && !isDiffTab && !isReviewSplitSelection && !isPromotingPlainFile) || !selectionTabId || !selectionDiffData) return;
 
     const availableRowIds = new Set((selectionDiffData.rows ?? []).map((row) => row.id));
     const storedToolbarRowIds = Array.isArray(toolbarState?.rowIds)
@@ -30525,6 +30805,51 @@ export default function App() {
       }
     }
 
+    if (isPromotingPlainFile) {
+      // PlanDiffOverlay is about to mount fresh for this tab. Its child-side
+      // ui-state round trip (child pushes its own state up on mount, parent
+      // echoes back down, child reconciles) needs the two sides to already
+      // agree before anything else touches it — feeding it a request to open
+      // a comment via the normal post-mount path (editorExternalCommentRequest)
+      // meant the *first* thing it pushed up (nothing open, on the file's
+      // first row) disagreed with what the request was about to open,
+      // and the two sides never converged (constant re-rendering). Pre-seeding
+      // both the tab's plainFileData.focusRowId and its stored ui-state with
+      // the comment already open avoids the disagreement existing at all.
+      const alignedFocusRowId = rowIds[0] ?? promotedPlainFileData.focusRowId;
+      const alignedPlainFileData = alignedFocusRowId === promotedPlainFileData.focusRowId
+        ? promotedPlainFileData
+        : { ...promotedPlainFileData, focusRowId: alignedFocusRowId };
+      setIdeTabContents((prev) => (
+        prev[selectionTabId]
+          ? {
+              ...prev,
+              [selectionTabId]: {
+                ...prev[selectionTabId],
+                plainFileData: alignedPlainFileData,
+                isDiffSourceOverlay: true,
+              },
+            }
+          : prev
+      ));
+      const lineNumbers = rowIds
+        .map((rowId) => Number(/^plain-line-(\d+)$/.exec(rowId)?.[1]))
+        .filter((lineNumber) => Number.isFinite(lineNumber));
+      updatePlanDiffUiStateForTab({
+        activeRowId: alignedFocusRowId,
+        commentRowId: alignedFocusRowId,
+        commentValue: '',
+        commentEditingIndex: null,
+        commentTargetRowIds: rowIds,
+        commentTargetHasSelection: true,
+        commentFooterMetaLabel: formatEditorCommentFooterLabel(formatEditorCommentLineLabel(lineNumbers)),
+        caretState: { rowId: alignedFocusRowId, left: 12 },
+      }, selectionTabId);
+      editorInlineCommentOpenRef.current = true;
+      setEditorSelectionToolbarPos(null);
+      return;
+    }
+
     if (isDiffTab || isReviewSplitSelection) {
       setDiffGutterCommentsEnabled(true);
     }
@@ -30540,15 +30865,22 @@ export default function App() {
   }, [
     activeAiChatTabChatId,
     activeEditorTab,
+    activeEditorTabMeta,
     activePlanDiffData,
     activeReviewSplitFile,
+    activeTabContent,
     activeTabId,
     ideTabs,
+    isAgentTaskTab,
+    isAiChatTab,
     isDiffTab,
     isPlainFileOverlayTab,
+    isReviewDiffTab,
+    updatePlanDiffUiStateForTab,
     addSelectionContextToChat,
     createEmptyAiChatSession,
     selectedAiChatId,
+    setIdeTabContents,
   ]);
   const activePlanDiffTarget = isDiffTab
     ? normalizeCommentTarget(activeTabContent?.diffTarget)
@@ -30557,8 +30889,9 @@ export default function App() {
     ? (activeTabContent?.diffSourceTabId ?? activeSourceEditorTabId)
     : null;
   const activePlanDiffCommentsReadOnly = (isDiffTab || isPlainFileOverlayTab) && Boolean(activeTabContent?.diffCommentsReadOnly);
+  const activePlanDiffIsArchivedSnapshot = isDiffTab && Boolean(activeTabContent?.diffIsArchivedSnapshot);
   const activePlanDiffContextMessageId = isDiffTab ? (activeTabContent?.diffContextMessageId ?? null) : null;
-  const activePlanDiffContextChatId = isDiffTab ? (activeTabContent?.diffContextChatId ?? null) : null;
+  const activePlanDiffContextChatId = (isDiffTab || isPlainFileOverlayTab) ? (activeTabContent?.diffContextChatId ?? null) : null;
   const activePlanDiffSessionCommentsByChatId = (isDiffTab || isPlainFileOverlayTab)
     ? normalizeDiffSessionCommentsByChatId(activeTabContent?.diffSessionCommentsByChatId)
     : {};
@@ -30611,6 +30944,40 @@ export default function App() {
   const planDiffContextSessionLabel = activePlanDiffCommentsReadOnly
     ? 'Archive'
     : 'Active';
+  // Where "Send comments" delivers to: the chat the diff was actually opened
+  // from (diffContextChatId, set once at open time) when known, rather than
+  // planDiffContextChatId's fallback to whichever chat happens to be
+  // selected right now — the two only coincide by accident once this diff
+  // has been promoted out of a review split and isn't the active chat tab.
+  const activeDiffOriginChatId = activePlanDiffContextChatId ?? planDiffContextChatId;
+  // The review-scope lookup keys files by the *source* file's own tab id, not
+  // the diff tab's id — on a diff tab that's activePlanDiffSourceTabId; on a
+  // plain-file-overlay tab (jumped to source) the source file IS the active
+  // tab, so activePlanDiffSourceTabId (which only resolves for diff tabs)
+  // would otherwise be null here and silently break "return to chat".
+  const activeDiffOriginSourceTabId = isDiffTab
+    ? activePlanDiffSourceTabId
+    : (isPlainFileOverlayTab ? activeTabId : null);
+  // Keyed the same way activePlanDiffComments (what's actually rendered) is:
+  // prefer the origin chat's session, but a comment doesn't always land under
+  // the chat the diff was opened from (e.g. submitted while a different chat
+  // was selected) — falling back to activePlanDiffCommentChatId's session
+  // keeps the "Send Comments" badge/count from disagreeing with what's on
+  // screen, which read as the comment "disappearing" after a tab round trip.
+  const activeDiffSendableCommentsMap = mergeStoredDiffCommentsStates(
+    activePendingDiffCommentSnapshot,
+    Object.keys(activePlanDiffSessionCommentsByChatId).length > 0
+      ? normalizeStoredDiffCommentsState(
+          activePlanDiffSessionCommentsByChatId[activeDiffOriginChatId]?.comments
+          ?? activePlanDiffSessionCommentsByChatId[activePlanDiffCommentChatId]?.comments,
+        )
+      : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments),
+  );
+  const activeDiffSendableCommentCount = Object.values(activeDiffSendableCommentsMap).flat().length;
+  // Same order the diff itself renders in, so "1 of N" walks top to bottom.
+  const activeDiffCommentRowIds = (activePlanDiffData?.rows ?? [])
+    .map((row) => row.id)
+    .filter((rowId) => (activeDiffSendableCommentsMap[rowId] ?? []).length > 0);
   const openMarkdownDocumentTabs = ideTabs.filter((tab) => (
     tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
   ));
@@ -30915,6 +31282,11 @@ export default function App() {
         diffRequest,
         diffTabId,
         isPlainFile,
+        // getAiChatAttachmentCommentPreviewItems reads this flat field (not
+        // diffRequest.source.tabId) to tag each comment preview item with
+        // where to look up its row — without it, hover-card navigation and
+        // the code-snippet preview silently have nothing to key off.
+        sourceTabId,
       });
     }
 
@@ -34547,10 +34919,61 @@ export default function App() {
     }
   }, [getAiChatListItemById, getAiChatScenarioById, ideTabs, updatePlanDiffUiStateForTab]);
 
+  // A small read-only look at the lines a hovered comment note is actually
+  // about — a few rows of context around it, pulled from whichever tab the
+  // note's source file lives in (diff tab or plain-file overlay tab).
+  const getCommentCodeSnippet = useCallback((item) => {
+    if (!item?.rowId || !item?.sourceTabId) return null;
+    // A comment's rowId lives in whichever row set it was actually left on —
+    // the diff's own rows (added/removed markers) if left there, or the
+    // plain source file's rows if left after jumping to source. Both are
+    // keyed by the same source tab id but stored under different tab
+    // contents (plan-diff-<id> vs the plain tab itself), so check both
+    // rather than assuming one.
+    const plainContent = ideTabContents[item.sourceTabId];
+    const diffContent = ideTabContents[buildPlanDiffTabId(item.sourceTabId)];
+    const sourceDiffData = [plainContent?.plainFileData, plainContent?.diffData, diffContent?.diffData]
+      .find((candidate) => Array.isArray(candidate?.rows) && candidate.rows.some((row) => row.id === item.rowId))
+      ?? null;
+    const rows = Array.isArray(sourceDiffData?.rows) ? sourceDiffData.rows : [];
+    if (rows.length === 0) return null;
+    const targetIndex = rows.findIndex((row) => row.id === item.rowId);
+    if (targetIndex < 0) return null;
+    const snippetRows = rows.slice(Math.max(0, targetIndex - 1), Math.min(rows.length, targetIndex + 2));
+    if (snippetRows.length === 0) return null;
+    const language = sourceDiffData?.language || 'text';
+    // A plain, quick-doc-style code block — no diff gutter/line numbers, just
+    // syntax-highlighted lines with the commented one picked out, closer to
+    // an IDE's own hover-preview styling than the full diff row chrome.
+    return (
+      <div className="ai-chat-attachment-hover-code-block">
+        {snippetRows.map((row) => (
+          <div
+            key={row.id}
+            className={`ai-chat-attachment-hover-code-line${row.id === item.rowId ? ' is-target' : ''}`}
+          >
+            {(row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, fragmentIndex) => (
+              <span
+                key={fragmentIndex}
+                className={`plan-diff-fragment${fragment.tone && fragment.tone !== 'plain' ? ` is-${fragment.tone}` : ''}`}
+              >
+                {tokenizeCodeFragment(fragment.text || ' ', language).map((token, tokenIndex) => (
+                  <span key={tokenIndex} className={`plan-diff-token plan-diff-token-${token.type}`}>
+                    {token.text}
+                  </span>
+                ))}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }, [ideTabContents]);
+
   // Opening a comment attachment chip: a plain-file attachment must land on its
   // own file tab (not on a generated diff tab) and scroll to the commented row;
   // a diff attachment opens its diff tab and scrolls the same way.
-  const handleOpenChatAttachment = useCallback((attachment, { messageId = null, chatId = null, archived = true } = {}) => {
+  const handleOpenChatAttachment = useCallback((attachment, { messageId = null, chatId = null, archived = true, rowId: rowIdOverride = null } = {}) => {
     if (!attachment) return;
 
     const contextChatId = chatId ?? selectedAiChatId;
@@ -34602,7 +35025,9 @@ export default function App() {
           : { text: getStoredCommentText(comment), hidden: false }
       )),
     }), {});
-    const scrollRowId = getAttachmentScrollRowId(visibleAttachmentComments);
+    // A specific hover-card note picks its own row; otherwise fall back to
+    // whichever row the attachment as a whole would scroll to.
+    const scrollRowId = rowIdOverride ?? getAttachmentScrollRowId(visibleAttachmentComments);
 
     if (attachment.isSddDocument) {
       handleOpenSddDocument({
@@ -35153,14 +35578,18 @@ export default function App() {
                     setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
                     return;
                   }
-                  if (activeReviewSplitFile) setReviewSplitActiveTabId(activeReviewSplitFile.tabId);
+                  const fileIndex = isReviewSplitOverviewMode ? index - 1 : index;
+                  const targetFile = displayedReviewSplitFiles[fileIndex] ?? activeReviewSplitFile;
+                  if (targetFile) setReviewSplitActiveTabId(targetFile.tabId);
                 }}
                 onRightTabClose={(index) => {
                   if (!isReviewSplitOverviewMode) {
                     closeReviewSplitView();
                     return;
                   }
-                  closeReviewSplitFileTab(activeReviewSplitFile?.tabId);
+                  const fileIndex = index - 1;
+                  const targetFile = displayedReviewSplitFiles[fileIndex] ?? activeReviewSplitFile;
+                  closeReviewSplitFileTab(targetFile?.tabId);
                 }}
                 leftPane={(
                   <div className="aiux543-chat-editor-host">
@@ -35179,7 +35608,9 @@ export default function App() {
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
                       onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, reviewSplitChatId)}
-                      onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes' })}
+                      onOpenArchivedSnapshot={(diffRequest) => openArchivedSnapshotInReviewScope(diffRequest, reviewSplitChatId)}
+                      getCommentCodeSnippet={getCommentCodeSnippet}
+                      onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                       onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, reviewSplitChatId)}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
@@ -35234,6 +35665,11 @@ export default function App() {
                       severityFilter={reviewSeverityFilter}
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
+                      commentCount={Object.values(normalizeStoredDiffCommentsState(activeReviewSplitFile?.comments)).flat().length}
+                      onSendComments={(count) => {
+                        handleAiChatTabSend(reviewSplitChatId, buildSendCommentsMessage(count));
+                        openChatInEditorTab(reviewSplitChatId);
+                      }}
                       renderSubmitTargetPicker={(pickerProps) => renderCommentSubmitTargetPicker({
                         ...pickerProps,
                         includeDocuments: false,
@@ -35255,7 +35691,26 @@ export default function App() {
                         // Closing the split restores its own active tab, so the
                         // source has to be activated after that commit lands or
                         // it would be overridden immediately.
-                        requestAnimationFrame(() => openEditorTabByLabel(label, { line }));
+                        requestAnimationFrame(() => {
+                          const sourceTabId = openEditorTabByLabel(label, { line });
+                          // Actually jumped here from the diff — mark it so the
+                          // source keeps its diff-linked toolbar and gutter
+                          // comment icon, the same as F4/"Jump to Source" does.
+                          if (sourceTabId) {
+                            setIdeTabContents((prev) => (
+                              prev[sourceTabId]
+                                ? {
+                                    ...prev,
+                                    [sourceTabId]: {
+                                      ...prev[sourceTabId],
+                                      diffContextChatId: prev[sourceTabId].diffContextChatId ?? reviewSplitChatId,
+                                      isDiffSourceOverlay: true,
+                                    },
+                                  }
+                                : prev
+                            ));
+                          }
+                        });
                       }}
                       scopeBranch={reviewScopeBranch}
                       workingBranch={workingTreeBranch}
@@ -35271,7 +35726,7 @@ export default function App() {
                       selectedCompareBranch={reviewSplitCompareBranch}
                       onCompareBranchChange={setReviewSplitCompareBranch}
                       onCommitScope={(scope) => {
-                        requestCommitComposerMessage(reviewSplitChatId, buildCommitComposerMessage(scope));
+                        requestCommitComposerMessage(reviewSplitChatId, buildCommitComposerMessage({ ...scope, commitMessage: reviewSplitChatLabel }));
                       }}
                       reviewScopeNoteCount={visibleReviewSplitNoteCount}
                       onTextSelectionChange={(selectionState) => {
@@ -35368,6 +35823,8 @@ export default function App() {
                       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                       onAgentChange={handleAiChatAgentChange}
                       onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, specSplitChatId)}
+                      onOpenArchivedSnapshot={openPlanDiffTab}
+                      getCommentCodeSnippet={getCommentCodeSnippet}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -35456,7 +35913,9 @@ export default function App() {
                   onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
                   onAgentChange={handleAiChatAgentChange}
                   onOpenDiffTab={(diffRequest) => openChangedFileInReviewScope(diffRequest, activeAiChatTabChatId)}
-                  onOpenAllProjectChanges={() => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes' })}
+                  onOpenArchivedSnapshot={(diffRequest) => openArchivedSnapshotInReviewScope(diffRequest, activeAiChatTabChatId)}
+                  getCommentCodeSnippet={getCommentCodeSnippet}
+                  onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                   onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, activeAiChatTabChatId)}
                   onOpenChangeScope={openChatChangeScope}
                   changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId])}
@@ -35562,11 +36021,35 @@ export default function App() {
                     defaultSubmitTargetIcon={activePlanDiffDefaultSubmitTargetIcon}
                     defaultSubmitTargetKey={activePlanDiffDefaultSubmitTargetKey}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
+                    isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
                     commentContextLabel={planDiffContextChatTitle}
+                    onOpenChat={(activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
+                      { source: { tabId: activeDiffOriginSourceTabId } },
+                      activeDiffOriginChatId,
+                    ) : null}
+                    commentCount={activeDiffSendableCommentCount}
+                    onSendComments={activeDiffOriginChatId ? (count) => {
+                      handleAiChatTabSend(activeDiffOriginChatId, buildSendCommentsMessage(count));
+                      if (activeDiffOriginSourceTabId) {
+                        openChangedFileInReviewScope(
+                          { source: { tabId: activeDiffOriginSourceTabId } },
+                          activeDiffOriginChatId,
+                        );
+                      } else {
+                        openChatInEditorTab(activeDiffOriginChatId);
+                      }
+                    } : null}
                     commentContextIcon={planDiffContextChatIcon}
                     commentContextSessionLabel={planDiffContextSessionLabel}
+                    commentRowIds={activeDiffCommentRowIds}
+                    activeCommentRowId={activePlanDiffUiState?.activeRowId ?? null}
+                    onNavigateComment={(rowId) => handleActivePlanDiffUiStateChange({
+                      ...activePlanDiffUiState,
+                      activeRowId: rowId,
+                      caretState: { ...(activePlanDiffUiState?.caretState ?? {}), rowId },
+                    })}
 	                    commentSessions={activePlanDiffSessionComments}
-	                    commentSessionActiveChatId={activePlanDiffCommentChatId}
+	                    commentSessionActiveChatId={activeDiffOriginChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
                       onTextSelectionChange={(selectionState) => {
                         if (editorInlineCommentOpenRef.current) {
@@ -35604,8 +36087,15 @@ export default function App() {
                     onReturnToChat={handlePlanDiffReturnToChat}
                     onEditSource={openActiveDiffSourceTabToRight}
                     onCommitScope={(scope) => {
-                      requestCommitComposerMessage(planDiffContextChatId, buildCommitComposerMessage(scope));
-                      handlePlanDiffReturnToChat({ source: 'diff-comment-context', chatId: planDiffContextChatId });
+                      requestCommitComposerMessage(planDiffContextChatId, buildCommitComposerMessage({ ...scope, commitMessage: planDiffContextChatTitle }));
+                      if (activeDiffOriginSourceTabId) {
+                        openChangedFileInReviewScope(
+                          { source: { tabId: activeDiffOriginSourceTabId } },
+                          planDiffContextChatId,
+                        );
+                      } else {
+                        handlePlanDiffReturnToChat({ source: 'diff-comment-context', chatId: planDiffContextChatId });
+                      }
                     }}
                     onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
                     onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
@@ -35617,7 +36107,11 @@ export default function App() {
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
                     showGutterComments={(isDiffTab && diffGutterCommentsEnabled) || isPlainFileOverlayTab}
-                    plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+                    // A source file jumped to from a diff should always be
+                    // able to take a comment, regardless of the general
+                    // "show gutter comments on plain files" preference —
+                    // that toggle is about ordinary files, not this one.
+                    plainFileGutterCommentsEnabled={isPlainFileOverlayTab || plainFileGutterCommentsEnabled}
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}
                     onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}

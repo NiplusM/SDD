@@ -76,6 +76,19 @@ export function AiChatAttachmentPathTooltip({ attachment = null }) {
 
 
 
+// Which change-scope tab (Last Turn / Session Changes / All Changes) the
+// attachment's file belongs to, mirroring buildChatChangedFilesScopeOptions'
+// own membership rule: a commit-tool-window file only ever shows up under
+// All Changes, an allChangesOnly file only under Session Changes and All
+// Changes (Last Turn is its narrower subset), everything else is Last Turn.
+export function getAiChatAttachmentScopeLabel(attachment = null) {
+  const diffRequest = attachment?.diffRequest ?? null;
+  if (!diffRequest) return null;
+  if (diffRequest.reviewCommitScope) return 'All Changes';
+  if (diffRequest.reviewAllChangesOnly) return 'Session Changes';
+  return 'Last Turn';
+}
+
 export function getAiChatAttachmentInlineCount(attachment = null) {
   if (!attachment || typeof attachment !== 'object') return 0;
   // A quote is already identified by its selected text. A "comment 1" badge
@@ -97,6 +110,18 @@ export function AttachmentCommentHoverCard({
   contextLabel = '',
   itemLabel = 'Note',
   itemLabelPlural = 'Notes',
+  // Lets a note jump straight to its row/section instead of only being
+  // readable on hover — provided by the host, since only it knows how to
+  // open a tab and scroll to a row.
+  onNavigate = null,
+  // Which change scope (Last Turn / Session Changes / All Changes) the
+  // attachment's file belongs to — shown next to the line label so a note
+  // reads as "Line 11 · Last Turn" instead of just the line on its own.
+  scopeLabel = null,
+  // Optional (item) => ReactNode | null — when it returns something, a small
+  // code-context panel renders to the right of the note so the reviewer
+  // doesn't have to open the file to see what the comment is actually about.
+  renderCodeSnippet = null,
 }) {
   const visible = items.slice(0, 3);
   const hidden = Math.max(0, items.length - visible.length);
@@ -149,37 +174,76 @@ export function AttachmentCommentHoverCard({
     );
   }
 
+  // The code snippet is a genuinely separate card, not part of the note's
+  // own box — computed up front so it can render as a sibling with its own
+  // background/border, instead of bleeding into the note's box with no
+  // background of its own behind it.
+  const codeSnippetsByIndex = visible.map((item) => (renderCodeSnippet ? renderCodeSnippet(item) : null));
+  const hasAnySnippet = codeSnippetsByIndex.some(Boolean);
+
   return (
-    <TooltipHelp
-      className="ai-chat-attachment-hover-tooltip"
-      header={null}
-      body={(
-        <>
-          {visible.map((item, index) => (
-            <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
-              {item.isAgentAuthored
-                ? renderMessage('Claude Agent', item.text, `hover-note-${index}-agent-standalone`)
-                : renderMessage(
-                    [
-                      foreignSourceLabel(item),
-                      item.lineLabel,
-                      (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
-                      (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
-                    ].filter(Boolean).join(' · '),
-                    item.text,
-                    `hover-note-${index}-user`,
-                  )}
-              {item.agentReply
-                ? renderMessage('Claude Agent', item.agentReply, `hover-note-${index}-agent`)
-                : null}
-            </div>
+    <div className="ai-chat-attachment-hover-card-group">
+      <TooltipHelp
+        className="ai-chat-attachment-hover-tooltip"
+        header={null}
+        body={(
+          <>
+            {visible.map((item, index) => {
+              const isNavigable = Boolean(onNavigate && item.rowId && item.sourceTabId);
+              const note = (
+                <>
+                  {item.isAgentAuthored
+                    ? renderMessage('Claude Agent', item.text, `hover-note-${index}-agent-standalone`)
+                    : renderMessage(
+                        [
+                          foreignSourceLabel(item),
+                          item.lineLabel,
+                          item.lineLabel ? scopeLabel : null,
+                          (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
+                          (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
+                        ].filter(Boolean).join(' · '),
+                        item.text,
+                        `hover-note-${index}-user`,
+                      )}
+                  {item.agentReply
+                    ? renderMessage('Claude Agent', item.agentReply, `hover-note-${index}-agent`)
+                    : null}
+                </>
+              );
+
+              return isNavigable ? (
+                <button
+                  type="button"
+                  className="ai-chat-attachment-hover-note is-navigable"
+                  key={`hover-note-${index}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNavigate(item);
+                  }}
+                >
+                  {note}
+                </button>
+              ) : (
+                <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
+                  {note}
+                </div>
+              );
+            })}
+            {hidden > 0 && (
+              <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
+            )}
+          </>
+        )}
+      />
+      {hasAnySnippet && (
+        <div className="ai-chat-attachment-hover-code-panel">
+          {codeSnippetsByIndex.map((snippet, index) => (
+            snippet && <div key={`hover-code-${index}`} className="ai-chat-attachment-hover-note-code">{snippet}</div>
           ))}
-          {hidden > 0 && (
-            <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
-          )}
-        </>
+        </div>
       )}
-    />
+    </div>
   );
 }
 
@@ -230,6 +294,11 @@ export function AiChatAttachmentStrip({
   removeButtonClassName = 'ai-chat-attachment-close-button',
   removeLabel = 'Remove attachment from input',
   stopClickPropagation = false,
+  // Forwarded to AttachmentCommentHoverCard — (item) => ReactNode | null,
+  // rendering a small code-context panel next to a note's text.
+  renderCodeSnippet = null,
+  // Forwarded to AttachmentCommentHoverCard — lets a note jump to its row.
+  onNavigateComment = null,
 }) {
   const visibleAttachments = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
   if (visibleAttachments.length === 0) return null;
@@ -343,7 +412,12 @@ export function AiChatAttachmentStrip({
             )}
             {commentPreviewItems.length > 0 && !isSourceListOpen && (
               <span className="ai-chat-attachment-comment-preview ai-chat-attachment-comment-preview-library" role="tooltip">
-                <AttachmentCommentHoverCard items={commentPreviewItems} contextLabel={attachment.label} />
+                <AttachmentCommentHoverCard
+                  items={commentPreviewItems}
+                  contextLabel={attachment.label}
+                  renderCodeSnippet={renderCodeSnippet}
+                  onNavigate={onNavigateComment}
+                />
               </span>
             )}
             {commentPreviewItems.length === 0 && isAiChatImageAttachment(attachment) && (

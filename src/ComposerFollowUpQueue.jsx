@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Checkbox, Icon, Popup, PopupCell, PositionedPopup } from '@jetbrains/int-ui-kit';
+import { Icon, Popup, PopupCell, PositionedPopup } from '@jetbrains/int-ui-kit';
 import { IjAirFollowUpBulletIcon } from './IjAirFollowUpBulletIcon.jsx';
 import './ComposerFollowUpQueue.css';
 
@@ -117,17 +117,11 @@ function EditedFileQueueRow({ item }) {
   );
 }
 
-function VcsSummaryFileRow({ file, onOpenFile, checked = true, onToggleChecked = null }) {
+function VcsSummaryFileRow({ file, onOpenFile }) {
   const status = file.status ?? 'unknown';
 
   return (
     <div className={`ij-air-follow-up-queue__vcs-file is-${status}`}>
-      <Checkbox
-        checked={checked}
-        aria-label={`Include ${file.label} in commit`}
-        onClick={(event) => event.stopPropagation()}
-        onChange={() => onToggleChecked?.(file, !checked)}
-      />
       <button
         type="button"
         className="ij-air-follow-up-queue__vcs-file-open"
@@ -145,12 +139,12 @@ function VcsSummaryFileRow({ file, onOpenFile, checked = true, onToggleChecked =
   );
 }
 
-// One button, chevron included in it — clicking it opens a menu holding
-// both actions, Review included and marked as the current one, so the menu
-// is a complete picture of what this control can do rather than just the
-// one action that doesn't already have its own button. Same trigger shape
-// (label + chevron in one clickable element, PositionedPopup + Popup +
-// PopupCell for the menu) as PlanDiffChangeScopeControl's "Last Turn ⌄".
+// Two click targets sharing one outline: the label runs Review directly
+// (it's the default action, so it shouldn't need a menu detour), and the
+// chevron opens a menu of everything this control can do, Review included
+// and marked as current — so Commit stays reachable without stealing the
+// label's own click. PositionedPopup + Popup + PopupCell for the menu, same
+// as PlanDiffChangeScopeControl's "Last Turn ⌄".
 function VcsReviewSplitButton({
   reviewLabel,
   reviewAriaLabel,
@@ -160,25 +154,37 @@ function VcsReviewSplitButton({
   onReview,
   onCommit,
 }) {
-  const triggerRef = useRef(null);
+  const chevronRef = useRef(null);
   const [menuRect, setMenuRect] = useState(null);
   const closeMenu = () => setMenuRect(null);
 
   return (
-    <span ref={triggerRef} className="ij-air-follow-up-queue__vcs-review-split">
+    <span className="ij-air-follow-up-queue__vcs-review-split">
       <button
         type="button"
-        className={`ij-air-follow-up-queue__vcs-review${menuRect ? ' open' : ''}`}
+        className="ij-air-follow-up-queue__vcs-review"
         aria-label={reviewAriaLabel}
+        disabled={reviewDisabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          onReview?.();
+        }}
+      >
+        {reviewLabel}
+      </button>
+      <button
+        ref={chevronRef}
+        type="button"
+        className={`ij-air-follow-up-queue__vcs-review-chevron${menuRect ? ' open' : ''}`}
+        aria-label="More actions"
         aria-haspopup="menu"
         aria-expanded={Boolean(menuRect)}
         disabled={reviewDisabled && commitDisabled}
         onClick={(event) => {
           event.stopPropagation();
-          setMenuRect((prev) => (prev ? null : triggerRef.current?.getBoundingClientRect() ?? null));
+          setMenuRect((prev) => (prev ? null : chevronRef.current?.getBoundingClientRect() ?? null));
         }}
       >
-        <span>{reviewLabel}</span>
         <Icon name="general/chevronDown" size={16} />
       </button>
       {menuRect && typeof document !== 'undefined' && createPortal(
@@ -206,7 +212,7 @@ function VcsReviewSplitButton({
                   onCommit?.();
                 }}
               >
-                Commit
+                Commit with Agent
               </PopupCell>
             </Popup>
           </PositionedPopup>
@@ -691,8 +697,8 @@ export function ComposerFollowUpQueue({
               reviewDisabled={Boolean(vcsTab.reviewDisabled)}
               reviewAriaLabel={`Review ${vcsTab.label}. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
               commitDisabled={vcsCheckedCount === 0}
-              commitAriaLabel={`Commit ${vcsCheckedCount} checked ${vcsCheckedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`}
-              onReview={() => vcsTab.onRunReview?.()}
+              commitAriaLabel={`Commit with Agent for ${vcsCheckedCount} checked ${vcsCheckedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`}
+              onReview={() => vcsTab.onRunReview?.(vcsFiles.filter((file) => vcsCheckedIdSet.has(file.tabId)).map((file) => file.tabId))}
               onCommit={() => vcsTab.onCommitScope?.(vcsFiles.filter((file) => vcsCheckedIdSet.has(file.tabId)))}
             />
           </span>
@@ -713,10 +719,6 @@ export function ComposerFollowUpQueue({
                   key={file.tabId}
                   file={file}
                   onOpenFile={vcsTab.onOpenFile}
-                  checked={vcsCheckedIdSet.has(file.tabId)}
-                  onToggleChecked={(toggledFile, nextChecked) => (
-                    vcsTab.onToggleFileChecked?.(toggledFile.tabId, nextChecked)
-                  )}
                 />
               ))}
             </div>

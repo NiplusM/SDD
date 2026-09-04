@@ -79,31 +79,58 @@
   flex: 0 0 auto;
 }
 
-/* One button, chevron included — same secondary-slim look as a kit Button,
-   built by hand only because the trigger also needs to be the thing that
-   opens the menu (matching PlanDiffChangeScopeControl's "Last Turn ⌄"). */
+/* Label segment: runs Review on click, same secondary-slim look as a kit
+   Button (hand-built only so it can sit flush against the chevron below
+   with no visible seam). */
 .ij-air-follow-up-queue__vcs-review {
   all: unset;
   box-sizing: border-box;
   display: inline-flex;
   height: 24px;
   align-items: center;
-  gap: 4px;
   padding: 0 8px;
   border: 1px solid var(--button-secondary-border, #43454a);
-  border-radius: 4px;
+  border-right: none;
+  border-radius: 4px 0 0 4px;
   background: var(--button-secondary-bg, transparent);
   color: var(--text-default, #d1d3d9);
   cursor: pointer;
   font: 500 12px/16px Inter, system-ui, sans-serif;
 }
 
-.ij-air-follow-up-queue__vcs-review:hover,
-.ij-air-follow-up-queue__vcs-review.open {
+.ij-air-follow-up-queue__vcs-review:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .ij-air-follow-up-queue__vcs-review:disabled {
+  border-color: var(--control-border-disabled, #43454a);
+  color: var(--text-disabled, #5f6269);
+  cursor: not-allowed;
+}
+
+/* Chevron segment: opens the menu (Review + Commit) — joined to the label's
+   right edge so the pair reads as one control. */
+.ij-air-follow-up-queue__vcs-review-chevron {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 20px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--button-secondary-border, #43454a);
+  border-radius: 0 4px 4px 0;
+  background: var(--button-secondary-bg, transparent);
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+}
+
+.ij-air-follow-up-queue__vcs-review-chevron:hover,
+.ij-air-follow-up-queue__vcs-review-chevron.open {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ij-air-follow-up-queue__vcs-review-chevron:disabled {
   border-color: var(--control-border-disabled, #43454a);
   color: var(--text-disabled, #5f6269);
   cursor: not-allowed;
