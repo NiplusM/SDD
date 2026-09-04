@@ -1,5 +1,7 @@
 // Attachment chip primitives shared by the chat composer (App.jsx) and the AI Review popup
 // (PlanDiffView.jsx), so a chip looks and reads the same wherever it is rendered.
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, Icon, TooltipHelp } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import {
@@ -125,6 +127,88 @@ export function AttachmentCommentHoverCard({
 }) {
   const visible = items.slice(0, 3);
   const hidden = Math.max(0, items.length - visible.length);
+  const [hoveredSnippetIndex, setHoveredSnippetIndex] = useState(null);
+  const [snippetPosition, setSnippetPosition] = useState(null);
+  const groupRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const noteRefs = useRef([]);
+
+  const cancelClose = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const clearSnippet = () => {
+    cancelClose();
+    setHoveredSnippetIndex(null);
+    setSnippetPosition(null);
+    groupRef.current?.closest('.ai-chat-attachment-chip')?.classList.remove('is-comment-preview-active');
+  };
+
+  const scheduleSnippetClose = () => {
+    cancelClose();
+    // The code card is portalled, so keep it alive while the pointer crosses
+    // the small visual gap from the note card to the separate preview.
+    closeTimerRef.current = window.setTimeout(clearSnippet, 180);
+  };
+
+  const positionSnippet = (index) => {
+    const note = noteRefs.current[index];
+    if (!note || typeof window === 'undefined') return;
+    // The note button is inset by the tooltip padding. Anchor from the actual
+    // outer card instead, otherwise a wide code card can sit over its last
+    // few pixels instead of beginning after it.
+    const card = groupRef.current?.querySelector('.ai-chat-attachment-hover-tooltip');
+    const cardRect = card?.getBoundingClientRect();
+    const rect = note.getBoundingClientRect();
+    const gap = 4;
+    const viewportPadding = 12;
+    // Both cards deliberately retain their fixed dimensions. A code context
+    // always starts to the right of the note that owns it; it never flips or
+    // shrinks into that note's space.
+    const panelWidth = 440;
+    const left = (cardRect?.right ?? rect.right) + gap;
+    const preferredHeight = 300;
+    const top = Math.max(
+      viewportPadding,
+      Math.min(rect.top, window.innerHeight - preferredHeight - viewportPadding),
+    );
+
+    setSnippetPosition({
+      left,
+      width: panelWidth,
+      top,
+      maxHeight: Math.max(120, window.innerHeight - top - viewportPadding),
+    });
+  };
+
+  const showSnippet = (index) => {
+    if (!codeSnippetsByIndex[index]) return;
+    cancelClose();
+    setHoveredSnippetIndex(index);
+    groupRef.current?.closest('.ai-chat-attachment-chip')?.classList.add('is-comment-preview-active');
+    positionSnippet(index);
+  };
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    groupRef.current?.closest('.ai-chat-attachment-chip')?.classList.remove('is-comment-preview-active');
+  }, []);
+
+  useEffect(() => {
+    if (hoveredSnippetIndex === null) return undefined;
+    const updatePosition = () => positionSnippet(hoveredSnippetIndex);
+    window.addEventListener('resize', updatePosition);
+    // Capture nested editor/chat scrollers, not just page-level scrolling.
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [hoveredSnippetIndex]);
+
   if (visible.length === 0) return null;
   const isAnnotationsContext = typeof contextLabel === 'string' && contextLabel.trim() === 'Quotes';
   const resolvedItemLabel = isAnnotationsContext ? 'Quote' : itemLabel;
@@ -174,15 +258,18 @@ export function AttachmentCommentHoverCard({
     );
   }
 
-  // The code snippet is a genuinely separate card, not part of the note's
-  // own box — computed up front so it can render as a sibling with its own
-  // background/border, instead of bleeding into the note's box with no
-  // background of its own behind it.
+  // Code stays in a separate card. Each note opens only its own context; the
+  // card is portalled below so split-pane overflow cannot crop it.
   const codeSnippetsByIndex = visible.map((item) => (renderCodeSnippet ? renderCodeSnippet(item) : null));
   const hasAnySnippet = codeSnippetsByIndex.some(Boolean);
+  const activeSnippet = hoveredSnippetIndex === null ? null : codeSnippetsByIndex[hoveredSnippetIndex];
 
   return (
-    <div className="ai-chat-attachment-hover-card-group">
+    <div
+      ref={groupRef}
+      className={`ai-chat-attachment-hover-card-group${hasAnySnippet ? ' has-code-preview' : ''}`}
+      onMouseLeave={scheduleSnippetClose}
+    >
       <TooltipHelp
         className="ai-chat-attachment-hover-tooltip"
         header={null}
@@ -216,6 +303,9 @@ export function AttachmentCommentHoverCard({
                   type="button"
                   className="ai-chat-attachment-hover-note is-navigable"
                   key={`hover-note-${index}`}
+                  ref={(node) => { noteRefs.current[index] = node; }}
+                  onMouseEnter={() => showSnippet(index)}
+                  onFocus={() => showSnippet(index)}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -225,7 +315,12 @@ export function AttachmentCommentHoverCard({
                   {note}
                 </button>
               ) : (
-                <div className="ai-chat-attachment-hover-note" key={`hover-note-${index}`}>
+                <div
+                  className="ai-chat-attachment-hover-note"
+                  key={`hover-note-${index}`}
+                  ref={(node) => { noteRefs.current[index] = node; }}
+                  onMouseEnter={() => showSnippet(index)}
+                >
                   {note}
                 </div>
               );
@@ -236,12 +331,18 @@ export function AttachmentCommentHoverCard({
           </>
         )}
       />
-      {hasAnySnippet && (
-        <div className="ai-chat-attachment-hover-code-panel">
-          {codeSnippetsByIndex.map((snippet, index) => (
-            snippet && <div key={`hover-code-${index}`} className="ai-chat-attachment-hover-note-code">{snippet}</div>
-          ))}
-        </div>
+      {activeSnippet && snippetPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          className="ai-chat-attachment-hover-code-panel ai-chat-attachment-hover-code-panel-portal"
+          style={snippetPosition}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleSnippetClose}
+        >
+          <div className="theme-dark">
+            <div className="ai-chat-attachment-hover-note-code">{activeSnippet}</div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

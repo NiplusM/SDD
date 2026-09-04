@@ -2573,7 +2573,9 @@ function PlanDiffCommentActionsMenu({ actions = [] }) {
   );
 }
 
-function PlanDiffCommentCodeSnippet({ rows = [], language = 'text', targetRowIds = [], onOpen = null }) {
+// Shared row renderer for compact comment context. It deliberately uses the
+// same gutter, line-number, fragment and token markup as the main diff.
+export function PlanDiffCommentCodeSnippet({ rows = [], language = 'text', targetRowIds = [], onOpen = null }) {
   const targetRowIdSet = new Set(targetRowIds);
 
   return (
@@ -2701,6 +2703,10 @@ export function DiffInlineCommentPopup({
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
       : '';
+    // Plain user notes are not review findings and therefore have no
+    // severity. The parent overlay keeps them visible; apply the same rule
+    // here as well so the popup body is not filtered out a second time.
+    if (!sev && !comment?.isReviewFeedback) return true;
     return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   };
   const textareaRef = useRef(null);
@@ -2782,7 +2788,10 @@ export function DiffInlineCommentPopup({
     const explicitLabel = typeof submitAttachTarget?.label === 'string' ? submitAttachTarget.label.trim() : '';
     if (explicitLabel.length > 0) return explicitLabel;
     if (submitAttachMode === 'document') return normalizedDefaultSubmitTargetLabel;
-    if (submitAttachMode === 'current') return normalizedCommentContextLabel;
+    if (submitAttachMode === 'current') {
+      return normalizedCommentContextLabel
+        || (requireSubmitTargetChoice ? normalizedDefaultSubmitTargetLabel : '');
+    }
     if (submitAttachMode === 'new') return 'New Chat Session';
     return '';
   })();
@@ -4200,6 +4209,11 @@ export function PlanDiffOverlay({
     const sev = (comment && typeof comment === 'object' && typeof comment.severity === 'string')
       ? comment.severity.toLowerCase()
       : '';
+    // A normal inline note has no review severity. Review split filters only
+    // enumerate Critical / Warning / Info, which previously hid that note on
+    // a remount while its gutter count remained visible. It is file feedback,
+    // not a review finding, so keep it inline unless it was explicitly hidden.
+    if (!sev && !comment?.isReviewFeedback) return true;
     return filterValues.includes(sev || PLAN_DIFF_UNCLASSIFIED_FILTER);
   }, [commentIndexGroupId, commentIndexStatusFilter, severityFilter]);
   const isCommentMatchingIndexFilter = useCallback((comment) => {
@@ -5622,11 +5636,11 @@ export function PlanDiffOverlay({
                   rowComments,
                 })
               ));
-            const localRowComments = rowComments.filter((comment) => {
-              if (comment?.isReviewFeedback) return true;
-              const commentChatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
-              return commentChatId.length === 0 || commentChatId === commentSessionActiveChatId;
-            });
+            // Inline notes belong to the file, not to the chat currently open
+            // beside it.  A chat can be closed and reopened with a different
+            // active id, so filtering this canonical local state by chat id
+            // makes the actual comment vanish while its gutter marker remains.
+            const localRowComments = rowComments;
             const localGroup = (localRowComments.length > 0 || (canCreateInlineComments && commentRowId === row.id))
               ? {
                   label: commentContextLabel,
@@ -6345,16 +6359,16 @@ export function PlanDiffOverlay({
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={(reviewNoteComposer && !singleLineNumbers) ? ['current'] : undefined}
+                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
                           submitButtonLabel={singleLineNumbers
-                            ? (Number.isInteger(commentEditingIndex) ? 'Save AI Note' : 'Attach AI Note')
+                            ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={!(reviewNoteComposer && !singleLineNumbers)}
-                          showSendToAgentAction={!(reviewNoteComposer && !singleLineNumbers)}
-                          showSubmitActionMenu={!(reviewNoteComposer && !singleLineNumbers)}
-                          sendToAgentLabel={singleLineNumbers ? 'Send AI Note to Agent' : 'Send Note to Agent'}
-                          inputPlaceholder={singleLineNumbers ? 'Write an AI Note' : 'Write a note'}
-                          composeHeaderLabel={(reviewNoteComposer && !singleLineNumbers) ? 'Note' : ''}
+                          showSubmitTargetLabel={!reviewNoteComposer}
+                          showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                          showSubmitActionMenu={!reviewNoteComposer}
+                          sendToAgentLabel="Send Note to Agent"
+                          inputPlaceholder="Write a note"
+                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -6364,7 +6378,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={(reviewNoteComposer && !singleLineNumbers) ? null : renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6443,16 +6457,16 @@ export function PlanDiffOverlay({
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={(reviewNoteComposer && !singleLineNumbers) ? ['current'] : undefined}
+                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
                         submitButtonLabel={singleLineNumbers
-                          ? 'Attach AI Note'
+                          ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={!(reviewNoteComposer && !singleLineNumbers)}
-                        showSendToAgentAction={!(reviewNoteComposer && !singleLineNumbers)}
-                        showSubmitActionMenu={!(reviewNoteComposer && !singleLineNumbers)}
-                        sendToAgentLabel={singleLineNumbers ? 'Send AI Note to Agent' : 'Send Note to Agent'}
-                        inputPlaceholder={singleLineNumbers ? 'Write an AI Note' : 'Write a note'}
-                        composeHeaderLabel={(reviewNoteComposer && !singleLineNumbers) ? 'Note' : ''}
+                        showSubmitTargetLabel={!reviewNoteComposer}
+                        showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                        showSubmitActionMenu={!reviewNoteComposer}
+                        sendToAgentLabel="Send Note to Agent"
+                        inputPlaceholder="Write a note"
+                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
@@ -6462,7 +6476,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={(reviewNoteComposer && !singleLineNumbers) ? null : renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -7239,14 +7253,17 @@ export function PlanDiffEditorToolbar({
           </div>
         )}
       </div>
-      {/* Spec 13: each item is compared against its own project's base, so the
-          hash — and the checkout behind its tooltip — identifies which one. */}
-      <div className={`plan-diff-content-labels${viewMode === 'split' ? ' is-split' : ''}`}>
-        <PlanDiffContentLabel tooltip={baseRevision?.tooltip} variant="read-only" mono>
-          {baseRevision?.hash ?? 'Base revision'}
-        </PlanDiffContentLabel>
-        <PlanDiffContentLabel variant="editable">Local changes</PlanDiffContentLabel>
-      </div>
+      {/* Revision labels describe the two sides of a diff. A plain source has
+          only one content stream, so keeping this row there creates a stray
+          diff artefact directly below its toolbar. */}
+      {!isPlainFile && (
+        <div className={`plan-diff-content-labels${viewMode === 'split' ? ' is-split' : ''}`}>
+          <PlanDiffContentLabel tooltip={baseRevision?.tooltip} variant="read-only" mono>
+            {baseRevision?.hash ?? 'Base revision'}
+          </PlanDiffContentLabel>
+          <PlanDiffContentLabel variant="editable">Local changes</PlanDiffContentLabel>
+        </div>
+      )}
     </div>
   );
 }
@@ -7344,6 +7361,7 @@ export function PlanDiffEditorArea({
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
+  reviewNoteComposer = false,
   viewMode = 'unified',
   onCommentNavigate = null,
   inlineCommentRowIdOnly = false,
@@ -7364,6 +7382,9 @@ export function PlanDiffEditorArea({
   externalCommentRequest = null,
   inspectionWidget = null,
   renderSubmitTargetPicker = null,
+  // Plain source files are unassigned until the reviewer explicitly chooses a
+  // chat from the inline comment composer.
+  hasCommentSession = true,
   reviewSourceTabId = null,
 }) {
   const toolbarRef = useRef(null);
@@ -7398,7 +7419,6 @@ export function PlanDiffEditorArea({
   }, [selectedChangeScopeId, toolbarFileCount, toolbarFileLabel]);
   const selectedChangeScope = PLAN_DIFF_CHANGE_SCOPE_OPTIONS.find((scope) => scope.id === selectedChangeScopeId)
     ?? PLAN_DIFF_CHANGE_SCOPE_OPTIONS[0];
-
   useEffect(() => {
     if (!toolbarRef.current) {
       setOverlayHost(null);
@@ -7440,7 +7460,7 @@ export function PlanDiffEditorArea({
             scope on a plain source file), but the chat this file's diff came
             from and the draft-comments send button still apply, so they get
             their own reduced toolbar instead of disappearing entirely. */}
-        {singleLineNumbers && !reviewNav && (commentContextLabel || onSendComments) && (
+        {singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
@@ -7676,7 +7696,7 @@ export function PlanDiffEditorArea({
           severityFilter={severityFilter}
           resolveKeepsComment={resolveKeepsComment}
           allowInlineCommentCompose={allowInlineCommentCompose}
-          reviewNoteComposer
+          reviewNoteComposer={reviewNoteComposer}
           viewMode={effectiveViewMode}
           onCommentNavigate={onCommentNavigate}
           inlineCommentRowIdOnly={inlineCommentRowIdOnly}

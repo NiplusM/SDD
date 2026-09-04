@@ -5,6 +5,7 @@ import {
   PlanDiffEditorArea,
   PlanDiffEditorToolbar,
   PlanDiffOverlay,
+  PlanDiffCommentCodeSnippet,
   tokenizeCodeFragment,
   arePlanDiffUiStatesEqual,
   normalizePlanDiffUiState,
@@ -17538,6 +17539,15 @@ function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabConte
           name,
           content.language ?? sourceContent?.language ?? 'text',
         );
+      // A file entering the split keeps every note already visible in its
+      // editor. Previously this scope entry started from `{}`, which made the
+      // comment card disappear even though its gutter marker was retained.
+      const sessionComments = normalizeDiffSessionCommentsByChatId(content.diffSessionCommentsByChatId);
+      const comments = mergeStoredDiffCommentsStates(
+        content.initialDiffComments,
+        ...Object.values(sessionComments).map((session) => session?.comments),
+      );
+      const commentCount = flattenDiffCommentsState(comments).length;
       appendFile({
         tabId,
         name: String(name).replace(/^diff\s+/iu, '').trim() || 'File',
@@ -17546,9 +17556,9 @@ function buildReviewScopeFiles(reviewFiles = [], scopeAttachments = [], tabConte
         icon: attachment.icon ?? agentRunFileIconName(name),
         diffData: { ...baseDiffData, focusRowId: null },
         fullDiffData: { ...baseDiffData, focusRowId: null },
-        comments: {},
-        commentCount: 0,
-        openCount: 0,
+        comments,
+        commentCount,
+        openCount: commentCount,
         resolvedCount: 0,
         statusCounts: { open: 0, accepted: 0, dismissed: 0, deleted: 0, 'pending-update': 0 },
         severityTotals: { critical: 0, warning: 0, info: 0 },
@@ -20860,9 +20870,9 @@ function AiChatTabView({
     });
   }, []);
 
-  const handleComposerAttachmentOpen = useCallback((attachment) => {
+  const handleComposerAttachmentOpen = useCallback((attachment, { rowId = null } = {}) => {
     if (onOpenAttachment) {
-      onOpenAttachment(attachment, { messageId, chatId, archived: false });
+      onOpenAttachment(attachment, { messageId, chatId, archived: false, rowId });
       return;
     }
     if (onOpenDiffTab && attachment?.diffRequest) onOpenDiffTab(attachment.diffRequest);
@@ -20886,6 +20896,7 @@ function AiChatTabView({
         ?? getAiChatAttachmentCommentPreviewItems(itemAttachment)
       )}
       onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
+      onNavigateComment={(item) => handleComposerAttachmentOpen(attachment, { rowId: item?.rowId ?? null })}
       onContextMenu={handleComposerAttachmentContextMenu}
       onRemove={onRemoveComposerAttachment
         ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
@@ -24705,6 +24716,16 @@ export default function App() {
     setIdeTabContents((prev) => {
       const existingDiffTabContent = prev[diffTabId] ?? {};
       const previousSessionComments = normalizeDiffSessionCommentsByChatId(existingDiffTabContent.diffSessionCommentsByChatId);
+      // Opening/closing the chat pane can revisit this already-open diff. Its
+      // generated rows may be refreshed, but its inline notes are state, not
+      // generated output — preserve them instead of replacing them with the
+      // freshly built (often empty) initial payload.
+      const mergedInitialDiffComments = commentsReadOnly
+        ? {}
+        : mergeStoredDiffCommentsStates(
+            existingDiffTabContent.initialDiffComments,
+            initialDiffComments,
+          );
       const sessionChatId = contextChatId ?? selectedAiChatId;
       const scenario = getAiChatScenarioById(sessionChatId);
       const listItem = getAiChatListItemById(sessionChatId);
@@ -24717,11 +24738,13 @@ export default function App() {
               messageId: contextMessageId ?? scenario?.messageId ?? `chat-${sessionChatId}`,
               title: scenario?.title ?? sessionChatId,
               icon: listItem?.icon ?? 'claude',
-              comments: initialDiffComments,
+              comments: mergeStoredDiffCommentsStates(
+                previousSessionComments[sessionChatId]?.comments,
+                initialDiffComments,
+              ),
             },
           }
         : previousSessionComments;
-
       return {
         ...prev,
         [diffTabId]: {
@@ -24732,7 +24755,7 @@ export default function App() {
           diffSourceTabId: sourceTabId,
           diffTarget,
           diffLineText: text,
-          initialDiffComments: commentsReadOnly ? {} : initialDiffComments,
+          initialDiffComments: mergedInitialDiffComments,
           diffCommentsReadOnly: Boolean(commentsReadOnly),
           // A snapshot opened from a "files changed" card row: the exact diff
           // as it stood at that turn, not the live/current one, so it has no
@@ -25724,28 +25747,14 @@ export default function App() {
         ?? getSpecSourceFileContent(sourceLabel);
       if (!existing) return prev;
 
-      // Union the diff's session comments into whatever the source tab
-      // already had, per chat id — overwriting (the previous behavior) would
-      // silently drop comments left directly on the source tab, or ones from
-      // an earlier jump tied to a different chat, the next time a comment
-      // got submitted anywhere on this file.
-      const existingSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
-      const diffSessions = normalizeDiffSessionCommentsByChatId(diffContent.diffSessionCommentsByChatId);
-      const mergedSessions = { ...existingSessions };
-      Object.entries(diffSessions).forEach(([chatId, session]) => {
-        const existingSession = mergedSessions[chatId];
-        mergedSessions[chatId] = existingSession
-          ? { ...existingSession, comments: mergeStoredDiffCommentsStates(existingSession.comments, session.comments) }
-          : session;
-      });
-
       return {
         ...existing,
         diffContextChatId: diffContent.diffContextChatId ?? existing.diffContextChatId ?? null,
         diffActiveCommentChatId: diffContent.diffActiveCommentChatId ?? existing.diffActiveCommentChatId ?? null,
-        diffSessionCommentsByChatId: Object.keys(mergedSessions).length > 0
-          ? mergedSessions
-          : (existing.diffSessionCommentsByChatId ?? null),
+        // Source and diff are separate comment owners. The navigation context
+        // is shared, but copying comment sessions here would make a diff note
+        // appear in the source attachment (and vice versa on the return trip).
+        diffSessionCommentsByChatId: existing.diffSessionCommentsByChatId ?? null,
         // Distinguishes "actually jumped here from a diff this session" from
         // a file that merely happens to carry plainFileData from initial
         // seed data (e.g. VisitController.java) — only the former should get
@@ -29317,8 +29326,12 @@ export default function App() {
     if (!baseDiffData) return null;
     const tab = ideTabs.find((candidate) => candidate.id === tabId) ?? null;
     const sessions = normalizeDiffSessionCommentsByChatId(content?.diffSessionCommentsByChatId);
-    const comments = normalizeStoredDiffCommentsState(
-      sessions[reviewSplitChatId]?.comments ?? content?.initialDiffComments,
+    // The code view owns all of its visible notes. Do not filter it to the
+    // chat pane currently open in the split: switching chats must not turn
+    // inline cards into gutter-only badges.
+    const comments = mergeStoredDiffCommentsStates(
+      content?.initialDiffComments,
+      ...Object.values(sessions).map((session) => session?.comments),
     );
     const sourceLabel = baseDiffData.sourceTabLabel
       ?? tab?.label
@@ -30901,10 +30914,9 @@ export default function App() {
     : selectedAiChatId;
   const activePlanDiffComments =
     (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
-      ? (
-          Object.keys(activePlanDiffSessionCommentsByChatId).length > 0
-            ? normalizeStoredDiffCommentsState(activePlanDiffSessionCommentsByChatId[activePlanDiffCommentChatId]?.comments)
-            : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments)
+      ? mergeStoredDiffCommentsStates(
+          activeTabContent?.initialDiffComments,
+          ...Object.values(activePlanDiffSessionCommentsByChatId).map((session) => session.comments),
         )
       : {};
   const activePendingDiffCommentSnapshot = (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
@@ -30949,7 +30961,12 @@ export default function App() {
   // planDiffContextChatId's fallback to whichever chat happens to be
   // selected right now — the two only coincide by accident once this diff
   // has been promoted out of a review split and isn't the active chat tab.
-  const activeDiffOriginChatId = activePlanDiffContextChatId ?? planDiffContextChatId;
+  // A plain source file promoted directly from the editor has no owner yet.
+  // Do not silently treat whichever chat happens to be selected as its owner:
+  // the toolbar must show the session picker until the reviewer chooses one.
+  const activeDiffOriginChatId = activePlanDiffContextChatId
+    ?? (isPlainFileOverlayTab ? null : planDiffContextChatId);
+  const hasActivePlainFileCommentSession = !isPlainFileOverlayTab || Boolean(activePlanDiffContextChatId);
   // The review-scope lookup keys files by the *source* file's own tab id, not
   // the diff tab's id — on a diff tab that's activePlanDiffSourceTabId; on a
   // plain-file-overlay tab (jumped to source) the source file IS the active
@@ -31905,6 +31922,7 @@ export default function App() {
           && JSON.stringify(normalizeStoredDiffCommentsState(existing.diffSessionCommentsByChatId?.[targetChatId]?.comments))
           === JSON.stringify(targetSessionComments)
           && existing.diffActiveCommentChatId === targetChatId
+          && (!isPlainFileOverlayTab || existing.diffContextChatId === targetChatId)
         ) {
           return prev;
         }
@@ -31932,6 +31950,13 @@ export default function App() {
             initialDiffComments: nextMergedDiffComments,
             diffSessionCommentsByChatId: nextSessionComments,
             diffActiveCommentChatId: targetChatId,
+            // A note submitted on an unassigned source file establishes its
+            // session association as well, matching the explicit top-bar
+            // picker and preventing the toolbar from falling back to an
+            // unrelated currently selected chat.
+            diffContextChatId: isPlainFileOverlayTab
+              ? (existing.diffContextChatId ?? targetChatId)
+              : existing.diffContextChatId,
             diffCommentsReadOnly: false,
           },
         };
@@ -34932,41 +34957,25 @@ export default function App() {
     // rather than assuming one.
     const plainContent = ideTabContents[item.sourceTabId];
     const diffContent = ideTabContents[buildPlanDiffTabId(item.sourceTabId)];
-    const sourceDiffData = [plainContent?.plainFileData, plainContent?.diffData, diffContent?.diffData]
+    // Prefer the rendered diff over the plain source representation: a row
+    // that is present in both must keep the diff's added/removed fragments,
+    // gutters and line numbers in the hover context as well.
+    const sourceDiffData = [diffContent?.diffData, plainContent?.diffData, plainContent?.plainFileData]
       .find((candidate) => Array.isArray(candidate?.rows) && candidate.rows.some((row) => row.id === item.rowId))
       ?? null;
     const rows = Array.isArray(sourceDiffData?.rows) ? sourceDiffData.rows : [];
     if (rows.length === 0) return null;
     const targetIndex = rows.findIndex((row) => row.id === item.rowId);
     if (targetIndex < 0) return null;
-    const snippetRows = rows.slice(Math.max(0, targetIndex - 1), Math.min(rows.length, targetIndex + 2));
+    const snippetRows = rows.slice(Math.max(0, targetIndex - 2), Math.min(rows.length, targetIndex + 3));
     if (snippetRows.length === 0) return null;
     const language = sourceDiffData?.language || 'text';
-    // A plain, quick-doc-style code block — no diff gutter/line numbers, just
-    // syntax-highlighted lines with the commented one picked out, closer to
-    // an IDE's own hover-preview styling than the full diff row chrome.
     return (
-      <div className="ai-chat-attachment-hover-code-block">
-        {snippetRows.map((row) => (
-          <div
-            key={row.id}
-            className={`ai-chat-attachment-hover-code-line${row.id === item.rowId ? ' is-target' : ''}`}
-          >
-            {(row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, fragmentIndex) => (
-              <span
-                key={fragmentIndex}
-                className={`plan-diff-fragment${fragment.tone && fragment.tone !== 'plain' ? ` is-${fragment.tone}` : ''}`}
-              >
-                {tokenizeCodeFragment(fragment.text || ' ', language).map((token, tokenIndex) => (
-                  <span key={tokenIndex} className={`plan-diff-token plan-diff-token-${token.type}`}>
-                    {token.text}
-                  </span>
-                ))}
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
+      <PlanDiffCommentCodeSnippet
+        rows={snippetRows}
+        language={language}
+        targetRowIds={[item.rowId]}
+      />
     );
   }, [ideTabContents]);
 
@@ -36016,13 +36025,22 @@ export default function App() {
                     documentContextIcon="fileTypes/markdown"
                     documentContextSessionLabel={activePlanDiffDocumentContextSessionLabel}
                     documentContextSourceTabId={activePlanDiffDocumentSourceTabId}
-                    defaultSubmitAttachMode={activePlanDiffDefaultSubmitAttachMode}
-                    defaultSubmitTargetLabel={activePlanDiffDefaultSubmitTargetLabel}
-                    defaultSubmitTargetIcon={activePlanDiffDefaultSubmitTargetIcon}
-                    defaultSubmitTargetKey={activePlanDiffDefaultSubmitTargetKey}
+                    defaultSubmitAttachMode={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                      ? 'current'
+                      : activePlanDiffDefaultSubmitAttachMode}
+                    requireSubmitTargetChoice={isPlainFileOverlayTab && !hasActivePlainFileCommentSession}
+                    defaultSubmitTargetLabel={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                      ? 'Choose chat session'
+                      : activePlanDiffDefaultSubmitTargetLabel}
+                    defaultSubmitTargetIcon={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                      ? 'claude'
+                      : activePlanDiffDefaultSubmitTargetIcon}
+                    defaultSubmitTargetKey={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                      ? ''
+                      : activePlanDiffDefaultSubmitTargetKey}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
-                    commentContextLabel={planDiffContextChatTitle}
+                    commentContextLabel={hasActivePlainFileCommentSession ? planDiffContextChatTitle : ''}
                     onOpenChat={(activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
                       { source: { tabId: activeDiffOriginSourceTabId } },
                       activeDiffOriginChatId,
@@ -36048,7 +36066,11 @@ export default function App() {
                       activeRowId: rowId,
                       caretState: { ...(activePlanDiffUiState?.caretState ?? {}), rowId },
                     })}
-	                    commentSessions={activePlanDiffSessionComments}
+	                    // `initialDiffComments` above is the canonical union of
+	                    // every chat session. Passing the same sessions again
+	                    // makes a second copy of each thread and lets a selected
+	                    // chat hide the first one after the split is reopened.
+	                    commentSessions={[]}
 	                    commentSessionActiveChatId={activeDiffOriginChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
                       onTextSelectionChange={(selectionState) => {
@@ -36079,7 +36101,10 @@ export default function App() {
                         : null
                     }
 	                    onInlineCommentOpenChange={handleEditorInlineCommentOpenChange}
-	                    renderSubmitTargetPicker={renderCommentSubmitTargetPicker}
+	                    renderSubmitTargetPicker={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                      ? (pickerProps) => renderCommentSubmitTargetPicker({ ...pickerProps, includeDocuments: false })
+                      : renderCommentSubmitTargetPicker}
+                    hasCommentSession={hasActivePlainFileCommentSession}
                     onDiffCommentsChange={handleActivePlanDiffCommentsChange}
                     onRowDelete={handlePlanDiffRowDelete}
                     onRowFix={handlePlanDiffRowFix}
@@ -36103,6 +36128,11 @@ export default function App() {
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     resolveKeepsComment={activeReviewFileIndex >= 0}
+                    // A source file reached from a chat/diff is already owned
+                    // by that session, so show the standard comment composer.
+                    // A file promoted directly from the editor has no explicit
+                    // session yet and keeps the AI-note attach flow.
+                    reviewNoteComposer={isPlainFileOverlayTab && Boolean(activePlanDiffContextChatId)}
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}

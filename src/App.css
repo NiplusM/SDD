@@ -2931,6 +2931,7 @@ body {
   left: 0;
   z-index: 1;
   display: flex;
+  box-sizing: border-box;
   flex-direction: column;
   min-width: 160px;
   padding: 4px;
@@ -8853,13 +8854,18 @@ body {
 }
 
 .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
-  /* 420px capped this well below the diff pane's actual free width in a
-     normal-size window, wrapping short comment text for no reason — the
-     diff area has plenty of room, the card just refused to use it. */
+  /* Source-file notes stay close to their anchor. The review split provides
+     its own full-column override below, where broad feedback is intentional. */
   width: clamp(300px, 54%, 640px);
   min-width: 0;
   max-width: min(100%, 640px);
   box-sizing: border-box;
+}
+
+/* The shared popup caps standalone hover text at 180px. In a diff-row card
+   that artificial cap causes excessive line wrapping despite free space. */
+.plan-diff-inline-comment .spec-done-comment-popup-group .spec-done-comment-popup-item-text {
+  max-width: none;
 }
 
 .spec-done-row-comment .spec-done-inline-comment-thread {
@@ -12182,32 +12188,57 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   max-width: 320px;
 }
 
-/* A note with a code-context panel needs the extra width for the second
-   card sitting next to it — grown here (rather than always) so a plain
-   text-only note stays compact. */
+/* The code preview is portalled, so it must not make the left note card claim
+   the combined width of both cards. Keep the hover anchor compact. */
 .ai-chat-attachment-comment-preview.ai-chat-attachment-comment-preview-library:has(
-  .ai-chat-attachment-hover-code-panel
+  .ai-chat-attachment-hover-card-group.has-code-preview
 ) {
-  max-width: 640px;
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
 }
 
-/* The note card and the code-context card are two visually separate
-   components sitting side by side, not one merged box — each gets its own
-   background so neither one shows the page behind it through the other's
-   space. */
+/* The preview sits 6px above its attachment. Keep that otherwise invisible
+   strip hoverable, so moving the pointer from the chip to the note card does
+   not dismiss the card before it can be reached. */
+.ai-chat-attachment-comment-preview.ai-chat-attachment-comment-preview-library::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 6px;
+  content: '';
+  pointer-events: auto;
+}
+
+/* The note card is the attachment's first-level hover. It is the only card
+   anchored over the chip; its code preview is a second-level hover, positioned
+   alongside it so the left card never shifts away from the attachment. */
 .ai-chat-attachment-hover-card-group {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
 }
 
-/* TooltipHelp ships a fixed 251px width; the note text needs the wrapper's
-   range. flex: 1 1 auto (not width: 100%) so it shares the row with the
-   code-context card instead of claiming the whole thing. */
+/* Preserve the second-level hover while moving across the deliberate 4px
+   visual gap between the note card and its portalled code preview. */
+.ai-chat-attachment-hover-card-group::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: 4px;
+  content: '';
+  pointer-events: auto;
+}
+
+/* TooltipHelp ships a fixed 251px width; explicitly size the left note card
+   while its separate code preview is displayed through a portal. */
 .ai-chat-attachment-hover-tooltip {
-  flex: 1 1 auto;
-  width: auto;
+  flex: 0 0 280px;
+  width: 280px;
+  max-width: 280px;
   min-width: 0;
+  box-sizing: border-box;
   padding: 8px 10px;
   gap: 6px;
   font: 400 12px/16px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -12223,12 +12254,20 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 .ai-chat-attachment-hover-tooltip .tooltip-help-body {
   display: flex;
   width: 100%;
-  max-height: 190px;
   flex-direction: column;
   gap: 6px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   color: #DFE1E5;
+}
+
+/* A compact navigable summary belongs in the left card. Keep it on one line:
+   a second partially filled line (for example "in th") reads like a broken
+   wrap, while a stable ellipsis makes it clear that the full note is in the
+   diff. Full, untruncated code remains in the right preview. */
+.ai-chat-attachment-hover-tooltip .ai-chat-attachment-hover-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* One note = its messages (the note itself + the agent's answer), each of them
@@ -12247,20 +12286,53 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   gap: 6px;
 }
 
-/* Standalone card for the code preview, sitting next to (not inside) the
-   note card — same chrome family as the note tooltip so the two read as a
-   matched pair rather than one blob. */
+/* Standalone second-level card for the code preview. It is portalled to the
+   document root, which keeps it above the open split diff rather than inside
+   an overflow-hidden editor pane. */
 .ai-chat-attachment-hover-code-panel {
+  position: absolute;
+  bottom: 0;
+  left: calc(100% + 4px);
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 0 0 auto;
-  width: 260px;
+  width: 440px;
+  max-height: 380px;
+  overflow: auto;
   padding: 8px;
   border: 1px solid #393B40;
   border-radius: 8px;
   background: #26282C;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-4px);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-soft),
+    transform var(--motion-duration-fast) var(--motion-ease-soft),
+    visibility 0s linear var(--motion-duration-fast);
+}
+
+.ai-chat-attachment-hover-code-panel-portal {
+  position: fixed;
+  bottom: auto;
+  z-index: 2147483000;
+  width: 440px;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+  transition: none;
+}
+
+/* The hover uses PlanDiffCommentCodeSnippet, the same row renderer as the
+   actual diff. Let the portalled card own scrolling/height so its complete
+   five-row context is visible instead of being cropped by the aside variant. */
+.ai-chat-attachment-hover-code-panel-portal .plan-diff-aside-comment-code-context {
+  max-height: none;
+  overflow: visible;
 }
 
 .ai-chat-attachment-hover-note-code {
@@ -12274,7 +12346,9 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   display: flex;
   flex-direction: column;
   overflow: auto;
-  max-height: 140px;
+  width: 100%;
+  max-width: 100%;
+  max-height: 300px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.25);
   padding: 6px 0;
@@ -12283,8 +12357,20 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 }
 
 .ai-chat-attachment-hover-code-line {
+  min-height: 20px;
+  min-width: max-content;
   padding: 0 8px;
+  line-height: 20px;
   color: var(--editor-text, #BCBEC4);
+}
+
+/* Diff fragments normally expand 4px above and below their source line.
+   That works in the editor's 22px rows but overlaps in a compact hover
+   preview. Keep the same green/grey semantics without the editor spacing. */
+.ai-chat-attachment-hover-code-line .plan-diff-fragment.is-added,
+.ai-chat-attachment-hover-code-line .plan-diff-fragment.is-removed {
+  margin: 0;
+  padding: 0;
 }
 
 .ai-chat-attachment-hover-code-line.is-target {
@@ -12699,7 +12785,8 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
    prompt chips and sent-message chips all render the library hover card. */
 .ai-chat-attachment-chip:hover .ai-chat-attachment-comment-preview,
 .ai-chat-attachment-chip:focus-visible .ai-chat-attachment-comment-preview,
-.ai-chat-attachment-chip:focus-within .ai-chat-attachment-comment-preview {
+.ai-chat-attachment-chip:focus-within .ai-chat-attachment-comment-preview,
+.ai-chat-attachment-chip.is-comment-preview-active .ai-chat-attachment-comment-preview {
   opacity: 1;
   transform: translateY(0);
   /* Without this the card stayed click-through even while visible: the
@@ -23279,8 +23366,19 @@ button.aiux543-answer-change-card:focus-visible {
   inset: 0;
 }
 
-/* Keep review notes compact enough to read as an anchored editor card rather
-   than a full-width row, while still fitting the title and two footer actions. */
+/* Plain source rows may contain code wider than the viewport. The generic diff
+   renderer sizes its row wrapper to that longest line, which also made an
+   inline comment use the off-screen code width and get clipped at the right
+   edge. Keep the source row at viewport width; the code text itself can still
+   overflow into the existing horizontal scroller. */
+.aiux-review-split-file-view .plan-diff-overlay--single .plan-diff-code,
+.aiux-review-split-file-view .plan-diff-overlay--single .plan-diff-row {
+  width: 100%;
+  min-width: 100%;
+}
+
+/* Inline review comments use the full diff code column so long feedback does
+   not wrap beside an unused block of space. */
 .aiux-review-split-file-view .plan-diff-inline-comment {
   width: 100%;
   gap: 4px;
@@ -23290,9 +23388,9 @@ button.aiux543-answer-change-card:focus-visible {
 
 .aiux-review-split-file-view .plan-diff-inline-comment .cmp-popup.spec-done-comment-popup {
   --spec-done-comment-popup-inline-padding: 10px;
-  width: min(520px, 100%);
+  width: calc(100% - 16px);
   min-width: 0;
-  max-width: min(520px, 100%);
+  max-width: calc(100% - 16px);
 }
 
 .aiux-review-split-file-view .spec-done-comment-popup.has-comments .spec-done-comment-popup-groups,
