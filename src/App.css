@@ -12073,7 +12073,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .ai-chat-attachment-comment-preview {
   position: absolute;
-  bottom: calc(100% + 2px);
+  bottom: 100%;
   left: 0;
   z-index: 100;
   display: flex;
@@ -12282,6 +12282,17 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .ai-chat-attachment-hover-card-group:hover .ai-chat-attachment-hover-code-panel,
 .ai-chat-attachment-hover-card-group:focus-within .ai-chat-attachment-hover-code-panel {
+  width: 260px;
+  padding: 8px;
+  border-width: 1px;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* The note panel is the reliable hover target: keeping this explicit also
+   preserves the opened code context while the pointer moves from the note to
+   the code panel. */
+.ai-chat-attachment-hover-tooltip:hover ~ .ai-chat-attachment-hover-code-panel {
   width: 260px;
   padding: 8px;
   border-width: 1px;
