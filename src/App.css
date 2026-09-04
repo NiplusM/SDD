@@ -12196,6 +12196,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
    background so neither one shows the page behind it through the other's
    space. */
 .ai-chat-attachment-hover-card-group {
+  /* Keep the note panel aligned with the bottom edge of the code preview. */
   display: flex;
   align-items: flex-end;
   gap: 0;
