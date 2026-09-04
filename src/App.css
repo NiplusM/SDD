@@ -12215,6 +12215,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
    range. flex: 1 1 auto (not width: 100%) so it shares the row with the
    code-context card instead of claiming the whole thing. */
 .ai-chat-attachment-hover-tooltip {
+  /* Review marker: this panel keeps a stable width while code is revealed. */
   /* Keep the note card stable while the adjacent code card expands. */
   flex: 0 0 251px;
   width: 251px;
