@@ -12073,7 +12073,7 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
 
 .ai-chat-attachment-comment-preview {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 2px);
   left: 0;
   z-index: 100;
   display: flex;
