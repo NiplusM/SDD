@@ -12197,7 +12197,16 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
    space. */
 .ai-chat-attachment-hover-card-group {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
+  gap: 0;
+  transition: gap var(--motion-duration-fast) var(--motion-ease-soft);
+}
+
+/* Keep the note card as the initial, compact hover target. Its code context
+   expands only after the pointer reaches the hover card, so it does not make
+   every attachment preview unnecessarily wide. */
+.ai-chat-attachment-hover-card-group:hover,
+.ai-chat-attachment-hover-card-group:focus-within {
   gap: 8px;
 }
 
@@ -12255,12 +12264,29 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   flex-direction: column;
   gap: 8px;
   flex: 0 0 auto;
-  width: 260px;
-  padding: 8px;
-  border: 1px solid #393B40;
+  width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0 solid #393B40;
   border-radius: 8px;
   background: #26282C;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: width var(--motion-duration-fast) var(--motion-ease-soft),
+    padding var(--motion-duration-fast) var(--motion-ease-soft),
+    border-width var(--motion-duration-fast) var(--motion-ease-soft),
+    opacity var(--motion-duration-fast) var(--motion-ease-soft),
+    transform var(--motion-duration-fast) var(--motion-ease-soft);
+}
+
+.ai-chat-attachment-hover-card-group:hover .ai-chat-attachment-hover-code-panel,
+.ai-chat-attachment-hover-card-group:focus-within .ai-chat-attachment-hover-code-panel {
+  width: 260px;
+  padding: 8px;
+  border-width: 1px;
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .ai-chat-attachment-hover-note-code {
