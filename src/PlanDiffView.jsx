@@ -7217,7 +7217,7 @@ export function PlanDiffEditorToolbar({
             <div className="plan-diff-toolbar-right">
               {!secondaryRowHidden && (
                 <>
-                  {onCommitScope && (
+                  {!isPlainFile && onCommitScope && (
                     <PlanDiffCommitButton
                       onCommitScope={onCommitScope}
                       checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
@@ -7496,19 +7496,6 @@ export function PlanDiffEditorArea({
                   </div>
                 </div>
                 <div className="plan-diff-toolbar-right">
-                  {onCommitScope && (
-                    <Button
-                      type="secondary"
-                      size="slim"
-                      onClick={() => onCommitScope({
-                        scopeId: selectedChangeScopeId,
-                        scopeLabel: selectedChangeScope?.label ?? 'Current scope',
-                        files: demoScopeFiles,
-                      })}
-                    >
-                      Commit with Agent
-                    </Button>
-                  )}
                   {onSendComments && (
                     <Button
                       type="primary"
