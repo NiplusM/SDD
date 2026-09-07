@@ -7016,6 +7016,7 @@ export function PlanDiffEditorToolbar({
   // them to the chat at once, so it only shows up once there's something to
   // send.
   commentCount = 0,
+  sendCommentsDisabled = false,
   onSendComments = null,
   // Lets the reviewer step through drafted comments one at a time, the same
   // way they step through changed files.
@@ -7230,8 +7231,10 @@ export function PlanDiffEditorToolbar({
                       type="primary"
                       size="slim"
                       className="plan-diff-send-comments-button"
-                      disabled={commentCount === 0}
-                      aria-label={commentCount > 0
+                      disabled={commentCount === 0 || sendCommentsDisabled}
+                      aria-label={sendCommentsDisabled
+                        ? 'Comments are being processed by the agent.'
+                        : commentCount > 0
                         ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
                         : 'No comments to send yet.'}
                       onClick={() => onSendComments(commentCount)}
@@ -7346,6 +7349,7 @@ export function PlanDiffEditorArea({
   // toolbar — commentCount comes from the host since comment state here is
   // owned by the nested PlanDiffOverlay, not this component.
   commentCount = 0,
+  sendCommentsDisabled = false,
   onSendComments = null,
   // Prev/next through drafted comments, shown next to the chat label on the
   // secondary toolbar row. The row id list and active id are owned by the
@@ -7501,8 +7505,10 @@ export function PlanDiffEditorArea({
                       type="primary"
                       size="slim"
                       className="plan-diff-send-comments-button"
-                      disabled={commentCount === 0}
-                      aria-label={commentCount > 0
+                      disabled={commentCount === 0 || sendCommentsDisabled}
+                      aria-label={sendCommentsDisabled
+                        ? 'Comments are being processed by the agent.'
+                        : commentCount > 0
                         ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
                         : 'No comments to send yet.'}
                       onClick={() => onSendComments(commentCount)}
@@ -7629,8 +7635,10 @@ export function PlanDiffEditorArea({
                             type="primary"
                             size="slim"
                             className="plan-diff-send-comments-button"
-                            disabled={commentCount === 0}
-                            aria-label={commentCount > 0
+                            disabled={commentCount === 0 || sendCommentsDisabled}
+                            aria-label={sendCommentsDisabled
+                              ? 'Comments are being processed by the agent.'
+                              : commentCount > 0
                               ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
                               : 'No comments to send yet.'}
                             onClick={() => onSendComments(commentCount)}

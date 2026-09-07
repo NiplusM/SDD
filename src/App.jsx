@@ -18796,6 +18796,7 @@ function AiReviewSplitFileView({
   activeChatId = '',
   activeChatTitle = 'AI Review',
   commentCount = 0,
+  sendCommentsDisabled = false,
   onSendComments = null,
   renderSubmitTargetPicker = null,
   onNavigateFile = null,
@@ -19014,6 +19015,7 @@ function AiReviewSplitFileView({
         chatTitle={activeChatTitle}
         chatIcon={agentIcon}
         commentCount={commentCount}
+        sendCommentsDisabled={sendCommentsDisabled}
         onSendComments={onSendComments}
         commentRowIds={fileCommentRowIds}
         activeCommentRowId={fileCommentUiState?.activeRowId ?? null}
@@ -35675,6 +35677,7 @@ export default function App() {
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
                       commentCount={Object.values(normalizeStoredDiffCommentsState(activeReviewSplitFile?.comments)).flat().length}
+                      sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
                       onSendComments={(count) => {
                         handleAiChatTabSend(reviewSplitChatId, buildSendCommentsMessage(count));
                         openChatInEditorTab(reviewSplitChatId);
@@ -36046,6 +36049,7 @@ export default function App() {
                       activeDiffOriginChatId,
                     ) : null}
                     commentCount={activeDiffSendableCommentCount}
+                    sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffOriginChatId]?.status)}
                     onSendComments={activeDiffOriginChatId ? (count) => {
                       handleAiChatTabSend(activeDiffOriginChatId, buildSendCommentsMessage(count));
                       if (activeDiffOriginSourceTabId) {
