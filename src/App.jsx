@@ -14051,7 +14051,7 @@ const DEFAULT_OPEN_CHAT_TAB_ID = `ai-chat-${DEFAULT_OPEN_CHAT_ID}`;
 function getPrototypeEntryPoint() {
   if (typeof window === 'undefined') return null;
   const entry = new URLSearchParams(window.location.search).get('entry');
-  return ['diff', 'file', 'commit'].includes(entry) ? entry : null;
+  return ['diff', 'file', 'commit', 'chat'].includes(entry) ? entry : null;
 }
 
 function buildInitialEditorTabs() {
