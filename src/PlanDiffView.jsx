@@ -1270,10 +1270,14 @@ const PLAN_DIFF_VCS_STATUS_LETTER = {
 // and a chain of directories holding nothing but one more directory collapses
 // into a single row ("compact middle packages"), so deep Java packages stay
 // readable instead of costing one indent level per segment.
-function buildPlanDiffFileTree(files = []) {
+function buildPlanDiffFileTree(files = [], projectRoot = '') {
   const root = { name: '', dirs: new Map(), files: [] };
   files.forEach((file, index) => {
-    const segments = String(file?.path ?? '').split('/').filter(Boolean);
+    let segments = String(file?.path ?? '').split('/').filter(Boolean);
+    if (projectRoot) {
+      const projectIndex = segments.lastIndexOf(projectRoot);
+      if (projectIndex >= 0) segments = segments.slice(projectIndex + 1);
+    }
     let node = root;
     segments.forEach((segment) => {
       if (!node.dirs.has(segment)) {
@@ -1380,12 +1384,16 @@ function buildPlanDiffSessionNodes(files, keyPrefix) {
 // of one repository are two checkouts and therefore two sibling rows, which is
 // also what makes the same path in each of them a separate review item.
 //
-// A level is only introduced when it discriminates: a single-checkout,
-// single-session scope stays a plain path tree, so the structure never charges
-// the reviewer for distinctions they do not have.
-function buildPlanDiffScopeNodes(files, keyPrefix = 'scope') {
+// Keep the checkout visible even when there is only one project: it is the
+// stable root of the path hierarchy, and removing another project must not
+// collapse `project/src` into one row. Session levels remain conditional and
+// only appear when they actually discriminate entries.
+function buildPlanDiffScopeNodes(files, keyPrefix = 'scope', skipCheckout = false) {
   const byCheckout = groupPlanDiffFilesBy(files, (file) => `${file.project ?? ''}\u0000${file.branch ?? ''}`);
-  if (byCheckout.length > 1) {
+  const hasCheckoutMetadata = byCheckout.some(([, checkoutFiles]) => (
+    checkoutFiles.some((file) => Boolean(file.project))
+  ));
+  if (!skipCheckout && (byCheckout.length > 1 || hasCheckoutMetadata)) {
     return byCheckout.map(([key, checkoutFiles]) => {
       const [project, branch] = key.split('\u0000');
       return {
@@ -1399,7 +1407,7 @@ function buildPlanDiffScopeNodes(files, keyPrefix = 'scope') {
         // out at once, so name it where it explains the duplication.
         detail: checkoutFiles[0]?.worktree ?? null,
         files: checkoutFiles,
-        children: buildPlanDiffScopeNodes(checkoutFiles, `${keyPrefix}/checkout:${key}`),
+        children: buildPlanDiffScopeNodes(checkoutFiles, `${keyPrefix}/checkout:${key}`, true),
       };
     });
   }
@@ -1642,8 +1650,7 @@ function PlanDiffViewingScopeControl({
   const setFilesChecked = (files, nextChecked) => files.forEach((file) => setFileChecked(file, nextChecked));
 
   const scopeNodes = buildPlanDiffScopeNodes(dedupedFileOptions);
-  // A single-project, single-branch, single-session scope has nothing to group
-  // by and keeps the plain path tree.
+  // Files without project metadata still fall back to a plain path tree.
   const isGroupedScope = scopeNodes.length > 0;
   const fileTree = buildPlanDiffFileTree(dedupedFileOptions);
   // Every group holds its own path tree, so the file structure survives inside
@@ -1651,7 +1658,9 @@ function PlanDiffViewingScopeControl({
   const attachTrees = (nodes) => nodes.map((node) => ({
     ...node,
     children: node.children?.length ? attachTrees(node.children) : null,
-    tree: node.children?.length ? null : buildPlanDiffFileTree(node.files),
+    tree: node.children?.length
+      ? null
+      : buildPlanDiffFileTree(node.files, node.kind === 'checkout' ? node.label : ''),
   }));
   const scopeTrees = attachTrees(scopeNodes);
   const collectGroupKeys = (nodes) => nodes.flatMap((node) => [
