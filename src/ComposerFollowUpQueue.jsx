@@ -139,87 +139,28 @@ function VcsSummaryFileRow({ file, onOpenFile }) {
   );
 }
 
-// Two click targets sharing one outline: the label runs Review directly
-// (it's the default action, so it shouldn't need a menu detour), and the
-// chevron opens a menu of everything this control can do, Review included
-// and marked as current — so Commit stays reachable without stealing the
-// label's own click. PositionedPopup + Popup + PopupCell for the menu, same
-// as PlanDiffChangeScopeControl's "Last Turn ⌄".
-function VcsReviewSplitButton({
+// The composer-level All Changes summary has one action: open Review. Commit
+// belongs to the diff toolbar where its exact scope and checked files are
+// visible, so this control intentionally has no secondary menu.
+function VcsReviewButton({
   reviewLabel,
   reviewAriaLabel,
   reviewDisabled = false,
-  commitDisabled = false,
-  commitAriaLabel,
   onReview,
-  onCommit,
 }) {
-  const chevronRef = useRef(null);
-  const [menuRect, setMenuRect] = useState(null);
-  const closeMenu = () => setMenuRect(null);
-
   return (
-    <span className="ij-air-follow-up-queue__vcs-review-split">
-      <button
-        type="button"
-        className="ij-air-follow-up-queue__vcs-review"
-        aria-label={reviewAriaLabel}
-        disabled={reviewDisabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          onReview?.();
-        }}
-      >
-        {reviewLabel}
-      </button>
-      <button
-        ref={chevronRef}
-        type="button"
-        className={`ij-air-follow-up-queue__vcs-review-chevron${menuRect ? ' open' : ''}`}
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={Boolean(menuRect)}
-        disabled={reviewDisabled && commitDisabled}
-        onClick={(event) => {
-          event.stopPropagation();
-          setMenuRect((prev) => (prev ? null : chevronRef.current?.getBoundingClientRect() ?? null));
-        }}
-      >
-        <Icon name="general/chevronDown" size={16} />
-      </button>
-      {menuRect && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={menuRect} onDismiss={closeMenu} gap={4}>
-            <Popup visible className="ij-air-follow-up-queue__vcs-review-menu" onClose={closeMenu}>
-              <PopupCell
-                icon="vcs/diff"
-                selected
-                disabled={reviewDisabled}
-                aria-label={reviewAriaLabel}
-                onClick={() => {
-                  closeMenu();
-                  onReview?.();
-                }}
-              >
-                {reviewLabel}
-              </PopupCell>
-              <PopupCell
-                icon="vcs/commit"
-                disabled={commitDisabled}
-                aria-label={commitAriaLabel}
-                onClick={() => {
-                  closeMenu();
-                  onCommit?.();
-                }}
-              >
-                Commit with Agent
-              </PopupCell>
-            </Popup>
-          </PositionedPopup>
-        </div>,
-        document.body,
-      )}
-    </span>
+    <button
+      type="button"
+      className="ij-air-follow-up-queue__vcs-review"
+      aria-label={reviewAriaLabel}
+      disabled={reviewDisabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onReview?.();
+      }}
+    >
+      {reviewLabel}
+    </button>
   );
 }
 
@@ -601,16 +542,7 @@ export function ComposerFollowUpQueue({
   };
 
   const activeTabLabel = resolvedActiveTab === 'vcs' ? (vcsTab?.label ?? resolvedLabel) : resolvedLabel;
-  // Controlled if the host passes checkedFileIds (so the composer message it
-  // sends after Commit reflects what's actually checked); every file starts
-  // checked otherwise, same "checked unless told otherwise" default the diff
-  // toolbar's own checkboxes use.
   const vcsFiles = vcsTab?.files ?? [];
-  const vcsCheckedIds = Array.isArray(vcsTab?.checkedFileIds)
-    ? vcsTab.checkedFileIds
-    : vcsFiles.map((file) => file.tabId);
-  const vcsCheckedIdSet = new Set(vcsCheckedIds);
-  const vcsCheckedCount = vcsFiles.filter((file) => vcsCheckedIdSet.has(file.tabId)).length;
 
   return (
     <section
@@ -692,14 +624,11 @@ export function ComposerFollowUpQueue({
                 Hide
               </button>
             </ComposerActionTooltip>
-            <VcsReviewSplitButton
+            <VcsReviewButton
               reviewLabel="Review"
               reviewDisabled={Boolean(vcsTab.reviewDisabled)}
               reviewAriaLabel={`Review ${vcsTab.label}. ${vcsTab.added} lines added, ${vcsTab.removed} lines removed`}
-              commitDisabled={vcsCheckedCount === 0}
-              commitAriaLabel={`Commit with Agent for ${vcsCheckedCount} checked ${vcsCheckedCount === 1 ? 'file' : 'files'}. Send a commit request to the chat.`}
-              onReview={() => vcsTab.onRunReview?.(vcsFiles.filter((file) => vcsCheckedIdSet.has(file.tabId)).map((file) => file.tabId))}
-              onCommit={() => vcsTab.onCommitScope?.(vcsFiles.filter((file) => vcsCheckedIdSet.has(file.tabId)))}
+              onReview={() => vcsTab.onRunReview?.(vcsFiles.map((file) => file.tabId))}
             />
           </span>
         )}

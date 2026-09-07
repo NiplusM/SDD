@@ -20250,23 +20250,6 @@ function AiChatTabView({
   const initialSessionAccess = typeof scenario?.initialAccess === 'string' ? scenario.initialAccess : 'Full Access';
   const [composerText, setComposerText] = useState(persistedComposerText);
   const [composerContentParts, setComposerContentParts] = useState(persistedComposerContentParts);
-  // Checkboxes on the "All Changes" summary bar's file list, checked unless
-  // told otherwise — same default the review split's own checkboxes use, but
-  // scoped to this chat's composer since the bar lives here, not in App.
-  const [vcsSummaryUncheckedFileTabIds, setVcsSummaryUncheckedFileTabIds] = useState({});
-  const setVcsSummaryFileChecked = useCallback((tabId, nextChecked) => {
-    if (!tabId) return;
-    setVcsSummaryUncheckedFileTabIds((prev) => {
-      if (!nextChecked) {
-        if (prev[tabId]) return prev;
-        return { ...prev, [tabId]: true };
-      }
-      if (!prev[tabId]) return prev;
-      const next = { ...prev };
-      delete next[tabId];
-      return next;
-    });
-  }, []);
   // Attachments (diff/comment/spec chips) the user has already sent from this
   // composer. Keyed by content, not just id, so a chip that gets new comments
   // after being dismissed resurfaces instead of staying hidden forever.
@@ -21450,14 +21433,6 @@ function AiChatTabView({
                 reviewDisabled: isAgentRunProcessing,
                 onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
                 onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
-                checkedFileIds: vcsFiles
-                  .map((file) => file.tabId)
-                  .filter((tabId) => tabId && !vcsSummaryUncheckedFileTabIds[tabId]),
-                onToggleFileChecked: setVcsSummaryFileChecked,
-                onCommitScope: (checkedFiles) => {
-                  setComposerText(buildCommitComposerMessage({ files: checkedFiles, commitMessage: scenario?.title }));
-                  focusComposerAtEnd();
-                },
               }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}
