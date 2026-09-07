@@ -25768,6 +25768,11 @@ export default function App() {
           // is shared, but copying comment sessions here would make a diff note
           // appear in the source attachment (and vice versa on the return trip).
           diffSessionCommentsByChatId: existing.diffSessionCommentsByChatId ?? null,
+          // Keep the compact review-note presentation when a diff promoted out
+          // of the review split opens its source and later remounts.
+          diffReviewNoteComposer: Boolean(
+            diffContent.diffReviewNoteComposer || existing.diffReviewNoteComposer,
+          ),
           // Distinguishes "actually jumped here from a diff this session" from
           // a file that merely happens to carry plainFileData from initial
           // seed data (e.g. VisitController.java) — only the former should get
@@ -26331,6 +26336,20 @@ export default function App() {
     setReviewSplitChangeScopeOptions([]);
 
     if (activeDiffTabId && (activeDiffContent || diffAlreadyRegistered)) {
+      setIdeTabContents((prev) => (
+        prev[activeDiffTabId]
+          ? {
+              ...prev,
+              [activeDiffTabId]: {
+                ...prev[activeDiffTabId],
+                // The split renders inline feedback as compact review notes.
+                // Persist that presentation when the chat pane is closed so a
+                // later tab remount cannot reintroduce redundant chat headers.
+                diffReviewNoteComposer: true,
+              },
+            }
+          : prev
+      ));
       let nextTabs = ideTabs.filter((tab) => tab.id !== REVIEW_DIFF_TAB_ID);
       if (!diffAlreadyRegistered) {
         const diffTab = {
@@ -36152,11 +36171,12 @@ export default function App() {
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     resolveKeepsComment={activeReviewFileIndex >= 0}
-                    // A source file reached from a chat/diff is already owned
-                    // by that session, so show the standard comment composer.
-                    // A file promoted directly from the editor has no explicit
-                    // session yet and keeps the AI-note attach flow.
-                    reviewNoteComposer={isPlainFileOverlayTab && Boolean(activePlanDiffContextChatId)}
+                    // Keep the compact review-note presentation after a diff
+                    // leaves the split or opens its session-owned source. A
+                    // source promoted directly from the editor has no session
+                    // yet and keeps the AI-note attach flow.
+                    reviewNoteComposer={Boolean(activeTabContent?.diffReviewNoteComposer)
+                      || (isPlainFileOverlayTab && Boolean(activePlanDiffContextChatId))}
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
