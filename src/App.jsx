@@ -15842,6 +15842,8 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
       reviewAttribution: 'session',
     },
   },
+  /* Temporarily hidden from the N-files review scope: this file belongs to a
+     different project and should not appear in the current prototype flow.
   {
     id: 'generated-diff-vet-schedules',
     name: 'Vet-Schedules.md',
@@ -15851,10 +15853,11 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
     agentTaskId: 't2',
     diffRequest: AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
   },
+  */
 ];
 
 const AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS = [
-  AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
+  // AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
 ];
 
 // A multi-file change is summarized as one "Changed Files" card (file + counters
