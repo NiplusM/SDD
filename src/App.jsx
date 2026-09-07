@@ -33496,9 +33496,13 @@ export default function App() {
 
     if (shouldRunAgent) {
       if (shouldStreamCommentResponse) {
-        // Keep the comment as a composer attachment chip (it stays until the user
-        // resolves it) instead of clearing it — a comment run is not a review.
         handleCommentAttachmentResponseStart({ chatId: targetChatId, attachments: commentAttachments });
+        // The pending snapshot above owns the feedback while the agent is
+        // processing it. Remove the sent comments from the composer immediately.
+        handleClearAllComposerDiffAttachments({
+          chatId: targetChatId,
+          attachments: commentAttachments,
+        });
       }
       if (isReviewCommand) {
         setIdeTabContents((prev) => {
