@@ -1,5 +1,6 @@
 # JVM Scenario: Reproduced and Automated Flow
 
+> Historical scenario. The current marketing recording and automation follow [marketing-video-corrected.md](marketing-video-corrected.md).
 This file describes not the original storyboard from `jvm-scenario.md`, but the scenario that is currently automated in `scripts/run-jvm-scenario.mjs`.
 
 ## What Is Automated

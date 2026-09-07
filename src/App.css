@@ -3728,8 +3728,8 @@ body {
    matching the Implementation Notes bullet + inline-file-chip shape. */
 .spec-changed-files-section {
   box-sizing: border-box;
-  width: min(760px, calc(100% - 72px));
-  margin: 22px 0 22px 56px;
+  width: min(822px, 100%);
+  margin: 22px 0;
   color: rgba(223, 225, 229, 0.9);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
@@ -3747,8 +3747,25 @@ body {
   letter-spacing: -0.02em;
 }
 
+.spec-changed-files-heading-row {
+  padding-bottom: 8px;
+}
+
+.spec-done-gutter-cell .spec-generated-diffs-gutter {
+  color: var(--text-muted);
+}
+
+.spec-generated-diffs-gutter:hover {
+  background: var(--selection-bg-hovered);
+}
+
+.spec-check-status-failed,
+.ac-subcheck-item-failed .ac-subcheck-text {
+  color: var(--vcs-deleted-text);
+}
+
 .spec-changed-files-list {
-  margin: 0 0 0 0;
+  margin: 0 0 0 62px;
   padding-left: 21px;
   list-style: disc outside;
   color: inherit;
@@ -5177,7 +5194,7 @@ body {
   box-sizing: border-box;
   width: 100%;
   min-height: 32px;
-  max-height: 120px;
+  max-height: none;
   padding: 7px 10px;
   border: 1px solid var(--input-border, var(--control-border, #4b4f56));
   border-radius: 4px;
@@ -5188,7 +5205,7 @@ body {
   font-weight: 400;
   line-height: 18px;
   resize: none;
-  overflow-y: auto;
+  overflow: hidden;
   field-sizing: content;
 }
 
@@ -5650,7 +5667,7 @@ body {
 .ac-subcheck-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   width: 100%;
   min-width: 0;
   padding: 2px 0 2px 0;
@@ -5658,10 +5675,10 @@ body {
 
 .ac-subcheck-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: nowrap;
   gap: 8px;
-  min-height: 28px;
+  min-height: 22px;
   padding: 0;
   font-size: 13px;
   color: var(--text-secondary, #9fa2a8);
@@ -5677,6 +5694,7 @@ body {
   height: 16px;
   box-sizing: border-box;
   padding: 0 2px;
+  margin-top: 3px;
 }
 .ac-subcheck-icon-passed {
   color: #b0b3b8;
@@ -5688,9 +5706,9 @@ body {
 .ac-subcheck-text {
   flex: 0 1 auto;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 22px;
 }
 
 .ac-subcheck-note {
@@ -9016,15 +9034,21 @@ body {
   min-width: 0;
 }
 
-.agent-task-toolbar-note-action {
+.agent-task-toolbar-action {
+  box-sizing: border-box !important;
   height: 28px !important;
   min-height: 28px !important;
   padding: 0 10px !important;
+  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+.agent-task-toolbar-note-action {
   border-color: rgba(134, 138, 145, 0.36) !important;
   background: transparent !important;
   color: #CED0D6 !important;
-  font: 500 13px/18px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
 }
+
+
 
 .agent-task-toolbar-note-action:hover:not(:disabled) {
   border-color: rgba(134, 138, 145, 0.48) !important;

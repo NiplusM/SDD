@@ -460,282 +460,154 @@ async function finishOptionalSpecificationLaunch(page, beat) {
 }
 
 async function runScenario(page) {
-  const prompt = 'Add vet working hours, and reject bookings outside them';
-  const noteText = 'cover the exclusive end boundary in the regression tests';
-  const updatedPlanItemText = 'Add off-hours rejection tests in VisitControllerTests.java for controller validation, cover the exclusive end boundary in the regression tests.';
-
-  console.log('Running JVM scenario automation…');
-  await updateOverlay(page, { beat: 'Beat 1', text: 'Loading the welcome screen…' });
+  const prompt = 'Add vet working hours and reject bookings outside them';
+  const noteText = headless ? 'Please clarify this.' : 'Keep previously confirmed appointments. Apply the restriction only to new bookings.';
+  const runtimeErrors = [];
+  page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  console.log('Running corrected marketing-video scenario…');
   await page.goto(`${baseUrl}?screen=welcome`, { waitUntil: 'networkidle' });
   await installScenarioOverlay(page);
-  await updateOverlay(page, { beat: 'Beat 1', text: 'Preparing project setup…' });
-  await pause(400);
+  const initialPrompt = page.locator('textarea[aria-label="Task prompt"]:visible').first();
+  await initialPrompt.waitFor();
+  const initialTabs = page.locator('.main-window-editor-tabs .tab:visible');
+  if (await initialTabs.count() !== 1 || !(await initialTabs.first().innerText()).includes('New Session')) {
+    throw new Error(`Expected a fresh New Session at startup: ${await initialTabs.allTextContents()}`);
+  }
+  await capture(page, '00-new-session-start');
+  await demoType(page, page.locator('textarea[aria-label="Task prompt"]:visible').first(), '1. Start the task', 'Add working hours to the existing booking flow.', prompt);
+  await capture(page, '01-task-prompt');
+  await demoClick(page, page.getByRole('button', { name: 'Send', exact: true }).last(), '1. Start the task', 'Follow the task in a living document.', { afterPauseMs: 0 });
+  await finishOptionalSpecificationLaunch(page, '1. Start the task');
 
-  await clickByDemoId(page, 'welcome-new-agent-task', 'Beat 1', 'Open “New Task for Agent”.');
-  await capture(page, 'beat-1-new-task');
-
-  const editor = page.locator('textarea[aria-label="Task prompt"]:visible').first();
-  await demoType(page, editor, 'Beat 1', 'Type the initial visit-booking prompt.', prompt);
-  await capture(page, 'beat-1-prompt');
-
-  await demoClick(
-    page,
-    page.getByRole('button', { name: 'Send', exact: true }).last(),
-    'Beat 1',
-    'Send the initial task to the agent.',
-    { clickPauseMs: 40, afterPauseMs: 0 },
-  );
-  await finishOptionalSpecificationLaunch(page, 'Beat 1');
-  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 1', 'Open the generated Vet-Schedules.md document.');
   const document = page.locator('.spec-done-overlay:visible').first();
-  if (await document.getByRole('heading', { name: 'Reference Files', exact: true }).count() !== 0) {
-    throw new Error('The generated document must not contain a Reference Files section.');
+  await document.getByText('Add vet working hours and reject bookings outside them.', { exact: true }).waitFor();
+  const tabs = page.locator('.main-window-editor-tabs .tab:visible');
+  if (await tabs.count() !== 1 || !(await tabs.first().innerText()).includes('Vet-Schedules.md')) {
+    throw new Error(`Only the generated file should be open: ${await tabs.allTextContents()}`);
   }
-  await document.getByText('Demo seed data includes at least one valid schedule window for each of the six seeded vets.', { exact: true }).waitFor({ state: 'visible' });
-  await capture(page, 'beat-1-generated-spec');
+  if (await page.locator('[data-demo-id="spec-inspection-counts"]:visible').count()) {
+    throw new Error('The clean document must not show the green Problems shortcut.');
+  }
+  await capture(page, '02-generated-document');
 
-  const testPlanRow = page.locator('[data-demo-id="spec-row-plan-14"]:visible').first();
-  await testPlanRow.hover();
-  const testSourceChip = testPlanRow.locator('[data-ref-target="VisitControllerTests.java"]').first();
-  await demoClick(page, testSourceChip, 'Beat 2', 'Open the linked VisitControllerTests.java source next to the document.');
-  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'VisitControllerTests.java' }).waitFor({ state: 'visible' });
-  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 2', 'Return to the specification.');
-
-  const acValidationRow = page.locator('[data-demo-id="spec-row-ac-1"]').first();
-  const acValidationEditable = acValidationRow.locator('[contenteditable="true"]').first();
-  await demoFocus(page, acValidationEditable, 'Beat 2', 'Replace the generic Validation subject with a method reference.');
-  const selected = await acValidationEditable.evaluate((node) => {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    while (walker.nextNode()) {
-      const textNode = walker.currentNode;
-      const start = textNode.textContent.indexOf('Validation');
-      if (start < 0) continue;
-      const range = document.createRange();
-      range.setStart(textNode, start);
-      range.setEnd(textNode, start + 'Validation'.length);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      return true;
+  const plan = document.locator('.spec-done-row-plan-parent');
+  const ac = document.locator('.spec-done-row-ac-item');
+  const affectedAc = document.locator('[data-demo-id="spec-row-ac-1"]');
+  const statusCount = (rows, status) => rows.locator(`.spec-check-status-${status}`).count();
+  const assertCounts = async (planPassed, acPassed, acFailed) => {
+    const actual = [await statusCount(plan, 'passed'), await statusCount(ac, 'passed'), await statusCount(ac, 'failed')];
+    if (JSON.stringify(actual) !== JSON.stringify([planPassed, acPassed, acFailed])) {
+      throw new Error(`Unexpected Plan/AC states: ${actual}; expected ${[planPassed, acPassed, acFailed]}`);
     }
-    return false;
-  });
-  if (!selected) throw new Error('Could not select the Validation text in AC #2');
-  await page.keyboard.type('@process', { delay: 18 });
-  const processMethodCompletion = page.locator('.at-popup-row', { hasText: 'processNewVisitForm()' }).first();
-  await demoClick(page, processMethodCompletion, 'Beat 2', 'Insert the existing controller method reference from completion.');
-  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
+  };
+  const execute = page.getByRole('button', { name: 'Implement', exact: true }).first();
+  await demoClick(page, execute, '2. Run the task', 'Watch the plan complete, then verification begins.', { afterPauseMs: 0 });
+  await page.getByText('Building...', { exact: true }).first().waitFor();
+  await capture(page, '03-executing-plan');
+  await affectedAc.locator('.spec-check-status-failed').waitFor({ timeout: 30000 });
+  await execute.waitFor();
+  await assertCounts(6, 3, 1);
+  await capture(page, '04-verification-needs-decision');
 
-  await clickTaskRow(page, 'VisitControllerTests.java', 'Beat 2', 'Switch away to verify the manual document edit is retained.');
-  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 2', 'Return to the edited specification.');
-  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
-
-  await testPlanRow.hover();
-  await clickByDemoId(page, 'spec-comment-plan-14', 'Beat 3', 'Add a targeted note to the regression-test Plan item.');
-  const noteInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
-  await demoType(page, noteInput, 'Beat 3', 'Describe the exclusive end-boundary coverage.', noteText);
-  const notePopupLayout = await noteInput.evaluate((node) => ({
-    textareaHeight: node.getBoundingClientRect().height,
+  await demoClick(page, affectedAc.locator('.ac-checks-toggle'), '3. Notice the problem', 'Verification reveals a decision the request left open.');
+  await affectedAc.getByText('The criterion does not cover existing appointments after working hours change. Keep them or flag for rescheduling?', { exact: true }).waitFor();
+  const subcheckBounds = await affectedAc.locator('.ac-subcheck-text').evaluateAll(nodes => nodes.map(node => {
+    const text = node.getBoundingClientRect();
+    const icon = node.previousElementSibling.getBoundingClientRect();
+    return { textX: text.x, iconX: icon.x, iconOffsetY: icon.y - text.y };
   }));
-  if (notePopupLayout.textareaHeight > 38) {
-    throw new Error(`The note composer must fit the scripted note on one line: ${JSON.stringify(notePopupLayout)}`);
+  if (subcheckBounds.some(bounds => Math.abs(bounds.textX - subcheckBounds[0].textX) > 0.5 || Math.abs(bounds.iconX - subcheckBounds[0].iconX) > 0.5 || Math.abs(bounds.iconOffsetY - 3) > 0.5)) {
+    throw new Error(`AC subchecks are misaligned: ${JSON.stringify(subcheckBounds)}`);
   }
-  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 3', 'Attach the note to the Plan item.');
+  await capture(page, '05-confirmed-appointment-conflict');
 
-  const sendToAgent = page.getByRole('button', { name: 'Send Comments', exact: true }).first();
-  await demoClick(page, sendToAgent, 'Beat 3', 'Apply the targeted note without opening a chat split.');
-  const noteLoading = page.locator('.agent-task-toolbar .at-generating-label:visible').first();
-  await noteLoading.waitFor({ state: 'visible', timeout: 10000 });
-  const executeWhileApplyingNote = page.getByRole('button', { name: 'Execute', exact: true }).first();
-  if (!(await executeWhileApplyingNote.isDisabled())) {
-    throw new Error('Execute must be disabled while the document applies a note.');
+  // Rerunning before feedback must not manufacture a pass.
+  if (headless) {
+    await execute.click();
+    await execute.waitFor();
+    await assertCounts(6, 3, 1);
   }
-  await noteLoading.waitFor({ state: 'hidden', timeout: 30000 });
-  await page.getByText(updatedPlanItemText, { exact: false }).last().waitFor({ state: 'visible' });
-  const updatedTestPlanRow = page.locator('.spec-done-row:visible').filter({ hasText: updatedPlanItemText }).first();
-  await acValidationRow.getByText('processNewVisitForm()', { exact: true }).waitFor({ state: 'visible' });
-  if (await updatedTestPlanRow.locator('.spec-check-status-pending:visible').count() !== 1) {
-    throw new Error('The updated Plan item must retain its checklist checkbox.');
+  await affectedAc.hover();
+  await clickByDemoId(page, 'spec-comment-ac-1', '4. Clarify the behavior', 'Respond directly on the acceptance criterion.');
+  await demoType(page, page.locator('[data-demo-id="diff-comment-input"]:visible').first(), '4. Clarify the behavior', 'Keep confirmed appointments; validate only new bookings.', noteText);
+  await capture(page, '06-criterion-comment');
+  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), '4. Clarify the behavior', 'Attach the comment.');
+  await assertCounts(6, 3, 1); // Drafting feedback must not change verification.
+  const reviseButton = page.getByRole('button', { name: 'Revise Workspace', exact: true }).first();
+  const [implementBox, reviseBox] = await Promise.all([execute.boundingBox(), reviseButton.boundingBox()]);
+  if (!implementBox || !reviseBox || Math.abs(implementBox.height - reviseBox.height) > 0.5) throw new Error('Toolbar actions must have equal heights.');
+  if (await document.getByText(/^Note \d+$/).count()) throw new Error('Submitted comments must not show numbered Note labels.');
+  await demoClick(page, page.getByRole('button', { name: 'Revise Workspace', exact: true }).first(), '4. Clarify the behavior', 'Update the document before executing again.', { afterPauseMs: 0 });
+  await page.getByText('Processing...', { exact: true }).first().waitFor();
+  if (!(await execute.isDisabled())) throw new Error('Execute must be disabled while feedback is applied.');
+  await affectedAc.getByText('New bookings outside the vet\'s working hours are rejected. Previously confirmed appointments remain unchanged.', { exact: true }).waitFor();
+  if (await affectedAc.locator('strong, .ac-revised-text').count()) throw new Error('Revised AC must use plain text.');
+  await page.getByText('Processing...', { exact: true }).first().waitFor({ state: 'hidden' });
+  await assertCounts(4, 3, 0);
+  if (await statusCount(plan, 'pending') !== 2 || await statusCount(ac, 'pending') !== 1) {
+    throw new Error('Only validation, tests and the affected AC must be unchecked.');
   }
-  if (await document.getByText(noteText, { exact: false }).count() !== 0) {
-    throw new Error('The note must disappear from the document after it is applied.');
+  if (await affectedAc.locator('.ac-subcheck-list').count()) throw new Error('Old evidence must be cleared after the AC changes.');
+  if (await tabs.count() !== 1) throw new Error('Sending feedback must keep only the file tab visible.');
+  await capture(page, '07-updated-ac-awaiting-execute');
+  if (await document.getByText(/^Note \d+$/).count()) throw new Error('Sent comments must not show numbered Note labels.');
+
+  await demoClick(page, execute, '5. Re-execute', 'Continue the affected work. Keep completed steps.', { afterPauseMs: 0 });
+  if (await statusCount(plan, 'passed') < 4 || await statusCount(ac, 'passed') < 3) {
+    throw new Error('Re-execution must preserve unaffected completed results.');
   }
-  await capture(page, 'beat-3-note-applied');
+  await affectedAc.locator('.spec-check-status-passed').waitFor({ timeout: 30000 });
+  await execute.waitFor();
+  await assertCounts(6, 4, 0);
+  await demoClick(page, affectedAc.locator('.ac-checks-toggle'), '5. Re-execute', 'Both outcomes are verified.');
+  await affectedAc.getByText('Existing confirmed appointment at 18:00 is preserved after the schedule changes.', { exact: true }).waitFor();
+  await affectedAc.getByText('New booking at 18:00 is rejected. No visit is saved.', { exact: true }).waitFor();
+  await capture(page, '08-verified-outcomes');
 
-  await updatedTestPlanRow.hover();
-  const planItemRun = updatedTestPlanRow.locator('.spec-done-gutter-item-run-btn:visible').first();
-  await demoClick(page, planItemRun, 'Beat 4', 'Run only the regression-test Plan item.');
-  const passedPlanItemsAfterSingleRun = await page.locator('.spec-done-row-plan-parent .spec-check-status-passed:visible').count();
-  const passedAcItemsAfterPlanItemRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
-  if (passedPlanItemsAfterSingleRun !== 1 || passedAcItemsAfterPlanItemRun !== 0) {
-    throw new Error(`A single Plan-item run must affect only that item: ${JSON.stringify({ passedPlanItemsAfterSingleRun, passedAcItemsAfterPlanItemRun })}`);
+  const review = page.getByRole('button', { name: 'Review generated diffs', exact: true });
+  await review.scrollIntoViewIfNeeded();
+  const reviewBounds = await review.boundingBox();
+  const runBounds = await document.locator('.spec-done-gutter-cell-section-run .spec-done-gutter-item-run-btn').first().boundingBox();
+  if (!reviewBounds || !runBounds || Math.abs(reviewBounds.x - runBounds.x) > 0.5 || Math.abs(reviewBounds.width - runBounds.width) > 0.5) {
+    throw new Error(`Gutter buttons are misaligned: ${JSON.stringify({ reviewBounds, runBounds })}`);
   }
+  const fileNames = await document.locator('.spec-changed-files-chip-name').allTextContents();
+  const expectedFiles = ['VetSchedule.java', 'VetScheduleRepository.java', 'schema.sql', 'data.sql', 'VisitController.java', 'VisitControllerTests.java'];
+  if (JSON.stringify(fileNames) !== JSON.stringify(expectedFiles)) throw new Error(`Unexpected generated files: ${fileNames}`);
+  await capture(page, '09-generated-diffs');
+  await demoClick(page, review, '6. Review the code', 'Review the changes with their context intact.');
+  await page.locator('.plan-diff-fragment:visible', { hasText: 'isBefore(schedule.getEndTime())' }).first().waitFor();
+  await page.getByRole('button', { name: '5/6 files', exact: true }).waitFor();
+  if (await page.locator('.plan-diff-toolbar-meta:visible').count()) throw new Error('Diff toolbar must not show a differences counter.');
+  await capture(page, '10-code-review-fade-out');
 
-  const planSectionRun = page.locator('[data-demo-id="spec-run-section-plan"]:visible').first();
-  await demoClick(page, planSectionRun, 'Beat 4', 'Run only the Plan section.');
-  await page.waitForFunction(() => (
-    document.querySelectorAll('.spec-done-row-plan-parent .spec-check-status-passed').length > 1
-  ));
-  const passedPlanItemsAfterSectionRun = await page.locator('.spec-done-row-plan-parent .spec-check-status-passed:visible').count();
-  const passedAcItemsAfterPlanSectionRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
-  if (passedPlanItemsAfterSectionRun <= 1 || passedAcItemsAfterPlanSectionRun !== 0) {
-    throw new Error(`A Plan section run must not trigger Acceptance Criteria: ${JSON.stringify({ passedPlanItemsAfterSectionRun, passedAcItemsAfterPlanSectionRun })}`);
+  // Inspect the regression diff after the final recording beat.
+  if (headless) {
+    await page.getByTitle('Next file', { exact: true }).click();
+    await page.getByRole('button', { name: '6/6 files', exact: true }).waitFor();
+    await page.locator('.plan-diff-fragment:visible', { hasText: 'preservesConfirmedAppointmentAfterScheduleChange' }).first().waitFor();
+    await page.locator('.plan-diff-fragment:visible', { hasText: 'entityManager.find(Visit.class, confirmedId)' }).first().waitFor();
+    await page.getByTitle('Previous file', { exact: true }).click();
+    await page.getByRole('button', { name: '5/6 files', exact: true }).click();
+    const filePopup = page.locator('.plan-diff-files-popup:visible');
+    for (const file of expectedFiles) await filePopup.getByText(file, { exact: true }).waitFor();
+    await filePopup.getByText('VetSchedule.java', { exact: true }).click();
+    await page.getByRole('button', { name: '1/6 files', exact: true }).waitFor();
+    const expectedCode = {
+      'VetSchedule.java': '@Table(name = "vet_schedules")',
+      'VetScheduleRepository.java': 'List<VetSchedule> findByVetIdAndWeekday(int vetId, DayOfWeek weekday);',
+      'schema.sql': 'CONSTRAINT ck_vet_schedule_window CHECK (start_time < end_time)',
+      'data.sql': "VALUES (6, 'MONDAY', '09:00', '17:00')",
+      'VisitController.java': 'result.rejectValue("time", "outsideWorkingHours"',
+    };
+    for (const [file, code] of Object.entries(expectedCode)) {
+      await clickTaskRow(page, 'Vet-Schedules.md', 'Verification', `Inspect ${file}.`);
+      await page.locator('.spec-changed-files-chip', { hasText: file }).click();
+      await page.locator('.plan-diff-fragment:visible', { hasText: code }).first().waitFor();
+    }
   }
-
-  await acValidationRow.hover();
-  const acItemRun = acValidationRow.locator('.spec-done-gutter-item-run-btn:visible').first();
-  await demoClick(page, acItemRun, 'Beat 4', 'Run only the edited acceptance criterion.');
-  const passedAcItemsAfterSingleRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
-  if (passedAcItemsAfterSingleRun !== 1) {
-    throw new Error(`A single Acceptance Criteria item run must affect only that item: ${passedAcItemsAfterSingleRun}`);
-  }
-
-  const acSectionRun = page.locator('[data-demo-id="spec-run-section-ac"]:visible').first();
-  await demoClick(page, acSectionRun, 'Beat 4', 'Run only the Acceptance Criteria section.');
-  await page.waitForFunction(() => (
-    document.querySelectorAll('.spec-done-row-ac-item .spec-check-status-passed').length > 1
-  ));
-  const passedAcItemsAfterSectionRun = await page.locator('.spec-done-row-ac-item .spec-check-status-passed:visible').count();
-  if (passedAcItemsAfterSectionRun <= 1) {
-    throw new Error(`An Acceptance Criteria section run must affect the complete section: ${passedAcItemsAfterSectionRun}`);
-  }
-  if (await page.locator('.spec-changed-files-chip:visible').count() !== 0) {
-    throw new Error('Generated diffs must appear only after the full Execute action.');
-  }
-
-  await demoClick(page, page.getByRole('button', { name: 'Execute', exact: true }).first(), 'Beat 4', 'Execute the refined document.');
-  const documentLoading = page.locator('.agent-task-toolbar .at-generating-label:visible', { hasText: 'Building...' }).first();
-  await documentLoading.waitFor({ state: 'visible', timeout: 10000 });
-  const sectionRunButtons = page.locator('.spec-done-gutter-cell-section-run .spec-done-gutter-item-run-btn:visible');
-  if (await sectionRunButtons.count() !== 2) {
-    throw new Error(`Expected Plan and Acceptance Criteria run buttons during execution, got ${await sectionRunButtons.count()}`);
-  }
-  const sectionRunButtonOpacities = await sectionRunButtons.evaluateAll((nodes) => (
-    nodes.map((node) => getComputedStyle(node).opacity)
-  ));
-  if (sectionRunButtonOpacities.some((opacity) => opacity !== '1')) {
-    throw new Error(`Section run buttons must remain visible during execution: ${JSON.stringify(sectionRunButtonOpacities)}`);
-  }
-  await capture(page, 'beat-4-document-executing');
-  await documentLoading.waitFor({ state: 'hidden', timeout: 30000 });
-  await page.locator('.spec-done-scroll:visible').evaluate((node) => {
-    node.scrollTop = node.scrollHeight;
-  });
-  await pause(200);
-  const expectedGeneratedDiffs = [
-    'VetSchedule.java+59',
-    'VetScheduleRepository.java+4',
-    'schema.sql+11',
-    'data.sql+9',
-    'VetFormatter.java+29',
-    'VisitController.java+15-1',
-    'VisitControllerTests.java+74-2',
-  ];
-  const renderedGeneratedDiffs = await page.locator('.spec-changed-files-chip:visible').evaluateAll((nodes) => (
-    nodes.map((node) => (node.textContent || '').replace(/\s+/g, ''))
-  ));
-  if (JSON.stringify(renderedGeneratedDiffs) !== JSON.stringify(expectedGeneratedDiffs)) {
-    throw new Error(`Generated diff list mismatch: ${JSON.stringify(renderedGeneratedDiffs)}`);
-  }
-  await capture(page, 'beat-4-execution-complete');
-
-  const controllerDiffChip = page.locator('.spec-changed-files-chip:visible', { hasText: 'VisitController.java' }).first();
-  await demoClick(page, controllerDiffChip, 'Beat 5', 'Open the generated controller diff next to Vet-Schedules.md.');
-  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'Diff VisitController.java' }).waitFor({ state: 'visible' });
-  await page.locator('.plan-diff-fragment:visible', { hasText: 'isBefore(schedule.getEndTime())' }).first().waitFor({ state: 'visible' });
-
-  await clickTaskRow(page, 'Vet-Schedules.md', 'Beat 5', 'Return to the specification before opening the regression-test diff.');
-  const testDiffChip = page.locator('.spec-changed-files-chip:visible', { hasText: 'VisitControllerTests.java' }).first();
-  await demoClick(page, testDiffChip, 'Beat 5', 'Open the generated regression-test diff next to Vet-Schedules.md.');
-  await page.locator('.main-window-editor-tabs .tab.tab-selected:visible', { hasText: 'Diff VisitControllerTests.java' }).waitFor({ state: 'visible' });
-  await page.locator('.plan-diff-fragment:visible', { hasText: 'acceptsBookingAtScheduleStartBoundary' }).first().waitFor({ state: 'visible' });
-  await page.locator('.plan-diff-fragment:visible', { hasText: 'rejectsBookingAtScheduleEndBoundary' }).first().waitFor({ state: 'visible' });
-  await capture(page, 'beat-5-generated-diffs');
-
-  await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });
-  await pause(1400);
-  return;
-
-  const inspectionCounts = page.locator('[data-demo-id="spec-inspection-counts"]').first();
-  if (!await inspectionCounts.isVisible().catch(() => false)) {
-    await clickSpecSectionRun(page, 'Plan', 'Beat 2', 'Build the spec to produce current inspection results.');
-  }
-  await inspectionCounts.waitFor({ state: 'visible', timeout: 20000 });
-  await page.locator('[data-demo-id="spec-row-ac-0"][data-issue-severity="warning"]').waitFor({
-    state: 'visible',
-    timeout: 20000,
-  });
-  await capture(page, 'beat-2-vet-schedules');
-
-  await clickByDemoId(page, 'spec-inspection-counts', 'Beat 2', 'Open the issues detected in the spec.');
-  await pause(700);
-
-  await focusSpecRow(page, 'spec-row-ac-0', 'Beat 2', 'Focus AC #1 and inspect the mismatch.');
-  await clickByDemoId(page, 'spec-issue-actions-ac-0', 'Beat 2', 'Open quick actions for AC #1.');
-  await clickByDemoId(page, 'issue-popup-apply-fix-ac-0', 'Beat 2', 'Apply the vet availability quick fix.');
-  await pause(700);
-
-  await focusSpecRow(page, 'spec-row-ac-1', 'Beat 2', 'Focus AC #2 and add a clarifying comment.');
-  await clickByDemoId(page, 'spec-comment-ac-1', 'Beat 2', 'Open inline comments for AC #2.');
-  const specCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
-  await demoType(page, specCommentInput, 'Beat 2', 'Describe the exact time-slot behavior.', acComment);
-  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 2', 'Attach the AC #2 AI Note.');
-  await pause(600);
-
-  await focusSpecRow(page, 'spec-row-plan-2', 'Beat 2', 'Focus the race-condition plan step.');
-  await clickByDemoId(page, 'spec-issue-actions-plan-2', 'Beat 2', 'Open issue actions for the race-condition warning.');
-  await clickByDemoId(page, 'issue-popup-apply-fix-plan-2', 'Beat 2', 'Add the booking constraint quick fix.');
-  await pause(600);
-
-  await focusSpecRow(page, 'spec-row-plan-4', 'Beat 2', 'Focus the missing formatter plan step.');
-  await clickByDemoId(page, 'spec-issue-actions-plan-4', 'Beat 2', 'Open issue actions for the formatter error.');
-  await clickByDemoId(page, 'issue-popup-apply-fix-plan-4', 'Beat 2', 'Add the VetFormatter follow-up step.');
-  await pause(600);
-  await capture(page, 'beat-2-fixes-applied');
-
-  await clickSpecSectionRun(page, 'Plan', 'Beat 3', 'Build the refined spec with the fixes and AI Note context.');
-  await page.locator('[data-demo-id="spec-row-plan-2"] .spec-check-status-passed').waitFor({
-    state: 'visible',
-    timeout: 20000,
-  });
-  await page.locator('[data-demo-id="spec-row-ac-0"] .spec-check-status-passed').waitFor({
-    state: 'visible',
-    timeout: 20000,
-  });
-  await pause(1000);
-  await capture(page, 'beat-2-enhanced-spec');
-  await capture(page, 'beat-3-run-results');
-
-  await clickByDemoId(page, 'plan-show-diff-plan-3', 'Beat 4', 'Open the VisitController diff for review.');
-  await pause(1200);
-  await capture(page, 'beat-4-diff-open');
-
-  const diffRow = page.locator('.plan-diff-row', { hasText: 'return this.timeSlots;' }).first();
-  await demoClick(page, diffRow, 'Beat 4', 'Focus the cached time-slots change in the diff.');
-  await demoClick(page, diffRow.locator('[data-demo-id^=\"diff-comment-toggle-\"]').first(), 'Beat 4', 'Open inline review comments for the diff row.');
-  const diffCommentInput = page.locator('[data-demo-id="diff-comment-input"]:visible').first();
-  await demoType(page, diffCommentInput, 'Beat 4', 'Leave a compact controller review note.', diffComment);
-  await demoClick(page, page.locator('[data-demo-id="diff-comment-submit"]:visible').first(), 'Beat 4', 'Attach the controller AI Note.');
-  await capture(page, 'beat-4-diff-comment');
-  await logDomSummary(page, 'beat-4-diff-comment');
-
-  await page.locator('.plan-diff-inline-comment:visible', { hasText: diffComment }).first().waitFor({
-    state: 'visible',
-    timeout: 10000,
-  });
-  await updateOverlay(page, {
-    beat: 'Beat 5',
-    text: 'The AI Note remains anchored to the reviewed diff and Visit-Booking.md context.',
-  });
-  await capture(page, 'beat-5-review-context-retained');
-
-  const diffCodeReviewButton = page.locator('.plan-diff-code-review-button:visible').first();
-  await waitForEnabled(diffCodeReviewButton);
-  await demoFocus(page, diffCodeReviewButton, 'Beat 6', 'The reviewed diff is ready for a follow-up Code Review.');
-
-  await capture(page, 'beat-6-wrap-up');
-  await updateOverlay(page, { beat: 'Complete', text: 'JVM scenario automation finished.' });
-  await pause(1400);
+  if (runtimeErrors.length) throw new Error(`Browser errors: ${runtimeErrors.join('\n')}`);
+  console.log('Verified: conflict → comment → partial invalidation → Execute → proof → code review.');
 }
 
 async function main() {

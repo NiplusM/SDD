@@ -1,3 +1,10 @@
+import { buildPetClinicDiff } from './demo/petclinic/lineDiff.js';
+import {
+  VET_BOOKING_AC, VET_INITIAL_PLAN,
+  getVetSchedulesAcStatuses, isVetBookingPolicyResolved,
+  reconcileVetBookingComment, invalidateVetBookingResults,
+} from './vetSchedulesScenario.js';
+import { PETCLINIC_BASELINE, PETCLINIC_GENERATED, PETCLINIC_FIRST_RUN } from './demo/petclinic/content.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
@@ -127,7 +134,7 @@ const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
   { id: 'claude', label: 'Claude Agent', buttonLabel: 'Claude Agent', model: 'Claude Sonnet 4.1', badge: 'New' },
   { id: 'codex', label: 'Codex', buttonLabel: 'Codex', model: 'GPT-5.6-Sol', badge: 'Free usage' },
-  { id: 'sdd', label: 'Task Mode', buttonLabel: 'Task Mode', model: 'GPT-5.6-Sol' },
+  { id: 'sdd', label: 'Codex with Workspace', buttonLabel: 'Codex with Workspace', model: 'GPT-5.6-Sol' },
   { id: 'gemini', label: 'Gemini CLI', buttonLabel: 'Gemini CLI', model: 'Gemini 2.5 Pro' },
   { id: 'copilot', label: 'GitHub Copilot', buttonLabel: 'GitHub Copilot', model: 'GPT-5.2-Codex' },
 ];
@@ -504,258 +511,11 @@ const MY_EDITOR_TABS = [
 ];
 
 const MY_EDITOR_TAB_CONTENTS = {
-  '1': {
-    language: 'java',
-    code: `@Controller
-class VisitController {
-
-    private final OwnerRepository ownerRepository;
-    private final VisitRepository visitRepository;
-    private final VetRepository vetRepository;
-
-    public VisitController(
-            OwnerRepository ownerRepository,
-            VisitRepository visitRepository,
-            VetRepository vetRepository) {
-        this.ownerRepository = ownerRepository;
-        this.visitRepository = visitRepository;
-        this.vetRepository = vetRepository;
-    }
-
-    @ModelAttribute("vets")
-    public Collection<Vet> populateVets() {
-        return this.vetRepository.findAll();
-    }
-
-    @ModelAttribute("timeSlots")
-    public List<LocalTime> populateTimeSlots() {
-        List<LocalTime> slots = new ArrayList<>();
-        for (int hour = 9; hour <= 16; hour++) {
-            slots.add(LocalTime.of(hour, 0));
-        }
-        return slots;
-    }
-
-    @GetMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-    public String initNewVisitForm(@PathVariable int ownerId, @PathVariable int petId, Map<String, Object> model) {
-        Owner owner = this.ownerRepository.findById(ownerId)
-            .orElseThrow(() -> new IllegalArgumentException("Owner not found: " + ownerId));
-        Pet pet = owner.getPet(petId);
-        Visit visit = new Visit();
-        pet.addVisit(visit);
-        model.put("visit", visit);
-        return "pets/createOrUpdateVisitForm";
-    }
-
-    @PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
-    public String processNewVisitForm(@PathVariable int ownerId,
-                                      @PathVariable int petId,
-                                      @Valid Visit visit,
-                                      BindingResult result,
-                                      Model model) {
-        if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null
-                && this.visitRepository.existsByVetIdAndDateAndTime(
-                    visit.getVet().getId(), visit.getDate(), visit.getTime())) {
-            result.rejectValue("time", "duplicate",
-                "This vet is already booked for the selected date and time.");
-        }
-
-        if (result.hasErrors()) {
-            model.addAttribute("vets", populateVets());
-            model.addAttribute("timeSlots", populateTimeSlots());
-            return "pets/createOrUpdateVisitForm";
-        }
-
-        try {
-            Owner owner = this.ownerRepository.findById(ownerId)
-                .orElseThrow(() -> new IllegalArgumentException("Owner not found: " + ownerId));
-            Pet pet = owner.getPet(petId);
-            pet.addVisit(visit);
-            this.visitRepository.save(visit);
-        }
-        catch (DataIntegrityViolationException ex) {
-            result.rejectValue("time", "duplicate",
-                "Concurrent booking detected. Please choose another slot.");
-            model.addAttribute("vets", populateVets());
-            model.addAttribute("timeSlots", populateTimeSlots());
-            return "pets/createOrUpdateVisitForm";
-        }
-        return "redirect:/owners/{ownerId}";
-    }
-}`,
-  },
-  '2': {
-    language: 'java',
-    code: `@Entity
-@Table(name = "visits")
-public class Visit extends BaseEntity {
-
-    @Column(name = "visit_date")
-    @DateTimeFormat(pattern = "yyyy-MM-dd")
-    @NotNull
-    private LocalDate date;
-
-    @Column(name = "visit_time")
-    @NotNull
-    private LocalTime time;
-
-    @Column(name = "description")
-    private String description;
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    @NotNull
-    private Vet vet;
-
-    @ManyToOne
-    @JoinColumn(name = "pet_id")
-    private Pet pet;
-
-    public LocalDate getDate() { return this.date; }
-    public void setDate(LocalDate date) { this.date = date; }
-
-    public LocalTime getTime() { return this.time; }
-    public void setTime(LocalTime time) { this.time = time; }
-
-    public String getDescription() { return this.description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public Vet getVet() { return this.vet; }
-    public void setVet(Vet vet) { this.vet = vet; }
-
-    public Pet getPet() { return this.pet; }
-    public void setPet(Pet pet) { this.pet = pet; }
-}`,
-  },
-  '3': {
-    language: 'html',
-    code: `<html xmlns:th="https://www.thymeleaf.org">
-<body>
-  <h2>New Visit</h2>
-  <form th:object="\${visit}"
-        th:action="@{/owners/{ownerId}/pets/{petId}/visits/new(ownerId=\${owner.id},petId=\${pet.id})}"
-        method="post">
-
-    <div>
-      <label>Date</label>
-      <input type="date" th:field="*{date}" />
-    </div>
-
-    <div>
-      <label>Vet</label>
-      <select th:field="*{vet}">
-        <option value="">-- select vet --</option>
-        <option th:each="vet : \${vets}"
-                th:value="\${vet}"
-                th:text="\${vet.firstName + ' ' + vet.lastName}"></option>
-      </select>
-    </div>
-
-    <div>
-      <label>Time</label>
-      <select th:field="*{time}">
-        <option value="">-- select time --</option>
-        <option th:each="slot : \${timeSlots}"
-                th:value="\${slot}"
-                th:text="\${#temporals.format(slot, 'HH:mm')}"></option>
-      </select>
-    </div>
-
-    <div>
-      <label>Description</label>
-      <textarea th:field="*{description}" rows="3"></textarea>
-    </div>
-
-    <button type="submit">Add Visit</button>
-  </form>
-</body>
-</html>`,
-  },
-  '4': {
-    language: 'sql',
-    code: `DROP TABLE IF EXISTS vet_schedules;
-DROP TABLE IF EXISTS visits;
-DROP TABLE IF EXISTS pets;
-DROP TABLE IF EXISTS types;
-DROP TABLE IF EXISTS vets;
-DROP TABLE IF EXISTS owners;
-
-CREATE TABLE vets (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    first_name  VARCHAR(30),
-    last_name   VARCHAR(30)
-);
-
-CREATE TABLE owners (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    first_name  VARCHAR(30),
-    last_name   VARCHAR(30),
-    address     VARCHAR(255),
-    city        VARCHAR(80),
-    telephone   VARCHAR(20)
-);
-
-CREATE TABLE types (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    name        VARCHAR(80)
-);
-
-CREATE TABLE pets (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    name        VARCHAR(30),
-    birth_date  DATE,
-    type_id     INTEGER NOT NULL,
-    owner_id    INTEGER NOT NULL,
-    CONSTRAINT fk_pets_type FOREIGN KEY (type_id) REFERENCES types(id),
-    CONSTRAINT fk_pets_owner FOREIGN KEY (owner_id) REFERENCES owners(id)
-);
-
-CREATE TABLE visits (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    pet_id      INTEGER NOT NULL,
-    vet_id      INTEGER NOT NULL,
-    visit_date  DATE NOT NULL,
-    visit_time  TIME NOT NULL,
-    description VARCHAR(255),
-    CONSTRAINT fk_visits_pet FOREIGN KEY (pet_id) REFERENCES pets(id),
-    CONSTRAINT fk_visits_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
-    CONSTRAINT uk_vet_date_time UNIQUE (vet_id, visit_date, visit_time)
-);`,
-  },
-  '5': {
-    language: 'java',
-    code: `@WebMvcTest(VisitController.class)
-class VisitControllerTests {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private VisitRepository visitRepository;
-
-    @MockitoBean
-    private VetRepository vetRepository;
-
-    @MockitoBean
-    private OwnerRepository ownerRepository;
-
-    @Test
-    void processNewVisitFormDoubleBookingRejected() throws Exception {
-        when(visitRepository.existsByVetIdAndDateAndTime(
-                3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
-            .thenReturn(true);
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-15")
-                .param("time", "10:00")
-                .param("vet", "3")
-                .param("description", "Regular check"))
-            .andExpect(status().isOk())
-            .andExpect(model().attributeHasFieldErrors("visit", "time"))
-            .andExpect(view().name("pets/createOrUpdateVisitForm"));
-    }
-}`,
-  },
+  '1': { language: 'java', code: PETCLINIC_BASELINE['VisitController.java'] },
+  '2': { language: 'java', code: PETCLINIC_BASELINE['Visit.java'] },
+  '3': { language: 'html', code: PETCLINIC_BASELINE['createOrUpdateVisitForm.html'] },
+  '4': { language: 'sql', code: PETCLINIC_BASELINE['schema.sql'] },
+  '5': { language: 'java', code: PETCLINIC_BASELINE['VisitControllerTests.java'] },
 };
 
 // Commit content mirrors the AIUX-550 reference: every group is an AI chat and
@@ -1385,277 +1145,38 @@ class VisitControllerTests {
     }
 }`,
   },
-  // Vet-Schedules.md's Plan/Build files — indices 10-15, kept clear of the
-  // 0-6 range above (a different scenario's plan) so neither mapping steps
-  // on the other's diff content.
+  // Dedicated presets for the working-hours change over the booking baseline.
   10: {
-    fileLabel: 'VetSchedule.java',
-    language: 'java',
-    beforeCode: '',
-    afterCode: `@Entity
-@Table(name = "vet_schedules")
-public class VetSchedule extends BaseEntity {
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    @NotNull
-    private Vet vet;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "weekday", nullable = false)
-    @NotNull
-    private DayOfWeek weekday;
-
-    @Column(name = "start_time", nullable = false)
-    @NotNull
-    private LocalTime startTime;
-
-    @Column(name = "end_time", nullable = false)
-    @NotNull
-    private LocalTime endTime;
-
-    @AssertTrue(message = "End time must be after start time")
-    public boolean isValidTimeRange() {
-        return startTime == null || endTime == null || endTime.isAfter(startTime);
-    }
-
-    public Vet getVet() {
-        return vet;
-    }
-
-    public void setVet(Vet vet) {
-        this.vet = vet;
-    }
-
-    public DayOfWeek getWeekday() {
-        return weekday;
-    }
-
-    public void setWeekday(DayOfWeek weekday) {
-        this.weekday = weekday;
-    }
-
-    public LocalTime getStartTime() {
-        return startTime;
-    }
-
-    public void setStartTime(LocalTime startTime) {
-        this.startTime = startTime;
-    }
-
-    public LocalTime getEndTime() {
-        return endTime;
-    }
-
-    public void setEndTime(LocalTime endTime) {
-        this.endTime = endTime;
-    }
-}`,
+    fileLabel: 'VetSchedule.java', language: 'java',
+    beforeCode: PETCLINIC_BASELINE['VetSchedule.java'] ?? '',
+    afterCode: PETCLINIC_GENERATED['VetSchedule.java'],
   },
   11: {
-    fileLabel: 'VetScheduleRepository.java',
-    language: 'java',
-    beforeCode: '',
-    afterCode: `public interface VetScheduleRepository extends CrudRepository<VetSchedule, Integer> {
-
-    List<VetSchedule> findByVetIdAndWeekday(int vetId, DayOfWeek weekday);
-}`,
+    fileLabel: 'VetScheduleRepository.java', language: 'java',
+    beforeCode: PETCLINIC_BASELINE['VetScheduleRepository.java'] ?? '',
+    afterCode: PETCLINIC_GENERATED['VetScheduleRepository.java'],
   },
   12: {
-    fileLabel: 'VisitController.java',
-    language: 'java',
-    beforeCode: MY_EDITOR_TAB_CONTENTS['1'].code,
-    afterCode: MY_EDITOR_TAB_CONTENTS['1'].code
-      .replace('    private final VetRepository vetRepository;\n', '    private final VetRepository vetRepository;\n    private final VetScheduleRepository vetScheduleRepository;\n')
-      .replace('            VisitRepository visitRepository,\n            VetRepository vetRepository) {', '            VisitRepository visitRepository,\n            VetRepository vetRepository,\n            VetScheduleRepository vetScheduleRepository) {')
-      .replace('        this.vetRepository = vetRepository;\n', '        this.vetRepository = vetRepository;\n        this.vetScheduleRepository = vetScheduleRepository;\n')
-      .replace('\n        if (result.hasErrors()) {', `
-        if (visit.getVet() != null && visit.getDate() != null && visit.getTime() != null) {
-            boolean withinWorkingHours = this.vetScheduleRepository
-                .findByVetIdAndWeekday(visit.getVet().getId(), visit.getDate().getDayOfWeek())
-                .stream()
-                .anyMatch(schedule -> !visit.getTime().isBefore(schedule.getStartTime())
-                    && visit.getTime().isBefore(schedule.getEndTime()));
-            if (!withinWorkingHours) {
-                result.rejectValue("time", "outsideWorkingHours", "Selected time is outside the vet's working hours.");
-            }
-        }
-
-        if (result.hasErrors()) {`),
+    fileLabel: 'VisitController.java', language: 'java',
+    beforeCode: PETCLINIC_BASELINE['VisitController.java'] ?? '',
+    afterCode: PETCLINIC_GENERATED['VisitController.java'],
   },
   13: {
-    fileLabel: 'data.sql',
-    language: 'sql',
-    beforeCode: '',
-    afterCode: `INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (1, 'MONDAY', '09:00', '17:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (1, 'TUESDAY', '09:00', '17:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'MONDAY', '10:00', '18:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (2, 'WEDNESDAY', '10:00', '18:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'THURSDAY', '08:00', '16:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (3, 'FRIDAY', '08:00', '16:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (4, 'MONDAY', '09:00', '17:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (5, 'TUESDAY', '08:00', '16:00');
-INSERT INTO vet_schedules (vet_id, weekday, start_time, end_time) VALUES (6, 'WEDNESDAY', '11:00', '19:00');`,
+    fileLabel: 'data.sql', language: 'sql',
+    beforeCode: PETCLINIC_BASELINE['data.sql'] ?? '',
+    afterCode: PETCLINIC_GENERATED['data.sql'],
   },
   14: {
-    fileLabel: 'VisitControllerTests.java',
-    language: 'java',
-    beforeCode: MY_EDITOR_TAB_CONTENTS['5'].code,
-    afterCode: `@WebMvcTest(VisitController.class)
-@Import(VetFormatter.class)
-class VisitControllerTests {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    @MockitoBean
-    private VisitRepository visitRepository;
-
-    @MockitoBean
-    private VetRepository vetRepository;
-
-    @MockitoBean
-    private VetScheduleRepository vetScheduleRepository;
-
-    @MockitoBean
-    private OwnerRepository ownerRepository;
-
-    @BeforeEach
-    void setUp() {
-        when(vetRepository.findAll()).thenReturn(List.of(vet(1), vet(3)));
-    }
-
-    @Test
-    void processNewVisitFormDoubleBookingRejected() throws Exception {
-        when(visitRepository.existsByVetIdAndDateAndTime(
-                3, LocalDate.parse("2026-04-15"), LocalTime.of(10, 0)))
-            .thenReturn(true);
-        when(vetScheduleRepository.findByVetIdAndWeekday(3, DayOfWeek.WEDNESDAY))
-            .thenReturn(List.of(schedule(DayOfWeek.WEDNESDAY, "09:00", "17:00")));
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-15")
-                .param("time", "10:00")
-                .param("vet", "3")
-                .param("description", "Regular check"))
-            .andExpect(status().isOk())
-            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "duplicate"));
-    }
-
-    @Test
-    void rejectsBookingOutsideVetWorkingHours() throws Exception {
-        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
-            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-13")
-                .param("time", "20:00")
-                .param("vet", "1"))
-            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "outsideWorkingHours"));
-    }
-
-    @Test
-    void rejectsBookingAtScheduleEndBoundary() throws Exception {
-        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
-            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-13")
-                .param("time", "17:00")
-                .param("vet", "1"))
-            .andExpect(model().attributeHasFieldErrorCode("visit", "time", "outsideWorkingHours"));
-    }
-
-    @Test
-    void acceptsBookingAtScheduleStartBoundary() throws Exception {
-        when(vetScheduleRepository.findByVetIdAndWeekday(1, DayOfWeek.MONDAY))
-            .thenReturn(List.of(schedule(DayOfWeek.MONDAY, "09:00", "17:00")));
-        when(ownerRepository.findById(1)).thenReturn(Optional.of(ownerWithPet(1)));
-
-        mockMvc.perform(post("/owners/1/pets/1/visits/new")
-                .param("date", "2026-04-13")
-                .param("time", "09:00")
-                .param("vet", "1"))
-            .andExpect(status().is3xxRedirection())
-            .andExpect(redirectedUrl("/owners/1"));
-
-        verify(visitRepository).save(any(Visit.class));
-    }
-
-    private VetSchedule schedule(DayOfWeek weekday, String start, String end) {
-        VetSchedule schedule = new VetSchedule();
-        schedule.setWeekday(weekday);
-        schedule.setStartTime(LocalTime.parse(start));
-        schedule.setEndTime(LocalTime.parse(end));
-        return schedule;
-    }
-
-    private Vet vet(int id) {
-        Vet vet = new Vet();
-        vet.setId(id);
-        return vet;
-    }
-
-    private Owner ownerWithPet(int petId) {
-        Owner owner = new Owner();
-        Pet pet = new Pet();
-        pet.setId(petId);
-        owner.addPet(pet);
-        return owner;
-    }
-}`,
+    fileLabel: 'VisitControllerTests.java', language: 'java',
+    beforeCode: PETCLINIC_BASELINE['VisitControllerTests.java'] ?? '',
+    afterCode: PETCLINIC_GENERATED['VisitControllerTests.java'],
   },
   16: {
-    fileLabel: 'schema.sql',
-    language: 'sql',
-    beforeCode: MY_EDITOR_TAB_CONTENTS['4'].code,
-    afterCode: `${MY_EDITOR_TAB_CONTENTS['4'].code}
-
-CREATE TABLE vet_schedules (
-    id          INTEGER IDENTITY PRIMARY KEY,
-    vet_id      INTEGER NOT NULL,
-    weekday     VARCHAR(9) NOT NULL,
-    start_time  TIME NOT NULL,
-    end_time    TIME NOT NULL,
-    CONSTRAINT fk_vet_schedules_vet FOREIGN KEY (vet_id) REFERENCES vets(id),
-    CONSTRAINT ck_vet_schedule_window CHECK (start_time < end_time),
-    CONSTRAINT uk_vet_schedule_window UNIQUE (vet_id, weekday, start_time, end_time)
-);`,
+    fileLabel: 'schema.sql', language: 'sql',
+    beforeCode: PETCLINIC_BASELINE['schema.sql'] ?? '',
+    afterCode: PETCLINIC_GENERATED['schema.sql'],
   },
-  17: {
-    fileLabel: 'VetFormatter.java',
-    language: 'java',
-    beforeCode: '',
-    afterCode: `@Component
-public class VetFormatter implements Formatter<Vet> {
 
-    private final VetRepository vetRepository;
-
-    public VetFormatter(VetRepository vetRepository) {
-        this.vetRepository = vetRepository;
-    }
-
-    @Override
-    public Vet parse(String text, Locale locale) throws ParseException {
-        final Integer vetId;
-        try {
-            vetId = Integer.valueOf(text);
-        }
-        catch (NumberFormatException ex) {
-            throw new ParseException("invalid vet id: " + text, 0);
-        }
-        return this.vetRepository.findAll().stream()
-            .filter(vet -> Objects.equals(vet.getId(), vetId))
-            .findFirst()
-            .orElseThrow(() -> new ParseException("vet not found: " + text, 0));
-    }
-
-    @Override
-    public String print(Vet vet, Locale locale) {
-        return String.valueOf(vet.getId());
-    }
-}`,
-  },
 };
 
 // Vet-Schedules.md's own Plan items are numbered 0-6 by their position in
@@ -1664,7 +1185,7 @@ public class VetFormatter implements Formatter<Vet> {
 // range the unrelated refactor-time-slots scenario's presets occupy).
 // Without this remap, a Plan row's "Show diff" click resolves its position
 // straight into that colliding range and opens someone else's diff.
-const VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION = [10, 11, 16, 13, 17, 12, 14];
+const VET_SCHEDULES_PLAN_DIFF_INDEX_BY_POSITION = [10, 11, 16, 13, 12, 14];
 
 function isVetSchedulesSourceLabel(label = '') {
   return String(label ?? '').trim().toLowerCase() === 'vet-schedules.md';
@@ -1702,10 +1223,10 @@ const MY_PROJECT_TREE = [
             children: [
               { id: 'visit',           label: 'Visit.java',             icon: 'fileTypes/java' },
               { id: 'visitCtrl',       label: 'VisitController.java',   icon: 'fileTypes/java' },
-              { id: 'visitRepo',       label: 'VisitRepository.java',   icon: 'fileTypes/java' },
               { id: 'owner-file',      label: 'Owner.java',             icon: 'fileTypes/java' },
               { id: 'pet',             label: 'Pet.java',               icon: 'fileTypes/java' },
               { id: 'petTypeFormatter', label: 'PetTypeFormatter.java', icon: 'fileTypes/java' },
+              { id: 'vetFormatter', label: 'VetFormatter.java', icon: 'fileTypes/java' },
             ],
           },
           {
@@ -1716,8 +1237,8 @@ const MY_PROJECT_TREE = [
             children: [
               { id: 'vet-file',     label: 'Vet.java',           icon: 'fileTypes/java' },
               { id: 'vetRepo',      label: 'VetRepository.java', icon: 'fileTypes/java' },
-              { id: 'vetFormatter', label: 'VetFormatter.java',  icon: 'fileTypes/java' },
               { id: 'vetSchedule',  label: 'VetSchedule.java',   icon: 'fileTypes/java' },
+              { id: 'vetScheduleRepo', label: 'VetScheduleRepository.java', icon: 'fileTypes/java' },
             ],
           },
           {
@@ -1791,8 +1312,12 @@ const MY_PROJECT_TREE = [
         icon: 'nodes/testRoot',
         isExpanded: true,
         children: [
-          { id: 'test1', label: 'VisitControllerTests.java', icon: 'fileTypes/java' },
-          { id: 'test2', label: 'ClinicServiceTests.java',   icon: 'fileTypes/java' },
+          { id: 'test-owner', label: 'owner', icon: 'nodes/package', isExpanded: true, children: [
+            { id: 'test1', label: 'VisitControllerTests.java', icon: 'fileTypes/java' },
+          ] },
+          { id: 'test-service', label: 'service', icon: 'nodes/package', isExpanded: true, children: [
+            { id: 'test2', label: 'ClinicServiceTests.java', icon: 'fileTypes/java' },
+          ] },
         ],
       },
     ],
@@ -3622,7 +3147,7 @@ const HASH_COMPLETIONS = [
   { label: 'Configuration.md',             description: 'Agent Specifications' },
   { label: 'VisitController.java',         description: 'owner'          },
   { label: 'Visit.java',                   description: 'owner'          },
-  { label: 'VetFormatter.java',            description: 'vet'            },
+  { label: 'VetFormatter.java',            description: 'owner'            },
   { label: 'createOrUpdateVisitForm.html', description: 'templates/pets' },
   { label: 'schema.sql',                   description: 'db/h2'          },
 ];
@@ -3787,55 +3312,10 @@ function getEditorTabContentByLabel(label = '') {
 // VetScheduleRepository.java). Without these, chips like `VetSchedule` and
 // `VetScheduleRepository.findByVetIdAndWeekday()` have nothing to resolve to.
 const EXTRA_SPEC_SOURCE_FILES = {
-  'VetSchedule.java': {
-    language: 'java',
-    code: `@Entity
-@Table(name = "vet_schedules")
-public class VetSchedule extends BaseEntity {
-
-    @ManyToOne
-    @JoinColumn(name = "vet_id")
-    @NotNull
-    private Vet vet;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "weekday", nullable = false)
-    @NotNull
-    private DayOfWeek weekday;
-
-    @Column(name = "start_time", nullable = false)
-    @NotNull
-    private LocalTime startTime;
-
-    @Column(name = "end_time", nullable = false)
-    @NotNull
-    private LocalTime endTime;
-
-    @AssertTrue(message = "End time must be after start time")
-    public boolean isValidTimeRange() {
-        return startTime == null || endTime == null || endTime.isAfter(startTime);
-    }
-
-    public Vet getVet() { return this.vet; }
-    public void setVet(Vet vet) { this.vet = vet; }
-
-    public DayOfWeek getWeekday() { return this.weekday; }
-    public void setWeekday(DayOfWeek weekday) { this.weekday = weekday; }
-
-    public LocalTime getStartTime() { return this.startTime; }
-    public void setStartTime(LocalTime startTime) { this.startTime = startTime; }
-
-    public LocalTime getEndTime() { return this.endTime; }
-    public void setEndTime(LocalTime endTime) { this.endTime = endTime; }
-}`,
-  },
-  'VetScheduleRepository.java': {
-    language: 'java',
-    code: `public interface VetScheduleRepository extends CrudRepository<VetSchedule, Integer> {
-
-    List<VetSchedule> findByVetIdAndWeekday(int vetId, DayOfWeek weekday);
-}`,
-  },
+  'VetSchedule.java': { language: 'java', code: PETCLINIC_GENERATED['VetSchedule.java'] },
+  'VetScheduleRepository.java': { language: 'java', code: PETCLINIC_GENERATED['VetScheduleRepository.java'] },
+  'VetFormatter.java': { language: 'java', code: PETCLINIC_BASELINE['VetFormatter.java'] },
+  'data.sql': { language: 'sql', code: PETCLINIC_BASELINE['data.sql'] },
 };
 
 let SPEC_SOURCE_FILES = null;
@@ -5837,7 +5317,7 @@ const AT_POPUP_ITEMS = [
   { id: 'pet', kind: 'file', label: 'Pet.java', path: AT_PKG_OWNER },
   { id: 'vet', kind: 'file', label: 'Vet.java', path: AT_PKG_VET },
   { id: 'vet-repo', kind: 'file', label: 'VetRepository.java', path: AT_PKG_VET },
-  { id: 'vet-formatter', kind: 'file', label: 'VetFormatter.java', path: AT_PKG_VET },
+  { id: 'vet-formatter', kind: 'file', label: 'VetFormatter.java', path: AT_PKG_OWNER },
   { id: 'base-entity', kind: 'file', label: 'BaseEntity.java', path: AT_PKG_MODEL },
   { id: 'visit-form', kind: 'file', label: 'createOrUpdateVisitForm.html', path: 'src/main/resources/templates/pets' },
   { id: 'owner-details', kind: 'file', label: 'ownerDetails.html', path: 'src/main/resources/templates/owners' },
@@ -6413,6 +5893,9 @@ function getDoneEditablePlainText(node) {
   // word/path char with no separating whitespace — e.g. the user typed right
   // after the chip), insert a single boundary space so the reference stays
   // intact instead of merging into a corrupt token like `@VetSchedule.javaQQ`.
+  if (node instanceof HTMLElement && node.tagName === 'STRONG') {
+    return `**${Array.from(node.childNodes).map(getDoneEditablePlainText).join('')}**`;
+  }
   const kids = Array.from(node.childNodes ?? []);
   let out = '';
   for (let i = 0; i < kids.length; i += 1) {
@@ -6881,6 +6364,7 @@ const MD_LINK_PATTERN_SRC = '\\[[^\\]\\n]+\\]\\s?\\([^\\s)\\n]*\\)?';
 
 const INLINE_REFERENCE_SPLIT_PATTERN = new RegExp(
   [
+    '\\*\\*[^*]+\\*\\*',
     MD_LINK_PATTERN_SRC,
     '`[^`]+`',
     '@[A-Za-z0-9_./#:-]+(?:\\(\\))?',
@@ -7281,6 +6765,9 @@ function renderDoneInlineText(text, keyPrefix = 'inline') {
   const parts = text.split(splitPattern);
   if (parts.length === 1) return text;
   return parts.map((part, index) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={`${keyPrefix}-${index}`}>{renderDoneInlineText(part.slice(2, -2), `${keyPrefix}-bold-${index}`)}</strong>;
+    }
     const externalLink = renderExternalMarkdownLink(part, `${keyPrefix}-${index}`);
     if (externalLink) {
       return externalLink;
@@ -7919,6 +7406,8 @@ function CheckStatus({ status, outdated = false, isLoading = false }) {
             ? <path d="M5.5 8.5L7 10L10.5 6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
             : normalizedStatus === 'pending'
               ? null
+              : normalizedStatus === 'failed'
+                ? <path d="M5 5L11 11M11 5L5 11" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
               : <rect x="4" y="7.25" width="8" height="1.5" rx="0.75" fill="#fff" />
           }
         </svg>
@@ -7977,6 +7466,9 @@ function AcCheckRow({
   const [proposalRejected, setProposalRejected] = useState(false);
   const checks = checkItem.checks || [];
   const hasChecks = checks.length > 0;
+  useEffect(() => {
+    if (!hasChecks) setExpanded(false);
+  }, [hasChecks]);
   const isOutdated = isRunStatusItemOutdated(checkItem);
 
   const handleProposalAccept = () => {
@@ -8012,10 +7504,10 @@ function AcCheckRow({
     <div className={`spec-done-line spec-done-line-check ac-check-row${isOutdated ? ' is-outdated' : ''}`}>
       <div className={`ac-check-main spec-done-primary-line${isIssueActive && !proposalAccepted ? ' spec-done-active-issue-line' : ''}${isOutdated ? ' is-outdated' : ''}`}>
         <CheckStatus status={visualStatus} outdated={isOutdated} isLoading={isRunning && visualStatus === 'pending'} />
-        <span contentEditable suppressContentEditableWarning>{renderInline(displayText, displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
+        <span contentEditable suppressContentEditableWarning>{renderInline(displayText.replace('**Previously confirmed appointments remain unchanged.**', 'Previously confirmed appointments remain unchanged.'), displayHighlight, displayIssue, handleProposalAccept, handleProposalReject)}</span>
         {hasChecks && (
-          <button className="ac-checks-toggle" onClick={() => setExpanded(e => !e)}>
-            {checks.length} checks{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
+          <button type="button" className="ac-checks-toggle" aria-expanded={expanded} onClick={() => setExpanded(e => !e)}>
+            {checks.length} {checks.length === 1 ? 'check' : 'checks'}{!proposalAccepted && checks.filter(c => c.status === 'failed').length > 0 ? `/${checks.filter(c => c.status === 'failed').length} problem` : ''}
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`ac-checks-arrow${expanded ? ' expanded' : ''}`}>
               <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -8023,10 +7515,10 @@ function AcCheckRow({
         )}
         {commentAdornment}
       </div>
-      {expanded && (
+      {expanded && hasChecks && (
         <div className="ac-subcheck-list">
           {checks.map((check, i) => (
-            <div key={i} className={`ac-subcheck-item${isOutdated ? ' is-outdated' : ''}`}>
+            <div key={i} className={`ac-subcheck-item${check.status === 'failed' ? ' ac-subcheck-item-failed' : ''}${isOutdated ? ' is-outdated' : ''}`}>
               <AcSubcheckIcon status={check.status} />
               <span className="ac-subcheck-text">{renderDoneInlineText(check.text, `subcheck-${i}`)}</span>
               {check.chip && <AcSubcheckChip label={check.chip} onOpen={onOpenCheckChip} />}
@@ -8477,8 +7969,12 @@ function findSectionCheckLineIndex(code, kind, index) {
 function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
   const normalizedFileCount = Number.isFinite(fileCount) ? fileCount : null;
   if (issueTarget?.kind === 'plan') {
-    const codeDiffPreset = getPlanCodeDiffPreset(issueTarget);
-    const codeDiff = buildCodeDiffRows(
+    const preset = getPlanCodeDiffPreset(issueTarget);
+    const codeDiffPreset = statusItem?.bookingPolicyVerified === false && PETCLINIC_FIRST_RUN[preset.fileLabel]
+      ? { ...preset, afterCode: PETCLINIC_FIRST_RUN[preset.fileLabel] }
+      : preset;
+    const diffBuilder = isVetSchedulesSourceLabel(sourceTabLabel) ? buildPetClinicDiff : buildCodeDiffRows;
+    const codeDiff = diffBuilder(
       codeDiffPreset.beforeCode,
       codeDiffPreset.afterCode,
       `plan-code-${issueTarget.index}`
@@ -9246,10 +8742,7 @@ function DoneInspectionWidget({
   return (
     <>
     <div className={`spec-done-inspection-widget${className ? ` ${className}` : ''}`}>
-      {/* Always present, not just when there are issues — otherwise there's no
-          way to get to the Problems view from a clean document at all. A
-          clean run gets a plain checkmark instead of a count. */}
-      <button
+      {hasIssues && <button
         type="button"
         className="spec-done-inspection-counts-btn"
         aria-label={hasIssues ? problemLabelParts.join(' and ') : 'No problems'}
@@ -9274,15 +8767,7 @@ function DoneInspectionWidget({
             <span className="spec-done-inspection-text">{errorCount}</span>
           </span>
         )}
-        {!hasIssues && (
-          <span className="spec-done-inspection-group">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="7" fill="#55A76A" />
-              <path d="M4.5 8L7 10.5L11.5 6" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </span>
-        )}
-      </button>
+      </button>}
       {(hasWarnings || hasErrors) && (
         <div className="spec-done-inspection-nav">
           <Tooltip text="Previous Highlighted Error" shortcut="⇧F2" placement="bottom" delay={0}>
@@ -10948,7 +10433,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           contextLabel: defaultVetCommentChatTarget?.title ?? 'Chat Session',
           contextIcon: defaultVetCommentChatTarget?.icon ?? 'claude',
           order,
-          lineLabel: `Note ${order}`,
+          lineLabel: '',
         };
       }
 
@@ -10966,7 +10451,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
       // the scenes (so sending it later still works the normal way), but the
       // chat itself never surfaces — the user works the document only, and
       // sends the note to the agent from right there (see the doc toolbar's
-      // "Send Comments" button) instead of a split opening on its own.
+      // "Revise Workspace" button) instead of a split opening on its own.
       if (isVetSchedulesDocument && boundChatId && !shouldCreateAnnotation) {
         const sourceRowMeta = rowMetaByKey.get(commentPopup.rowKey) ?? null;
         onAddSelectionToChat?.({
@@ -12294,7 +11779,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                   comments: displayedThreadedCommentsForRow.map(({ comment, commentIndex }) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
                     text: getStoredCommentText(comment),
-                    lineLabel: (comment && typeof comment === 'object' && comment.lineLabel) || '',
+                    lineLabel: isVetSchedulesDocument ? '' : ((comment && typeof comment === 'object' && comment.lineLabel) || ''),
                     editable: true,
                     localIndex: commentIndex,
                   })),
@@ -12322,7 +11807,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                         text: getStoredCommentText(comment),
                         lineLabel: activeCommentPopupForRow.isAnnotation
                           ? (getStoredCommentLineLabel(comment) || activeCommentPopupForRow.footerMetaLabel || '')
-                          : ((comment && typeof comment === 'object' && comment.lineLabel) || ''),
+                          : (isVetSchedulesDocument ? '' : ((comment && typeof comment === 'object' && comment.lineLabel) || '')),
                         editable: true,
                         localIndex: Number.isInteger(comment?.localIndex) ? comment.localIndex : index,
                       })),
@@ -12561,11 +12046,7 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
                       secondarySubmitAction={null}
                       preserveEditorSelection={false}
                       preservedEditorSelectionSnapshot={activeCommentPopupForRow?.selectionSnapshot ?? null}
-                      footerMetaLabel={isVetSchedulesDocument && activeCommentPopupForRow && !activeCommentPopupForRow.isAnnotation
-                        ? (Number.isInteger(activeCommentPopupForRow.editingIndex)
-                          ? (commentsForRow[activeCommentPopupForRow.editingIndex]?.lineLabel || '')
-                          : `Note ${getNextVetNoteOrder()}`)
-                        : ''}
+                      footerMetaLabel=""
                       onChange={(nextValue) => {
                         setCommentPopup((prev) => (prev ? { ...prev, value: nextValue } : prev));
                       }}
@@ -12641,9 +12122,22 @@ function DoneMarkdownOverlay({ code, onOpenProblems, onOpenTerminal, onRegenerat
           // once Execute has actually run — the marketing-video path into a
           // file's generated diff with no extra window.
           <div className="spec-changed-files-section">
-            <h2 className="spec-changed-files-heading">Generated Diffs</h2>
+            <div className="spec-changed-files-heading-row spec-done-row">
+              <div className="editor-gutter-row spec-done-gutter-cell spec-done-gutter-cell-section-run">
+              <button type="button" className="spec-generated-diffs-gutter spec-done-gutter-line-number-run"
+                aria-label="Review generated diffs" title="Review generated diffs"
+                data-demo-id="spec-review-generated-diffs"
+                disabled={Boolean(activeRunRequest)}
+                onClick={() => onOpenDiffTab?.(getSddBuildChangeCards(isVetBookingPolicyResolved(effectiveCode) && acRunResult?.[1]?.status === 'passed').find((card) => card.label === 'VisitController.java').diffRequest)}>
+                <Icon name={DIFF_TAB_ICON_NAME} size={16} />
+              </button>
+              </div>
+              <div className="spec-done-row-content">
+                <h2 className="spec-changed-files-heading spec-done-heading spec-done-heading-level-2">Generated Diffs</h2>
+              </div>
+            </div>
             <ul className="spec-changed-files-list">
-              {SDD_BUILD_CHANGE_CARDS.map((card) => (
+              {getSddBuildChangeCards(isVetBookingPolicyResolved(effectiveCode) && acRunResult?.[1]?.status === 'passed').map((card) => (
                 <li
                   key={card.id}
                   className="spec-changed-files-item"
@@ -13702,7 +13196,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                     <span className="agent-task-toolbar-chat-trigger-label">{relatedChat.title}</span>
                   </button>
                 )}
-                {/* The status indicator (Ready to Execute/Executed/Edited, and the
+                {/* The status indicator (Ready to Implement/Executed/Edited, and the
                     "Building..." busy state) is redundant once the related chat is
                     reachable right here — its own timeline already narrates exactly
                     that ("Running the Plan...", "Worked for Xs", the file list). Only
@@ -13735,7 +13229,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       </span>
                     )}
                     <span className="at-generating-label">
-                      {hasPendingSpecifyChanges ? 'Edited' : (topBarDisplayStatus === 'Build' ? 'Executed' : 'Ready to Execute')}
+                      {hasPendingSpecifyChanges ? 'Edited' : (topBarDisplayStatus === 'Build' ? 'Implemented' : 'Ready to Implement')}
                     </span>
                   </>)
                 )}
@@ -13764,11 +13258,11 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   <Button
                     type="secondary"
                     size="slim"
-                    className="agent-task-toolbar-note-action"
+                    className="agent-task-toolbar-action agent-task-toolbar-note-action"
                     disabled={Boolean(busyToolbarLabel)}
                     onClick={() => onSendPendingNotes?.()}
                   >
-                    Send Comments
+                    Revise Workspace
                   </Button>
                 )}
                 {runState === 'running' ? (
@@ -13779,6 +13273,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                   <Button
                     type="primary"
                     size="slim"
+                    className="agent-task-toolbar-action"
                     data-demo-id="agent-task-run"
                     // The chat that owns this doc is already busy with it
                     // (generating it or addressing a note) — running it too
@@ -13801,7 +13296,7 @@ function AgentTaskEditorArea({ genState, genProgress, onSend, onStop, onRegenera
                       }, 4000);
                     }}
                   >
-                    Execute
+                    Implement
                   </Button>
                 )}
               </div>
@@ -13938,81 +13433,24 @@ const INITIAL_ACTIVE_AGENT_TASK_ID = 't2';
 const INITIAL_ACTIVE_AGENT_TASK_TAB_ID = 'agent-task-t2';
 const INITIAL_ACTIVE_AGENT_TASK_LABEL = 'Vet-Schedules.md';
 
-const VET_SCHEDULES_AC_RUN_STATUSES = [
-  {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: 'Working schedules use start-inclusive, end-exclusive windows', chip: null },
-    ],
-  },
-  {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: 'Off-hours booking validation rejects unavailable slots', chip: null },
-    ],
-  },
-  {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: 'Demo seed data covers all six seeded vets', chip: null },
-    ],
-  },
-  {
-    status: 'passed',
-    checks: [
-      { status: 'passed', text: 'Visit-booking flow still uses static hourly slots', chip: null },
-    ],
-  },
-];
-
-const VET_SCHEDULES_PLAN_RUN_STATUSES = [
-  { status: 'passed' },
-  { status: 'passed' },
-  { status: 'passed' },
-  { status: 'passed' },
-  { status: 'passed' },
-  { status: 'passed' },
-  { status: 'passed' },
-];
+const VET_SCHEDULES_PLAN_RUN_STATUSES = VET_INITIAL_PLAN.map(() => ({ status: 'passed' }));
 
 function createVetSchedulesSpecDocument() {
   return [
-    {
-      id: 'goal',
-      title: 'Goal',
-      items: [
-        {
-          id: 'goal-text',
-          type: 'paragraph',
-          text: 'Add persisted vet working hours and server-side booking validation without replacing the current static time-slot picker.',
-        },
-      ],
-    },
-    {
-      id: 'plan',
-      title: 'Plan',
-      meta: { kind: 'chip', text: 'Configuration.md' },
-      items: [
-        { id: 'plan-1', type: 'check', checked: false, text: 'Add @VetSchedule.java entity with enum-name weekday persistence and validated time ranges' },
-        { id: 'plan-2', type: 'check', checked: false, text: 'Add repository queries by vet/weekday in @VetScheduleRepository.findByVetIdAndWeekday()' },
-        { id: 'plan-3', type: 'check', checked: false, text: 'Create the H2 schedule table in @schema.sql with vet FK + valid-time-window check' },
-        { id: 'plan-4', type: 'check', checked: false, text: 'Seed working hours for all six demo vets in H2 data.sql' },
-        { id: 'plan-5', type: 'check', checked: false, text: 'Register @VetFormatter.java so the visit form can bind a selected vet' },
-        { id: 'plan-6', type: 'check', checked: false, text: 'Validate requested visit_time against half-open schedule windows in @VisitController.processNewVisitForm()' },
-        { id: 'plan-7', type: 'check', checked: false, text: 'Add off-hours rejection tests in VisitControllerTests.java for controller validation' },
-      ],
-    },
-    {
-      id: 'acceptance',
-      title: 'Acceptance Criteria',
-      items: [
-        { id: 'ac-1', type: 'check', checked: false, text: 'Each veterinarian\'s working hours are stored by weekday with a start-inclusive, end-exclusive time window.' },
-        { id: 'ac-2', type: 'check', checked: false, text: 'Validation rejects a slot unless it falls within at least one of the selected vet\'s [start, end) windows.' },
-        { id: 'ac-3', type: 'check', checked: false, text: 'Demo seed data includes at least one valid schedule window for each of the six seeded vets.' },
-        { id: 'ac-4', type: 'check', checked: false, text: '@Visit-Booking.md#Plan keeps the existing static hourly slot picker; this change adds server-side validation.' },
-      ],
-    },
-  ].map((section) => withDerivedPlanChildren(section));
+    { id: 'goal', title: 'Goal', items: [
+      { id: 'goal-text', type: 'paragraph', text: 'Add vet working hours and reject bookings outside them.' },
+      { id: 'goal-context', type: 'paragraph', text: 'This branch already supports vet selection and appointment times. For this task, existing scheduled appointments are treated as confirmed. Keep the existing hourly time picker.' },
+    ] },
+    { id: 'plan', title: 'Plan', items: VET_INITIAL_PLAN.map((text, index) => (
+      { id: `plan-${index + 1}`, type: 'check', checked: false, text }
+    )) },
+    { id: 'acceptance', title: 'Acceptance Criteria', items: [
+      { id: 'ac-1', type: 'check', checked: false, text: "Appointment start times must fall within the vet's working hours: the start is inclusive, and the end is exclusive." },
+      { id: 'ac-2', type: 'check', checked: false, text: VET_BOOKING_AC },
+      { id: 'ac-3', type: 'check', checked: false, text: 'H2 seed data includes at least one working-hours window for each of the six demo vets.' },
+      { id: 'ac-4', type: 'check', checked: false, text: 'Keep the existing vet selector and hourly time picker. Validate working hours server-side when the form is submitted.' },
+    ] },
+  ];
 }
 
 const VET_SCHEDULES_SERIALIZED_LINE_COUNT = serializeSpecDocument(createVetSchedulesSpecDocument())
@@ -14020,13 +13458,7 @@ const VET_SCHEDULES_SERIALIZED_LINE_COUNT = serializeSpecDocument(createVetSched
   .length;
 
 function createVetSchedulesTaskDraft() {
-  return [
-    'Add persisted vet working hours and server-side booking validation without replacing the current static time-slot picker.',
-    '',
-    '- Model working hours per vet and weekday.',
-    '- Reject bookings outside configured schedule windows.',
-    '- Keep the current static hourly slots for the first visit-booking rollout.',
-  ].join('\n');
+  return 'Add vet working hours and reject bookings outside them.';
 }
 
 function createInteractiveTaskState({
@@ -14058,7 +13490,7 @@ function createInteractiveTaskState({
   };
 }
 
-function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
+function getAgentTaskScenario({ tabId = '', label = '', policyResolved = false } = {}) {
   const normalizedTabId = typeof tabId === 'string' ? tabId : '';
   const normalizedLabel = normalizeMarkdownDocumentLabelKey(label);
 
@@ -14067,12 +13499,12 @@ function getAgentTaskScenario({ tabId = '', label = '' } = {}) {
     return {
       initialCode: serializeSpecDocument(documentSections),
       defaultDocument: documentSections,
-      acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
+      acBaseStatuses: getVetSchedulesAcStatuses(policyResolved),
       planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       initialTaskState: createInteractiveTaskState({
         documentSections,
         genState: 'done',
-        acBaseStatuses: VET_SCHEDULES_AC_RUN_STATUSES,
+        acBaseStatuses: getVetSchedulesAcStatuses(policyResolved),
         planBaseStatuses: VET_SCHEDULES_PLAN_RUN_STATUSES,
       }),
     };
@@ -15945,8 +15377,8 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
   },
 ];
 
-function getPresetLineDiffSummary(presetIndex) {
-  const preset = PLAN_CODE_DIFF_PRESETS[presetIndex] ?? {};
+function getPresetLineDiffSummary(presetIndex, presetOverride = null) {
+  const preset = presetOverride ?? PLAN_CODE_DIFF_PRESETS[presetIndex] ?? {};
   const toLines = (code) => (typeof code === 'string' && code.length > 0 ? code.split(/\r?\n/u) : []);
   const beforeLines = toLines(preset.beforeCode);
   const afterLines = toLines(preset.afterCode);
@@ -15975,9 +15407,12 @@ function createSddBuildChangeCard({
   documentLabel,
   icon,
   text,
+  bookingPolicyVerified = true,
 }) {
-  const preset = PLAN_CODE_DIFF_PRESETS[presetIndex];
-  const diff = getPresetLineDiffSummary(presetIndex);
+  const original = PLAN_CODE_DIFF_PRESETS[presetIndex];
+  const preset = !bookingPolicyVerified && PETCLINIC_FIRST_RUN[original.fileLabel]
+    ? { ...original, afterCode: PETCLINIC_FIRST_RUN[original.fileLabel] } : original;
+  const diff = getPresetLineDiffSummary(presetIndex, preset);
   return {
     id,
     name: preset.fileLabel,
@@ -15989,10 +15424,10 @@ function createSddBuildChangeCard({
     diff,
     diffRequest: {
       text,
-      statusItem: { status: 'passed' },
+      statusItem: { status: 'passed', bookingPolicyVerified },
       issueTarget: { kind: 'plan', index: presetIndex },
       source: { label: 'Vet-Schedules.md' },
-      fileCount: 7,
+      fileCount: 6,
     },
   };
 }
@@ -16030,13 +15465,6 @@ const SDD_BUILD_CHANGE_CARDS = [
     text: 'Seed working hours for all six demo vets',
   }),
   createSddBuildChangeCard({
-    id: 'sdd-build-vet-formatter',
-    presetIndex: 17,
-    documentLabel: 'Form binding:',
-    icon: 'fileTypes/java',
-    text: 'Register VetFormatter for visit-form binding',
-  }),
-  createSddBuildChangeCard({
     id: 'sdd-build-visit-controller',
     presetIndex: 12,
     documentLabel: 'Validation:',
@@ -16048,9 +15476,21 @@ const SDD_BUILD_CHANGE_CARDS = [
     presetIndex: 14,
     documentLabel: 'Regression tests:',
     icon: 'fileTypes/java',
-    text: 'Cover off-hours rejection and both schedule boundaries',
+    text: 'Verify new bookings and preserve confirmed appointments',
   }),
 ];
+
+function getSddBuildChangeCards(bookingPolicyVerified) {
+  if (bookingPolicyVerified) return SDD_BUILD_CHANGE_CARDS;
+  return SDD_BUILD_CHANGE_CARDS.map((card) => createSddBuildChangeCard({
+    ...card,
+    presetIndex: card.diffRequest.issueTarget.index,
+    text: card.label === 'VisitControllerTests.java'
+      ? 'Verify working-hours validation and schedule boundaries'
+      : card.diffRequest.text,
+    bookingPolicyVerified: false,
+  }));
+}
 
 // A multi-file change is summarized as one "Changed Files" card (file + counters
 // per row); a single-file change keeps its code-preview card.
@@ -16668,7 +16108,7 @@ function SddSpecGenerationStreamingMessage({ message }) {
     },
     {
       icon: 'fileTypes/markdown',
-      label: 'Editing spec document',
+      label: 'Drafting Workspace document',
       detail: 'Vet-Schedules.md',
     },
     {
@@ -16691,7 +16131,7 @@ function SddSpecGenerationStreamingMessage({ message }) {
           : 'I’m creating Vet-Schedules.md for this booking change.')}
         <span className="ai-chat-streaming-caret" aria-hidden="true" />
       </p>
-      <div className="sdd-generation-stream-steps" role="status" aria-label="Task Mode generation activity">
+      <div className="sdd-generation-stream-steps" role="status" aria-label="Workspace generation activity">
         {visibleSteps.map((step, index) => {
           const isDone = index < progressStep;
           const isActive = index === progressStep && progressStep < steps.length;
@@ -20644,7 +20084,9 @@ function AiChatTabView({
                   ? 'Add a follow-up'
                   : isReviewFeedbackMode
                     ? 'Add feedback for the next review iteration'
-                    : 'Type task, use @mentions or /commands'}
+                    : isNewSessionState && selectedAgent.id === 'sdd'
+                      ? 'Describe your task. Review the plan, guide changes, and track results in one Workspace.'
+                      : 'Type task, use @mentions or /commands'}
               aria-label={isAgentRunProcessing ? 'Add a follow-up' : 'Task prompt'}
               onChange={(event) => {
                 setComposerText(event.target.value);
@@ -20799,14 +20241,16 @@ function AiChatTabView({
               />
               {isCodexStyleAgent ? (
                 <>
-                  <NewSessionFooterPicker
-                    id="mode"
-                    label="Agent"
-                    options={['Agent']}
-                    open={newSessionSettingsMenu === 'mode'}
-                    onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={() => {}}
-                  />
+                  {!isNewSessionState && (
+                    <NewSessionFooterPicker
+                      id="mode"
+                      label="Agent"
+                      options={['Agent']}
+                      open={newSessionSettingsMenu === 'mode'}
+                      onOpenChange={setNewSessionSettingsMenu}
+                      onSelect={() => {}}
+                    />
+                  )}
                   <NewSessionFooterPicker
                     id="fast-mode"
                     label="Fast mode · Off"
@@ -20817,11 +20261,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="sdd-mode"
-                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
-                    options={['Task Mode: On', 'Task Mode: Off']}
+                    label={sddModeOn ? 'Workspace: On' : 'Workspace: Off'}
+                    options={['Workspace: On', 'Workspace: Off']}
                     open={newSessionSettingsMenu === 'sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
+                    onSelect={(option) => setSddModeOn(option === 'Workspace: On')}
                   />
                 </>
               ) : (
@@ -20886,11 +20330,11 @@ function AiChatTabView({
                   />
                   <NewSessionFooterPicker
                     id="chat-sdd-mode"
-                    label={sddModeOn ? 'Task Mode: On' : 'Task Mode: Off'}
-                    options={['Task Mode: On', 'Task Mode: Off']}
+                    label={sddModeOn ? 'Workspace: On' : 'Workspace: Off'}
+                    options={['Workspace: On', 'Workspace: Off']}
                     open={newSessionSettingsMenu === 'chat-sdd-mode'}
                     onOpenChange={setNewSessionSettingsMenu}
-                    onSelect={(option) => setSddModeOn(option === 'Task Mode: On')}
+                    onSelect={(option) => setSddModeOn(option === 'Workspace: On')}
                   />
                 </>
               )}
@@ -21731,11 +21175,8 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState(() => (
-    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('screen') === 'welcome'
-      ? 'welcome'
-      : 'ide'
-  )); // 'welcome' | 'ide'
+  // Start recordings in the fresh Workspace session, including old welcome URLs.
+  const [screen, setScreen] = useState('ide'); // 'welcome' | 'ide'
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
@@ -23078,8 +22519,9 @@ export default function App() {
     return getAgentTaskScenario({
       tabId: resolvedTab?.id ?? '',
       label: resolvedTab?.label ?? '',
+      policyResolved: isVetBookingPolicyResolved(manualDocumentDraftsByTabId[resolvedTab?.id] ?? ideTabContents[resolvedTab?.id]?.code ?? ''),
     });
-  }, [activeEditorTab, generationTabId, ideTabs]);
+  }, [activeEditorTab, generationTabId, ideTabs, manualDocumentDraftsByTabId, ideTabContents]);
 
   const getTaskRuntimeState = useCallback((tabId) => {
     if (!tabId) return null;
@@ -23426,14 +22868,16 @@ export default function App() {
       ? tabsWithoutTask.findIndex((tabItem) => tabItem.id === relatedChatTabId)
       : -1;
     const shouldPlaceBeforeRelatedChat = insertBeforeRelatedChatIndex >= 0;
-    const nextTabs = shouldPlaceBeforeRelatedChat
+    const nextTabs = options.replaceChatId
+      ? [taskTab]
+      : shouldPlaceBeforeRelatedChat
       ? [
         ...tabsWithoutTask.slice(0, insertBeforeRelatedChatIndex),
         taskTab,
         ...tabsWithoutTask.slice(insertBeforeRelatedChatIndex),
       ]
       : (existingTabIndex >= 0 ? ideTabs : [nextTab, ...ideTabs]);
-    const nextActiveTabIndex = shouldPlaceBeforeRelatedChat
+    const nextActiveTabIndex = options.replaceChatId ? 0 : shouldPlaceBeforeRelatedChat
       ? insertBeforeRelatedChatIndex
       : (existingTabIndex >= 0 ? existingTabIndex : 0);
 
@@ -25015,6 +24459,7 @@ export default function App() {
       initialResult = [],
       startIndex = 0,
       initialDelay = 0,
+      stepDelay = RUN_STATUS_REVEAL_STEP_DELAY_MS,
       indices = null,
       pausePredicate = null,
       onPause,
@@ -25064,7 +24509,7 @@ export default function App() {
             return;
           }
 
-          scheduleIndexedStep(listIndex + 1, RUN_STATUS_REVEAL_STEP_DELAY_MS);
+          scheduleIndexedStep(listIndex + 1, stepDelay);
         }, delay);
 
         statusRevealTimeoutsRef.current[kind].push(timeoutId);
@@ -25099,7 +24544,7 @@ export default function App() {
           return;
         }
 
-        scheduleStep(idx + 1, RUN_STATUS_REVEAL_STEP_DELAY_MS);
+        scheduleStep(idx + 1, stepDelay);
       }, delay);
 
       statusRevealTimeoutsRef.current[kind].push(timeoutId);
@@ -28229,6 +27674,19 @@ export default function App() {
     }),
     [activePlanDiffDataForMemo, activePlanDiffSourceViewState, activePlanDiffTargetForMemo],
   );
+  const workspaceReviewCards = isVetSchedulesSourceLabel(
+    ideTabs.find(tab => tab.id === activePlanDiffSourceTabIdForMemo)?.label,
+  ) ? getSddBuildChangeCards(
+    isVetBookingPolicyResolved(activePlanDiffSourceViewState?.code ?? '')
+      && activePlanDiffSourceViewState?.acRunResult?.[1]?.status === 'passed',
+  ) : [];
+  const workspaceReviewFileIndex = Math.max(0, workspaceReviewCards.findIndex(
+    card => card.label === activePlanDiffDataForMemo?.sourceTabLabel,
+  ));
+  const navigateWorkspaceReviewFile = (id) => {
+    const card = workspaceReviewCards.find(item => item.id === id);
+    if (card) openPlanDiffTab(card.diffRequest);
+  };
   const activeTabId = activeEditorTabMeta?.id ?? null;
   const activeTabContent = activeEditorTabContentEntry;
   const isAgentTaskTab = activeTabId?.startsWith('agent-task-');
@@ -29026,6 +28484,13 @@ export default function App() {
       && (requestedRunTarget?.kind === 'plan' || requestedRunTarget?.kind === 'ac')
     ) ? requestedRunTarget : null;
     const isFullBuild = !runTarget;
+    const isVetBuild = tabId === 'agent-task-t2';
+    const selectiveOptions = (current) => isVetBuild ? {
+      initialResult: current?.map((item) => item?.status === 'passed' ? item : { status: 'pending' }) ?? [],
+      ...(current ? { indices: current.flatMap((item, index) => item?.status === 'passed' ? [] : [index]) } : {}),
+      initialDelay: 650,
+      stepDelay: 650,
+    } : {};
     const targetKind = runTarget?.kind ?? null;
     const targetVisibleIndex = runTarget?.scope === 'item'
       ? mapOriginalIssueIndexToVisible(targetKind, runTarget.index, removedIssueIndices)
@@ -29058,7 +28523,7 @@ export default function App() {
     );
 
     setRunStateForTab('running', tabId);
-    if (isFullBuild) {
+    if (isFullBuild && !isVetBuild) {
       setCompletedFullSpecRunsByTab((prev) => (
         prev[tabId]
           ? { ...prev, [tabId]: false }
@@ -29101,12 +28566,12 @@ export default function App() {
       ...prev,
       [tabId]: initialRunRequest,
     }));
-    if (isFullBuild) {
+    if (isFullBuild && !isVetBuild) {
       setPlanRunResult(null);
       setAcRunResult(null);
-    } else if (targetKind === 'plan' && runTarget.scope === 'section') {
+    } else if (targetKind === 'plan' && runTarget?.scope === 'section') {
       setPlanRunResult(null);
-    } else if (targetKind === 'ac' && runTarget.scope === 'section') {
+    } else if (targetKind === 'ac' && runTarget?.scope === 'section') {
       setAcRunResult(null);
     }
 
@@ -29117,6 +28582,7 @@ export default function App() {
           : { ...prev, [targetKind]: {} }
       ));
       clearSpecDocumentRunRequestForTab(tabId);
+      setRunStateForTab('default', tabId);
       setDocToolbarBusy(tabId, null);
       if (isFullBuild) {
         setCompletedFullSpecRunsByTab((prev) => ({ ...prev, [tabId]: true }));
@@ -29146,6 +28612,7 @@ export default function App() {
     }
 
     revealRunStatuses('plan', nextPlanRunStatuses, {
+      ...selectiveOptions(planRunResult),
       onComplete: () => {
         specActionDocStateTimersRef.current[timerKey] = window.setTimeout(() => {
           lastTerminalRunRequestRef.current = acRunRequest;
@@ -29153,7 +28620,9 @@ export default function App() {
             ...prev,
             [tabId]: acRunRequest,
           }));
+          setDocToolbarBusy(tabId, 'Verifying...');
           revealRunStatuses('ac', nextAcRunStatuses, {
+            ...selectiveOptions(acRunResult),
             onComplete: finishBuildState,
           });
         }, CHAINED_SECTION_START_DELAY_MS);
@@ -29218,7 +28687,7 @@ export default function App() {
           const userText = status === 'Build'
             ? (runTarget?.scope === 'item'
               ? `Run ${runTarget.kind === 'ac' ? 'acceptance criterion' : 'Plan item'}`
-              : (runTarget?.kind === 'ac' ? 'Run Acceptance Criteria' : (runTarget?.kind === 'plan' ? 'Run Plan' : 'Execute')))
+              : (runTarget?.kind === 'ac' ? 'Run Acceptance Criteria' : (runTarget?.kind === 'plan' ? 'Run Plan' : 'Implement')))
             : 'Specify the spec';
           // Notes left on the doc land here as pending composer attachments
           // (see handleAddSpecSelectionToChat) — sending to the agent means
@@ -29270,7 +28739,7 @@ export default function App() {
                   kind: 'sdd-build-completed',
                   text: '',
                   workedForLabel: '1m 48s',
-                  changeCards: SDD_BUILD_CHANGE_CARDS,
+                  changeCards: getSddBuildChangeCards(isVetBookingPolicyResolved(manualDocumentDraftsByTabId[sourceTabId] ?? ideTabContents[sourceTabId]?.code ?? '')),
                 },
               ],
             }));
@@ -29299,6 +28768,8 @@ export default function App() {
     clearTaskCommentsForTab,
     ensureSpecStatusChat,
     ideTabs,
+    ideTabContents,
+    manualDocumentDraftsByTabId,
     openAiToolWindow,
     openChatInEditorTab,
     resolveSpecStatusSourceTabId,
@@ -29313,7 +28784,7 @@ export default function App() {
 
     // A note left on a doc (handleAddSpecSelectionToChat) lands as a pending
     // selection-context attachment on whichever chat generated it — however
-    // that attachment actually gets sent (the doc's own "Send Comments", or
+    // that attachment actually gets sent (the doc's own "Revise Workspace", or
     // just hitting send in the chat itself with nothing but the attachment
     // in the composer), the note is now the chat's to handle and shouldn't
     // still sit in the document too.
@@ -32205,14 +31676,12 @@ export default function App() {
       // in the chat. Opening it earlier (even just to show it's "working")
       // showed a doc that doesn't exist yet from the chat's perspective.
       const sddResultBullets = [
-        'Edited Vet-Schedules.md with a plan for a VetSchedule entity, weekday lookup repository, H2 schema and seed data, form binding, controller validation, and boundary tests.',
-        'Left Visit-Booking.md unchanged so the current hourly-slot rollout stays separate from the schedule-backed validation track.',
+        'Created Vet-Schedules.md with working-hours rules, an implementation plan, and acceptance criteria.',
       ];
       const fullSddResponse = [
         initialSddResponse,
         'I found the visit creation path in VisitController.java, the Visit model, and the existing controller tests.',
-        'The spec adds VetSchedule, a weekday repository lookup, H2 schema and seed schedules, VetFormatter form binding, controller validation, and boundary-focused regression tests.',
-        'I’ll keep it separate from Visit-Booking.md so the existing hourly-slot rollout stays unchanged.',
+        'Vet selection and appointment times are already supported. I’ll keep the form unchanged and plan the working-hours validation and tests in the Workspace.',
       ].join(' ');
       // Start from the sentence already rendered in the assistant placeholder.
       // Streaming must only append text; it must never flash a complete sentence
@@ -32262,10 +31731,8 @@ export default function App() {
         // toolbar's chat-trigger chip still needs to point at the chat that
         // actually generated it, not fall back to a default/unrelated one.
         setVetSchedulesRelatedChatId(targetChatId);
-        // Keep the chat tab in the bar, but do not open it or create a split
-        // in the marketing flow. The completed document becomes the tab
-        // immediately to its left instead.
-        handleAgentTaskSelect('t2', { insertBeforeChatId: targetChatId });
+        // Replace the generating chat tab with the document; keep its session.
+        handleAgentTaskSelect('t2', { replaceChatId: targetChatId });
         renameSddChatAfterGeneration(targetChatId, 'Vet schedule availability checks');
       };
       window.setTimeout(streamNextSddChunk, 400);
@@ -32341,8 +31808,20 @@ export default function App() {
                 : getRawLineIndexFromDisplayRowIndex(persistedCode, noteSourceRowIndex);
               if (rawLineIndex != null) {
                 const lines = persistedCode.split(/\r?\n/);
+                const policyCode = isVetSchedulesSourceLabel(noteSourceLabel)
+                  ? reconcileVetBookingComment(persistedCode, docNoteAttachments[0]?.selectedText ?? '', rawLineIndex)
+                  : null;
                 lines[rawLineIndex] = rephrasePlanLineAfterNote(lines[rawLineIndex], docNoteAttachments[0]?.selectedText);
-                const nextCode = lines.join('\n');
+                const nextCode = policyCode ?? lines.join('\n');
+                const revisedSections = parseSpecCodeToDocumentSections(nextCode,
+                  getAgentTaskScenario({ tabId: noteSourceTabId }).defaultDocument);
+                if (noteSourceTabId === generationTabId) {
+                  setGeneratedDocument(revisedSections);
+                  if (policyCode) {
+                    setPlanRunResult((prev) => invalidateVetBookingResults(prev).plan);
+                    setAcRunResult((prev) => invalidateVetBookingResults(null, prev).ac);
+                  }
+                }
                 setManualDocumentDraftsByTabId((prev) => ({ ...prev, [noteSourceTabId]: nextCode }));
                 setIdeTabContents((prev) => ({
                   ...prev,
@@ -32359,8 +31838,11 @@ export default function App() {
                     ...prev,
                     [noteSourceTabId]: {
                       ...taskState,
-                      documentSections: parseSpecCodeToDocumentSections(nextCode, taskState.documentSections)
-                        .map((section) => withDerivedPlanChildren(section)),
+                      documentSections: revisedSections,
+                      ...(policyCode ? {
+                        planRunResult: invalidateVetBookingResults(taskState.planRunResult).plan,
+                        acRunResult: invalidateVetBookingResults(null, taskState.acRunResult).ac,
+                      } : {}),
                     },
                   };
                 });
@@ -32811,6 +32293,7 @@ export default function App() {
     agentRunByChatId,
     clearTaskCommentsForTab,
     ideTabContents,
+    generationTabId,
     manualDocumentDraftsByTabId,
     renameSddChatAfterGeneration,
     setDocToolbarBusy,
@@ -34803,6 +34286,9 @@ export default function App() {
                     diffData={activePlanDiffData}
                     contextSelections={activeEditorQuoteSelections}
                     composerAttachments={aiChatComposerDiffAttachments}
+                    scopeFiles={workspaceReviewCards.length ? workspaceReviewCards.map(card => ({ id: card.id, label: card.label, icon: card.icon })) : null}
+                    currentFileIndex={workspaceReviewFileIndex}
+                    onSelectFile={navigateWorkspaceReviewFile}
                     viewerData={activePlanDiffViewerData}
                     initialDiffComments={activePlanDiffCommentsWithPending}
                     documentDiffComments={activePlanDiffDocumentCommentsWithPending}

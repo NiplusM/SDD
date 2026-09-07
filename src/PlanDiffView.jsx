@@ -740,8 +740,8 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
     {
       id: 'all',
       label: 'All generated changes',
-      triggerText: `All generated · ${fileCount} files`,
-      meta: `${fileCount} files`,
+      triggerText: `All generated · ${fileCount} ${fileCount === 1 ? 'file' : 'files'}`,
+      meta: `${fileCount} ${fileCount === 1 ? 'file' : 'files'}`,
       fileCount,
     },
     {
@@ -808,7 +808,7 @@ function PlanDiffViewingScopeControl({
             setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
           }}
         >
-          {`${resolvedCurrentFileIndex + 1} of ${selectedFileCount} files`}
+          {`${resolvedCurrentFileIndex + 1}/${selectedFileCount} files`}
         </button>
       </span>
       <ToolbarButton
@@ -1705,7 +1705,9 @@ export function DiffInlineCommentPopup({
     const textarea = textareaRef.current;
     if (!textarea || !showCompose) return;
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    const style = window.getComputedStyle(textarea);
+    const borderHeight = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    textarea.style.height = `${textarea.scrollHeight + borderHeight}px`;
   }, [showCompose, value]);
 
   useEffect(() => {
@@ -5653,6 +5655,13 @@ export function PlanDiffEditorToolbar({
     <div className="plan-diff-toolbar-shell">
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-left">
+          <div className="plan-diff-toolbar-group">
+            <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
+            <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
+          </div>
+          <ToolbarSeparator className="plan-diff-toolbar-separator" />
+          <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
+          <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <PlanDiffViewingScopeControl
             fileCount={fileCount}
             currentFileLabel={fileLabel}
@@ -5664,21 +5673,9 @@ export function PlanDiffEditorToolbar({
             onNavigateNext={onNavigateNextFile}
           />
           <ToolbarSeparator className="plan-diff-toolbar-separator" />
-          <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
-            <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
-          </div>
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
-          <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
-            <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
-          </div>
+          <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
         </div>
         <div className="plan-diff-toolbar-right">
-          <span className="plan-diff-toolbar-meta text-ui-default">
-            {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
-          </span>
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
           <SegmentedControl
             className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
             value={viewMode}
@@ -5733,6 +5730,9 @@ export function PlanDiffInline({ diffData }) {
 
 export function PlanDiffEditorArea({
   diffData,
+  scopeFiles = null,
+  currentFileIndex = 0,
+  onSelectFile = null,
   contextSelections = [],
   // Attachments exactly as the chat composer renders them, so the Code Review popup opens with the
   // same chips (same notes, selections and hover cards) instead of a locally rebuilt one.
@@ -5795,7 +5795,7 @@ export function PlanDiffEditorArea({
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
-  const viewingScopeId = 'new';
+  const viewingScopeId = scopeFiles?.length ? 'all' : 'new';
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -5889,25 +5889,27 @@ export function PlanDiffEditorArea({
               <div className="plan-diff-toolbar-left">
                 {reviewNav}
                 {reviewNav && <ToolbarSeparator className="plan-diff-toolbar-separator" />}
-              <PlanDiffViewingScopeControl
-                fileCount={toolbarFileCount}
-                currentFileLabel={toolbarFileLabel}
-                selectedScopeId={viewingScopeId}
-              />
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Scroll up" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Scroll down" icon="down" onClick={onNavigateNext} />
                 </div>
                 <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
-                  <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
-                </div>
+                <PlanDiffToolbarIconButton label="Edit source" icon="edit" />
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                <PlanDiffViewingScopeControl
+                  fileCount={toolbarFileCount}
+                  currentFileLabel={toolbarFileLabel}
+                  selectedScopeId={viewingScopeId}
+                  files={scopeFiles}
+                  currentFileIndex={currentFileIndex}
+                  onSelectFile={onSelectFile}
+                  onNavigatePrevious={() => onSelectFile?.(scopeFiles?.[currentFileIndex - 1]?.id)}
+                  onNavigateNext={() => onSelectFile?.(scopeFiles?.[currentFileIndex + 1]?.id)}
+                />
+                <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                <PlanDiffToolbarIconButton label="Collapse unchanged fragments" icon="collapse" />
               </div>
               <div className="plan-diff-toolbar-right">
-                <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
                 {viewMode !== 'aside' && (
                   <SegmentedControl
                     className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"

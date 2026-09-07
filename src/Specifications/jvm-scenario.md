@@ -1,5 +1,6 @@
 # JVM Demo Scenario
 
+> Historical scenario. The current marketing recording and automation follow [marketing-video-corrected.md](marketing-video-corrected.md).
 ## Beat 1 — Project Setup & Spec Generation
 
 Developer shows the project.
