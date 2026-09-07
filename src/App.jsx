@@ -14048,6 +14048,12 @@ function getAgentTaskTabId(taskId) {
 const DEFAULT_OPEN_CHAT_ID = 'refactor-time-slots';
 const DEFAULT_OPEN_CHAT_TAB_ID = `ai-chat-${DEFAULT_OPEN_CHAT_ID}`;
 
+function getPrototypeEntryPoint() {
+  if (typeof window === 'undefined') return null;
+  const entry = new URLSearchParams(window.location.search).get('entry');
+  return ['diff', 'file', 'commit'].includes(entry) ? entry : null;
+}
+
 function buildInitialEditorTabs() {
   const [visitControllerTab, ...remainingEditorTabs] = MY_EDITOR_TABS;
   const vetSchedulesPreset = getPresetAgentTaskDefinition('t2');
@@ -22587,8 +22593,14 @@ export default function App() {
   const [interactiveTaskStates, setInteractiveTaskStates] = useState(() => buildInitialInteractiveTaskStates());
   const [activeEditorTab, setActiveEditorTab] = useState(() => {
     const initialTabs = buildInitialEditorTabs();
-    const defaultChatTabIndex = initialTabs.findIndex((tab) => tab.id === DEFAULT_OPEN_CHAT_TAB_ID);
-    return defaultChatTabIndex >= 0 ? defaultChatTabIndex : 0;
+    const entryPoint = getPrototypeEntryPoint();
+    const initialTabId = entryPoint === 'diff'
+      ? INITIAL_PLAN_DIFF_TAB_ID
+      : entryPoint === 'file'
+        ? INITIAL_PLAN_DIFF_SOURCE_TAB_ID
+        : DEFAULT_OPEN_CHAT_TAB_ID;
+    const initialTabIndex = initialTabs.findIndex((tab) => tab.id === initialTabId);
+    return initialTabIndex >= 0 ? initialTabIndex : 0;
   });
   const [agentTasks, setAgentTasks] = useState(AGENT_TASKS);
   const [agentTasksFocusedNodeId, setAgentTasksFocusedNodeId] = useState(null);
@@ -22596,8 +22608,12 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
-  const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(false);
+  const [ideOpenWindows, setIdeOpenWindows] = useState(() => (
+    getPrototypeEntryPoint() === 'commit' ? ['commit'] : []
+  ));
+  const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(() => (
+    getPrototypeEntryPoint() === 'file'
+  ));
   const [diffGutterCommentsEnabled, setDiffGutterCommentsEnabled] = useState(true);
   const [diffCommentsOptionIsNew, setDiffCommentsOptionIsNew] = useState(true);
   const [aiChatContextPopupOpenCount, setAiChatContextPopupOpenCount] = useState(0);
