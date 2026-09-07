@@ -18798,6 +18798,7 @@ function AiReviewSplitFileView({
   expandedCommentRowId = null,
   contextSelections = [],
   pendingComments = null,
+  pendingCommentsByTabId = null,
   pendingCommentRowIds = [],
   agentIcon = 'codex',
   readOnly = false,
@@ -18841,12 +18842,14 @@ function AiReviewSplitFileView({
 }) {
   const [viewMode, setViewMode] = useState('unified');
   const [viewerSettings, setViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
-  // Tracks the active row for the comment-nav control below, independent of
-  // the diff's own uncontrolled activeRowId — resets whenever the reviewer
-  // navigates to a different file in the scope.
+  // Tracks the active scope comment for the comment-nav control below. The
+  // target includes its file so Previous/Next Comment can cross file
+  // boundaries instead of being limited to the currently rendered diff.
   const [fileCommentUiState, setFileCommentUiState] = useState(null);
   useEffect(() => {
-    setFileCommentUiState(null);
+    setFileCommentUiState((current) => (
+      current?.scopeTabId === file.tabId ? current : null
+    ));
   }, [file.tabId]);
   // Opening the saved diff read-only is the reviewer's explicit choice to look
   // at the scope as it was, so it is remembered until the branches match again.
@@ -18939,10 +18942,40 @@ function AiReviewSplitFileView({
     normalizeStoredDiffCommentsState(pendingComments),
     normalizeStoredDiffCommentsState(file.comments),
   );
-  // Same order the diff itself renders in, so "1 of N" walks top to bottom.
-  const fileCommentRowIds = (diffData?.rows ?? [])
-    .map((row) => row.id)
-    .filter((rowId) => (visibleComments[rowId] ?? []).length > 0);
+  // Scope-level comment order: files follow the upper "1 of N files" control,
+  // then comments follow their top-to-bottom row order inside each file. A
+  // pending snapshot is included because sent comments remain navigable while
+  // the agent processes them even though their composer attachments are gone.
+  const scopeCommentTargets = scopeFiles.flatMap((scopeFile) => {
+    const scopeComments = mergeStoredDiffCommentsStates(
+      normalizeStoredDiffCommentsState(pendingCommentsByTabId?.[scopeFile.tabId]),
+      normalizeStoredDiffCommentsState(scopeFile.comments),
+    );
+    const renderedRowIds = (scopeFile.fullDiffData?.rows ?? scopeFile.diffData?.rows ?? [])
+      .map((row) => row.id)
+      .filter(Boolean);
+    const orderedRowIds = [
+      ...renderedRowIds.filter((rowId) => (scopeComments[rowId] ?? []).length > 0),
+      ...Object.keys(scopeComments).filter((rowId) => !renderedRowIds.includes(rowId)),
+    ];
+    return orderedRowIds.flatMap((rowId) => (
+      (scopeComments[rowId] ?? [])
+        .filter((comment) => !(comment && typeof comment === 'object' && comment.author === 'agent'))
+        .map((_, commentIndex) => ({
+          key: `${scopeFile.tabId}\u0000${rowId}\u0000${commentIndex}`,
+          tabId: scopeFile.tabId,
+          rowId,
+          commentIndex,
+        }))
+    ));
+  });
+  const activeScopeCommentTarget = scopeCommentTargets.find((target) => (
+    target.key === fileCommentUiState?.scopeCommentKey
+  )) ?? scopeCommentTargets.find((target) => (
+    target.tabId === file.tabId && target.rowId === fileCommentUiState?.activeRowId
+  )) ?? scopeCommentTargets.find((target) => target.tabId === file.tabId)
+    ?? scopeCommentTargets[0]
+    ?? null;
   // A comment always goes to the chat this diff was opened from — an entry
   // without its own path is the mainline copy, so resolve it that way rather
   // than letting the name-based index pull in claimants from other
@@ -19026,13 +19059,20 @@ function AiReviewSplitFileView({
         commentCount={commentCount}
         sendCommentsDisabled={sendCommentsDisabled}
         onSendComments={onSendComments}
-        commentRowIds={fileCommentRowIds}
-        activeCommentRowId={fileCommentUiState?.activeRowId ?? null}
-        onNavigateComment={(rowId) => setFileCommentUiState((prev) => ({
-          ...(prev ?? {}),
-          activeRowId: rowId,
-          caretState: { ...(prev?.caretState ?? {}), rowId },
-        }))}
+        commentRowIds={scopeCommentTargets.map((target) => target.key)}
+        activeCommentRowId={activeScopeCommentTarget?.key ?? null}
+        onNavigateComment={(targetKey) => {
+          const target = scopeCommentTargets.find((candidate) => candidate.key === targetKey);
+          if (!target) return;
+          setFileCommentUiState((prev) => ({
+            ...(prev ?? {}),
+            scopeTabId: target.tabId,
+            scopeCommentKey: target.key,
+            activeRowId: target.rowId,
+            caretState: { ...(prev?.caretState ?? {}), rowId: target.rowId },
+          }));
+          if (target.tabId !== file.tabId) onNavigateFile?.(target.tabId);
+        }}
         // Side-scenario 3: the source is the file the diff was built from, so
         // it is resolved by name, and the caret lands on the difference being
         // read rather than at the top of the file.
@@ -35698,20 +35738,20 @@ export default function App() {
                 rightPane={(
                   activeReviewSplitFile ? (
                     <AiReviewSplitFileView
-                      key={activeReviewSplitFile.tabId}
                       file={activeReviewSplitFile}
                       scopeFiles={visibleReviewSplitScopeFiles}
                       focusRowIds={reviewSplitFileFocusByTabId[activeReviewSplitFile.tabId] ?? []}
                       expandedCommentRowId={reviewSplitExpandedCommentRowByTabId[activeReviewSplitFile.tabId] ?? null}
                       contextSelections={activeReviewSplitQuoteSelections}
                       pendingComments={pendingDiffCommentSnapshotsByTabId[activeReviewSplitFile.tabId] ?? null}
+                      pendingCommentsByTabId={pendingDiffCommentSnapshotsByTabId}
                       pendingCommentRowIds={pendingDiffCommentRowsByTabId[activeReviewSplitFile.tabId] ?? []}
                       agentIcon={activeReviewAgentIcon}
                       readOnly={activeReviewReadOnly || Boolean(activeReviewSplitFile.commentsReadOnly)}
                       severityFilter={reviewSeverityFilter}
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
-                      commentCount={Object.values(normalizeStoredDiffCommentsState(activeReviewSplitFile?.comments)).flat().length}
+                      commentCount={visibleReviewSplitNoteCount}
                       sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
                       onSendComments={(count) => {
                         handleAiChatTabSend(
