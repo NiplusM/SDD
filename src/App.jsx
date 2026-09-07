@@ -184,6 +184,12 @@ function buildCommitComposerMessage(scope) {
 function buildSendCommentsMessage(count) {
   return `I left ${count} comment${count === 1 ? '' : 's'} on the diff. Please take a look.`;
 }
+
+function getSendableCommentAttachments(attachments = []) {
+  return (Array.isArray(attachments) ? attachments : []).filter((attachment) => (
+    Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+  ));
+}
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
   { id: 'claude', label: 'Claude Agent', buttonLabel: 'Claude Agent', model: 'Claude Sonnet 4.1', badge: 'New' },
@@ -35685,7 +35691,11 @@ export default function App() {
                       commentCount={Object.values(normalizeStoredDiffCommentsState(activeReviewSplitFile?.comments)).flat().length}
                       sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
                       onSendComments={(count) => {
-                        handleAiChatTabSend(reviewSplitChatId, buildSendCommentsMessage(count));
+                        handleAiChatTabSend(
+                          reviewSplitChatId,
+                          buildSendCommentsMessage(count),
+                          getSendableCommentAttachments(aiChatComposerDiffAttachments),
+                        );
                         openChatInEditorTab(reviewSplitChatId);
                       }}
                       renderSubmitTargetPicker={(pickerProps) => renderCommentSubmitTargetPicker({
@@ -36057,7 +36067,11 @@ export default function App() {
                     commentCount={activeDiffSendableCommentCount}
                     sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffOriginChatId]?.status)}
                     onSendComments={activeDiffOriginChatId ? (count) => {
-                      handleAiChatTabSend(activeDiffOriginChatId, buildSendCommentsMessage(count));
+                      handleAiChatTabSend(
+                        activeDiffOriginChatId,
+                        buildSendCommentsMessage(count),
+                        getSendableCommentAttachments(aiChatComposerDiffAttachments),
+                      );
                       if (activeDiffOriginSourceTabId) {
                         openChangedFileInReviewScope(
                           { source: { tabId: activeDiffOriginSourceTabId } },
