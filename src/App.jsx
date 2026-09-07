@@ -25753,19 +25753,22 @@ export default function App() {
       if (!existing) return prev;
 
       return {
-        ...existing,
-        diffContextChatId: diffContent.diffContextChatId ?? existing.diffContextChatId ?? null,
-        diffActiveCommentChatId: diffContent.diffActiveCommentChatId ?? existing.diffActiveCommentChatId ?? null,
-        // Source and diff are separate comment owners. The navigation context
-        // is shared, but copying comment sessions here would make a diff note
-        // appear in the source attachment (and vice versa on the return trip).
-        diffSessionCommentsByChatId: existing.diffSessionCommentsByChatId ?? null,
-        // Distinguishes "actually jumped here from a diff this session" from
-        // a file that merely happens to carry plainFileData from initial
-        // seed data (e.g. VisitController.java) — only the former should get
-        // the diff-linked toolbar and gutter-comment-by-icon treatment when
-        // the reviewer just switches to this tab normally.
-        isDiffSourceOverlay: true,
+        ...prev,
+        [sourceTabId]: {
+          ...existing,
+          diffContextChatId: diffContent.diffContextChatId ?? existing.diffContextChatId ?? null,
+          diffActiveCommentChatId: diffContent.diffActiveCommentChatId ?? existing.diffActiveCommentChatId ?? null,
+          // Source and diff are separate comment owners. The navigation context
+          // is shared, but copying comment sessions here would make a diff note
+          // appear in the source attachment (and vice versa on the return trip).
+          diffSessionCommentsByChatId: existing.diffSessionCommentsByChatId ?? null,
+          // Distinguishes "actually jumped here from a diff this session" from
+          // a file that merely happens to carry plainFileData from initial
+          // seed data (e.g. VisitController.java) — only the former should get
+          // the diff-linked toolbar and gutter-comment-by-icon treatment when
+          // the reviewer just switches to this tab normally.
+          isDiffSourceOverlay: true,
+        },
       };
     });
     setIdeTabs(nextTabs);
