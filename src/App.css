@@ -14754,7 +14754,37 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 }
 
 .aiux543-user-message .aiux543-kebab {
-  display: none;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  margin: -2px -6px -2px 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #8b8e96;
+  cursor: pointer;
+}
+
+.aiux543-user-message .aiux543-kebab:hover,
+.aiux543-user-message .aiux543-kebab:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  color: #ced0d6;
+  outline: none;
+}
+
+.aiux543-user-message.is-collapsed {
+  border-radius: 6px;
+}
+
+.aiux543-user-message.is-collapsed p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 

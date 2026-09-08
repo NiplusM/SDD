@@ -20398,6 +20398,7 @@ function AiChatTabView({
   const scrollRef = useRef(null);
   const newSessionSettingsRef = useRef(null);
   const [composerAttachmentsExpanded, setComposerAttachmentsExpanded] = useState(false);
+  const [collapsedUserMessageIds, setCollapsedUserMessageIds] = useState({});
   const [composerAttachmentContextMenu, setComposerAttachmentContextMenu] = useState(null);
   const [resolvedReviewDecisionId, setResolvedReviewDecisionId] = useState(null);
   const [reviewFeedbackMessageId, setReviewFeedbackMessageId] = useState(null);
@@ -21040,6 +21041,13 @@ function AiChatTabView({
       y: event.clientY,
     });
   }, []);
+  const toggleUserMessageCollapsed = useCallback((userMessageId) => {
+    if (!userMessageId) return;
+    setCollapsedUserMessageIds((current) => ({
+      ...current,
+      [userMessageId]: !current[userMessageId],
+    }));
+  }, []);
 
   const handleComposerAttachmentOpen = useCallback((attachment, { rowId = null } = {}) => {
     if (onOpenAttachment) {
@@ -21167,11 +21175,25 @@ function AiChatTabView({
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
             turn?.role === 'user' ? (
-              <div key={`turn-${index}`} className="aiux543-user-message aiux543-thread-user-message" data-ai-chat-message-id={`${messageId}-turn-${index}`}>
+              <div
+                key={`turn-${index}`}
+                className={`aiux543-user-message aiux543-thread-user-message${collapsedUserMessageIds[`${messageId}-turn-${index}`] ? ' is-collapsed' : ''}`}
+                data-ai-chat-message-id={`${messageId}-turn-${index}`}
+                onDoubleClick={() => toggleUserMessageCollapsed(`${messageId}-turn-${index}`)}
+              >
                 <p>{turn.text}</p>
-                <span className="aiux543-kebab" aria-hidden="true">
+                <button
+                  type="button"
+                  className="aiux543-kebab"
+                  aria-label={collapsedUserMessageIds[`${messageId}-turn-${index}`] ? 'Expand message' : 'Collapse message'}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleUserMessageCollapsed(`${messageId}-turn-${index}`);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
                   <Icon name="general/moreVertical" size={16} />
-                </span>
+                </button>
               </div>
             ) : (
               <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
@@ -21206,11 +21228,24 @@ function AiChatTabView({
                 {scenario.userPrompt}
               </ChatUserCard>
             ) : scenario?.userPrompt ? (
-              <div className="aiux543-user-message" data-ai-chat-message-id={messageId}>
+              <div
+                className={`aiux543-user-message${collapsedUserMessageIds[messageId] ? ' is-collapsed' : ''}`}
+                data-ai-chat-message-id={messageId}
+                onDoubleClick={() => toggleUserMessageCollapsed(messageId)}
+              >
                 <p>{scenario.userPrompt}</p>
-                <span className="aiux543-kebab" aria-hidden="true">
+                <button
+                  type="button"
+                  className="aiux543-kebab"
+                  aria-label={collapsedUserMessageIds[messageId] ? 'Expand message' : 'Collapse message'}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleUserMessageCollapsed(messageId);
+                  }}
+                  onDoubleClick={(event) => event.stopPropagation()}
+                >
                   <Icon name="general/moreVertical" size={16} />
-                </span>
+                </button>
               </div>
             ) : null}
 
