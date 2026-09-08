@@ -5703,9 +5703,8 @@ export function PlanDiffOverlay({
               && commentTargetRowIds.includes(row.id);
             const isOpenCommentTarget = Boolean(commentRowId)
               && (
-                commentTargetRowIds.length > 0
-                  ? commentTargetRowIds.includes(row.id)
-                  : commentRowId === row.id
+                commentRowId === row.id
+                || commentTargetRowIds.includes(row.id)
               );
             const isEditingRowComment = commentRowId === row.id && Number.isInteger(commentEditingIndex);
             const hasExistingRowCommentGroups = rowCommentGroups.some((group) => group.comments.length > 0);

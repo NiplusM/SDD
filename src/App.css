@@ -8585,12 +8585,16 @@ body {
   opacity: 1;
 }
 
-.plan-diff-row.is-comment-target-highlight {
-  background: var(--selection-bg-active);
+.plan-diff-row.is-comment-target-highlight,
+.plan-diff-row:has(+ .plan-diff-row-comment .spec-done-comment-popup-compose) {
+  background: var(--selection-bg-active, #2a4371);
 }
 
-.plan-diff-row.is-comment-target-highlight > .plan-diff-row-gutter {
-  background: inherit;
+.plan-diff-row.is-comment-target-highlight > .plan-diff-row-gutter,
+.plan-diff-row.is-comment-target-highlight > .plan-diff-row-code,
+.plan-diff-row:has(+ .plan-diff-row-comment .spec-done-comment-popup-compose) > .plan-diff-row-gutter,
+.plan-diff-row:has(+ .plan-diff-row-comment .spec-done-comment-popup-compose) > .plan-diff-row-code {
+  background: var(--selection-bg-active, #2a4371);
 }
 
 .plan-diff-row-removed.has-inline-highlight > .plan-diff-row-gutter::before,
