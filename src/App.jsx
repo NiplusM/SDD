@@ -18769,29 +18769,30 @@ function ChatProjectChangesToolbar({
           <FinalAnchoredPopup
             align="end"
             anchorRef={anchorRef}
-            ariaLabel="Review project changes"
+            ariaLabel="Project review actions"
             className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-            estimatedHeight={scopeOptions.length * 42 + 66}
+            estimatedHeight={112}
             onClose={() => setMenuOpen(false)}
             open={menuOpen}
-            width={304}
+            width={244}
           >
-            <aside className="aiux543-chat-change-scope-panel" aria-label="Review scopes">
-              <div className="aiux543-chat-change-scope-header">
-                <span className="aiux543-chat-change-scope-title">Review scope</span>
+            <aside className="aiux543-chat-project-review-popup" aria-label="Project review actions">
+              <div className="aiux543-chat-project-review-popup-row is-project">
+                <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
+                <span>{projectLabel}</span>
               </div>
-              <div className="aiux543-chat-change-scope-list">
-                {scopeOptions.map((scope, index) => {
-                  const previousScope = scopeOptions[index - 1] ?? null;
-                  const showSeparator = Boolean(previousScope && previousScope.section !== scope.section);
-                  return (
-                    <Fragment key={scope.id}>
-                      {showSeparator ? <span className="aiux543-chat-change-scope-separator" aria-hidden="true" /> : null}
-                      <ChatChangeScopeOption scope={scope} onOpen={openScope} />
-                    </Fragment>
-                  );
-                })}
+              <div className="aiux543-chat-project-review-popup-row is-branch">
+                <Icon name="vcs/vcs" size={16} />
+                <span>{branchLabel}</span>
               </div>
+              <button
+                type="button"
+                className="aiux543-chat-project-review-popup-action"
+                onClick={() => openScope(allChangesScope)}
+              >
+                <ChatChangeScopeInspectionGlyph />
+                <span>Review Project Changes</span>
+              </button>
             </aside>
           </FinalAnchoredPopup>
         </span>
@@ -21132,7 +21133,7 @@ function AiChatTabView({
           />
         </div>
       )}
-      {!isNewSessionState && chatChangeScopeOptions.length > 0 && (
+      {!changeScopePanelCollapsed && !isNewSessionState && chatChangeScopeOptions.length > 0 && (
         <ChatProjectChangesToolbar
           scopeOptions={chatChangeScopeOptions.map((scope) => ({
             ...scope,

@@ -14379,6 +14379,72 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   cursor: default;
 }
 
+.aiux543-chat-project-review-popup {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  color: var(--text-default, #d1d3d9);
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-review-popup-row,
+.aiux543-chat-project-review-popup-action {
+  display: flex;
+  min-width: 0;
+  min-height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 5px;
+}
+
+.aiux543-chat-project-review-popup-row {
+  overflow: hidden;
+  padding: 4px 8px;
+  color: var(--text-secondary, #9fa2a8);
+}
+
+.aiux543-chat-project-review-popup-row.is-project {
+  color: var(--text-default, #d1d3d9);
+}
+
+.aiux543-chat-project-review-popup-row.is-branch {
+  padding-left: 20px;
+}
+
+.aiux543-chat-project-review-popup-row > span:last-child,
+.aiux543-chat-project-review-popup-action > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-review-popup-row > .icon,
+.aiux543-chat-project-review-popup-action > svg,
+.aiux543-chat-project-review-popup-action > .icon {
+  flex: 0 0 auto;
+}
+
+.aiux543-chat-project-review-popup-action {
+  width: 100%;
+  padding: 4px 8px 4px 32px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.aiux543-chat-project-review-popup-action:hover,
+.aiux543-chat-project-review-popup-action:focus-visible {
+  background: var(--popup-cell-bg-hovered, rgb(255 255 255 / 8%));
+  outline: none;
+}
+
 .aiux543-chat-change-scope-entry {
   position: absolute;
   top: 10px;
