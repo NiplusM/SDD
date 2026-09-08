@@ -4119,6 +4119,10 @@ export function PlanDiffOverlay({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  // Chat-owned diffs always route new notes back to their originating chat.
+  // Commit diffs and regular source files leave this false so their header
+  // remains a real session picker.
+  lockSubmitTarget = false,
   // Set when this file has more than one candidate session, so a send must
   // pick one rather than defaulting.
   requireSubmitTargetChoice = false,
@@ -6369,9 +6373,9 @@ export function PlanDiffOverlay({
                           showCompose={showGroupCompose}
                           commentsReadOnly={commentsReadOnly}
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
-                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          requireSubmitTargetChoice={lockSubmitTarget ? false : requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={reviewNoteComposer ? ['current', 'new'] : undefined}
+                          submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current', 'new'] : undefined)}
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
@@ -6390,7 +6394,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={lockSubmitTarget ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6467,9 +6471,9 @@ export function PlanDiffOverlay({
                         showCompose
                         commentsReadOnly={commentsReadOnly}
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
-                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          requireSubmitTargetChoice={lockSubmitTarget ? false : requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={reviewNoteComposer ? ['current', 'new'] : undefined}
+                        submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current', 'new'] : undefined)}
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
@@ -6488,7 +6492,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={lockSubmitTarget ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -7335,6 +7339,7 @@ export function PlanDiffEditorArea({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  lockSubmitTarget = false,
   // Set when this file has more than one candidate session, so a send must
   // pick one rather than defaulting.
   requireSubmitTargetChoice = false,
@@ -7697,6 +7702,7 @@ export function PlanDiffEditorArea({
           documentContextSessionLabel={documentContextSessionLabel}
           documentContextSourceTabId={documentContextSourceTabId}
           defaultSubmitAttachMode={defaultSubmitAttachMode}
+          lockSubmitTarget={lockSubmitTarget}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
           defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}

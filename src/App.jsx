@@ -19109,11 +19109,6 @@ function AiReviewSplitFileView({
     file.name,
     file.filePath ?? getReviewFileVcsMeta(file.name).path,
   );
-  const fileSessions = getReviewFileSessions(
-    file.name,
-    file.filePath ?? getReviewFileVcsMeta(file.name).path,
-    currentSession,
-  );
   const currentFileLabel = normalizeReviewScopeLabel(file.name);
   const currentFileIndex = Math.max(0, scopeFiles.findIndex((scopeFile) => (
     scopeFile.tabId === file.tabId
@@ -19272,11 +19267,6 @@ function AiReviewSplitFileView({
             file they were written on. */}
         {branchMismatch && !acceptedStaleScope ? null : viewerSettings.allInOne ? scopeFiles.map((scopeFile) => {
           const scopeMeta = getReviewFileVcsMeta(scopeFile.name);
-          const scopeSessions = getReviewFileSessions(
-            scopeFile.name,
-            scopeFile.filePath ?? getReviewFileVcsMeta(scopeFile.name).path,
-            currentSession,
-          );
           const scopeDiffData = applyPlanDiffViewerSettings({
             ...(scopeFile.fullDiffData ?? scopeFile.diffData),
             focusRowId: null,
@@ -19302,13 +19292,14 @@ function AiReviewSplitFileView({
                 initialDiffComments={normalizeStoredDiffCommentsState(scopeFile.comments)}
                 singleLineNumbers={scopeFile.isPlain}
                 showGutterComments={!scopeFile.isPlain}
-                requireSubmitTargetChoice={scopeSessions.length > 1}
-                submitSessionChoices={scopeSessions}
+                requireSubmitTargetChoice={false}
+                submitSessionChoices={[]}
                 commentContextLabel={activeChatTitle}
                 commentContextIcon={agentIcon}
                 commentContextSessionLabel="Active"
                 commentSessionActiveChatId={activeChatId}
-                renderSubmitTargetPicker={renderSubmitTargetPicker}
+                renderSubmitTargetPicker={null}
+                lockSubmitTarget
                 severityFilter={severityFilter}
                 resolveKeepsComment
                 allowInlineCommentCompose={!readOnly}
@@ -19329,13 +19320,14 @@ function AiReviewSplitFileView({
           initialDiffComments={visibleComments}
           singleLineNumbers={file.isPlain}
           showGutterComments={!file.isPlain}
-          requireSubmitTargetChoice={fileSessions.length > 1}
-          submitSessionChoices={fileSessions}
+          requireSubmitTargetChoice={false}
+          submitSessionChoices={[]}
           commentContextLabel={activeChatTitle}
           commentContextIcon={agentIcon}
           commentContextSessionLabel="Active"
           commentSessionActiveChatId={activeChatId}
-          renderSubmitTargetPicker={renderSubmitTargetPicker}
+          renderSubmitTargetPicker={null}
+          lockSubmitTarget
           severityFilter={severityFilter}
           expandedInlineCommentRowId={expandedCommentRowId}
           resolveKeepsComment
@@ -24892,7 +24884,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, allowSendToAgentAction = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, allowSendToAgentAction = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null, openedFromCommitToolWindow = false }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -25028,6 +25020,7 @@ export default function App() {
           reviewFilePath,
           reviewPreviousLabel,
           reviewVcsStatus,
+          diffOpenedFromCommitToolWindow: Boolean(openedFromCommitToolWindow),
           diffSessionCommentsByChatId: nextSessionComments,
         },
       };
@@ -34909,6 +34902,7 @@ export default function App() {
       fileCount: 1,
       showScopeControl: false,
       allowSendToAgentAction: false,
+      openedFromCommitToolWindow: true,
     });
   }, [getAiChatScenarioById, openPlanDiffTab]);
 
@@ -36360,6 +36354,11 @@ export default function App() {
                     defaultSubmitAttachMode={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
+                    lockSubmitTarget={Boolean(
+                      isDiffTab
+                      && activePlanDiffContextChatId
+                      && !activeTabContent?.diffOpenedFromCommitToolWindow
+                    )}
                     requireSubmitTargetChoice={isPlainFileOverlayTab && !hasActivePlainFileCommentSession}
                     defaultSubmitTargetLabel={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'Choose chat session'
