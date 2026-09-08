@@ -18717,6 +18717,7 @@ function ChatProjectChangesToolbar({
   projectLabel = PROJECT_NAME,
   branchLabel = REVIEW_CURRENT_BRANCH_NAME,
   onOpenScope = null,
+  onGenerateCommitMessage = null,
   reviewDisabled = false,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -18758,23 +18759,23 @@ function ChatProjectChangesToolbar({
           <button
             type="button"
             className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
-            aria-label="Choose review scope"
+            aria-label="Project change actions"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             disabled={reviewDisabled}
             onClick={() => setMenuOpen((open) => !open)}
           >
-            <Icon name="general/chevronDown" size={16} />
+            <Icon name="general/moreVertical" size={16} />
           </button>
           <FinalAnchoredPopup
             align="end"
             anchorRef={anchorRef}
             ariaLabel="Project review actions"
             className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-            estimatedHeight={112}
+            estimatedHeight={146}
             onClose={() => setMenuOpen(false)}
             open={menuOpen}
-            width={244}
+            width={300}
           >
             <aside className="aiux543-chat-project-review-popup" aria-label="Project review actions">
               <div className="aiux543-chat-project-review-popup-row is-project">
@@ -18791,7 +18792,22 @@ function ChatProjectChangesToolbar({
                 onClick={() => openScope(allChangesScope)}
               >
                 <ChatChangeScopeInspectionGlyph />
-                <span>Review All Project Changes</span>
+                <span className="aiux543-chat-project-review-popup-action-label">Review All Project Changes</span>
+                <span className="aiux543-chat-project-counts" aria-hidden="true">
+                  <span className="is-added">+{allChangesScope.added}</span>
+                  <span className="is-removed">-{allChangesScope.removed}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="aiux543-chat-project-review-popup-action"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onGenerateCommitMessage?.();
+                }}
+              >
+                <Icon name="vcs/commit" size={16} />
+                <span className="aiux543-chat-project-review-popup-action-label">Generate Commit Message</span>
               </button>
             </aside>
           </FinalAnchoredPopup>
@@ -21141,6 +21157,7 @@ function AiChatTabView({
             removed: scope.removed + vcsRunExtraCounts.removed,
           }))}
           reviewDisabled={isAgentRunProcessing}
+          onGenerateCommitMessage={() => onCommitChanges?.(chatId)}
           onOpenScope={(scope) => {
             if (onOpenChangeScope) {
               onOpenChangeScope(chatId, scope.id);

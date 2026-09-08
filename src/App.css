@@ -14417,10 +14417,19 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 }
 
 .aiux543-chat-project-review-popup-row > span:last-child,
-.aiux543-chat-project-review-popup-action > span:last-child {
+.aiux543-chat-project-review-popup-action-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.aiux543-chat-project-review-popup-action-label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.aiux543-chat-project-review-popup-action > .aiux543-chat-project-counts {
+  margin-left: auto;
 }
 
 .aiux543-chat-project-review-popup-row > .icon,
