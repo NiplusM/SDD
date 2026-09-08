@@ -18741,6 +18741,10 @@ function ChatProjectChangesToolbar({
         <span className="aiux543-chat-project-branch">{branchLabel}</span>
       </div>
       <div className="aiux543-chat-project-review">
+        <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
+          <span className="is-added">+{allChangesScope.added}</span>
+          <span className="is-removed">-{allChangesScope.removed}</span>
+        </span>
         <span ref={anchorRef} className="aiux543-chat-project-review-action">
           <button
             type="button"
