@@ -4831,7 +4831,14 @@ function mergeDiffCommentsFromSessions(sessionCommentsByChatId = {}) {
         if (seenComments.has(dedupeKey)) return;
         seenComments.add(dedupeKey);
         const lineLabel = getStoredCommentLineLabel(comment);
-        nextRowComments.push(lineLabel.length > 0 ? { text: normalizedComment, lineLabel } : normalizedComment);
+        nextRowComments.push({
+          ...((comment && typeof comment === 'object') ? comment : {}),
+          text: normalizedComment,
+          ...(lineLabel.length > 0 ? { lineLabel } : {}),
+          chatId: (comment && typeof comment === 'object' && typeof comment.chatId === 'string' && comment.chatId.trim())
+            ? comment.chatId.trim()
+            : session.chatId,
+        });
       });
 
       if (nextRowComments.length > 0) {
@@ -32132,10 +32139,40 @@ export default function App() {
       ? metadata.targetChatId
       : null;
     const targetChatId = newChatSession?.id ?? explicitTargetChatId ?? selectedAiChatId;
-    const isExplicitDifferentChatTarget = Boolean(explicitTargetChatId && explicitTargetChatId !== selectedAiChatId);
     const metadataRowIds = Array.isArray(metadata?.rowIds) && metadata.rowIds.length > 0
       ? metadata.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
       : (typeof metadata?.rowId === 'string' ? [metadata.rowId] : []);
+    const removeSubmittedCommentFromOtherSessions = (sessions = {}) => {
+      const submittedText = typeof metadata?.comment === 'string' ? metadata.comment.trim() : '';
+      if (!explicitTargetChatId || metadata?.isEditing || !submittedText || metadataRowIds.length === 0) {
+        return normalizeDiffSessionCommentsByChatId(sessions);
+      }
+
+      return Object.entries(normalizeDiffSessionCommentsByChatId(sessions)).reduce((nextSessions, [chatId, session]) => {
+        if (chatId === targetChatId) {
+          nextSessions[chatId] = session;
+          return nextSessions;
+        }
+
+        const sessionComments = normalizeStoredDiffCommentsState(session.comments);
+        const nextComments = { ...sessionComments };
+        metadataRowIds.forEach((rowId) => {
+          const previousRow = nextComments[rowId] ?? [];
+          const nextRow = previousRow.filter((comment) => (
+            getStoredCommentText(comment).trim() !== submittedText
+          ));
+          if (nextRow.length > 0) nextComments[rowId] = nextRow;
+          else delete nextComments[rowId];
+        });
+        if (Object.keys(nextComments).length > 0) {
+          nextSessions[chatId] = { ...session, comments: nextComments };
+        }
+        return nextSessions;
+      }, {});
+    };
+    const routedSessionCommentsByChatId = removeSubmittedCommentFromOtherSessions(
+      activePlanDiffSessionCommentsByChatId,
+    );
     const buildSubmittedCommentState = (baseComments = {}) => {
       if (metadataRowIds.length === 0 || typeof metadata?.comment !== 'string' || metadata.comment.trim().length === 0) {
         return normalizeStoredDiffCommentsState(baseComments);
@@ -32168,13 +32205,13 @@ export default function App() {
       }
 
       if (
-        isExplicitDifferentChatTarget
+        explicitTargetChatId
         && typeof metadata?.comment === 'string'
         && metadata.comment.trim().length > 0
         && !metadata?.isEditing
       ) {
         const previousTargetComments = normalizeStoredDiffCommentsState(
-          activePlanDiffSessionCommentsByChatId[explicitTargetChatId]?.comments,
+          routedSessionCommentsByChatId[explicitTargetChatId]?.comments,
         );
 
         return buildSubmittedCommentState(previousTargetComments);
@@ -32200,10 +32237,10 @@ export default function App() {
     }
     const scenarioForSync = newChatSession ?? getAiChatScenarioById(targetChatId);
     const listItemForSync = newChatSession ? { icon: newChatSession.icon } : getAiChatListItemById(targetChatId);
-    const { [targetChatId]: _previousSelectedSessionForSync, ...remainingSessionCommentsForSync } = activePlanDiffSessionCommentsByChatId;
+    const { [targetChatId]: _previousSelectedSessionForSync, ...remainingSessionCommentsForSync } = routedSessionCommentsByChatId;
     const nextSessionCommentsForSync = hasNextComments
       ? {
-          ...activePlanDiffSessionCommentsByChatId,
+          ...routedSessionCommentsByChatId,
           [targetChatId]: {
             chatId: targetChatId,
             messageId: scenarioForSync?.messageId ?? `chat-${targetChatId}`,
@@ -32229,7 +32266,9 @@ export default function App() {
         ) {
           return prev;
         }
-        const previousSessionComments = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
+        const previousSessionComments = removeSubmittedCommentFromOtherSessions(
+          existing.diffSessionCommentsByChatId,
+        );
         const { [targetChatId]: _previousSelectedSession, ...remainingSessionComments } = previousSessionComments;
         const scenario = newChatSession ?? getAiChatScenarioById(targetChatId);
         const listItem = newChatSession ? { icon: newChatSession.icon } : getAiChatListItemById(targetChatId);
@@ -32354,16 +32393,25 @@ export default function App() {
     }
 
     const shouldSwitchChat = context?.source === 'diff-comment-context';
-	    const contextMessageId = context?.messageId ?? activePlanDiffContextMessageId;
-	    const contextChatId = context?.chatId
-	      ?? activePlanDiffContextChatId
-	      ?? Object.entries(aiChatScenarios).find(([chatId, scenario]) => (
-	        scenario.messageId === contextMessageId || `chat-${chatId}` === contextMessageId
-	      ))?.[0]
-	      ?? Object.keys(aiChatScenarios).find((chatId) => (
-	        typeof contextMessageId === 'string' && contextMessageId.startsWith(`${chatId}-`)
-	      ))
-	      ?? null;
+    const contextMessageId = context?.messageId ?? (shouldSwitchChat ? null : activePlanDiffContextMessageId);
+    const contextChatId = shouldSwitchChat
+      ? (context?.chatId ?? null)
+      : (
+          context?.chatId
+          ?? activePlanDiffContextChatId
+          ?? Object.entries(aiChatScenarios).find(([chatId, scenario]) => (
+            scenario.messageId === contextMessageId || `chat-${chatId}` === contextMessageId
+          ))?.[0]
+          ?? Object.keys(aiChatScenarios).find((chatId) => (
+            typeof contextMessageId === 'string' && contextMessageId.startsWith(`${chatId}-`)
+          ))
+          ?? null
+        );
+
+    // A saved comment header is an exact destination, not a generic "return"
+    // action. If legacy data has no owner, do not silently open the Diff's
+    // original/fallback chat and make the card appear to change ownership.
+    if (shouldSwitchChat && !contextChatId) return;
 
     setScreen('ide');
     if (shouldSwitchChat && contextChatId) {
@@ -34917,7 +34965,7 @@ export default function App() {
       request?.source?.tabId === selectedRequestId
     )) ?? null;
     if (!selectedDiffRequest) return null;
-    const targetChatId = file.groupId && getAiChatScenarioById(file.groupId)
+    const targetChatId = file.groupId && aiChatScenarios[file.groupId]
       ? file.groupId
       : null;
     // Commit uses the IDE's regular editor diff: the Commit tool window stays
@@ -34936,7 +34984,7 @@ export default function App() {
       allowSendToAgentAction: false,
       openedFromCommitToolWindow: true,
     });
-  }, [getAiChatScenarioById, openPlanDiffTab]);
+  }, [aiChatScenarios, openPlanDiffTab]);
 
   const openChatChangeScope = useCallback((chatId, scopeId) => (
     openLatestChangedFilesReviewScope(chatId, {

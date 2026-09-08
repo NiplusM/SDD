@@ -5676,7 +5676,8 @@ export function PlanDiffOverlay({
                   icon: localCommentChatContext?.icon ?? commentContextIcon,
                   sessionLabel: localCommentChatContext?.sessionLabel ?? commentContextSessionLabel,
                   messageId: localCommentChatContext?.messageId ?? null,
-                  chatId: localCommentChatContext?.chatId ?? null,
+                  chatId: localCommentChatContext?.chatId
+                    ?? (lockSubmitTarget && commentSessionActiveChatId ? commentSessionActiveChatId : null),
                   hideHeader: commentRowId === row.id && localRowComments.length === 0,
                   comments: localRowComments.map((comment, index) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
