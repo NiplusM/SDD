@@ -14205,16 +14205,15 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 .aiux543-chat-project-changes-toolbar {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
   box-sizing: border-box;
   flex: 0 0 auto;
   align-items: center;
-  gap: 16px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--tool-window-border, #2f3136);
-  background: var(--editor-bg, #191a1c);
-  color: var(--text-secondary, #9fa2a8);
-  font: 500 13px/18px Inter, system-ui, sans-serif;
+  gap: 11px;
+  padding: 0 16px;
+  background: #191a1c;
+  color: #73767c;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
 }
 
 .aiux543-chat-project-context,
@@ -14229,21 +14228,29 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 
 .aiux543-chat-project-context {
   min-width: 0;
-  gap: 7px;
+  flex: 1 1 auto;
+  gap: 12px;
   overflow: hidden;
+}
+
+.aiux543-chat-project-context-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
 }
 
 .aiux543-chat-project-icon {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
   background: #5966d9;
   color: #f4f5ff;
-  font: 600 10px/20px Inter, system-ui, sans-serif;
+  font: 600 9px/16px Inter, system-ui, sans-serif;
 }
 
 .aiux543-chat-project-name,
@@ -14254,37 +14261,39 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 }
 
 .aiux543-chat-project-name {
-  color: var(--text-default, #d1d3d9);
+  color: #73767c;
 }
 
 .aiux543-chat-project-branch {
   max-width: 210px;
+  color: #73767c;
 }
 
-.aiux543-chat-project-context > .icon {
+.aiux543-chat-project-context-item > .icon {
   flex: 0 0 auto;
-  color: #80848c;
+  color: #868a91;
 }
 
 .aiux543-chat-project-review {
   min-width: 0;
   flex: 0 0 auto;
-  gap: 12px;
+  gap: 8px;
   margin-left: auto;
 }
 
 .aiux543-chat-project-counts {
-  gap: 4px;
+  gap: 2px;
   flex: 0 0 auto;
-  font: 600 13px/18px "JetBrains Mono", monospace;
+  padding: 4px 0;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
 }
 
 .aiux543-chat-project-counts .is-added {
-  color: #59a869;
+  color: #6db083;
 }
 
 .aiux543-chat-project-counts .is-removed {
-  color: #e85d6a;
+  color: #ff9b9f;
 }
 
 .aiux543-chat-project-review-action {
@@ -14296,18 +14305,18 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 .aiux543-chat-project-review-main,
 .aiux543-chat-project-review-menu-trigger {
   box-sizing: border-box;
-  height: 28px;
+  height: 26px;
   border: 0;
   background: transparent;
-  color: var(--text-default, #d1d3d9);
+  color: #b4b8bf;
   cursor: pointer;
-  font: 500 13px/18px Inter, system-ui, sans-serif;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
 }
 
 .aiux543-chat-project-review-main {
   min-width: 0;
-  gap: 7px;
-  padding: 0 4px 0 6px;
+  gap: 2px;
+  padding: 0 2px 0 5px;
   border-radius: 5px 0 0 5px;
 }
 
@@ -14318,8 +14327,8 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 }
 
 .aiux543-chat-project-review-menu-trigger {
-  width: 24px;
-  flex: 0 0 24px;
+  width: 22px;
+  flex: 0 0 22px;
   justify-content: center;
   padding: 0;
   border-radius: 0 5px 5px 0;
@@ -14401,7 +14410,7 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 
 .aiux543-chat-project-review-popup-action {
   width: 100%;
-  padding: 4px 8px 4px 32px;
+  padding: 4px 8px;
   background: transparent;
   color: var(--text-default, #d1d3d9);
   cursor: pointer;

@@ -18565,7 +18565,14 @@ const CHAT_CHANGE_SCOPE_ICONS = {
 function ChatChangeScopeInspectionGlyph() {
   return (
     <span className="aiux543-chat-change-scope-trigger-glyph" aria-hidden="true">
-      <Icon name="toolwindows/changes" size={16} />
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path
+          d="M5.091 15.111 8 11.556 5.091 8M.727 11.556h6.546M10.909 8 8 4.444 10.909.889M15.273 4.444H8.727"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </span>
   );
 }
@@ -18736,16 +18743,16 @@ function ChatProjectChangesToolbar({
   return (
     <div className="aiux543-chat-project-changes-toolbar" aria-label="Project changes">
       <div className="aiux543-chat-project-context">
-        <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
-        <span className="aiux543-chat-project-name">{projectLabel}</span>
-        <Icon name="vcs/vcs" size={16} />
-        <span className="aiux543-chat-project-branch">{branchLabel}</span>
+        <span className="aiux543-chat-project-context-item">
+          <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
+          <span className="aiux543-chat-project-name">{projectLabel}</span>
+        </span>
+        <span className="aiux543-chat-project-context-item">
+          <Icon name="vcs/vcs" size={16} />
+          <span className="aiux543-chat-project-branch">{branchLabel}</span>
+        </span>
       </div>
       <div className="aiux543-chat-project-review">
-        <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
-          <span className="is-added">+{allChangesScope.added}</span>
-          <span className="is-removed">-{allChangesScope.removed}</span>
-        </span>
         <span ref={anchorRef} className="aiux543-chat-project-review-action">
           <button
             type="button"
@@ -18754,7 +18761,7 @@ function ChatProjectChangesToolbar({
             onClick={() => openScope(allChangesScope)}
           >
             <ChatChangeScopeInspectionGlyph />
-            <span>Review All Project Changes</span>
+            <span>All Project Changes</span>
           </button>
           <button
             type="button"
@@ -18772,20 +18779,12 @@ function ChatProjectChangesToolbar({
             anchorRef={anchorRef}
             ariaLabel="Project review actions"
             className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-            estimatedHeight={146}
+            estimatedHeight={72}
             onClose={() => setMenuOpen(false)}
             open={menuOpen}
-            width={300}
+            width={264}
           >
             <aside className="aiux543-chat-project-review-popup" aria-label="Project review actions">
-              <div className="aiux543-chat-project-review-popup-row is-project">
-                <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
-                <span>{projectLabel}</span>
-              </div>
-              <div className="aiux543-chat-project-review-popup-row is-branch">
-                <Icon name="vcs/vcs" size={16} />
-                <span>{branchLabel}</span>
-              </div>
               <button
                 type="button"
                 className="aiux543-chat-project-review-popup-action"
@@ -18811,6 +18810,10 @@ function ChatProjectChangesToolbar({
               </button>
             </aside>
           </FinalAnchoredPopup>
+        </span>
+        <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
+          <span className="is-added">+{allChangesScope.added}</span>
+          <span className="is-removed">-{allChangesScope.removed}</span>
         </span>
       </div>
     </div>
