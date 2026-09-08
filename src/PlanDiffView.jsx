@@ -2799,7 +2799,15 @@ export function DiffInlineCommentPopup({
     const explicitIcon = typeof submitAttachTarget?.icon === 'string' ? submitAttachTarget.icon.trim() : '';
     if (explicitIcon.length > 0) return explicitIcon;
     if (submitAttachMode === 'document') return defaultSubmitTargetIcon || 'fileTypes/markdown';
-    if (submitAttachMode === 'current') return commentContextIcon || 'claude';
+    if (submitAttachMode === 'current') {
+      // Before the reviewer chooses a recipient, the control represents a
+      // chat destination rather than any particular agent. Showing Claude
+      // here incorrectly implies that the target has already been resolved.
+      if (requireSubmitTargetChoice && !submitAttachTarget) {
+        return 'aiAssistant/toolWindowChat@20x20';
+      }
+      return commentContextIcon || 'aiAssistant/toolWindowChat@20x20';
+    }
     if (submitAttachMode === 'new') return 'claude';
     return '';
   })();
