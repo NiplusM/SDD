@@ -5701,6 +5701,12 @@ export function PlanDiffOverlay({
               Boolean(commentRowId)
               && !Number.isInteger(commentEditingIndex)
               && commentTargetRowIds.includes(row.id);
+            const isOpenCommentTarget = Boolean(commentRowId)
+              && (
+                commentTargetRowIds.length > 0
+                  ? commentTargetRowIds.includes(row.id)
+                  : commentRowId === row.id
+              );
             const isEditingRowComment = commentRowId === row.id && Number.isInteger(commentEditingIndex);
             const hasExistingRowCommentGroups = rowCommentGroups.some((group) => group.comments.length > 0);
             const shouldRenderSeparateCompose = canCreateInlineComments && isCommentComposeOpen && !isEditingRowComment && hasExistingRowCommentGroups;
@@ -6140,7 +6146,7 @@ export function PlanDiffOverlay({
 	                    : (canCreateInlineComments || hasVisibleRowComments || hiddenRowCommentCount > 0)
 	                );
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
-	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id);
+	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id) || isOpenCommentTarget;
 	              const contextSelectionRanges = contextSelectionRangesByRowId.get(row.id) ?? [];
 	              let rowTextOffset = 0;
 	              const renderedCodeFragments = (row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, index) => (
