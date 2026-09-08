@@ -18753,7 +18753,7 @@ function ChatProjectChangesToolbar({
             onClick={() => openScope(allChangesScope)}
           >
             <ChatChangeScopeInspectionGlyph />
-            <span>Review Project Changes</span>
+            <span>Review All Project Changes</span>
           </button>
           <button
             type="button"
@@ -18791,7 +18791,7 @@ function ChatProjectChangesToolbar({
                 onClick={() => openScope(allChangesScope)}
               >
                 <ChatChangeScopeInspectionGlyph />
-                <span>Review Project Changes</span>
+                <span>Review All Project Changes</span>
               </button>
             </aside>
           </FinalAnchoredPopup>
