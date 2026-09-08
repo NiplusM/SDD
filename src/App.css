@@ -4597,10 +4597,12 @@ body {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 22px);
+  /* Align the comment body with the session title. The context button adds a
+     4px inner inset before its 16px icon, followed by a 6px gap. */
+  padding: 0 4px 4px calc(var(--spec-done-comment-popup-inline-padding) + 26px);
 }
 
-/* The 22px extra left indent hangs the item body under a header icon. Groups with
+/* The 26px extra left indent hangs the item body under the header title. Groups with
    no header (the note-only popup, header removed) have nothing to hang it from,
    so it just reads as a lopsided empty gutter — drop back to a plain, generous
    inset on every side instead. */
