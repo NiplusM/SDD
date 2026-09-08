@@ -1378,43 +1378,25 @@ function buildPlanDiffSessionNodes(files, keyPrefix) {
   return nodes;
 }
 
-// Builds the grouping above the path tree: checkout, then session. A branch is
-// a property of a checkout, not a level of its own — so one row reads
-// "project [branch]" rather than nesting a branch under a project. Two branches
-// of one repository are two checkouts and therefore two sibling rows, which is
-// also what makes the same path in each of them a separate review item.
-//
-// Keep the checkout visible even when there is only one project: it is the
-// stable root of the path hierarchy, and removing another project must not
-// collapse `project/src` into one row. Session levels remain conditional and
-// only appear when they actually discriminate entries.
-function buildPlanDiffScopeNodes(files, keyPrefix = 'scope', skipCheckout = false) {
-  const byCheckout = groupPlanDiffFilesBy(files, (file) => `${file.project ?? ''}\u0000${file.branch ?? ''}`);
-  const hasCheckoutMetadata = byCheckout.some(([, checkoutFiles]) => (
-    checkoutFiles.some((file) => Boolean(file.project))
+// The active V3 file picker has one stable hierarchy: project root, folders,
+// files. Session and branch attribution belongs to comment routing, not to the
+// file tree, so it never introduces extra grouping levels here.
+function buildPlanDiffScopeNodes(files, keyPrefix = 'scope') {
+  const byProject = groupPlanDiffFilesBy(files, (file) => file.project ?? '');
+  const hasProjectMetadata = byProject.some(([, projectFiles]) => (
+    projectFiles.some((file) => Boolean(file.project))
   ));
-  if (!skipCheckout && (byCheckout.length > 1 || hasCheckoutMetadata)) {
-    return byCheckout.map(([key, checkoutFiles]) => {
-      const [project, branch] = key.split('\u0000');
-      return {
-        kind: 'checkout',
-        id: `${keyPrefix}/checkout:${key}`,
-        label: project,
-        branch,
-        projectInitials: checkoutFiles[0]?.projectInitials ?? project.slice(0, 2).toUpperCase(),
-        projectColor: checkoutFiles[0]?.projectColor ?? 'neutral',
-        // A worktree is the reason two branches of one repository are checked
-        // out at once, so name it where it explains the duplication.
-        detail: checkoutFiles[0]?.worktree ?? null,
-        files: checkoutFiles,
-        children: buildPlanDiffScopeNodes(checkoutFiles, `${keyPrefix}/checkout:${key}`, true),
-      };
-    });
-  }
+  if (!hasProjectMetadata) return [];
 
-  const sessionNodes = buildPlanDiffSessionNodes(files, keyPrefix);
-  if (sessionNodes.length > 1) return sessionNodes;
-  return [];
+  return byProject.map(([project, projectFiles]) => ({
+    kind: 'project',
+    id: `${keyPrefix}/project:${project}`,
+    label: project,
+    projectInitials: projectFiles[0]?.projectInitials ?? project.slice(0, 2).toUpperCase(),
+    projectColor: projectFiles[0]?.projectColor ?? 'neutral',
+    files: projectFiles,
+    children: null,
+  }));
 }
 
 function collectPlanDiffTreeDirKeys(node, keys = []) {
@@ -1449,6 +1431,9 @@ function PlanDiffViewingScopeControl({
   // default of "everything checked".
   checkedFileIds = null,
   onToggleFileChecked = null,
+  showViewedState = false,
+  showCommitSelection = false,
+  showSessionAttribution = false,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1653,14 +1638,13 @@ function PlanDiffViewingScopeControl({
   // Files without project metadata still fall back to a plain path tree.
   const isGroupedScope = scopeNodes.length > 0;
   const fileTree = buildPlanDiffFileTree(dedupedFileOptions);
-  // Every group holds its own path tree, so the file structure survives inside
-  // each project, branch and session.
+  // Every project root holds its own path tree.
   const attachTrees = (nodes) => nodes.map((node) => ({
     ...node,
     children: node.children?.length ? attachTrees(node.children) : null,
     tree: node.children?.length
       ? null
-      : buildPlanDiffFileTree(node.files, node.kind === 'checkout' ? node.label : ''),
+      : buildPlanDiffFileTree(node.files, node.kind === 'project' ? node.label : ''),
   }));
   const scopeTrees = attachTrees(scopeNodes);
   const collectGroupKeys = (nodes) => nodes.flatMap((node) => [
@@ -1684,7 +1668,7 @@ function PlanDiffViewingScopeControl({
   const renderFileRow = (item, depth) => {
     const index = item.index ?? 0;
     const isSelected = currentDedupedIndex === index;
-    const viewed = isFileViewed(item);
+    const viewed = showViewedState && isFileViewed(item);
     const status = item.status ?? 'modified';
     return (
       // A div rather than a button: the row carries its own nested
@@ -1702,21 +1686,23 @@ function PlanDiffViewingScopeControl({
           event.preventDefault();
           selectFile(item, index);
         }}
-        onContextMenu={(event) => {
+        onContextMenu={showViewedState ? (event) => {
           event.preventDefault();
           event.stopPropagation();
           setRowMenu({ item, viewed, rect: event.currentTarget.getBoundingClientRect() });
-        }}
+        } : undefined}
       >
         {/* Commit scope: which files this Commit button will actually act on.
             Stopping propagation keeps a click here from also opening the file,
             same as the viewed-toggle button below it. */}
-        <Checkbox
-          checked={isFileChecked(item)}
-          aria-label={`Include ${item.label} in commit`}
-          onClick={(event) => event.stopPropagation()}
-          onChange={() => setFileChecked(item, !isFileChecked(item))}
-        />
+        {showCommitSelection && (
+          <Checkbox
+            checked={isFileChecked(item)}
+            aria-label={`Include ${item.label} in commit`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => setFileChecked(item, !isFileChecked(item))}
+          />
+        )}
         <Icon name={item.icon} size={16} />
         <span className="plan-diff-files-file-name">
           {status === 'renamed' && item.previousLabel ? `${item.previousLabel} → ${item.label}` : item.label}
@@ -1733,7 +1719,7 @@ function PlanDiffViewingScopeControl({
         {/* A file more than one session changed carries the count; the popup
             behind it names them, because "2 sessions" alone does not tell the
             reviewer whose change they are reading. */}
-        {(item.sessions?.length ?? 0) > 1 && (
+        {showSessionAttribution && (item.sessions?.length ?? 0) > 1 && (
           <button
             type="button"
             className="plan-diff-files-file-sessions"
@@ -1759,7 +1745,7 @@ function PlanDiffViewingScopeControl({
         {/* Not-viewed marker only — a file becomes viewed by opening it, so
             there's nothing to click here, and once viewed the dimmed name is
             the only mark left; a checkmark next to it would be redundant. */}
-        {!viewed && <span className="plan-diff-files-file-dot" aria-hidden="true" title="Not viewed" />}
+        {showViewedState && !viewed && <span className="plan-diff-files-file-dot" aria-hidden="true" title="Not viewed" />}
       </div>
     );
   };
@@ -1792,14 +1778,16 @@ function PlanDiffViewingScopeControl({
           }}
         >
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
-          <Checkbox
-            checked={groupCheckState === 'checked'}
-            indeterminate={groupCheckState === 'indeterminate'}
-            aria-label={`Include all files in ${group.label} in commit`}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
-          />
-          {group.kind === 'checkout' ? (
+          {showCommitSelection && (
+            <Checkbox
+              checked={groupCheckState === 'checked'}
+              indeterminate={groupCheckState === 'indeterminate'}
+              aria-label={`Include all files in ${group.label} in commit`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
+            />
+          )}
+          {group.kind === 'project' ? (
             <span className={`agent-sessions-project-avatar is-${group.projectColor ?? 'neutral'}`}>
               {group.projectInitials}
             </span>
@@ -1814,9 +1802,6 @@ function PlanDiffViewingScopeControl({
             <Icon name={PLAN_DIFF_GROUP_ICONS[group.kind] ?? 'general/listFiles'} size={16} />
           )}
           <span className="plan-diff-files-group-label">{group.label}</span>
-          {group.branch && (
-            <span className="plan-diff-files-group-branch">{`[${group.branch}]`}</span>
-          )}
           <span className="plan-diff-files-tree-count">
             {`${count} ${count === 1 ? 'file' : 'files'}`}
           </span>
@@ -1848,13 +1833,15 @@ function PlanDiffViewingScopeControl({
           }}
         >
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
-          <Checkbox
-            checked={dirCheckState === 'checked'}
-            indeterminate={dirCheckState === 'indeterminate'}
-            aria-label={`Include all files in ${node.label} in commit`}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
-          />
+          {showCommitSelection && (
+            <Checkbox
+              checked={dirCheckState === 'checked'}
+              indeterminate={dirCheckState === 'indeterminate'}
+              aria-label={`Include all files in ${node.label} in commit`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
+            />
+          )}
           <Icon name="nodes/folder" size={16} />
           <span className="plan-diff-files-tree-label">{node.label}</span>
           <span className="plan-diff-files-tree-count">
@@ -1923,13 +1910,15 @@ function PlanDiffViewingScopeControl({
                 <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
                   <Icon name="actions/preview" size={16} />
                 </span>
-                <span
-                  className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
-                  aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
-                >
-                  {allFilesViewed && <Icon name="general/checkmark" size={16} />}
-                  {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
-                </span>
+                {showViewedState && (
+                  <span
+                    className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
+                    aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+                  >
+                    {allFilesViewed && <Icon name="general/checkmark" size={16} />}
+                    {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
+                  </span>
+                )}
                 <span className="plan-diff-files-popup-actions">
                   <button
                     type="button"
@@ -1959,7 +1948,7 @@ function PlanDiffViewingScopeControl({
         </div>,
         document.body,
       )}
-      {sessionsPopup && typeof document !== 'undefined' && createPortal(
+      {showSessionAttribution && sessionsPopup && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={sessionsPopup.rect} onDismiss={() => setSessionsPopup(null)} gap={4}>
             <Popup visible className="plan-diff-popover text-ui-default" onClose={() => setSessionsPopup(null)}>
@@ -1977,7 +1966,7 @@ function PlanDiffViewingScopeControl({
         </div>,
         document.body,
       )}
-      {rowMenu && typeof document !== 'undefined' && createPortal(
+      {showViewedState && rowMenu && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={rowMenu.rect} onDismiss={() => setRowMenu(null)} gap={4}>
             <Popup visible className="plan-diff-popover text-ui-default" onClose={() => setRowMenu(null)}>
@@ -2798,6 +2787,9 @@ export function DiffInlineCommentPopup({
     if (explicitLabel.length > 0) return explicitLabel;
     if (submitAttachMode === 'document') return normalizedDefaultSubmitTargetLabel;
     if (submitAttachMode === 'current') {
+      if (requireSubmitTargetChoice && !submitAttachTarget) {
+        return normalizedDefaultSubmitTargetLabel || 'Choose chat session';
+      }
       return normalizedCommentContextLabel
         || (requireSubmitTargetChoice ? normalizedDefaultSubmitTargetLabel : '');
     }
@@ -3180,8 +3172,8 @@ export function DiffInlineCommentPopup({
             aria-label={`Choose Note attachment target: ${selectedSubmitTargetLabel}`}
             aria-haspopup="menu"
             aria-expanded={Boolean(submitOptionsRect)}
-            onClick={canChooseSubmitAttachMode ? toggleSubmitOptions : undefined}
-            disabled={!canChooseSubmitAttachMode}
+            onClick={canChooseSubmitAttachMode || requireSubmitTargetChoice ? toggleSubmitOptions : undefined}
+            disabled={!canChooseSubmitAttachMode && !requireSubmitTargetChoice}
           >
             <span className="diff-comment-submit-target-icon" aria-hidden="true">
               {renderSelectedSubmitTargetIcon()}
@@ -3189,7 +3181,7 @@ export function DiffInlineCommentPopup({
             <span className="diff-comment-submit-target-text">
               {selectedSubmitTargetLabel}
             </span>
-            {canChooseSubmitAttachMode && (
+            {(canChooseSubmitAttachMode || requireSubmitTargetChoice) && (
               <Icon name="general/chevronDown" size={16} className="diff-comment-submit-target-chevron" />
             )}
           </button>
@@ -6368,16 +6360,16 @@ export function PlanDiffOverlay({
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                          submitAttachModes={reviewNoteComposer && !requireSubmitTargetChoice ? ['current'] : undefined}
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={!reviewNoteComposer}
+                          showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
                           showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
                           inputPlaceholder="Write a note"
-                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                          composeHeaderLabel={reviewNoteComposer && !requireSubmitTargetChoice ? 'Note' : ''}
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -6387,7 +6379,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={reviewNoteComposer && !requireSubmitTargetChoice ? null : renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6466,16 +6458,16 @@ export function PlanDiffOverlay({
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                        submitAttachModes={reviewNoteComposer && !requireSubmitTargetChoice ? ['current'] : undefined}
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={!reviewNoteComposer}
+                        showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
                         showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
                         inputPlaceholder="Write a note"
-                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                        composeHeaderLabel={reviewNoteComposer && !requireSubmitTargetChoice ? 'Note' : ''}
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
@@ -6485,7 +6477,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={reviewNoteComposer && !requireSubmitTargetChoice ? null : renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
@@ -7478,7 +7470,7 @@ export function PlanDiffEditorArea({
             scope on a plain source file), but the chat this file's diff came
             from and the draft-comments send button still apply, so they get
             their own reduced toolbar instead of disappearing entirely. */}
-        {singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && (
+        {showSessionToolbar && singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">

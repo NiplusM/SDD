@@ -18540,7 +18540,7 @@ function ReviewBranchFlyout({
 const CHAT_CHANGE_SCOPE_DESCRIPTIONS = {
   'last-turn': 'Changes made in the agent\'s latest response in the current session.',
   'session-changes': 'All current changes made across every turn of the current session.',
-  'all-project-changes': 'Every change in the project: all agent-session changes plus manual or external edits that aren\'t attributed to a session.',
+  'all-project-changes': 'Every current change in the selected project.',
 };
 
 const CHAT_CHANGE_SCOPE_ICONS = {
@@ -19183,7 +19183,7 @@ function AiReviewSplitFileView({
                 initialDiffComments={normalizeStoredDiffCommentsState(scopeFile.comments)}
                 singleLineNumbers={scopeFile.isPlain}
                 showGutterComments={!scopeFile.isPlain}
-                requireSubmitTargetChoice={false}
+                requireSubmitTargetChoice={scopeSessions.length > 1}
                 submitSessionChoices={scopeSessions}
                 commentContextLabel={activeChatTitle}
                 commentContextIcon={agentIcon}
@@ -19209,7 +19209,7 @@ function AiReviewSplitFileView({
           initialDiffComments={visibleComments}
           singleLineNumbers={file.isPlain}
           showGutterComments={!file.isPlain}
-          requireSubmitTargetChoice={false}
+          requireSubmitTargetChoice={fileSessions.length > 1}
           submitSessionChoices={fileSessions}
           commentContextLabel={activeChatTitle}
           commentContextIcon={agentIcon}
@@ -20791,6 +20791,23 @@ function AiChatTabView({
       return [attachmentId, getAiChatAttachmentCommentPreviewItems(attachment)];
     }),
   );
+  const scopeCommentAttachmentEntries = editorComposerAttachments
+    .map((attachment, index) => ({
+      attachment,
+      id: getAiChatAttachmentSequenceKey(attachment, index),
+    }))
+    .filter(({ attachment }) => (
+      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+  const scopeCommentAttachments = scopeCommentAttachmentEntries.map(({ attachment }) => attachment);
+  const scopeCommentAttachmentIds = new Set(scopeCommentAttachmentEntries.map(({ id }) => id));
+  const scopeCommentTargets = scopeCommentAttachments.flatMap((attachment) => (
+    getAiChatAttachmentCommentPreviewItems(attachment).map((item) => ({ attachment, item }))
+  ));
+  const [scopeCommentCursor, setScopeCommentCursor] = useState(0);
+  useEffect(() => {
+    setScopeCommentCursor((index) => Math.max(0, Math.min(scopeCommentTargets.length - 1, index)));
+  }, [scopeCommentTargets.length]);
   const dismissSentComposerAttachments = () => {
     if (editorComposerAttachmentDraftKeys.length === 0) return;
     setDismissedComposerAttachmentKeys((current) => new Set([
@@ -20958,6 +20975,9 @@ function AiChatTabView({
       .filter((attachmentId) => !representedComposerAttachmentIds.has(attachmentId))
       .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
   ];
+  const inlineOrderedComposerParts = orderedComposerParts.filter((part) => (
+    part.type !== 'attachment' || !scopeCommentAttachmentIds.has(part.attachmentId)
+  ));
   const handleComposerBackspace = (event) => {
     if (
       event.key !== 'Backspace'
@@ -20995,7 +21015,18 @@ function AiChatTabView({
   };
 
   return (
-    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
+    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
+      {changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
+        <div className="aiux543-chat-change-scope-entry">
+          <ChatChangeScopeMenu
+            scopeOptions={chatChangeScopeOptions}
+            expanded={changeScopePanelExpanded}
+            collapsed={changeScopePanelCollapsed}
+            onExpandedChange={(expanded) => onChangeScopePanelExpandedChange?.(chatId, expanded)}
+            onOpenScope={(scope) => onOpenChangeScope(chatId, scope.id)}
+          />
+        </div>
+      )}
       <div ref={scrollRef} className="aiux543-conversation-scroll">
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
@@ -21458,6 +21489,85 @@ function AiChatTabView({
             />
           );
         })()}
+        {!isReviewDecisionReady && !changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
+          <section className="aiux543-chat-change-scope-inline" aria-label="Change scopes">
+            <header className="aiux543-chat-change-scope-inline-header">Changes</header>
+            <div className="aiux543-chat-change-scope-list">
+              {chatChangeScopeOptions.map((scope) => (
+                <ChatChangeScopeOption
+                  key={scope.id}
+                  scope={scope}
+                  onOpen={() => onOpenChangeScope(chatId, scope.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+        {!isReviewDecisionReady && scopeCommentAttachments.length > 0 && (
+          <section className="aiux543-scope-comments" aria-label="Comments in review scope">
+            <header className="aiux543-scope-comments-header">
+              <span>Review comments</span>
+              {scopeCommentTargets.length > 0 && (
+                <span className="aiux543-scope-comments-navigation">
+                  <button
+                    type="button"
+                    aria-label="Previous comment in review scope"
+                    disabled={scopeCommentCursor <= 0}
+                    onClick={() => {
+                      const nextIndex = Math.max(0, scopeCommentCursor - 1);
+                      setScopeCommentCursor(nextIndex);
+                      const target = scopeCommentTargets[nextIndex];
+                      if (target) handleComposerAttachmentOpen(target.attachment, { rowId: target.item?.rowId ?? null });
+                    }}
+                  >
+                    <Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />
+                  </button>
+                  <span>{`${scopeCommentCursor + 1} of ${scopeCommentTargets.length}`}</span>
+                  <button
+                    type="button"
+                    aria-label="Next comment in review scope"
+                    disabled={scopeCommentCursor >= scopeCommentTargets.length - 1}
+                    onClick={() => {
+                      const nextIndex = Math.min(scopeCommentTargets.length - 1, scopeCommentCursor + 1);
+                      setScopeCommentCursor(nextIndex);
+                      const target = scopeCommentTargets[nextIndex];
+                      if (target) handleComposerAttachmentOpen(target.attachment, { rowId: target.item?.rowId ?? null });
+                    }}
+                  >
+                    <Icon name="general/chevronRight" size={16} />
+                  </button>
+                </span>
+              )}
+            </header>
+            <AiChatAttachmentStrip
+              attachments={scopeCommentAttachments}
+              collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+              expanded={composerAttachmentsExpanded}
+              onExpandedChange={setComposerAttachmentsExpanded}
+              getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
+              onOpen={handleComposerAttachmentOpen}
+              onNavigateComment={(item) => {
+                const targetIndex = scopeCommentTargets.findIndex((target) => (
+                  target.item === item
+                  || (target.item?.rowId && target.item.rowId === item?.rowId)
+                ));
+                const target = scopeCommentTargets[targetIndex];
+                if (!target) return;
+                setScopeCommentCursor(targetIndex);
+                handleComposerAttachmentOpen(target.attachment, { rowId: item?.rowId ?? null });
+              }}
+              onContextMenu={handleComposerAttachmentContextMenu}
+              onRemove={onRemoveComposerAttachment
+                ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
+                : null}
+              renderCodeSnippet={getCommentCodeSnippet}
+              className="aiux543-scope-comments-attachments"
+              chipClassName="aiux543-composer-attachment-chip"
+              removeButtonClassName="aiux543-composer-attachment-remove"
+              stopClickPropagation
+            />
+          </section>
+        )}
         {!isReviewDecisionReady && (
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {showSlashCommandMenu && (
@@ -21488,7 +21598,7 @@ function AiChatTabView({
             </div>
           )}
           <div className="aiux543-chat-input-row ai-chat-inline-input-content">
-            {orderedComposerParts.map((part) => (
+            {inlineOrderedComposerParts.map((part) => (
               part.type === 'text'
                 ? <span key={part.id} className="ai-chat-composer-text-segment">{part.text}</span>
                 : renderComposerAttachment(composerAttachmentById.get(part.attachmentId), part.id)
@@ -21498,7 +21608,7 @@ function AiChatTabView({
               className="aiux543-chat-input"
               rows={1}
               value={composerText}
-              placeholder={orderedComposerParts.length > 0
+              placeholder={inlineOrderedComposerParts.length > 0
                 ? ''
                 : isAgentRunProcessing
                   ? 'Add a follow-up'
@@ -35648,18 +35758,6 @@ export default function App() {
                       ? RELEASE_BRANCH_NAME
                       : REVIEW_CURRENT_BRANCH_NAME
                   )),
-                }, {
-                  id: 'toggle-viewed',
-                  icon: reviewViewedFileTabIds[activeReviewSplitFile.tabId]
-                    ? 'general/close'
-                    : 'general/checkmark',
-                  label: reviewViewedFileTabIds[activeReviewSplitFile.tabId]
-                    ? 'Mark as Not Viewed'
-                    : 'Mark as Viewed',
-                  onClick: () => setReviewFileViewed(
-                    activeReviewSplitFile.tabId,
-                    !reviewViewedFileTabIds[activeReviewSplitFile.tabId],
-                  ),
                 }] : null}
                 rightTabs={displayedReviewSplitFiles.map((file) => ({
                   label: file.name,
@@ -36017,7 +36115,7 @@ export default function App() {
                   onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                   onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, activeAiChatTabChatId)}
                   onOpenChangeScope={openChatChangeScope}
-                  changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId])}
+                  changeScopePanelExpanded={aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId] ?? true}
                   onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
                   onOpenAttachment={handleOpenChatAttachment}
                   composerDiffAttachments={aiChatComposerDiffAttachments}
