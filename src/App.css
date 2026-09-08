@@ -14260,8 +14260,7 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
 .aiux543-chat-project-review,
 .aiux543-chat-project-review-action,
 .aiux543-chat-project-review-main,
-.aiux543-chat-project-review-menu-trigger,
-.aiux543-chat-project-counts {
+.aiux543-chat-project-review-menu-trigger {
   display: inline-flex;
   align-items: center;
 }
@@ -14310,20 +14309,6 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   flex: 0 0 auto;
   gap: 12px;
   margin-left: auto;
-}
-
-.aiux543-chat-project-counts {
-  gap: 4px;
-  flex: 0 0 auto;
-  font: 600 13px/18px "JetBrains Mono", monospace;
-}
-
-.aiux543-chat-project-counts .is-added {
-  color: #59a869;
-}
-
-.aiux543-chat-project-counts .is-removed {
-  color: #e85d6a;
 }
 
 .aiux543-chat-project-review-action {
