@@ -2746,7 +2746,6 @@ export function DiffInlineCommentPopup({
     targetChatId: submitAttachMode === 'current' ? normalizedActiveChatTargetKey : null,
     targetDocumentTabId: submitAttachMode === 'document' ? normalizedDefaultSubmitTargetKey : null,
   };
-  const previousActiveChatTargetKeyRef = useRef(normalizedActiveChatTargetKey);
   const isEditing = Number.isInteger(editingIndex);
   const normalizedCommentGroups = Array.isArray(commentGroups) ? commentGroups : null;
   const hasGroupedComments = Boolean(normalizedCommentGroups?.length);
@@ -2935,20 +2934,13 @@ export function DiffInlineCommentPopup({
   }, [normalizedSubmitAttachModes, submitAttachTarget]);
 
   useEffect(() => {
-    const previousActiveChatTargetKey = previousActiveChatTargetKeyRef.current;
-    previousActiveChatTargetKeyRef.current = normalizedActiveChatTargetKey;
-    if (!normalizedActiveChatTargetKey || previousActiveChatTargetKey === normalizedActiveChatTargetKey) return;
-    if (submitAttachTarget?.attachMode !== 'current') return;
-    if (submitAttachTarget.targetChatId === normalizedActiveChatTargetKey) return;
-    setSubmitAttachTarget(null);
-    setSubmitAttachMode('current');
-  }, [normalizedActiveChatTargetKey, submitAttachTarget]);
-
-  useEffect(() => {
     if (!normalizedDefaultSubmitTargetKey) return;
+    // A target picked in the comment header is an explicit routing decision.
+    // Context changes may update the implicit fallback, but must not replace
+    // the user's choice while the composer remains open.
+    if (submitAttachTarget) return;
     setSubmitAttachMode(normalizedDefaultSubmitAttachMode);
-    setSubmitAttachTarget(null);
-  }, [normalizedDefaultSubmitAttachMode, normalizedDefaultSubmitTargetKey]);
+  }, [normalizedDefaultSubmitAttachMode, normalizedDefaultSubmitTargetKey, submitAttachTarget]);
 
   const handleSubmit = (attachMode = submitAttachMode, submitAction = selectedSubmitAction) => {
     if (!canSubmitComment) return;
