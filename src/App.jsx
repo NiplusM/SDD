@@ -20170,7 +20170,8 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   // clicked, not a plain boolean — so dismissing is only ever temporary:
   // the All Changes tab reappears as soon as a run finishes *after* that
   // snapshot, i.e. as soon as there are new changes it hasn't shown yet.
-  // -1 (never dismissed) so it's satisfied by the very first completed run.
+  // -1 means never dismissed, so an existing non-empty chat shows the entry
+  // immediately; a later dismissal is still cleared by the next completed run.
   vcsSummaryDismissedAtCount: -1,
   // Separate from the snapshot above — this one is a plain, permanent
   // boolean. Skip alone only ever hides the tab until the next new
@@ -21035,7 +21036,7 @@ function AiChatTabView({
   const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
   const allChangesFiles = getAllProjectChangesFiles(scenario);
   const showAllChangesEntry = !vcsSummaryPermanentlyHidden
-    && completedFileEditRunCount >= 1
+    && !isNewSessionState
     && completedFileEditRunCount > vcsSummaryDismissedAtCount;
   const allChangesTab = !showAllChangesEntry ? null : {
     label: 'All Changes',
