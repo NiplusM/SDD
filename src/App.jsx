@@ -20993,23 +20993,6 @@ function AiChatTabView({
       return [attachmentId, getAiChatAttachmentCommentPreviewItems(attachment)];
     }),
   );
-  const scopeCommentAttachmentEntries = editorComposerAttachments
-    .map((attachment, index) => ({
-      attachment,
-      id: getAiChatAttachmentSequenceKey(attachment, index),
-    }))
-    .filter(({ attachment }) => (
-      Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
-    ));
-  const scopeCommentAttachments = scopeCommentAttachmentEntries.map(({ attachment }) => attachment);
-  const scopeCommentAttachmentIds = new Set(scopeCommentAttachmentEntries.map(({ id }) => id));
-  const scopeCommentTargets = scopeCommentAttachments.flatMap((attachment) => (
-    getAiChatAttachmentCommentPreviewItems(attachment).map((item) => ({ attachment, item }))
-  ));
-  const [scopeCommentCursor, setScopeCommentCursor] = useState(0);
-  useEffect(() => {
-    setScopeCommentCursor((index) => Math.max(0, Math.min(scopeCommentTargets.length - 1, index)));
-  }, [scopeCommentTargets.length]);
   const dismissSentComposerAttachments = () => {
     if (editorComposerAttachmentDraftKeys.length === 0) return;
     setDismissedComposerAttachmentKeys((current) => new Set([
@@ -21184,9 +21167,7 @@ function AiChatTabView({
       .filter((attachmentId) => !representedComposerAttachmentIds.has(attachmentId))
       .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
   ];
-  const inlineOrderedComposerParts = orderedComposerParts.filter((part) => (
-    part.type !== 'attachment' || !scopeCommentAttachmentIds.has(part.attachmentId)
-  ));
+  const inlineOrderedComposerParts = orderedComposerParts;
   const handleComposerBackspace = (event) => {
     if (
       event.key !== 'Backspace'
@@ -21702,71 +21683,6 @@ function AiChatTabView({
             />
           );
         })()}
-        {!isReviewDecisionReady && scopeCommentAttachments.length > 0 && (
-          <section className="aiux543-scope-comments" aria-label="Comments in review scope">
-            <header className="aiux543-scope-comments-header">
-              <span>Review comments</span>
-              {scopeCommentTargets.length > 0 && (
-                <span className="aiux543-scope-comments-navigation">
-                  <button
-                    type="button"
-                    aria-label="Previous comment in review scope"
-                    disabled={scopeCommentCursor <= 0}
-                    onClick={() => {
-                      const nextIndex = Math.max(0, scopeCommentCursor - 1);
-                      setScopeCommentCursor(nextIndex);
-                      const target = scopeCommentTargets[nextIndex];
-                      if (target) handleComposerAttachmentOpen(target.attachment, { rowId: target.item?.rowId ?? null });
-                    }}
-                  >
-                    <Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />
-                  </button>
-                  <span>{`${scopeCommentCursor + 1} of ${scopeCommentTargets.length}`}</span>
-                  <button
-                    type="button"
-                    aria-label="Next comment in review scope"
-                    disabled={scopeCommentCursor >= scopeCommentTargets.length - 1}
-                    onClick={() => {
-                      const nextIndex = Math.min(scopeCommentTargets.length - 1, scopeCommentCursor + 1);
-                      setScopeCommentCursor(nextIndex);
-                      const target = scopeCommentTargets[nextIndex];
-                      if (target) handleComposerAttachmentOpen(target.attachment, { rowId: target.item?.rowId ?? null });
-                    }}
-                  >
-                    <Icon name="general/chevronRight" size={16} />
-                  </button>
-                </span>
-              )}
-            </header>
-            <AiChatAttachmentStrip
-              attachments={scopeCommentAttachments}
-              collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
-              expanded={composerAttachmentsExpanded}
-              onExpandedChange={setComposerAttachmentsExpanded}
-              getCommentPreviewItems={getAiChatAttachmentCommentPreviewItems}
-              onOpen={handleComposerAttachmentOpen}
-              onNavigateComment={(item) => {
-                const targetIndex = scopeCommentTargets.findIndex((target) => (
-                  target.item === item
-                  || (target.item?.rowId && target.item.rowId === item?.rowId)
-                ));
-                const target = scopeCommentTargets[targetIndex];
-                if (!target) return;
-                setScopeCommentCursor(targetIndex);
-                handleComposerAttachmentOpen(target.attachment, { rowId: item?.rowId ?? null });
-              }}
-              onContextMenu={handleComposerAttachmentContextMenu}
-              onRemove={onRemoveComposerAttachment
-                ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
-                : null}
-              renderCodeSnippet={getCommentCodeSnippet}
-              className="aiux543-scope-comments-attachments"
-              chipClassName="aiux543-composer-attachment-chip"
-              removeButtonClassName="aiux543-composer-attachment-remove"
-              stopClickPropagation
-            />
-          </section>
-        )}
         {!isReviewDecisionReady && (
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
           {showSlashCommandMenu && (

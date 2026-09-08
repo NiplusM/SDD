@@ -19643,67 +19643,6 @@ button.aiux543-answer-change-card:focus-visible {
   color: #ced0d6;
 }
 
-.aiux543-scope-comments {
-  display: flex;
-  width: min(750px, 100%);
-  box-sizing: border-box;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0 auto;
-  padding: 8px;
-  border: 1px solid var(--tool-window-border, #3a3c42);
-  border-radius: 8px;
-  background: var(--tab-tab-selected-bg-inactive, #2b2d30);
-}
-
-.aiux543-scope-comments-header {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 6px;
-  color: var(--text-text-primary, #ced0d6);
-  font: 500 13px/18px Inter, system-ui, sans-serif;
-}
-
-.aiux543-scope-comments-navigation {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-text-secondary, #a3a6ad);
-  white-space: nowrap;
-}
-
-.aiux543-scope-comments-navigation button {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.aiux543-scope-comments-navigation button:hover:not(:disabled),
-.aiux543-scope-comments-navigation button:focus-visible {
-  background: var(--icon-button-hover-bg, rgb(255 255 255 / 8%));
-  outline: none;
-}
-
-.aiux543-scope-comments-navigation button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.aiux543-scope-comments .aiux543-scope-comments-attachments {
-  padding: 4px 6px 2px;
-}
-
 /* Figma IJ Air composer treatment: one focused input surface with attachments
    inside it. Applied to both the right tool-window chat and the editor-tab chat
    so attachment/input behavior stays visually identical. */
