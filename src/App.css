@@ -14241,6 +14241,144 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   font-family: Inter, system-ui, sans-serif;
 }
 
+.aiux543-chat-project-changes-toolbar {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 16px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--tool-window-border, #2f3136);
+  background: var(--editor-bg, #191a1c);
+  color: var(--text-secondary, #9fa2a8);
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-context,
+.aiux543-chat-project-review,
+.aiux543-chat-project-review-action,
+.aiux543-chat-project-review-main,
+.aiux543-chat-project-review-menu-trigger,
+.aiux543-chat-project-counts {
+  display: inline-flex;
+  align-items: center;
+}
+
+.aiux543-chat-project-context {
+  min-width: 0;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.aiux543-chat-project-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: #5966d9;
+  color: #f4f5ff;
+  font: 600 10px/20px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-name,
+.aiux543-chat-project-branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-name {
+  color: var(--text-default, #d1d3d9);
+}
+
+.aiux543-chat-project-branch {
+  max-width: 210px;
+}
+
+.aiux543-chat-project-context > .icon {
+  flex: 0 0 auto;
+  color: #80848c;
+}
+
+.aiux543-chat-project-review {
+  min-width: 0;
+  flex: 0 0 auto;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.aiux543-chat-project-counts {
+  gap: 4px;
+  flex: 0 0 auto;
+  font: 600 13px/18px "JetBrains Mono", monospace;
+}
+
+.aiux543-chat-project-counts .is-added {
+  color: #59a869;
+}
+
+.aiux543-chat-project-counts .is-removed {
+  color: #e85d6a;
+}
+
+.aiux543-chat-project-review-action {
+  position: relative;
+  min-width: 0;
+  gap: 0;
+}
+
+.aiux543-chat-project-review-main,
+.aiux543-chat-project-review-menu-trigger {
+  box-sizing: border-box;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-review-main {
+  min-width: 0;
+  gap: 7px;
+  padding: 0 4px 0 6px;
+  border-radius: 5px 0 0 5px;
+}
+
+.aiux543-chat-project-review-main > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-review-menu-trigger {
+  width: 24px;
+  flex: 0 0 24px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 0 5px 5px 0;
+}
+
+.aiux543-chat-project-review-main:hover:not(:disabled),
+.aiux543-chat-project-review-main:focus-visible,
+.aiux543-chat-project-review-menu-trigger:hover:not(:disabled),
+.aiux543-chat-project-review-menu-trigger:focus-visible,
+.aiux543-chat-project-review-menu-trigger.is-open {
+  background: var(--icon-button-hover-bg, rgb(255 255 255 / 8%));
+  outline: none;
+}
+
+.aiux543-chat-project-review-main:disabled,
+.aiux543-chat-project-review-menu-trigger:disabled {
+  color: var(--text-disabled, #5f6269);
+  cursor: default;
+}
+
 .aiux543-chat-change-scope-entry {
   position: absolute;
   top: 10px;
@@ -14479,19 +14617,6 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   padding: 8px calc(24px + var(--aiux543-change-scope-rail-width)) 36px 24px;
   position: relative;
   transition: padding-right 120ms ease-out;
-}
-
-.aiux543-chat-all-changes-entry {
-  display: flex;
-  width: min(750px, 100%);
-  flex: 0 0 auto;
-  justify-content: center;
-  margin: 4px auto 8px;
-}
-
-.aiux543-chat-all-changes-entry .ij-air-follow-up-queue {
-  width: 100%;
-  margin-bottom: 0;
 }
 
 .aiux543-conversation.is-review-decision-ready .aiux543-conversation-scroll {

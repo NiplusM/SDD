@@ -18712,6 +18712,94 @@ function ChatChangeScopeMenu({
   );
 }
 
+function ChatProjectChangesToolbar({
+  scopeOptions = [],
+  projectLabel = PROJECT_NAME,
+  branchLabel = REVIEW_CURRENT_BRANCH_NAME,
+  onOpenScope = null,
+  reviewDisabled = false,
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const anchorRef = useRef(null);
+  const allChangesScope = scopeOptions.find((scope) => scope.id === 'all-project-changes')
+    ?? scopeOptions[scopeOptions.length - 1]
+    ?? null;
+  if (!allChangesScope) return null;
+
+  const openScope = (scope) => {
+    if (!scope || reviewDisabled) return;
+    setMenuOpen(false);
+    onOpenScope?.(scope);
+  };
+
+  return (
+    <div className="aiux543-chat-project-changes-toolbar" aria-label="Project changes">
+      <div className="aiux543-chat-project-context">
+        <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
+        <span className="aiux543-chat-project-name">{projectLabel}</span>
+        <Icon name="vcs/vcs" size={16} />
+        <span className="aiux543-chat-project-branch">{branchLabel}</span>
+      </div>
+      <div className="aiux543-chat-project-review">
+        <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
+          <span className="is-added">+{allChangesScope.added}</span>
+          <span className="is-removed">-{allChangesScope.removed}</span>
+        </span>
+        <span ref={anchorRef} className="aiux543-chat-project-review-action">
+          <button
+            type="button"
+            className="aiux543-chat-project-review-main"
+            disabled={reviewDisabled}
+            onClick={() => openScope(allChangesScope)}
+          >
+            <ChatChangeScopeInspectionGlyph />
+            <span>Review Project Changes</span>
+          </button>
+          <button
+            type="button"
+            className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
+            aria-label="Choose review scope"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            disabled={reviewDisabled}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Icon name="general/chevronDown" size={16} />
+          </button>
+          <FinalAnchoredPopup
+            align="end"
+            anchorRef={anchorRef}
+            ariaLabel="Review project changes"
+            className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
+            estimatedHeight={scopeOptions.length * 42 + 66}
+            onClose={() => setMenuOpen(false)}
+            open={menuOpen}
+            width={304}
+          >
+            <aside className="aiux543-chat-change-scope-panel" aria-label="Review scopes">
+              <div className="aiux543-chat-change-scope-header">
+                <span className="aiux543-chat-change-scope-title">Review scope</span>
+              </div>
+              <div className="aiux543-chat-change-scope-list">
+                {scopeOptions.map((scope, index) => {
+                  const previousScope = scopeOptions[index - 1] ?? null;
+                  const showSeparator = Boolean(previousScope && previousScope.section !== scope.section);
+                  return (
+                    <Fragment key={scope.id}>
+                      {showSeparator ? <span className="aiux543-chat-change-scope-separator" aria-hidden="true" /> : null}
+                      <ChatChangeScopeOption scope={scope} onOpen={openScope} />
+                    </Fragment>
+                  );
+                })}
+              </div>
+            </aside>
+          </FinalAnchoredPopup>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function AiReviewEditorSplit({
   chatLabel,
   reviewLabel,
@@ -21031,30 +21119,6 @@ function AiChatTabView({
     return false;
   };
 
-  // All Changes is a chat-level entry point, so it belongs in the scrollable
-  // conversation history rather than in the sticky composer area.
-  const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
-  const allChangesFiles = getAllProjectChangesFiles(scenario);
-  const showAllChangesEntry = !vcsSummaryPermanentlyHidden
-    && !isNewSessionState
-    && completedFileEditRunCount > vcsSummaryDismissedAtCount;
-  const allChangesTab = !showAllChangesEntry ? null : {
-    label: 'All Changes',
-    branch: `${allChangesFiles.length}`,
-    added: vcsBaseAdded + vcsRunExtraCounts.added,
-    removed: vcsBaseRemoved + vcsRunExtraCounts.removed,
-    files: allChangesFiles,
-    onOpenFile: (file) => (onOpenFileInAllProjectChanges
-      ? onOpenFileInAllProjectChanges(file.diffRequest)
-      : onOpenDiffTab?.(file.diffRequest)),
-    onRunReview: (filterTabIds) => (onOpenAllProjectChanges
-      ? onOpenAllProjectChanges(filterTabIds)
-      : onOpenDiffTab?.(scenario?.diffRequest)),
-    reviewDisabled: isAgentRunProcessing,
-    onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
-    onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
-  };
-
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
       {changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
@@ -21068,12 +21132,28 @@ function AiChatTabView({
           />
         </div>
       )}
+      {!isNewSessionState && chatChangeScopeOptions.length > 0 && (
+        <ChatProjectChangesToolbar
+          scopeOptions={chatChangeScopeOptions.map((scope) => ({
+            ...scope,
+            added: scope.added + vcsRunExtraCounts.added,
+            removed: scope.removed + vcsRunExtraCounts.removed,
+          }))}
+          reviewDisabled={isAgentRunProcessing}
+          onOpenScope={(scope) => {
+            if (onOpenChangeScope) {
+              onOpenChangeScope(chatId, scope.id);
+              return;
+            }
+            if (scope.id === 'all-project-changes') {
+              onOpenAllProjectChanges?.(scope.tabIds);
+            } else {
+              onOpenDiffTab?.(scenario?.diffRequest);
+            }
+          }}
+        />
+      )}
       <div ref={scrollRef} className="aiux543-conversation-scroll">
-        {allChangesTab && (
-          <div className="aiux543-chat-all-changes-entry">
-            <ComposerFollowUpQueue vcsTab={allChangesTab} />
-          </div>
-        )}
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
             turn?.role === 'user' ? (
