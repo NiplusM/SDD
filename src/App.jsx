@@ -18936,6 +18936,7 @@ function AiReviewSplitFileView({
   sendCommentsDisabled = false,
   onSendComments = null,
   renderSubmitTargetPicker = null,
+  submitSessionChoices = [],
   onNavigateFile = null,
   onCommentsChange = null,
   onReturnToChat = null,
@@ -19296,7 +19297,7 @@ function AiReviewSplitFileView({
                 singleLineNumbers={scopeFile.isPlain}
                 showGutterComments={!scopeFile.isPlain}
                 requireSubmitTargetChoice={false}
-                submitSessionChoices={[]}
+                submitSessionChoices={submitSessionChoices}
                 commentContextLabel={activeChatTitle}
                 commentContextIcon={agentIcon}
                 commentContextSessionLabel="Active"
@@ -19324,7 +19325,7 @@ function AiReviewSplitFileView({
           singleLineNumbers={file.isPlain}
           showGutterComments={!file.isPlain}
           requireSubmitTargetChoice={false}
-          submitSessionChoices={[]}
+          submitSessionChoices={submitSessionChoices}
           commentContextLabel={activeChatTitle}
           commentContextIcon={agentIcon}
           commentContextSessionLabel="Active"
@@ -23108,6 +23109,13 @@ export default function App() {
     (chatId) => [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS].find((item) => item.id === chatId) ?? null,
     [aiChatRecentItems],
   );
+  const commentSubmitSessionChoices = useMemo(() => selectionChatTargets.map((target) => ({
+    id: target.id,
+    label: target.title,
+    agent: target.icon,
+    icon: target.icon,
+    messageId: aiChatScenarios[target.id]?.messageId ?? `chat-${target.id}`,
+  })), [aiChatScenarios, selectionChatTargets]);
   const createEmptyAiChatSession = useCallback(({
     id: providedId = null,
     createdAt: providedCreatedAt = null,
@@ -36032,6 +36040,7 @@ export default function App() {
                         ...pickerProps,
                         includeDocuments: false,
                       })}
+                      submitSessionChoices={commentSubmitSessionChoices}
                       onNavigateFile={navigateReviewSplitFileTab}
                       viewedFileIds={reviewViewedFileTabIdList}
                       onToggleFileViewed={setReviewFileViewed}
@@ -36393,6 +36402,7 @@ export default function App() {
                     defaultSubmitTargetKey={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? ''
                       : activePlanDiffDefaultSubmitTargetKey}
+                    submitSessionChoices={commentSubmitSessionChoices}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
                     commentContextLabel={hasActivePlainFileCommentSession ? planDiffContextChatTitle : ''}

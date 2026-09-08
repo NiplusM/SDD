@@ -1,6 +1,6 @@
 // Attachment chip primitives shared by the chat composer (App.jsx) and the AI Review popup
 // (PlanDiffView.jsx), so a chip looks and reads the same wherever it is rendered.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Icon, TooltipHelp } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
@@ -125,13 +125,45 @@ export function AttachmentCommentHoverCard({
   // doesn't have to open the file to see what the comment is actually about.
   renderCodeSnippet = null,
 }) {
-  const visible = items.slice(0, 3);
-  const hidden = Math.max(0, items.length - visible.length);
+  const previewItems = Array.isArray(items) ? items : [];
+  const isScrollable = previewItems.length > 3;
   const [hoveredSnippetIndex, setHoveredSnippetIndex] = useState(null);
   const [snippetPosition, setSnippetPosition] = useState(null);
   const groupRef = useRef(null);
+  const listRef = useRef(null);
   const closeTimerRef = useRef(null);
   const noteRefs = useRef([]);
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !isScrollable) {
+      list?.style.removeProperty('--ai-chat-attachment-hover-list-height');
+      return undefined;
+    }
+
+    const updateListHeight = () => {
+      const notes = Array.from(list.children).filter((node) => (
+        node.classList?.contains('ai-chat-attachment-hover-note')
+      ));
+      if (notes.length < 3) return;
+      const first = notes[0];
+      const third = notes[2];
+      const threeItemsHeight = third.offsetTop + third.offsetHeight - first.offsetTop;
+      list.style.setProperty('--ai-chat-attachment-hover-list-height', `${threeItemsHeight}px`);
+    };
+
+    updateListHeight();
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(updateListHeight)
+      : null;
+    Array.from(list.children).slice(0, 3).forEach((node) => resizeObserver?.observe(node));
+    window.addEventListener('resize', updateListHeight);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateListHeight);
+    };
+  }, [isScrollable, previewItems]);
 
   const cancelClose = () => {
     if (closeTimerRef.current !== null) {
@@ -209,7 +241,7 @@ export function AttachmentCommentHoverCard({
     };
   }, [hoveredSnippetIndex]);
 
-  if (visible.length === 0) return null;
+  if (previewItems.length === 0) return null;
   const isAnnotationsContext = typeof contextLabel === 'string' && contextLabel.trim() === 'Quotes';
   const resolvedItemLabel = isAnnotationsContext ? 'Quote' : itemLabel;
   const resolvedItemLabelPlural = isAnnotationsContext ? 'Quotes' : itemLabelPlural;
@@ -234,8 +266,11 @@ export function AttachmentCommentHoverCard({
         className="ai-chat-attachment-hover-tooltip ai-chat-annotations-hover-tooltip"
         header={null}
         body={(
-          <div className="ai-chat-annotations-hover-list">
-            {visible.map((item, index) => {
+          <div
+            ref={listRef}
+            className={`ai-chat-annotations-hover-list ai-chat-attachment-hover-list${isScrollable ? ' is-scrollable' : ''}`}
+          >
+            {previewItems.map((item, index) => {
               const annotationLabel = typeof item.lineLabel === 'string' && item.lineLabel.trim().length > 0
                 ? item.lineLabel.trim().replace('#', '')
                 : `Quote ${index + 1}`;
@@ -249,9 +284,6 @@ export function AttachmentCommentHoverCard({
                 </div>
               );
             })}
-            {hidden > 0 && (
-              <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
-            )}
           </div>
         )}
       />
@@ -260,7 +292,7 @@ export function AttachmentCommentHoverCard({
 
   // Code stays in a separate card. Each note opens only its own context; the
   // card is portalled below so split-pane overflow cannot crop it.
-  const codeSnippetsByIndex = visible.map((item) => (renderCodeSnippet ? renderCodeSnippet(item) : null));
+  const codeSnippetsByIndex = previewItems.map((item) => (renderCodeSnippet ? renderCodeSnippet(item) : null));
   const hasAnySnippet = codeSnippetsByIndex.some(Boolean);
   const activeSnippet = hoveredSnippetIndex === null ? null : codeSnippetsByIndex[hoveredSnippetIndex];
 
@@ -274,8 +306,11 @@ export function AttachmentCommentHoverCard({
         className="ai-chat-attachment-hover-tooltip"
         header={null}
         body={(
-          <>
-            {visible.map((item, index) => {
+          <div
+            ref={listRef}
+            className={`ai-chat-attachment-hover-list${isScrollable ? ' is-scrollable' : ''}`}
+          >
+            {previewItems.map((item, index) => {
               const isNavigable = Boolean(onNavigate && item.rowId && item.sourceTabId);
               const note = (
                 <>
@@ -325,10 +360,7 @@ export function AttachmentCommentHoverCard({
                 </div>
               );
             })}
-            {hidden > 0 && (
-              <div className="ai-chat-attachment-hover-more">{`+${hidden} more`}</div>
-            )}
-          </>
+          </div>
         )}
       />
       {activeSnippet && snippetPosition && typeof document !== 'undefined' && createPortal(

@@ -12226,6 +12226,21 @@ body .aiux543-chat-toolbar .aiux543-chat-icon-button svg {
   color: #DFE1E5;
 }
 
+.ai-chat-attachment-hover-list {
+  display: flex;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+}
+
+.ai-chat-attachment-hover-list.is-scrollable {
+  max-height: var(--ai-chat-attachment-hover-list-height, 148px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 /* A compact navigable summary belongs in the left card. Keep it on one line:
    a second partially filled line (for example "in th") reads like a broken
    wrap, while a stable ellipsis makes it clear that the full note is in the
