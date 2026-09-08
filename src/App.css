@@ -14481,6 +14481,19 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   transition: padding-right 120ms ease-out;
 }
 
+.aiux543-chat-all-changes-entry {
+  display: flex;
+  width: min(750px, 100%);
+  flex: 0 0 auto;
+  justify-content: center;
+  margin: 4px auto 8px;
+}
+
+.aiux543-chat-all-changes-entry .ij-air-follow-up-queue {
+  width: 100%;
+  margin-bottom: 0;
+}
+
 .aiux543-conversation.is-review-decision-ready .aiux543-conversation-scroll {
   padding-bottom: 12px;
 }

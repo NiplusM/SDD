@@ -21030,6 +21030,30 @@ function AiChatTabView({
     return false;
   };
 
+  // All Changes is a chat-level entry point, so it belongs in the scrollable
+  // conversation history rather than in the sticky composer area.
+  const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
+  const allChangesFiles = getAllProjectChangesFiles(scenario);
+  const showAllChangesEntry = !vcsSummaryPermanentlyHidden
+    && completedFileEditRunCount >= 1
+    && completedFileEditRunCount > vcsSummaryDismissedAtCount;
+  const allChangesTab = !showAllChangesEntry ? null : {
+    label: 'All Changes',
+    branch: `${allChangesFiles.length}`,
+    added: vcsBaseAdded + vcsRunExtraCounts.added,
+    removed: vcsBaseRemoved + vcsRunExtraCounts.removed,
+    files: allChangesFiles,
+    onOpenFile: (file) => (onOpenFileInAllProjectChanges
+      ? onOpenFileInAllProjectChanges(file.diffRequest)
+      : onOpenDiffTab?.(file.diffRequest)),
+    onRunReview: (filterTabIds) => (onOpenAllProjectChanges
+      ? onOpenAllProjectChanges(filterTabIds)
+      : onOpenDiffTab?.(scenario?.diffRequest)),
+    reviewDisabled: isAgentRunProcessing,
+    onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
+    onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
+  };
+
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
       {changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
@@ -21044,6 +21068,11 @@ function AiChatTabView({
         </div>
       )}
       <div ref={scrollRef} className="aiux543-conversation-scroll">
+        {allChangesTab && (
+          <div className="aiux543-chat-all-changes-entry">
+            <ComposerFollowUpQueue vcsTab={allChangesTab} />
+          </div>
+        )}
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
             turn?.role === 'user' ? (
@@ -21433,20 +21462,6 @@ function AiChatTabView({
           // and the next queued item's run starting, so the panel doesn't
           // flicker closed and reopen between every queued item.
           const showQueueContent = !isReviewDecisionReady && (isAgentRunProcessing || isDrainPending);
-          const { added: vcsBaseAdded, removed: vcsBaseRemoved } = getAllProjectChangesLineCounts(scenario);
-          const vcsAdded = vcsBaseAdded + vcsRunExtraCounts.added;
-          const vcsRemoved = vcsBaseRemoved + vcsRunExtraCounts.removed;
-          const vcsFiles = getAllProjectChangesFiles(scenario);
-          // Hidden in a new/just-opened chat — absent until the first run has
-          // actually finished (not just started), so it doesn't pop in
-          // mid-run. Dismissing via Skip is only ever temporary: comparing
-          // against the count at the moment of dismissal means it reappears
-          // as soon as a later run adds changes it hasn't shown yet. The
-          // dropdown's "Don't show again" sets vcsSummaryPermanentlyHidden
-          // instead, which no amount of new changes brings back.
-          const showVcsTab = !vcsSummaryPermanentlyHidden
-            && completedFileEditRunCount >= 1
-            && completedFileEditRunCount > vcsSummaryDismissedAtCount;
           // Only count files that have actually appeared so far, so the
           // aggregate grows in step with the list below it instead of
           // showing the eventual total immediately.
@@ -21473,20 +21488,6 @@ function AiChatTabView({
                 addedTotal: filesTabAddedTotal,
                 removedTotal: filesTabRemovedTotal,
               } : null}
-              vcsTab={!showVcsTab ? null : {
-                // Matches the name used everywhere else this scope is opened
-                // from (the diff view's own header, the old summary card).
-                label: 'All Changes',
-                branch: `${vcsFiles.length}`,
-                added: vcsAdded,
-                removed: vcsRemoved,
-                files: vcsFiles,
-                onOpenFile: (file) => (onOpenFileInAllProjectChanges ? onOpenFileInAllProjectChanges(file.diffRequest) : onOpenDiffTab?.(file.diffRequest)),
-                onRunReview: (filterTabIds) => (onOpenAllProjectChanges ? onOpenAllProjectChanges(filterTabIds) : onOpenDiffTab?.(scenario?.diffRequest)),
-                reviewDisabled: isAgentRunProcessing,
-                onDismiss: () => setVcsSummaryDismissedAtCount(completedFileEditRunCount),
-                onDismissForever: () => setVcsSummaryPermanentlyHidden(true),
-              }}
               onDeleteItem={(itemId) => setQueuedFollowUps((items) => items.filter((item) => item.id !== itemId))}
               onReorderItems={setQueuedFollowUps}
               onSendNowItem={(itemId) => {
