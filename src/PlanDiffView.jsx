@@ -1039,8 +1039,16 @@ function buildPlanDiffScopeOptions(fileCount = 3, currentFileLabel = 'VisitContr
 const PLAN_DIFF_CHANGE_SCOPE_OPTIONS = [
   { id: 'last-turn', label: 'Last Turn', section: 'session' },
   { id: 'session-changes', label: 'Session Changes', section: 'session' },
-  { id: 'all-project-changes', label: 'All Changes', section: 'project' },
+  { id: 'all-project-changes', label: 'All Project Changes', section: 'project' },
 ];
+
+function normalizePlanDiffScopeLabels(options = []) {
+  return options.map((option) => (
+    option?.id === 'all-project-changes'
+      ? { ...option, label: 'All Project Changes' }
+      : option
+  ));
+}
 
 const PLAN_DIFF_CHANGE_SCOPE_DESCRIPTIONS = {
   'last-turn': 'Changes made in the agent\'s latest response in the current session.',
@@ -1119,9 +1127,9 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
   const [localScopeId, setLocalScopeId] = useState('last-turn');
-  const scopeOptions = Array.isArray(options) && options.length > 0
+  const scopeOptions = normalizePlanDiffScopeLabels(Array.isArray(options) && options.length > 0
     ? options
-    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS);
   const resolvedScopeId = selectedScopeId ?? localScopeId;
   const selectedScope = scopeOptions.find((option) => option.id === resolvedScopeId)
     ?? scopeOptions[0];
@@ -1447,9 +1455,9 @@ function PlanDiffViewingScopeControl({
   // checked without needing an explicit entry, the same way the Commit tool
   // window's "select all" default behaves.
   const [internalUncheckedIds, setInternalUncheckedIds] = useState([]);
-  const resolvedChangeScopeOptions = Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
+  const resolvedChangeScopeOptions = normalizePlanDiffScopeLabels(Array.isArray(changeScopeOptions) && changeScopeOptions.length > 0
     ? changeScopeOptions
-    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS;
+    : PLAN_DIFF_CHANGE_SCOPE_OPTIONS);
   const selectedChangeScope = resolvedChangeScopeOptions.find((option) => option.id === selectedChangeScopeId)
     ?? resolvedChangeScopeOptions[0]
     ?? null;
