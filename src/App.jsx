@@ -21492,20 +21492,6 @@ function AiChatTabView({
             />
           );
         })()}
-        {!isReviewDecisionReady && !changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
-          <section className="aiux543-chat-change-scope-inline" aria-label="Change scopes">
-            <header className="aiux543-chat-change-scope-inline-header">Changes</header>
-            <div className="aiux543-chat-change-scope-list">
-              {chatChangeScopeOptions.map((scope) => (
-                <ChatChangeScopeOption
-                  key={scope.id}
-                  scope={scope}
-                  onOpen={() => onOpenChangeScope(chatId, scope.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
         {!isReviewDecisionReady && scopeCommentAttachments.length > 0 && (
           <section className="aiux543-scope-comments" aria-label="Comments in review scope">
             <header className="aiux543-scope-comments-header">
