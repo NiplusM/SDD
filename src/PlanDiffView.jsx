@@ -4149,6 +4149,9 @@ export function PlanDiffOverlay({
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
+  // Commit-tool-window diffs collect review notes locally. They offer Add
+  // Note only and never start an agent turn from the inline composer.
+  allowSendToAgentAction = true,
   // Simplified note mode: no chat-picker header, no send-to-agent action —
   // just a plain "Write a note" / line reference / Cancel / Add Note.
   reviewNoteComposer = false,
@@ -6365,7 +6368,7 @@ export function PlanDiffOverlay({
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
                           showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
-                          showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                          showSendToAgentAction={allowSendToAgentAction && !reviewNoteComposer && !singleLineNumbers}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
                           inputPlaceholder="Write a note"
@@ -6463,7 +6466,7 @@ export function PlanDiffOverlay({
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
                         showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
-                        showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                        showSendToAgentAction={allowSendToAgentAction && !reviewNoteComposer && !singleLineNumbers}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
                         inputPlaceholder="Write a note"
@@ -7376,6 +7379,7 @@ export function PlanDiffEditorArea({
   severityFilter = 'all',
   resolveKeepsComment = false,
   allowInlineCommentCompose = true,
+  allowSendToAgentAction = true,
   reviewNoteComposer = false,
   viewMode = 'unified',
   onCommentNavigate = null,
@@ -7706,6 +7710,7 @@ export function PlanDiffEditorArea({
           severityFilter={severityFilter}
           resolveKeepsComment={resolveKeepsComment}
           allowInlineCommentCompose={allowInlineCommentCompose}
+          allowSendToAgentAction={allowSendToAgentAction}
           reviewNoteComposer={reviewNoteComposer}
           viewMode={effectiveViewMode}
           onCommentNavigate={onCommentNavigate}

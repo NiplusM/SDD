@@ -24792,7 +24792,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, allowSendToAgentAction = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -24912,6 +24912,7 @@ export default function App() {
           initialDiffComments: mergedInitialDiffComments,
           diffCommentsReadOnly: Boolean(commentsReadOnly),
           diffShowScopeControl: Boolean(showScopeControl),
+          diffAllowSendToAgentAction: Boolean(allowSendToAgentAction),
           // A snapshot opened from a "files changed" card row: the exact diff
           // as it stood at that turn, not the live/current one, so it has no
           // "Last Turn" scope to speak of and shouldn't show that control.
@@ -34807,6 +34808,7 @@ export default function App() {
       contextChatId: targetChatId,
       fileCount: 1,
       showScopeControl: false,
+      allowSendToAgentAction: false,
     });
   }, [getAiChatScenarioById, openPlanDiffTab]);
 
@@ -36363,6 +36365,7 @@ export default function App() {
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     showScopeControl={activeTabContent?.diffShowScopeControl !== false}
+                    allowSendToAgentAction={activeTabContent?.diffAllowSendToAgentAction !== false}
                     resolveKeepsComment={activeReviewFileIndex >= 0}
                     // Keep the compact review-note presentation after a diff
                     // leaves the split or opens its session-owned source. A
