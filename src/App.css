@@ -14769,6 +14769,11 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   cursor: pointer;
 }
 
+.aiux543-user-message-menu-anchor {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .aiux543-user-message .aiux543-kebab:hover,
 .aiux543-user-message .aiux543-kebab:focus-visible {
   background: rgb(255 255 255 / 8%);
@@ -14785,6 +14790,43 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.aiux543-user-message-popup-list {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+
+.aiux543-user-message-popup-list > button {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-default, #d1d3d9);
+  cursor: pointer;
+  font: 500 13px/18px Inter, system-ui, sans-serif;
+  text-align: left;
+}
+
+.aiux543-user-message-popup-list > button:hover,
+.aiux543-user-message-popup-list > button:focus-visible {
+  background: var(--popup-cell-bg-hovered, rgb(255 255 255 / 8%));
+  outline: none;
+}
+
+.aiux543-user-message-popup-list > button > .icon {
+  flex: 0 0 16px;
+  color: var(--icon-secondary-stroke, #9da0a8);
 }
 
 

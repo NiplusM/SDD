@@ -18765,7 +18765,7 @@ function ChatProjectChangesToolbar({
             disabled={reviewDisabled}
             onClick={() => setMenuOpen((open) => !open)}
           >
-            <Icon name="general/moreVertical" size={16} />
+            <Icon name="general/chevronDown" size={16} />
           </button>
           <FinalAnchoredPopup
             align="end"
@@ -20279,6 +20279,93 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   vcsRunExtraCounts: { added: 0, removed: 0 },
 };
 
+function AiChatUserMessage({
+  messageId,
+  text,
+  thread = false,
+  collapsed = false,
+  onToggleCollapsed,
+  onEdit,
+}) {
+  const menuAnchorRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const closeMenu = () => setMenuOpen(false);
+  const copyMessage = async () => {
+    closeMenu();
+    try {
+      await navigator.clipboard?.writeText(text);
+    } catch {
+      // Clipboard access may be unavailable in the embedded prototype.
+    }
+  };
+
+  return (
+    <div
+      className={`aiux543-user-message${thread ? ' aiux543-thread-user-message' : ''}${collapsed ? ' is-collapsed' : ''}`}
+      data-ai-chat-message-id={messageId}
+      onDoubleClick={() => onToggleCollapsed?.()}
+    >
+      <p>{text}</p>
+      <span ref={menuAnchorRef} className="aiux543-user-message-menu-anchor">
+        <button
+          type="button"
+          className="aiux543-kebab"
+          aria-label="Message actions"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuOpen((open) => !open);
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <Icon name="general/moreVertical" size={16} />
+        </button>
+        <FinalAnchoredPopup
+          align="end"
+          anchorRef={menuAnchorRef}
+          ariaLabel="Message actions"
+          className="aiux543-user-message-popup"
+          estimatedHeight={108}
+          onClose={closeMenu}
+          open={menuOpen}
+          width={210}
+        >
+          <div className="aiux543-user-message-popup-list" role="menu">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onEdit?.();
+              }}
+            >
+              <Icon name="general/edit" size={16} />
+              <span>Edit Message</span>
+            </button>
+            <button type="button" role="menuitem" onClick={copyMessage}>
+              <Icon name="general/copy" size={16} />
+              <span>Copy Message</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onToggleCollapsed?.();
+              }}
+            >
+              <Icon name={collapsed ? 'general/expandAll' : 'general/collapseAll'} size={16} />
+              <span>{collapsed ? 'Expand Message' : 'Collapse Message'}</span>
+            </button>
+          </div>
+        </FinalAnchoredPopup>
+      </span>
+    </div>
+  );
+}
+
 function AiChatTabView({
   chatId,
   scenarios = {},
@@ -21175,26 +21262,18 @@ function AiChatTabView({
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
             turn?.role === 'user' ? (
-              <div
+              <AiChatUserMessage
                 key={`turn-${index}`}
-                className={`aiux543-user-message aiux543-thread-user-message${collapsedUserMessageIds[`${messageId}-turn-${index}`] ? ' is-collapsed' : ''}`}
-                data-ai-chat-message-id={`${messageId}-turn-${index}`}
-                onDoubleClick={() => toggleUserMessageCollapsed(`${messageId}-turn-${index}`)}
-              >
-                <p>{turn.text}</p>
-                <button
-                  type="button"
-                  className="aiux543-kebab"
-                  aria-label={collapsedUserMessageIds[`${messageId}-turn-${index}`] ? 'Expand message' : 'Collapse message'}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleUserMessageCollapsed(`${messageId}-turn-${index}`);
-                  }}
-                  onDoubleClick={(event) => event.stopPropagation()}
-                >
-                  <Icon name="general/moreVertical" size={16} />
-                </button>
-              </div>
+                messageId={`${messageId}-turn-${index}`}
+                text={turn.text}
+                thread
+                collapsed={Boolean(collapsedUserMessageIds[`${messageId}-turn-${index}`])}
+                onToggleCollapsed={() => toggleUserMessageCollapsed(`${messageId}-turn-${index}`)}
+                onEdit={() => {
+                  setComposerText(turn.text ?? '');
+                  requestAnimationFrame(() => composerRef.current?.focus());
+                }}
+              />
             ) : (
               <article key={`turn-${index}`} className="aiux543-answer aiux543-thread-answer">
                 <h3>Claude Agent</h3>
@@ -21228,25 +21307,16 @@ function AiChatTabView({
                 {scenario.userPrompt}
               </ChatUserCard>
             ) : scenario?.userPrompt ? (
-              <div
-                className={`aiux543-user-message${collapsedUserMessageIds[messageId] ? ' is-collapsed' : ''}`}
-                data-ai-chat-message-id={messageId}
-                onDoubleClick={() => toggleUserMessageCollapsed(messageId)}
-              >
-                <p>{scenario.userPrompt}</p>
-                <button
-                  type="button"
-                  className="aiux543-kebab"
-                  aria-label={collapsedUserMessageIds[messageId] ? 'Expand message' : 'Collapse message'}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleUserMessageCollapsed(messageId);
-                  }}
-                  onDoubleClick={(event) => event.stopPropagation()}
-                >
-                  <Icon name="general/moreVertical" size={16} />
-                </button>
-              </div>
+              <AiChatUserMessage
+                messageId={messageId}
+                text={scenario.userPrompt}
+                collapsed={Boolean(collapsedUserMessageIds[messageId])}
+                onToggleCollapsed={() => toggleUserMessageCollapsed(messageId)}
+                onEdit={() => {
+                  setComposerText(scenario.userPrompt);
+                  requestAnimationFrame(() => composerRef.current?.focus());
+                }}
+              />
             ) : null}
 
             {!isSpecChat && scenarioAttachments.length > 0 && (
