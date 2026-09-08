@@ -6975,6 +6975,10 @@ export function PlanDiffEditorToolbar({
   // from (Last Turn / Session Changes / All Changes) and no bottom row tying
   // it back to a chat, a commit, or a comments thread.
   isArchivedSnapshot = false,
+  // A diff opened from the Commit tool window is a regular IDE file diff,
+  // not a review scope. It keeps difference navigation and display settings,
+  // but omits the 1-of-N/scope control from the toolbar.
+  showScopeControl = true,
   // The session/actions row is not part of the current V3 review surface.
   showSessionToolbar = false,
   viewMode = 'unified',
@@ -7137,7 +7141,7 @@ export function PlanDiffEditorToolbar({
               }))}
             />
           </div>
-          {!isArchivedSnapshot && (
+          {!isArchivedSnapshot && showScopeControl && (
             <>
               <ToolbarSeparator className="plan-diff-toolbar-separator" />
               <PlanDiffViewingScopeControl
@@ -7335,6 +7339,7 @@ export function PlanDiffEditorArea({
   // from (Last Turn / Session Changes / All Changes) and no bottom row tying
   // it back to a chat, a commit, or a comments thread.
   isArchivedSnapshot = false,
+  showScopeControl = true,
   // Keep Diff and Source focused on file navigation and content. Session
   // identity and actions live in the owning chat/commit surfaces instead.
   showSessionToolbar = false,
@@ -7551,7 +7556,7 @@ export function PlanDiffEditorArea({
                     }))}
                   />
                 </div>
-                {!isArchivedSnapshot && (
+                {!isArchivedSnapshot && showScopeControl && (
                   <>
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
                     <PlanDiffViewingScopeControl
@@ -7659,8 +7664,12 @@ export function PlanDiffEditorArea({
               )}
             </div>
             <div className="plan-diff-content-labels">
-              <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
-              <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+              <PlanDiffContentLabel variant={showScopeControl ? undefined : 'read-only'} mono={!showScopeControl}>
+                {showScopeControl ? 'Initial content' : 'Base revision'}
+              </PlanDiffContentLabel>
+              <PlanDiffContentLabel variant={showScopeControl ? undefined : 'editable'}>
+                {showScopeControl ? 'New content' : 'Local changes'}
+              </PlanDiffContentLabel>
             </div>
           </div>
         )}

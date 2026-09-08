@@ -16042,8 +16042,20 @@ function getCommitReviewScopeCategory(file = null, index = 0) {
 
 function buildCommitReviewScopeRequests() {
   return [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES].map((file, index) => {
-    const content = getSpecSourceFileContent(file.label);
-    const counts = getCommitScopeLineCounts(file, index);
+    // Reuse the prototype's prepared, working diffs when the same physical
+    // file appears in Commit. This makes opening it from the tool window show
+    // the exact same code change as opening it from the agent response.
+    const existingDiffCard = AI_CHAT_GENERATED_DIFF_CARDS.find((card) => card.name === file.label) ?? null;
+    const existingDiffRequest = existingDiffCard?.diffRequest ?? null;
+    const content = existingDiffRequest?.source?.code
+      ? { code: existingDiffRequest.source.code }
+      : getSpecSourceFileContent(file.label);
+    const counts = existingDiffCard
+      ? {
+          added: getChatChangedFileLineCount(existingDiffCard.added),
+          removed: getChatChangedFileLineCount(existingDiffCard.removed),
+        }
+      : getCommitScopeLineCounts(file, index);
     const scopeLabel = file.groupLabel || 'Unassigned';
     const fallbackCode = [
       `// ${file.label}`,
@@ -16051,8 +16063,9 @@ function buildCommitReviewScopeRequests() {
       `// ${file.status} change prepared in the Commit tool window`,
     ].join('\n');
     return {
-      text: `${file.label} — ${scopeLabel}`,
-      statusItem: { status: 'passed' },
+      text: existingDiffRequest?.text ?? `${file.label} — ${scopeLabel}`,
+      statusItem: existingDiffRequest?.statusItem ?? { status: 'passed' },
+      issueTarget: existingDiffRequest?.issueTarget ?? null,
       source: {
         tabId: `commit-review-scope-${file.id}`,
         label: file.label,
@@ -24779,7 +24792,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -24898,6 +24911,7 @@ export default function App() {
           diffLineText: text,
           initialDiffComments: mergedInitialDiffComments,
           diffCommentsReadOnly: Boolean(commentsReadOnly),
+          diffShowScopeControl: Boolean(showScopeControl),
           // A snapshot opened from a "files changed" card row: the exact diff
           // as it stood at that turn, not the live/current one, so it has no
           // "Last Turn" scope to speak of and shouldn't show that control.
@@ -34777,14 +34791,24 @@ export default function App() {
       request?.source?.tabId === selectedRequestId
     )) ?? null;
     if (!selectedDiffRequest) return null;
-    const targetChatId = activeAiChatTabChatId ?? selectedAiChatId ?? DEFAULT_OPEN_CHAT_ID;
-    return openPlanDiffInReviewSplit(
-      selectedDiffRequest,
-      targetChatId,
-      scopeRequests,
-      'all-project-changes',
-    );
-  }, [activeAiChatTabChatId, openPlanDiffInReviewSplit, selectedAiChatId]);
+    const targetChatId = file.groupId && getAiChatScenarioById(file.groupId)
+      ? file.groupId
+      : null;
+    // Commit uses the IDE's regular editor diff: the Commit tool window stays
+    // open on the left, while the selected file gets a full Diff tab. It is
+    // intentionally not promoted into the chat-owned review split.
+    setReviewSplitChatId(null);
+    setReviewSplitFileTabIds([]);
+    setReviewSplitActiveTabId(REVIEW_DIFF_TAB_ID);
+    setReviewSplitChangeScopeOptions([]);
+    setDiffGutterCommentsEnabled(true);
+    return openPlanDiffTab({
+      ...selectedDiffRequest,
+      contextChatId: targetChatId,
+      fileCount: 1,
+      showScopeControl: false,
+    });
+  }, [getAiChatScenarioById, openPlanDiffTab]);
 
   const openChatChangeScope = useCallback((chatId, scopeId) => (
     openLatestChangedFilesReviewScope(chatId, {
@@ -36338,6 +36362,7 @@ export default function App() {
                     reviewNav={null}
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
+                    showScopeControl={activeTabContent?.diffShowScopeControl !== false}
                     resolveKeepsComment={activeReviewFileIndex >= 0}
                     // Keep the compact review-note presentation after a diff
                     // leaves the split or opens its session-owned source. A
