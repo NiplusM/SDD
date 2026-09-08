@@ -22,6 +22,10 @@ function patchIntUiKitStyles() {
 }
 
 export default defineConfig({
+  // The prototype is published inside a nested GitHub Pages directory and is
+  // also embedded from several entry-point routes. Keep built asset URLs
+  // relative to index.html so Chat, File, and Commit all load from that folder.
+  base: './',
   plugins: [patchIntUiKitStyles(), react()],
   server: {
     host: 'localhost',
