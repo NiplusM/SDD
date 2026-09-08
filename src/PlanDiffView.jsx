@@ -3812,7 +3812,7 @@ export function DiffInlineCommentPopup({
             document.body,
           )}
           */}
-          {requireSubmitTargetChoice && !submitAttachTarget && submitOptionsRect && submitSessionChoices.length > 1 && createPortal(
+          {requireSubmitTargetChoice && !submitAttachTarget && submitOptionsRect && submitSessionChoices.length > 1 && typeof renderSubmitTargetPicker !== 'function' && createPortal(
             <div className="theme-dark">
               <PositionedPopup triggerRect={submitOptionsRect} onDismiss={() => setSubmitOptionsRect(null)} gap={4}>
                 <Popup visible className="diff-comment-submit-options-popup" onClose={() => setSubmitOptionsRect(null)}>
@@ -3838,7 +3838,7 @@ export function DiffInlineCommentPopup({
             </div>,
             document.body,
           )}
-          {(canChooseSubmitAttachMode || requireSubmitTargetChoice) && submitOptionsRect && !(requireSubmitTargetChoice && !submitAttachTarget && submitSessionChoices.length > 1) && createPortal(
+          {(canChooseSubmitAttachMode || requireSubmitTargetChoice) && submitOptionsRect && !(requireSubmitTargetChoice && !submitAttachTarget && submitSessionChoices.length > 1 && typeof renderSubmitTargetPicker !== 'function') && createPortal(
             typeof renderSubmitTargetPicker === 'function'
               ? renderSubmitTargetPicker({
                   triggerRect: submitOptionsRect,
@@ -6371,16 +6371,16 @@ export function PlanDiffOverlay({
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={reviewNoteComposer && !requireSubmitTargetChoice ? ['current'] : undefined}
+                          submitAttachModes={reviewNoteComposer ? ['current', 'new'] : undefined}
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
+                          showSubmitTargetLabel
                           showSendToAgentAction={allowSendToAgentAction && !reviewNoteComposer && !singleLineNumbers}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
                           inputPlaceholder="Write a note"
-                          composeHeaderLabel={reviewNoteComposer && !requireSubmitTargetChoice ? 'Note' : ''}
+                          composeHeaderLabel=""
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -6390,7 +6390,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={reviewNoteComposer && !requireSubmitTargetChoice ? null : renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={renderSubmitTargetPicker}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6469,16 +6469,16 @@ export function PlanDiffOverlay({
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={reviewNoteComposer && !requireSubmitTargetChoice ? ['current'] : undefined}
+                        submitAttachModes={reviewNoteComposer ? ['current', 'new'] : undefined}
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={!reviewNoteComposer || requireSubmitTargetChoice}
+                        showSubmitTargetLabel
                         showSendToAgentAction={allowSendToAgentAction && !reviewNoteComposer && !singleLineNumbers}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
                         inputPlaceholder="Write a note"
-                        composeHeaderLabel={reviewNoteComposer && !requireSubmitTargetChoice ? 'Note' : ''}
+                        composeHeaderLabel=""
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
@@ -6488,7 +6488,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={reviewNoteComposer && !requireSubmitTargetChoice ? null : renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={renderSubmitTargetPicker}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}

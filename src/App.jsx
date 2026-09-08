@@ -36344,7 +36344,7 @@ export default function App() {
                       ? 'Choose chat session'
                       : activePlanDiffDefaultSubmitTargetLabel}
                     defaultSubmitTargetIcon={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
-                      ? 'claude'
+                      ? 'aiAssistant/toolWindowChat@20x20'
                       : activePlanDiffDefaultSubmitTargetIcon}
                     defaultSubmitTargetKey={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? ''
