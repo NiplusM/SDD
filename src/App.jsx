@@ -1126,6 +1126,7 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
 function CommitToolWindow({
   ctx,
   onOpenFile = null,
+  onReviewChanges = null,
   onReviewContextChange = null,
   scopeRequest = null,
 }) {
@@ -1337,6 +1338,15 @@ function CommitToolWindow({
           </div>
           <div className="commit-actions">
             <div className="commit-buttons">
+              <Button
+                type="secondary"
+                disabled={checkedIds.size === 0 || Boolean(commitResult)}
+                onClick={() => onReviewChanges?.(
+                  commitFiles.filter((file) => checkedIds.has(file.id)),
+                )}
+              >
+                Review Changes
+              </Button>
               <Button
                 type="primary"
                 disabled={checkedIds.size === 0 || Boolean(commitResult)}
@@ -19182,7 +19192,7 @@ function AiReviewSplitFileView({
                 alignChanges={viewerSettings.alignChanges}
                 initialDiffComments={normalizeStoredDiffCommentsState(scopeFile.comments)}
                 singleLineNumbers={scopeFile.isPlain}
-                showGutterComments
+                showGutterComments={!scopeFile.isPlain}
                 requireSubmitTargetChoice={false}
                 submitSessionChoices={scopeSessions}
                 commentContextLabel={activeChatTitle}
@@ -19208,7 +19218,7 @@ function AiReviewSplitFileView({
           contextSelections={contextSelections}
           initialDiffComments={visibleComments}
           singleLineNumbers={file.isPlain}
-          showGutterComments
+          showGutterComments={!file.isPlain}
           requireSubmitTargetChoice={false}
           submitSessionChoices={fileSessions}
           commentContextLabel={activeChatTitle}
@@ -34642,6 +34652,24 @@ export default function App() {
     ) stripe.click();
   }, []);
 
+  const openCommitChangesReview = useCallback((selectedFiles = []) => {
+    const selectedRequestIds = new Set(
+      selectedFiles.map((file) => `commit-review-scope-${file.id}`),
+    );
+    const scopeRequests = buildCommitReviewScopeRequests().filter((request) => (
+      selectedRequestIds.has(request?.source?.tabId)
+    ));
+    const firstDiffRequest = scopeRequests[0] ?? null;
+    if (!firstDiffRequest) return null;
+    const targetChatId = activeAiChatTabChatId ?? selectedAiChatId ?? DEFAULT_OPEN_CHAT_ID;
+    return openPlanDiffInReviewSplit(
+      firstDiffRequest,
+      targetChatId,
+      scopeRequests,
+      'all-project-changes',
+    );
+  }, [activeAiChatTabChatId, openPlanDiffInReviewSplit, selectedAiChatId]);
+
   const openChatChangeScope = useCallback((chatId, scopeId) => (
     openLatestChangedFilesReviewScope(chatId, {
       initialScopeId: scopeId,
@@ -36215,12 +36243,8 @@ export default function App() {
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
-                    showGutterComments={(isDiffTab && diffGutterCommentsEnabled) || isPlainFileOverlayTab}
-                    // A source file jumped to from a diff should always be
-                    // able to take a comment, regardless of the general
-                    // "show gutter comments on plain files" preference —
-                    // that toggle is about ordinary files, not this one.
-                    plainFileGutterCommentsEnabled={isPlainFileOverlayTab || plainFileGutterCommentsEnabled}
+                    showGutterComments={isDiffTab && diffGutterCommentsEnabled}
+                    plainFileGutterCommentsEnabled={false}
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}
                     onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}
@@ -36252,7 +36276,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewContextChange={setCommitReviewContext} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} onOpenFile={(file) => { setScreen('ide'); openEditorTabByLabel(file.label); }} onReviewChanges={openCommitChangesReview} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);

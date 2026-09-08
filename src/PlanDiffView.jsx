@@ -6983,6 +6983,8 @@ export function PlanDiffEditorToolbar({
   // from (Last Turn / Session Changes / All Changes) and no bottom row tying
   // it back to a chat, a commit, or a comments thread.
   isArchivedSnapshot = false,
+  // The session/actions row is not part of the current V3 review surface.
+  showSessionToolbar = false,
   viewMode = 'unified',
   onViewModeChange = null,
   onEditSource = null,
@@ -7184,12 +7186,12 @@ export function PlanDiffEditorToolbar({
               settings={viewerSettings}
               onSettingsChange={setViewerSettings}
               secondaryRowHidden={secondaryRowHidden}
-              onToggleSecondaryRow={setSecondaryRowHidden}
+              onToggleSecondaryRow={showSessionToolbar ? setSecondaryRowHidden : null}
             />
           </div>
         </div>
         )}
-        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (
+        {showSessionToolbar && !isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (
           <div className="plan-diff-toolbar-secondary-row">
             <div className="plan-diff-toolbar-left">
               <div className="plan-diff-toolbar-chat-group">
@@ -7341,6 +7343,9 @@ export function PlanDiffEditorArea({
   // from (Last Turn / Session Changes / All Changes) and no bottom row tying
   // it back to a chat, a commit, or a comments thread.
   isArchivedSnapshot = false,
+  // Keep Diff and Source focused on file navigation and content. Session
+  // identity and actions live in the owning chat/commit surfaces instead.
+  showSessionToolbar = false,
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
@@ -7584,11 +7589,11 @@ export function PlanDiffEditorArea({
                   settings={areaViewerSettings}
                   onSettingsChange={setAreaViewerSettings}
                   secondaryRowHidden={areaSecondaryRowHidden}
-                  onToggleSecondaryRow={setAreaSecondaryRowHidden}
+                  onToggleSecondaryRow={showSessionToolbar ? setAreaSecondaryRowHidden : null}
                 />
                 </div>
               </div>
-              {!isArchivedSnapshot && (commentContextLabel || onCommitScope || onSendComments) && (
+              {showSessionToolbar && !isArchivedSnapshot && (commentContextLabel || onCommitScope || onSendComments) && (
                 <div className="plan-diff-toolbar-secondary-row">
                   <div className="plan-diff-toolbar-left">
                     <div className="plan-diff-toolbar-chat-group">
