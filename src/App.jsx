@@ -18817,6 +18817,7 @@ function AiReviewSplitFileView({
   renderSubmitTargetPicker = null,
   onNavigateFile = null,
   onCommentsChange = null,
+  onReturnToChat = null,
   onReviewAction = null,
   selectedChangeScopeId = 'last-turn',
   onChangeScope = null,
@@ -19197,6 +19198,7 @@ function AiReviewSplitFileView({
                 commentsReadOnly={readOnly}
                 viewMode={scopeFile.isPlain ? 'unified' : viewMode}
                 onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(scopeFile.tabId, comments, metadata)}
+                onReturnToChat={onReturnToChat}
                 onReviewAction={onReviewAction}
               />
             </section>
@@ -19228,6 +19230,7 @@ function AiReviewSplitFileView({
           pendingCommentRowIds={pendingCommentRowIds}
           highlightedCommentRowIds={focusedRows}
           onDiffCommentsChange={(comments, metadata) => onCommentsChange?.(file.tabId, comments, metadata)}
+          onReturnToChat={onReturnToChat}
           onReviewAction={onReviewAction}
           onTextSelectionChange={onTextSelectionChange}
           externalCommentRequest={externalCommentRequest}
@@ -32248,8 +32251,36 @@ export default function App() {
         nonce: Date.now(),
       });
     }
-    openAiToolWindow();
-	  }, [activePlanDiffContextChatId, activePlanDiffContextMessageId, activePlanDiffDocumentContextLabel, activePlanDiffDocumentSourceTabId, aiChatScenarios, ideTabs, openAiToolWindow, openEditorTabByLabel]);
+    const reviewFileTabId = isReviewEditorSplitActive
+      ? reviewSplitActiveTabId
+      : ((isDiffTab || isPlainFileOverlayTab) ? activeTabId : null);
+    if (
+      shouldSwitchChat
+      && contextChatId
+      && reviewFileTabId
+      && reviewFileTabId !== REVIEW_DIFF_TAB_ID
+    ) {
+      // Comment context is a review navigation action: retain the currently
+      // inspected Diff/Source on the right and open its owning chat on the
+      // left. Switching between comment owners must not collapse the split or
+      // replace the file with a standalone chat tab.
+      setReviewSplitChatId(contextChatId);
+      setReviewSplitFileTabIds((current) => (
+        current.includes(reviewFileTabId) ? current : [...current, reviewFileTabId]
+      ));
+      setReviewSplitActiveTabId(reviewFileTabId);
+      setReviewSplitChangeScopeId('last-turn');
+      setReviewSplitChangeScopeOptions([]);
+      setReviewSplitFileFocusByTabId((current) => (
+        reviewFileTabId in current ? current : { ...current, [reviewFileTabId]: [] }
+      ));
+      setReviewSplitExpandedCommentRowByTabId((current) => (
+        reviewFileTabId in current ? current : { ...current, [reviewFileTabId]: null }
+      ));
+      return;
+    }
+    openAiToolWindow(contextChatId);
+	  }, [activePlanDiffContextChatId, activePlanDiffContextMessageId, activePlanDiffDocumentContextLabel, activePlanDiffDocumentSourceTabId, activeTabId, aiChatScenarios, ideTabs, isDiffTab, isPlainFileOverlayTab, isReviewEditorSplitActive, openAiToolWindow, openEditorTabByLabel, reviewSplitActiveTabId]);
   const handleChatDiffCommentsClear = useCallback(() => {
     const diffTabId = aiChatComposerDiffTabId;
     const diffTabContent = ideTabContents[diffTabId];
@@ -35955,6 +35986,7 @@ export default function App() {
                       onCommentsChange={(tabId, comments, metadata) => (
                         persistReviewFileCommentsWithChatAttachment(tabId, comments, reviewSplitChatId, metadata)
                       )}
+                      onReturnToChat={handlePlanDiffReturnToChat}
                       onReviewAction={(action) => resolveReviewCommentRef.current?.(action)}
                     />
                   ) : isReviewSplitOverviewMode ? (
