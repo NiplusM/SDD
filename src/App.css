@@ -23647,6 +23647,22 @@ button.aiux543-answer-change-card:focus-visible {
   inset: 0;
 }
 
+/* The code canvas grows to its longest line, but inline comments must size to
+   the visible Diff viewport. Container units keep the card inside the current
+   unified pane (or the individual side-by-side pane) while code still scrolls. */
+.aiux-review-split-file-view .plan-diff-scroll,
+.aiux-review-split-file-view .plan-diff-split-pane {
+  container-type: inline-size;
+}
+
+.aiux-review-split-file-view .plan-diff-row-comment {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+  min-width: 100cqw;
+  max-width: 100cqw;
+}
+
 /* Plain source rows may contain code wider than the viewport. The generic diff
    renderer sizes its row wrapper to that longest line, which also made an
    inline comment use the off-screen code width and get clipped at the right
