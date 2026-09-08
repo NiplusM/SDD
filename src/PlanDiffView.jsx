@@ -3566,17 +3566,8 @@ export function DiffInlineCommentPopup({
                               >
                                 {commentEntry.text}
                               </div>
-                              {(entryLineLabel.length > 0 || commentEntry.pending) && (
-                                <div className="spec-done-comment-popup-item-meta text-ui-small">
-                                  {commentEntry.pending ? (
-                                    <span className="spec-done-comment-popup-footer-note-status">
-                                      Processed
-                                      <span className="spec-done-comment-popup-footer-note-ellipsis" aria-hidden="true">
-                                        <span>.</span><span>.</span><span>.</span>
-                                      </span>
-                                    </span>
-                                  ) : entryLineLabel}
-                                </div>
+                              {entryLineLabel.length > 0 && (
+                                <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
                               )}
                             </>
                           )}
@@ -3626,11 +3617,9 @@ export function DiffInlineCommentPopup({
                       >
                         {commentText}
                       </div>
-                      {/* Line-number label in comments hidden for now.
                       {entryLineLabel.length > 0 && (
                         <div className="spec-done-comment-popup-item-meta text-ui-small">{entryLineLabel}</div>
                       )}
-                      */}
                     </>
                   )}
                   {renderAgentResolution(comment, index, null, {
