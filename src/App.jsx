@@ -15788,7 +15788,7 @@ const AI_CHAT_VET_SCHEDULES_DIFF_REQUEST = {
   reviewRemoved: 0,
   // Not reviewAllChangesOnly: this is one of refactor-time-slots' own Done
   // card files, so it belongs in that chat's Last Turn / Session Changes
-  // scopes too, not just All Project Changes.
+  // scopes too, not just All Changes.
   reviewAttribution: 'session',
 };
 
@@ -15948,7 +15948,7 @@ function buildChatReviewScopeRequests(scenario) {
   const chatDiffRequests = getChatChangeCards(scenario).map((card) => card?.diffRequest).filter(Boolean);
   const seenDiffRequests = new Set(chatDiffRequests);
   // Project-wide extras (e.g. Vet-Schedules.md when it isn't already one of
-  // this chat's own cards) fill out the "All Project Changes" scope without
+  // this chat's own cards) fill out the "All Changes" scope without
   // duplicating a request the chat already contributed.
   const extraDiffRequests = AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS.filter((request) => !seenDiffRequests.has(request));
   return [
@@ -15999,7 +15999,7 @@ function buildChatChangedFilesScopeOptions(entries = []) {
   const lastTurnFiles = chatFiles.filter((file) => !file.allChangesOnly);
   /* Previous Git-state definitions are intentionally disabled for now:
      Uncommitted, Unstaged, Staged, Committed, and Branch. All Agent Changes and
-     Unassigned Changes are merged into one All Project Changes scope so the
+     Unassigned Changes are merged into one All Changes scope so the
      dropdown stays at three options. */
   const definitions = [
     { id: 'last-turn', label: 'Last Turn', section: 'session', files: lastTurnFiles },
@@ -16324,7 +16324,7 @@ public Vet getVet() {
   ...buildSpecStatusScenarioEntries('spec-visit-booking', 'Visit-Booking.md'),
 };
 
-// Reads the +added/-removed totals for the merged All Project Changes scope
+// Reads the +added/-removed totals for the merged All Changes scope
 // from the same builder that computes the diff toolbar's own scope options
 // (buildChatReviewScopePreviewOptions), so the VCS summary button always
 // shows the exact number the diff opens to — never a separately hand-summed
@@ -16335,7 +16335,7 @@ function getAllProjectChangesLineCounts(scenario) {
   return { added: option?.added ?? 0, removed: option?.removed ?? 0 };
 }
 
-// Per-file breakdown for the same All Project Changes scope, built the same
+// Per-file breakdown for the same All Changes scope, built the same
 // way buildChatReviewScopePreviewOptions aggregates it (card counts take
 // priority over the request's own review* fields), so expanding the VCS
 // summary lists exactly the files that make up its total.
@@ -18764,7 +18764,7 @@ function ChatProjectChangesToolbar({
             onClick={() => openScope(allChangesScope)}
           >
             <ChatChangeScopeInspectionGlyph />
-            <span>All Project Changes</span>
+            <span>All Changes</span>
           </button>
         </span>
         <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
@@ -20491,7 +20491,7 @@ function AiChatTabView({
       processedReviewScopeFileCount: typeof updater === 'function' ? updater(current.processedReviewScopeFileCount) : updater,
     }));
   }, [updateComposerState]);
-  // Accumulates on top of the scenario's baseline All Project Changes totals
+  // Accumulates on top of the scenario's baseline All Changes totals
   // every time a plain file-edit run finishes, so that count (and the Last
   // Run tab's own total) reads as a new, growing amount each send instead of
   // the exact same static numbers replaying every time.
@@ -20583,7 +20583,7 @@ function AiChatTabView({
     wasFileEditRunProcessingRef.current = isFileEditRun;
     if (isFileEditRun || !wasProcessing) return;
     // Draw a fresh increment on top of the running total each time a plain
-    // file-edit run finishes, so "All Project Changes" grows with every
+    // file-edit run finishes, so "All Changes" grows with every
     // send instead of showing the exact same static baseline forever.
     setVcsRunExtraCounts((current) => ({
       added: current.added + Math.floor(Math.random() * 20) + 5,
@@ -30038,7 +30038,7 @@ export default function App() {
   }, [openPlanDiffTab, selectedAiChatId]);
   // Same as openChangedFileInReviewScope, but for a file picked from the VCS
   // summary's expanded file list: that file becomes the active diff, while
-  // the scope stays the full All Project Changes set (every other file).
+  // the scope stays the full All Changes set (every other file).
   const openFileInAllProjectChangesScope = useCallback((diffRequest, chatId = null) => {
     const targetChatId = chatId ?? selectedAiChatId;
     if (!diffRequest || !targetChatId) return null;
