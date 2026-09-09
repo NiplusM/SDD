@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
 import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
+import airIconUrl from './assets/ij-air-alpha.svg';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'selection-start', kind: 'separator' },
-  { id: 'ask-ai', kind: 'iconText', iconName: 'aiAssistant/aiAssistant', text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
+  { id: 'ask-ai', kind: 'iconText', iconUrl: airIconUrl, text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
   { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note', title: AI_NOTE_FILE_HINT },
   { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
@@ -316,10 +317,14 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
             onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), renderPosition)}
           >
             {item.kind === 'icon' ? (
-              <Icon name={item.iconName} size={16} />
+              item.iconUrl
+                ? <img className="editor-selection-toolbar-icon" src={item.iconUrl} alt="" aria-hidden="true" />
+                : <Icon name={item.iconName} size={16} />
             ) : item.kind === 'iconText' ? (
               <>
-                <Icon name={item.iconName} size={16} />
+                {item.iconUrl
+                  ? <img className="editor-selection-toolbar-icon" src={item.iconUrl} alt="" aria-hidden="true" />
+                  : <Icon name={item.iconName} size={16} />}
                 <span className="editor-selection-toolbar-text">{item.text}</span>
               </>
             ) : (
