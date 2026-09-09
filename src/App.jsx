@@ -17,7 +17,7 @@ import {
   PLAN_DIFF_DEFAULT_VIEWER_SETTINGS,
   applyPlanDiffViewerSettings,
 } from './PlanDiffView.jsx';
-import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
+import { AiChatAgentIcon, AiChatAirIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import {
   flattenStoredDiffCommentsState,
@@ -23054,7 +23054,7 @@ export default function App() {
       .map((item) => ({
         id: item.id,
         title: typeof item.title === 'string' && item.title.trim().length > 0 ? item.title : 'New Chat',
-        icon: 'air',
+        icon: typeof item.icon === 'string' && item.icon.length > 0 ? item.icon : 'claude',
       }));
   }, [aiChatRecentItems]);
   const getAiChatScenarioById = useCallback((chatId) => (
@@ -31351,8 +31351,7 @@ export default function App() {
           && item.sourceDocumentLabel.trim().length > 0
         )
       ))
-      .slice(0, 5)
-      .map((item) => ({ ...item, icon: 'air' }));
+      .slice(0, 5);
     const documentItems = includeDocuments
       ? ideTabs
           .filter((tab) => tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
@@ -31382,7 +31381,7 @@ export default function App() {
         targetChatId: chatId,
         targetDocumentTabId: null,
         label,
-        icon: 'air',
+        icon: item?.icon ?? scenario?.icon ?? 'claude',
         buttonLabel: `Add to ${label}`,
       });
     };
@@ -35781,7 +35780,7 @@ export default function App() {
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
-            { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top'   },
+            { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
@@ -36594,7 +36593,7 @@ export default function App() {
 
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
-          { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top' },
+          { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },
