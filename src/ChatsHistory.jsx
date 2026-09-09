@@ -289,7 +289,7 @@ function ChatsHistoryToolWindow({
                       </span>
                       <span className="agent-sessions-session-agent">
                         <AiChatAgentIcon
-                          icon={selectedId === row.id ? 'claude' : (row.agent || 'claude')}
+                          icon="air"
                           title={row.title}
                         />
                       </span>

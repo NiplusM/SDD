@@ -1,5 +1,20 @@
 import openAiIconUrl from './assets/openAI.svg';
 import githubCopilotIconUrl from './assets/github-copilot.svg';
+import airIconUrl from './assets/ij-air-alpha.svg';
+
+export function AiChatAirIcon({ className = '' }) {
+  return (
+    <img
+      src={airIconUrl}
+      alt=""
+      width="16"
+      height="16"
+      aria-hidden="true"
+      data-agent="air"
+      className={`icon ai-chat-agent-mark ai-chat-air-mark ${className}`.trim()}
+    />
+  );
+}
 
 export function AiChatClaudeIcon() {
   return (
@@ -71,6 +86,7 @@ function AiChatMarkdownFileIcon() {
 export function AiChatAgentIcon({ icon = 'claude', title = '' }) {
   const normalizedIcon = typeof icon === 'string' ? icon : '';
   const normalizedTitle = typeof title === 'string' ? title : '';
+  if (normalizedIcon === 'air') return <AiChatAirIcon />;
   if (normalizedIcon === 'junie') return <AiChatJunieIcon />;
   if (normalizedIcon === 'codex') return <AiChatCodexIcon />;
   if (normalizedIcon === 'gemini') return <AiChatGeminiIcon />;

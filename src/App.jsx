@@ -23054,7 +23054,7 @@ export default function App() {
       .map((item) => ({
         id: item.id,
         title: typeof item.title === 'string' && item.title.trim().length > 0 ? item.title : 'New Chat',
-        icon: typeof item.icon === 'string' && item.icon.length > 0 ? item.icon : 'claude',
+        icon: 'air',
       }));
   }, [aiChatRecentItems]);
   const getAiChatScenarioById = useCallback((chatId) => (
@@ -31351,7 +31351,8 @@ export default function App() {
           && item.sourceDocumentLabel.trim().length > 0
         )
       ))
-      .slice(0, 5);
+      .slice(0, 5)
+      .map((item) => ({ ...item, icon: 'air' }));
     const documentItems = includeDocuments
       ? ideTabs
           .filter((tab) => tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md'))
@@ -31381,7 +31382,7 @@ export default function App() {
         targetChatId: chatId,
         targetDocumentTabId: null,
         label,
-        icon: item?.icon ?? scenario?.icon ?? 'claude',
+        icon: 'air',
         buttonLabel: `Add to ${label}`,
       });
     };
