@@ -35971,7 +35971,6 @@ export default function App() {
                       onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, reviewSplitChatId)}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
-                      changeScopePanelCollapsed
                       onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
