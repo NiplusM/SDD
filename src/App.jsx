@@ -23506,6 +23506,7 @@ export default function App() {
   const [globalReviewDialogOpen, setGlobalReviewDialogOpen] = useState(false);
   const [globalReviewLaunchSource, setGlobalReviewLaunchSource] = useState('shortcut');
   const [globalReviewTargetChatId, setGlobalReviewTargetChatId] = useState(null);
+  const [globalReviewSelectionContext, setGlobalReviewSelectionContext] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
   const [commitScopeRequest, setCommitScopeRequest] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
@@ -30872,6 +30873,38 @@ export default function App() {
       clearDocumentTextSelection();
     }
 
+    if (actionId === 'ask-ai') {
+      const selectedText = typeof toolbarState?.selectedText === 'string'
+        ? toolbarState.selectedText.trim()
+        : '';
+      const sourceTabId = typeof toolbarState?.sourceTabId === 'string' && toolbarState.sourceTabId.trim()
+        ? toolbarState.sourceTabId
+        : activeTabId;
+      const sourceLabel = typeof toolbarState?.sourceLabel === 'string' && toolbarState.sourceLabel.trim()
+        ? toolbarState.sourceLabel.trim()
+        : (activeEditorTabMeta?.label ?? 'Selected context');
+      const rowIds = Array.isArray(toolbarState?.rowIds)
+        ? toolbarState.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
+        : [];
+      const lineNumbers = rowIds
+        .map((rowId) => Number(/(\d+)\s*$/u.exec(rowId)?.[1]))
+        .filter((lineNumber) => Number.isFinite(lineNumber));
+      if (!selectedText || !sourceTabId) return;
+
+      setGlobalReviewSelectionContext({
+        selectedText,
+        sourceTabId,
+        sourceLabel,
+        sourceIcon: toolbarState?.sourceIcon ?? activeEditorTabMeta?.icon ?? 'fileTypes/text',
+        rowIds,
+        lineLabel: formatEditorCommentLineLabel(lineNumbers),
+      });
+      setGlobalReviewTargetChatId(null);
+      setGlobalReviewLaunchSource('file-selection');
+      setGlobalReviewDialogOpen(true);
+      return;
+    }
+
     if (actionId === 'chat-annotate') {
       const selectedText = typeof toolbarState?.selectedText === 'string'
         ? toolbarState.selectedText.trim()
@@ -34424,6 +34457,32 @@ export default function App() {
   ]);
 
   const globalAiReviewSourceAttachments = (() => {
+    if (globalReviewLaunchSource === 'file-selection' && globalReviewSelectionContext) {
+      const sourceLabel = globalReviewSelectionContext.sourceLabel || activeEditorTabMeta?.label || 'File';
+      const sourceIcon = globalReviewSelectionContext.sourceIcon || activeEditorTabMeta?.icon || 'fileTypes/text';
+      return [
+        {
+          id: `review-context-${globalReviewSelectionContext.sourceTabId}`,
+          label: sourceLabel,
+          icon: sourceIcon,
+          sourceTabId: globalReviewSelectionContext.sourceTabId,
+          sourceLabel,
+        },
+        {
+          id: `review-selection-${globalReviewSelectionContext.sourceTabId}`,
+          label: globalReviewSelectionContext.lineLabel
+            ? `Selection (${globalReviewSelectionContext.lineLabel})`
+            : 'Selection',
+          icon: 'general/listFiles',
+          sourceTabId: globalReviewSelectionContext.sourceTabId,
+          sourceLabel,
+          selectedText: globalReviewSelectionContext.selectedText,
+          rowIds: globalReviewSelectionContext.rowIds,
+          isSelectionContext: true,
+        },
+      ];
+    }
+
     if (globalReviewTargetChatId && globalReviewLaunchSource.startsWith('chat-')) {
       const targetScenario = getAiChatScenarioById(globalReviewTargetChatId);
       const chatContextAttachment = {
@@ -34551,6 +34610,7 @@ export default function App() {
       onClose={() => {
         setGlobalReviewDialogOpen(false);
         setGlobalReviewTargetChatId(null);
+        setGlobalReviewSelectionContext(null);
       }}
       initialAgentId={globalReviewLaunchSource.startsWith('chat-') && globalReviewTargetChatId
         ? (globalDialogTargetScenario?.icon ?? 'codex')

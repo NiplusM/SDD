@@ -6,7 +6,10 @@ import { AiChatAgentIcon } from './AiChatListParts.jsx';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
-  { id: 'selection-action', kind: 'selectionAction' },
+  { id: 'selection-start', kind: 'separator' },
+  { id: 'ask-ai', kind: 'iconText', iconName: 'aiAssistant/toolWindowChat@20x20', text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
+  { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note', title: AI_NOTE_FILE_HINT },
+  { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
   { id: 'search', kind: 'icon', iconName: 'general/search_dark', ariaLabel: 'Search' },
   { id: 'code', kind: 'icon', iconName: 'nodes/tag', ariaLabel: 'Code actions' },
@@ -19,11 +22,6 @@ export const NEW_CHAT_TARGET_ID = 'new-chat';
 
 const CHAT_SELECTION_TOOLBAR_ITEMS = [
   { id: 'selection-action', kind: 'selectionAction' },
-];
-
-const CODE_SELECTION_ACTIONS = [
-  { id: 'comment', iconName: 'general/balloon', label: 'Add Note', title: AI_NOTE_FILE_HINT },
-  { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
 ];
 
 const REVIEW_DIFF_SELECTION_ACTIONS = [
@@ -52,7 +50,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
     ? CHAT_SELECTION_ACTIONS
     : surface === 'diff' || renderPosition?.reviewSplit
       ? REVIEW_DIFF_SELECTION_ACTIONS
-      : CODE_SELECTION_ACTIONS;
+      : [];
   const primaryAction = selectionActions[0];
 
   useEffect(() => {
@@ -161,6 +159,10 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       onMouseDown={preventSelectionReset}
     >
       {items.map((item) => {
+        if (item.kind === 'separator') {
+          return <span key={item.id} className="editor-selection-toolbar-separator" aria-hidden="true" />;
+        }
+
         if (item.kind === 'selectionAction') {
           if (surface === 'ai-chat' || surface === 'diff' || renderPosition?.reviewSplit) {
             return (
