@@ -2812,7 +2812,7 @@ export function DiffInlineCommentPopup({
       // chat destination rather than any particular agent. Showing Claude
       // here incorrectly implies that the target has already been resolved.
       if (requireSubmitTargetChoice && !submitAttachTarget) {
-        return 'aiAssistant/toolWindowChat@20x20';
+        return 'air';
       }
       return commentContextIcon || 'aiAssistant/toolWindowChat@20x20';
     }
