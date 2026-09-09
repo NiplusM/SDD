@@ -7142,6 +7142,10 @@ export function PlanDiffEditorToolbar({
   const selectedCommitScope = resolvedCommitScopeOptions.find((option) => option.id === selectedChangeScopeId)
     ?? resolvedCommitScopeOptions[0];
 
+  // Source/file views have neither diff navigation nor a session-actions row.
+  // Do not leave the otherwise empty toolbar shell above the editor content.
+  if (isPlainFile && !showSessionToolbar) return null;
+
   return (
     <div className="plan-diff-toolbar-shell">
       <div className="plan-diff-toolbar">
