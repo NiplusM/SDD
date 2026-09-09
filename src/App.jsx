@@ -23624,6 +23624,11 @@ export default function App() {
   const handleEditorInlineCommentOpenChange = useCallback((open) => {
     editorInlineCommentOpenRef.current = Boolean(open);
     if (open) {
+      // An external request is a one-shot command used only to open the
+      // composer after the selection toolbar action. Once consumed, keeping
+      // it around makes a remounted Source/Diff open a second empty composer
+      // when the user navigates to the saved comment's chat.
+      setEditorExternalCommentRequest(null);
       editorSelectionToolbarMenuOpenRef.current = false;
       setEditorSelectionToolbarPos(null);
     }
