@@ -14336,7 +14336,7 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   min-width: 0;
   gap: 2px;
   padding: 0 2px 0 5px;
-  border-radius: 5px 0 0 5px;
+  border-radius: 5px;
 }
 
 .aiux543-chat-project-review-main > span:last-child {

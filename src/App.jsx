@@ -18731,11 +18731,8 @@ function ChatProjectChangesToolbar({
   projectLabel = PROJECT_NAME,
   branchLabel = REVIEW_CURRENT_BRANCH_NAME,
   onOpenScope = null,
-  onGenerateCommitMessage = null,
   reviewDisabled = false,
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const anchorRef = useRef(null);
   const allChangesScope = scopeOptions.find((scope) => scope.id === 'all-project-changes')
     ?? scopeOptions[scopeOptions.length - 1]
     ?? null;
@@ -18743,7 +18740,6 @@ function ChatProjectChangesToolbar({
 
   const openScope = (scope) => {
     if (!scope || reviewDisabled) return;
-    setMenuOpen(false);
     onOpenScope?.(scope);
   };
 
@@ -18760,7 +18756,7 @@ function ChatProjectChangesToolbar({
         </span>
       </div>
       <div className="aiux543-chat-project-review">
-        <span ref={anchorRef} className="aiux543-chat-project-review-action">
+        <span className="aiux543-chat-project-review-action">
           <button
             type="button"
             className="aiux543-chat-project-review-main"
@@ -18768,55 +18764,8 @@ function ChatProjectChangesToolbar({
             onClick={() => openScope(allChangesScope)}
           >
             <ChatChangeScopeInspectionGlyph />
-            <span>All Project Changes</span>
+            <span>Review All Project Changes</span>
           </button>
-          <button
-            type="button"
-            className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
-            aria-label="Project change actions"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            disabled={reviewDisabled}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <Icon name="general/chevronDown" size={16} />
-          </button>
-          <FinalAnchoredPopup
-            align="end"
-            anchorRef={anchorRef}
-            ariaLabel="Project review actions"
-            className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-            estimatedHeight={72}
-            onClose={() => setMenuOpen(false)}
-            open={menuOpen}
-            width={264}
-          >
-            <aside className="aiux543-chat-project-review-popup" aria-label="Project review actions">
-              <button
-                type="button"
-                className="aiux543-chat-project-review-popup-action"
-                onClick={() => openScope(allChangesScope)}
-              >
-                <ChatChangeScopeInspectionGlyph />
-                <span className="aiux543-chat-project-review-popup-action-label">Review All Project Changes</span>
-                <span className="aiux543-chat-project-counts" aria-hidden="true">
-                  <span className="is-added">+{allChangesScope.added}</span>
-                  <span className="is-removed">-{allChangesScope.removed}</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="aiux543-chat-project-review-popup-action"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onGenerateCommitMessage?.();
-                }}
-              >
-                <Icon name="vcs/commit" size={16} />
-                <span className="aiux543-chat-project-review-popup-action-label">Generate Commit Message</span>
-              </button>
-            </aside>
-          </FinalAnchoredPopup>
         </span>
         <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
           <span className="is-added">+{allChangesScope.added}</span>
@@ -21236,7 +21185,6 @@ function AiChatTabView({
             removed: scope.removed + vcsRunExtraCounts.removed,
           }))}
           reviewDisabled={isAgentRunProcessing}
-          onGenerateCommitMessage={() => onCommitChanges?.(chatId)}
           onOpenScope={(scope) => {
             if (onOpenChangeScope) {
               onOpenChangeScope(chatId, scope.id);
