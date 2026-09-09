@@ -7,7 +7,7 @@ import { AiChatAgentIcon } from './AiChatListParts.jsx';
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'selection-start', kind: 'separator' },
-  { id: 'ask-ai', kind: 'iconText', iconName: 'aiAssistant/toolWindowChat@20x20', text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
+  { id: 'ask-ai', kind: 'iconText', iconName: 'aiAssistant/aiAssistant', text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
   { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note', title: AI_NOTE_FILE_HINT },
   { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
