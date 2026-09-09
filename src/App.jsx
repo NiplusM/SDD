@@ -18764,7 +18764,7 @@ function ChatProjectChangesToolbar({
             onClick={() => openScope(allChangesScope)}
           >
             <ChatChangeScopeInspectionGlyph />
-            <span>Review All Project Changes</span>
+            <span>All Project Changes</span>
           </button>
         </span>
         <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
