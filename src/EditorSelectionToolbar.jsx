@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
-import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
+import { Icon } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import airIconUrl from './assets/ij-air-alpha.svg';
 
@@ -9,7 +8,7 @@ const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'selection-start', kind: 'separator' },
   { id: 'ask-ai', kind: 'iconText', iconUrl: airIconUrl, text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
-  { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note', title: AI_NOTE_FILE_HINT },
+  { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note' },
   { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
   { id: 'search', kind: 'icon', iconName: 'general/search_dark', ariaLabel: 'Search' },
@@ -335,11 +334,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
           </button>
         );
 
-        return item.title ? (
-          <Tooltip key={item.id} text={item.title} placement="bottom" delay={650} className="ai-note-tooltip">
-            {button}
-          </Tooltip>
-        ) : button;
+        return button;
       })}
     </div>,
     document.body
