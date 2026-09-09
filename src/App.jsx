@@ -15987,6 +15987,21 @@ function buildChatReviewScopePreviewOptions(scenario) {
   return buildChatChangedFilesScopeOptions(entries);
 }
 
+// File-edit runs update the line totals after the static scenario fixture has
+// been built. Keep that runtime delta in one shared calculation so every
+// presentation of the scope control (Chat toolbar, its compact popup, and the
+// Diff toolbar picker) reports the same live numbers.
+function applyChatReviewScopeLineCountDelta(scopeOptions = [], delta = null) {
+  const addedDelta = Number.isFinite(delta?.added) ? delta.added : 0;
+  const removedDelta = Number.isFinite(delta?.removed) ? delta.removed : 0;
+  if (addedDelta === 0 && removedDelta === 0) return scopeOptions;
+  return scopeOptions.map((scope) => ({
+    ...scope,
+    added: scope.added + addedDelta,
+    removed: scope.removed + removedDelta,
+  }));
+}
+
 function getChatChangedFileLineCount(value) {
   const parsed = Number.parseInt(String(value ?? '').replace(/[^\d]/gu, ''), 10);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -20582,15 +20597,20 @@ function AiChatTabView({
     const isFileEditRun = isAgentRunProcessing && agentRun?.kind === 'file-edit';
     wasFileEditRunProcessingRef.current = isFileEditRun;
     if (isFileEditRun || !wasProcessing) return;
-    // Draw a fresh increment on top of the running total each time a plain
-    // file-edit run finishes, so "All Changes" grows with every
-    // send instead of showing the exact same static baseline forever.
+    // Add the exact totals from the completed run's file list. The Done card,
+    // Chat scope control, and Diff scope picker must describe the same edits;
+    // generating a second random increment here made those surfaces disagree.
+    const completedRunCounts = (Array.isArray(agentRun?.files) ? agentRun.files : [])
+      .reduce((totals, file) => ({
+        added: totals.added + getChatChangedFileLineCount(file?.added),
+        removed: totals.removed + getChatChangedFileLineCount(file?.removed),
+      }), { added: 0, removed: 0 });
     setVcsRunExtraCounts((current) => ({
-      added: current.added + Math.floor(Math.random() * 20) + 5,
-      removed: current.removed + Math.floor(Math.random() * 8),
+      added: current.added + completedRunCounts.added,
+      removed: current.removed + completedRunCounts.removed,
     }));
     setCompletedFileEditRunCount((count) => count + 1);
-  }, [isAgentRunProcessing, agentRun?.kind]);
+  }, [isAgentRunProcessing, agentRun?.kind, agentRun?.files]);
   const reviewScopeQueueFiles = Array.isArray(agentRun?.files) ? agentRun.files : [];
   const reviewScopeQueueSignature = reviewScopeQueueFiles
     .map((file) => `${file.id}:${file.sourceLabel}`)
@@ -20631,6 +20651,10 @@ function AiChatTabView({
     && Boolean(onRunAiReview);
   const reviewPromptFiles = getChatChangeCards(scenario);
   const chatChangeScopeOptions = buildChatReviewScopePreviewOptions(scenario);
+  const liveChatChangeScopeOptions = applyChatReviewScopeLineCountDelta(
+    chatChangeScopeOptions,
+    vcsRunExtraCounts,
+  );
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const defaultModelLabel = initialSessionModel ?? 'GPT-5.6-Sol';
   const selectedModelLabel = selectedModelOverride ?? defaultModelLabel;
@@ -21166,10 +21190,10 @@ function AiChatTabView({
 
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
-      {changeScopePanelCollapsed && chatChangeScopeOptions.length > 0 && onOpenChangeScope && (
+      {changeScopePanelCollapsed && liveChatChangeScopeOptions.length > 0 && onOpenChangeScope && (
         <div className="aiux543-chat-change-scope-entry">
           <ChatChangeScopeMenu
-            scopeOptions={chatChangeScopeOptions}
+            scopeOptions={liveChatChangeScopeOptions}
             expanded={changeScopePanelExpanded}
             collapsed={changeScopePanelCollapsed}
             onExpandedChange={(expanded) => onChangeScopePanelExpandedChange?.(chatId, expanded)}
@@ -21177,13 +21201,9 @@ function AiChatTabView({
           />
         </div>
       )}
-      {!changeScopePanelCollapsed && !isNewSessionState && chatChangeScopeOptions.length > 0 && (
+      {!changeScopePanelCollapsed && !isNewSessionState && liveChatChangeScopeOptions.length > 0 && (
         <ChatProjectChangesToolbar
-          scopeOptions={chatChangeScopeOptions.map((scope) => ({
-            ...scope,
-            added: scope.added + vcsRunExtraCounts.added,
-            removed: scope.removed + vcsRunExtraCounts.removed,
-          }))}
+          scopeOptions={liveChatChangeScopeOptions}
           reviewDisabled={isAgentRunProcessing}
           onOpenScope={(scope) => {
             if (onOpenChangeScope) {
@@ -29622,9 +29642,13 @@ export default function App() {
       vcsStatus: content?.reviewVcsStatus ?? null,
     };
   }, [ideTabContents, ideTabs, reviewSplitChatId]);
-  const selectedReviewSplitChangeScope = reviewSplitChangeScopeOptions.find(
+  const liveReviewSplitChangeScopeOptions = applyChatReviewScopeLineCountDelta(
+    reviewSplitChangeScopeOptions,
+    aiChatComposerStateByChatId[reviewSplitChatId]?.vcsRunExtraCounts,
+  );
+  const selectedReviewSplitChangeScope = liveReviewSplitChangeScopeOptions.find(
     (option) => option.id === reviewSplitChangeScopeId,
-  ) ?? reviewSplitChangeScopeOptions[0] ?? null;
+  ) ?? liveReviewSplitChangeScopeOptions[0] ?? null;
   // Archived snapshots (opened one at a time from a "files changed" card)
   // aren't part of any chat scope's own tabIds list, but they must stay
   // reachable regardless of which scope is currently selected.
@@ -36149,7 +36173,7 @@ export default function App() {
                       }}
                       selectedChangeScopeId={reviewSplitChangeScopeId}
                       onChangeScope={handleReviewSplitChangeScope}
-                      changeScopeOptions={reviewSplitChangeScopeOptions}
+                      changeScopeOptions={liveReviewSplitChangeScopeOptions}
                       selectedCompareBranch={reviewSplitCompareBranch}
                       onCompareBranchChange={setReviewSplitCompareBranch}
                       onCommitScope={(scope) => {
