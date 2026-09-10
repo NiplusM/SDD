@@ -22103,6 +22103,21 @@ button.aiux543-answer-change-card:focus-visible {
   min-height: 0;
 }
 
+.commit-repository-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-bottom: 1px solid #303236;
+  color: #a9adb5;
+  font: 500 12px/16px Inter, system-ui, sans-serif;
+}
+
+.commit-repository-context-project {
+  color: #d7d9de;
+}
+
 .commit-custom-group.is-scope-changelist > .commit-group-node {
   background: color-mix(in srgb, var(--background-accent, #3574f0) 10%, transparent);
 }

@@ -1128,6 +1128,7 @@ function CommitToolWindow({
   onOpenFile = null,
   onReviewContextChange = null,
   scopeRequest = null,
+  repositoryContext = null,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
@@ -1236,6 +1237,13 @@ function CommitToolWindow({
       className="commit-tool-window main-window-tool-window main-window-tool-window-left"
     >
       <div className="commit-custom">
+        {repositoryContext ? (
+          <div className="commit-repository-context" aria-label="Commit repository context">
+            <span className="commit-repository-context-project">{repositoryContext.project}</span>
+            <Icon name="vcs/vcs" size={16} />
+            <span>{repositoryContext.branch}</span>
+          </div>
+        ) : null}
         <div className="commit-toolbar">
           <IconButton icon="general/refresh" tooltip="Refresh" />
           <IconButton icon="vcs/revert" tooltip="Rollback" />
@@ -8523,8 +8531,22 @@ function findSectionCheckLineIndex(code, kind, index) {
   return -1;
 }
 
-function buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
+function buildPlanDiffData({ sourceCode, targetCode = null, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
   const normalizedFileCount = Number.isFinite(fileCount) ? fileCount : null;
+  if (typeof targetCode === 'string') {
+    const codeDiff = buildCodeDiffRows(sourceCode, targetCode, `source-code-${sourceTabLabel ?? 'file'}`);
+    return {
+      sourceTabLabel,
+      title: `Diff ${sourceTabLabel}`,
+      differenceCount: codeDiff.differenceCount,
+      rows: codeDiff.rows,
+      focusRowId: codeDiff.focusRowId,
+      status: statusItem.status,
+      lineText: text,
+      language: sourceTabLabel?.endsWith('.json') ? 'json' : 'typescript',
+      fileCount: normalizedFileCount,
+    };
+  }
   if (issueTarget?.kind === 'plan') {
     const codeDiffPreset = getPlanCodeDiffPreset(issueTarget);
     const codeDiff = buildCodeDiffRows(
@@ -8652,8 +8674,8 @@ function orderDiffRowsForDisplay(rows = []) {
   return orderedRows;
 }
 
-function buildPlanDiffTabContent({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
-  const diffData = buildPlanDiffData({ sourceCode, text, statusItem, issueTarget, sourceTabLabel, fileCount });
+function buildPlanDiffTabContent({ sourceCode, targetCode = null, text, statusItem, issueTarget, sourceTabLabel, fileCount = null }) {
+  const diffData = buildPlanDiffData({ sourceCode, targetCode, text, statusItem, issueTarget, sourceTabLabel, fileCount });
 
   if (diffData.rows.length > 0) {
     return orderDiffRowsForDisplay(diffData.rows).map((row) => {
@@ -15875,6 +15897,72 @@ void rejectsDoubleBookingForSameVetAndTime() throws Exception {
   */
 ];
 
+const AI_CHAT_FOREIGN_RELATED_ITEMS_DIFF_CARDS = [
+  {
+    id: 'foreign-related-items-section',
+    name: 'RelatedItemsSection.tsx',
+    icon: 'fileTypes/typescript',
+    path: '~/projects/SDD-mvp/src/components',
+    status: 'modified',
+    added: '+38',
+    removed: '-12',
+    diffRequest: {
+      text: 'RelatedItemsSection — render related campaign assets and empty state',
+      statusItem: { status: 'passed' },
+      source: {
+        tabId: 'foreign-related-items-section',
+        label: 'RelatedItemsSection.tsx',
+        code: 'export function RelatedItemsSection({ items }) {\n  return null;\n}',
+        targetCode: 'export function RelatedItemsSection({ items }) {\n  if (items.length === 0) return <EmptyRelatedItems />;\n  return items.map((item) => <RelatedItem key={item.id} item={item} />);\n}',
+      },
+      reviewAttribution: 'session',
+      reviewFilePath: '~/projects/SDD-mvp/src/components/RelatedItemsSection.tsx',
+    },
+  },
+  {
+    id: 'foreign-related-items-query',
+    name: 'useRelatedItems.ts',
+    icon: 'fileTypes/typescript',
+    path: '~/projects/SDD-mvp/src/hooks',
+    status: 'added',
+    added: '+24',
+    removed: '',
+    diffRequest: {
+      text: 'useRelatedItems — load related items for the active marketing video',
+      statusItem: { status: 'passed' },
+      source: {
+        tabId: 'foreign-related-items-query',
+        label: 'useRelatedItems.ts',
+        code: '',
+        targetCode: 'export const useRelatedItems = (videoId: string) =>\n  useQuery({ queryKey: ["related-items", videoId], queryFn: () => loadRelatedItems(videoId) });',
+      },
+      reviewAttribution: 'session',
+      reviewFilePath: '~/projects/SDD-mvp/src/hooks/useRelatedItems.ts',
+    },
+  },
+  {
+    id: 'foreign-related-items-copy',
+    name: 'marketing-video.json',
+    icon: 'fileTypes/json',
+    path: '~/projects/SDD-mvp/src/locales/en',
+    status: 'modified',
+    added: '+7',
+    removed: '-2',
+    diffRequest: {
+      text: 'marketing-video copy — add labels for the related-items section',
+      statusItem: { status: 'passed' },
+      source: {
+        tabId: 'foreign-related-items-copy',
+        label: 'marketing-video.json',
+        code: '{\n  "video.title": "Marketing video"\n}',
+        targetCode: '{\n  "video.title": "Marketing video",\n  "relatedItems.title": "Related items",\n  "relatedItems.empty": "No related items yet"\n}',
+      },
+      reviewAttribution: 'session',
+      reviewFilePath: '~/projects/SDD-mvp/src/locales/en/marketing-video.json',
+    },
+  },
+];
+
 const AI_CHAT_ALL_CHANGES_EXTRA_DIFF_REQUESTS = [
   // AI_CHAT_VET_SCHEDULES_DIFF_REQUEST,
 ];
@@ -15946,6 +16034,7 @@ function buildChatReviewScopeRequests(scenario) {
   // scope — no recency cap, since a single turn can (and here does) touch
   // more than 3 files and every one of them needs to stay reviewable.
   const chatDiffRequests = getChatChangeCards(scenario).map((card) => card?.diffRequest).filter(Boolean);
+  if (scenario?.workspaceType === 'foreign') return chatDiffRequests;
   const seenDiffRequests = new Set(chatDiffRequests);
   // Project-wide extras (e.g. Vet-Schedules.md when it isn't already one of
   // this chat's own cards) fill out the "All Changes" scope without
@@ -16219,7 +16308,7 @@ const AI_CHAT_WORKSPACE_CONTEXT_OVERRIDES = Object.freeze({
     type: 'foreign',
     project: 'SDD-mvp',
     branch: 'marketing-video',
-    hasUncommittedChanges: false,
+    hasUncommittedChanges: true,
   },
   'refresh-fixtures': {
     type: 'foreign',
@@ -16433,14 +16522,16 @@ public Vet getVet() {
   },
   'related-items': {
     title: 'Add ‘related items’ section',
-    userPrompt: 'Check the attached marketing project context.',
+    workspaceType: 'foreign',
+    userPrompt: 'Review and commit the related-items changes in the attached marketing project.',
     assistantParagraphs: [
       'This session belongs to SDD-mvp rather than the opened spring-petclinic project.',
-      'There are no uncommitted changes, so the workspace component only identifies its project and branch.',
+      'Its working tree has uncommitted changes, so you can review or commit them in the foreign project repository.',
     ],
     changeCard: null,
-    result: ['The foreign project working tree is clean.'],
-    command: 'git status --short · clean',
+    changeCards: AI_CHAT_FOREIGN_RELATED_ITEMS_DIFF_CARDS,
+    result: ['The foreign project contains uncommitted related-items changes.'],
+    command: 'Working tree: SDD-mvp · marketing-video · 5 files changed',
     attachmentLabel: null,
   },
   // Spec status chats — two per spec (Build + Specify), mirroring the previous
@@ -18878,7 +18969,9 @@ function ChatProjectChangesToolbar({
     ?? scopeOptions[scopeOptions.length - 1]
     ?? null;
   const projectBadge = getReviewProjectBadge(workspace.project);
-  const hasWorktreeActions = workspace.type === 'worktree' && hasUncommittedChanges;
+  const hasChangeActions = (workspace.type === 'worktree' || workspace.type === 'foreign')
+    && hasUncommittedChanges;
+  const canApplyPatch = workspace.type === 'worktree';
   const canCherryPick = workspace.type === 'worktree'
     && !hasUncommittedChanges
     && workspace.hasTransferableCommit
@@ -18927,7 +19020,7 @@ function ChatProjectChangesToolbar({
         ) : null}
         {hasUncommittedChanges && allChangesScope ? (
           <>
-            <span ref={anchorRef} className={`aiux543-chat-project-review-action${hasWorktreeActions ? ' has-menu' : ''}`}>
+            <span ref={anchorRef} className={`aiux543-chat-project-review-action${hasChangeActions ? ' has-menu' : ''}`}>
               <button
                 type="button"
                 className="aiux543-chat-project-review-main"
@@ -18937,11 +19030,11 @@ function ChatProjectChangesToolbar({
                 <ChatChangeScopeInspectionGlyph />
                 <span>All Changes</span>
               </button>
-              {hasWorktreeActions ? (
+              {hasChangeActions ? (
                 <button
                   type="button"
                   className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
-                  aria-label="Worktree change actions"
+                  aria-label="Change actions"
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   disabled={reviewDisabled}
@@ -18953,14 +19046,14 @@ function ChatProjectChangesToolbar({
               <FinalAnchoredPopup
                 align="end"
                 anchorRef={anchorRef}
-                ariaLabel="Worktree change actions"
+                ariaLabel="Change actions"
                 className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-                estimatedHeight={112}
+                estimatedHeight={canApplyPatch ? 112 : 80}
                 onClose={() => setMenuOpen(false)}
-                open={hasWorktreeActions && menuOpen}
+                open={hasChangeActions && menuOpen}
                 width={224}
               >
-                <aside className="aiux543-chat-project-review-popup" aria-label="Worktree change actions">
+                <aside className="aiux543-chat-project-review-popup" aria-label="Change actions">
                   <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => openScope(allChangesScope)}>
                     <ChatChangeScopeInspectionGlyph />
                     <span className="aiux543-chat-project-review-popup-action-label">Review</span>
@@ -18976,10 +19069,12 @@ function ChatProjectChangesToolbar({
                     <Icon name="vcs/commit" size={16} />
                     <span className="aiux543-chat-project-review-popup-action-label">Commit</span>
                   </button>
-                  <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => runWorkspaceAction('apply-patch')}>
-                    <Icon name="vcs/patch" size={16} />
-                    <span className="aiux543-chat-project-review-popup-action-label">Apply Patch</span>
-                  </button>
+                  {canApplyPatch ? (
+                    <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => runWorkspaceAction('apply-patch')}>
+                      <Icon name="vcs/patch" size={16} />
+                      <span className="aiux543-chat-project-review-popup-action-label">Apply Patch</span>
+                    </button>
+                  ) : null}
                 </aside>
               </FinalAnchoredPopup>
             </span>
@@ -23757,6 +23852,7 @@ export default function App() {
   const [globalReviewSelectionContext, setGlobalReviewSelectionContext] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
   const [commitScopeRequest, setCommitScopeRequest] = useState(null);
+  const [commitWorkspaceContext, setCommitWorkspaceContext] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
 
   useEffect(() => {
@@ -25145,6 +25241,7 @@ export default function App() {
     const sourceCode = typeof source?.code === 'string'
       ? source.code
       : (sourceViewState?.code ?? ideTabContents[sourceTabId]?.code ?? '');
+    const targetCode = typeof source?.targetCode === 'string' ? source.targetCode : null;
     // An archived snapshot needs its own tab identity — it's a frozen look at
     // a past turn's diff, not the live one, so it must never collide with
     // (or overwrite) the live diff tab for the same source file.
@@ -25153,6 +25250,7 @@ export default function App() {
       : buildPlanDiffTabId(sourceTabId);
     const diffData = buildPlanDiffData({
       sourceCode,
+      targetCode,
       text,
       statusItem,
       issueTarget,
@@ -25161,6 +25259,7 @@ export default function App() {
     });
     const diffCode = buildPlanDiffTabContent({
       sourceCode,
+      targetCode,
       text,
       statusItem,
       issueTarget,
@@ -35207,6 +35306,7 @@ export default function App() {
   // way a user would — by clicking the "Commit" stripe item.
   const openCommitToolWindow = useCallback((scopeRequest = null) => {
     if (typeof document === 'undefined') return;
+    setCommitWorkspaceContext(scopeRequest?.workspaceContext ?? null);
     setCommitScopeRequest(scopeRequest?.files?.length ? {
       ...scopeRequest,
       id: `${scopeRequest.scopeId ?? 'current'}-${Date.now()}`,
@@ -35221,6 +35321,27 @@ export default function App() {
       && !stripe.classList.contains('stripe-selected')
     ) stripe.click();
   }, []);
+
+  const openChatCommitToolWindow = useCallback((chatId, workspaceContext = null) => {
+    const scenario = chatId ? getAiChatScenarioById(chatId) : null;
+    const files = getChatChangeCards(scenario).map((card) => ({
+      id: card.id ?? card.name,
+      label: card.name,
+      icon: card.icon,
+      path: card.path ?? PROJECT_ROOT_PATH,
+      status: card.status ?? 'modified',
+      groupId: chatId,
+      groupLabel: scenario?.title ?? 'Session Changes',
+    }));
+    openCommitToolWindow({
+      scopeId: `chat-${chatId ?? 'current'}`,
+      name: workspaceContext
+        ? `${workspaceContext.project} · ${workspaceContext.branch}`
+        : (scenario?.title ?? 'Current diff scope'),
+      files,
+      workspaceContext,
+    });
+  }, [getAiChatScenarioById, openCommitToolWindow]);
 
   const openCommitFileReview = useCallback((file = null) => {
     if (!file?.id) return null;
@@ -36286,7 +36407,7 @@ export default function App() {
                       getCommentCodeSnippet={getCommentCodeSnippet}
                       onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                       onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, reviewSplitChatId)}
-                      onOpenCommitToolWindow={() => openCommitToolWindow()}
+                      onOpenCommitToolWindow={openChatCommitToolWindow}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
                       onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
@@ -36506,7 +36627,7 @@ export default function App() {
                       onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, specSplitChatId)}
                       onOpenArchivedSnapshot={openPlanDiffTab}
                       getCommentCodeSnippet={getCommentCodeSnippet}
-                      onOpenCommitToolWindow={() => openCommitToolWindow()}
+                      onOpenCommitToolWindow={openChatCommitToolWindow}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -36599,7 +36720,7 @@ export default function App() {
                   getCommentCodeSnippet={getCommentCodeSnippet}
                   onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                   onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, activeAiChatTabChatId)}
-                  onOpenCommitToolWindow={() => openCommitToolWindow()}
+                  onOpenCommitToolWindow={openChatCommitToolWindow}
                   onOpenChangeScope={openChatChangeScope}
                   changeScopePanelExpanded={aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId] ?? true}
                   onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
@@ -36857,7 +36978,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
