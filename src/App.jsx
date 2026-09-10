@@ -16191,6 +16191,67 @@ const AI_CHAT_OLDER_THAN_7_ITEMS = [
   },
 ];
 
+// Demo workspace ownership for the Chat header component. The Agent Sessions
+// tool window already presents sessions under the opened project and an
+// attached (foreign) project; these overrides make the selected session's
+// header demonstrate the corresponding current/worktree/foreign state.
+const AI_CHAT_WORKSPACE_CONTEXT_OVERRIDES = Object.freeze({
+  'request-logging': {
+    type: 'worktree',
+    project: PROJECT_NAME,
+    branch: RELEASE_BRANCH_NAME,
+    hasUncommittedChanges: true,
+  },
+  'understand-codebase': {
+    type: 'worktree',
+    project: PROJECT_NAME,
+    branch: RELEASE_BRANCH_NAME,
+    hasUncommittedChanges: false,
+    hasTransferableCommit: true,
+  },
+  reminders: {
+    type: 'foreign',
+    project: 'SDD-mvp',
+    branch: 'marketing-video',
+    hasUncommittedChanges: false,
+  },
+  'related-items': {
+    type: 'foreign',
+    project: 'SDD-mvp',
+    branch: 'marketing-video',
+    hasUncommittedChanges: false,
+  },
+  'refresh-fixtures': {
+    type: 'foreign',
+    project: 'SDD-mvp',
+    branch: 'marketing-video',
+    hasUncommittedChanges: false,
+  },
+  'maven-warnings': {
+    type: 'foreign',
+    project: 'SDD-mvp',
+    branch: 'marketing-video',
+    hasUncommittedChanges: false,
+  },
+});
+
+function getAiChatWorkspaceContext(chatId, scenario = null) {
+  const override = AI_CHAT_WORKSPACE_CONTEXT_OVERRIDES[chatId] ?? null;
+  const type = override?.type ?? 'current';
+  // The opened project has one working tree shared by all of its chats. A
+  // session with no own change card still sees the project-wide dirty state.
+  const defaultHasChanges = true;
+  return {
+    type,
+    project: override?.project ?? PROJECT_NAME,
+    branch: override?.branch ?? REVIEW_CURRENT_BRANCH_NAME,
+    hasUncommittedChanges: typeof override?.hasUncommittedChanges === 'boolean'
+      ? override.hasUncommittedChanges
+      : defaultHasChanges,
+    hasTransferableCommit: Boolean(override?.hasTransferableCommit),
+  };
+}
+
 function buildSpecStatusScenarioEntries(specId, label) {
   return {
     [`${specId}-build`]: {
@@ -16332,6 +16393,54 @@ public Vet getVet() {
       'I will use the result to verify the timeSlots and vets model attributes remain available to the view.',
     ],
     command: 'Running ./gradlew test --tests VisitControllerTests',
+    attachmentLabel: null,
+  },
+  'request-logging': {
+    title: 'Add request logging to a Java application',
+    userPrompt: 'Add structured request logging and keep the release/3.2 backport isolated.',
+    assistantParagraphs: [
+      'I prepared the logging changes in a temporary worktree for release/3.2.',
+      'You can review, commit, or apply the uncommitted patch from the workspace component above this chat.',
+    ],
+    changeCard: null,
+    result: ['The worktree contains uncommitted request-logging changes.'],
+    command: 'Prepared changes in ~/worktrees/spring-petclinic-3.2',
+    attachmentLabel: null,
+  },
+  'understand-codebase': {
+    title: 'Understanding the existing Java codebase',
+    userPrompt: 'Map the release branch structure before the backport.',
+    assistantParagraphs: [
+      'The release/3.2 worktree is clean and the backport commit is ready.',
+      'Use Cherry-pick in the workspace component to move it to the opened branch.',
+    ],
+    changeCard: null,
+    result: ['Backport commit 8f31c2a is ready to cherry-pick.'],
+    command: 'git status --short · clean',
+    attachmentLabel: null,
+  },
+  reminders: {
+    title: 'Implement reminders and notifications',
+    userPrompt: 'Prepare the marketing-video reminders in the attached SDD-mvp project.',
+    assistantParagraphs: [
+      'This session belongs to the attached SDD-mvp project on marketing-video.',
+      'Its working tree is clean, so the workspace component keeps only the foreign project context visible.',
+    ],
+    changeCard: null,
+    result: ['The foreign project working tree is clean.'],
+    command: 'Working tree: SDD-mvp · marketing-video',
+    attachmentLabel: null,
+  },
+  'related-items': {
+    title: 'Add ‘related items’ section',
+    userPrompt: 'Check the attached marketing project context.',
+    assistantParagraphs: [
+      'This session belongs to SDD-mvp rather than the opened spring-petclinic project.',
+      'There are no uncommitted changes, so the workspace component only identifies its project and branch.',
+    ],
+    changeCard: null,
+    result: ['The foreign project working tree is clean.'],
+    command: 'git status --short · clean',
     attachmentLabel: null,
   },
   // Spec status chats — two per spec (Build + Specify), mirroring the previous
@@ -18743,49 +18852,154 @@ function ChatChangeScopeMenu({
 
 function ChatProjectChangesToolbar({
   scopeOptions = [],
-  projectLabel = PROJECT_NAME,
-  branchLabel = REVIEW_CURRENT_BRANCH_NAME,
+  workspaceContext = null,
+  workspaceActionState = null,
   onOpenScope = null,
+  onOpenCommit = null,
+  onWorkspaceAction = null,
   reviewDisabled = false,
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const anchorRef = useRef(null);
+  const workspace = workspaceContext ?? {
+    type: 'current',
+    project: PROJECT_NAME,
+    branch: REVIEW_CURRENT_BRANCH_NAME,
+    hasUncommittedChanges: true,
+    hasTransferableCommit: false,
+  };
+  const transferCompleted = workspaceActionState?.status === 'completed';
+  const transferProcessing = workspaceActionState?.status === 'processing';
+  const patchWasApplied = transferCompleted && workspaceActionState?.action === 'apply-patch';
+  const cherryPickCompleted = transferCompleted && workspaceActionState?.action === 'cherry-pick';
+  const hasUncommittedChanges = workspace.hasUncommittedChanges && !patchWasApplied;
+  const shouldShow = hasUncommittedChanges || workspace.type !== 'current';
   const allChangesScope = scopeOptions.find((scope) => scope.id === 'all-project-changes')
     ?? scopeOptions[scopeOptions.length - 1]
     ?? null;
-  if (!allChangesScope) return null;
+  const projectBadge = getReviewProjectBadge(workspace.project);
+  const hasWorktreeActions = workspace.type === 'worktree' && hasUncommittedChanges;
+  const canCherryPick = workspace.type === 'worktree'
+    && !hasUncommittedChanges
+    && workspace.hasTransferableCommit
+    && !cherryPickCompleted;
+  if (!shouldShow) return null;
 
   const openScope = (scope) => {
     if (!scope || reviewDisabled) return;
+    setMenuOpen(false);
     onOpenScope?.(scope);
   };
+
+  const runWorkspaceAction = (action) => {
+    setMenuOpen(false);
+    onWorkspaceAction?.(action);
+  };
+
+  const operationLabel = transferProcessing
+    ? (workspaceActionState?.action === 'cherry-pick' ? 'Cherry-picking…' : 'Applying patch…')
+    : patchWasApplied
+      ? 'Patch applied'
+      : cherryPickCompleted
+        ? 'Cherry-picked'
+        : null;
 
   return (
     <div className="aiux543-chat-project-changes-toolbar" aria-label="Project changes">
       <div className="aiux543-chat-project-context">
         <span className="aiux543-chat-project-context-item">
-          <span className="aiux543-chat-project-icon" aria-hidden="true">SP</span>
-          <span className="aiux543-chat-project-name">{projectLabel}</span>
+          <span className={`aiux543-chat-project-icon is-${projectBadge.color}`} aria-hidden="true">
+            {projectBadge.initials}
+          </span>
+          <span className="aiux543-chat-project-name">{workspace.project}</span>
         </span>
         <span className="aiux543-chat-project-context-item">
           <Icon name="vcs/vcs" size={16} />
-          <span className="aiux543-chat-project-branch">{branchLabel}</span>
+          <span className="aiux543-chat-project-branch">{workspace.branch}</span>
         </span>
       </div>
       <div className="aiux543-chat-project-review">
-        <span className="aiux543-chat-project-review-action">
+        {operationLabel ? (
+          <span className={`aiux543-chat-project-operation${transferProcessing ? ' is-processing' : ' is-complete'}`}>
+            {transferProcessing ? <Loader size={16} /> : <Icon name="general/checkmark" size={16} />}
+            <span>{operationLabel}</span>
+          </span>
+        ) : null}
+        {hasUncommittedChanges && allChangesScope ? (
+          <>
+            <span ref={anchorRef} className={`aiux543-chat-project-review-action${hasWorktreeActions ? ' has-menu' : ''}`}>
+              <button
+                type="button"
+                className="aiux543-chat-project-review-main"
+                disabled={reviewDisabled}
+                onClick={() => openScope(allChangesScope)}
+              >
+                <ChatChangeScopeInspectionGlyph />
+                <span>All Changes</span>
+              </button>
+              {hasWorktreeActions ? (
+                <button
+                  type="button"
+                  className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
+                  aria-label="Worktree change actions"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  disabled={reviewDisabled}
+                  onClick={() => setMenuOpen((open) => !open)}
+                >
+                  <Icon name="general/chevronDown" size={16} />
+                </button>
+              ) : null}
+              <FinalAnchoredPopup
+                align="end"
+                anchorRef={anchorRef}
+                ariaLabel="Worktree change actions"
+                className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
+                estimatedHeight={112}
+                onClose={() => setMenuOpen(false)}
+                open={hasWorktreeActions && menuOpen}
+                width={224}
+              >
+                <aside className="aiux543-chat-project-review-popup" aria-label="Worktree change actions">
+                  <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => openScope(allChangesScope)}>
+                    <ChatChangeScopeInspectionGlyph />
+                    <span className="aiux543-chat-project-review-popup-action-label">Review</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="aiux543-chat-project-review-popup-action"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenCommit?.();
+                    }}
+                  >
+                    <Icon name="vcs/commit" size={16} />
+                    <span className="aiux543-chat-project-review-popup-action-label">Commit</span>
+                  </button>
+                  <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => runWorkspaceAction('apply-patch')}>
+                    <Icon name="vcs/patch" size={16} />
+                    <span className="aiux543-chat-project-review-popup-action-label">Apply Patch</span>
+                  </button>
+                </aside>
+              </FinalAnchoredPopup>
+            </span>
+            <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
+              <span className="is-added">+{allChangesScope.added}</span>
+              <span className="is-removed">-{allChangesScope.removed}</span>
+            </span>
+          </>
+        ) : null}
+        {canCherryPick ? (
           <button
             type="button"
             className="aiux543-chat-project-review-main"
-            disabled={reviewDisabled}
-            onClick={() => openScope(allChangesScope)}
+            disabled={reviewDisabled || transferProcessing}
+            onClick={() => runWorkspaceAction('cherry-pick')}
           >
-            <ChatChangeScopeInspectionGlyph />
-            <span>All Changes</span>
+            <Icon name="vcs/cherryPick" size={16} />
+            <span>Cherry-pick</span>
           </button>
-        </span>
-        <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
-          <span className="is-added">+{allChangesScope.added}</span>
-          <span className="is-removed">-{allChangesScope.removed}</span>
-        </span>
+        ) : null}
       </div>
     </div>
   );
@@ -20252,6 +20466,7 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   vcsSummaryPermanentlyHidden: false,
   completedFileEditRunCount: 0,
   vcsRunExtraCounts: { added: 0, removed: 0 },
+  workspaceActionState: null,
 };
 
 function AiChatUserMessage({
@@ -20399,6 +20614,7 @@ function AiChatTabView({
   onCreateSpec = null,
   onRunAiReview = null,
   onCommitChanges = null,
+  onOpenCommitToolWindow = null,
   onOpenChangedFile = null,
   composerState = null,
   onComposerStateChange = null,
@@ -20476,6 +20692,7 @@ function AiChatTabView({
     vcsSummaryPermanentlyHidden,
     completedFileEditRunCount,
     vcsRunExtraCounts,
+    workspaceActionState,
   } = resolvedComposerState;
   const updateComposerState = useCallback((patch) => {
     if (!onComposerStateChange || !chatId) return;
@@ -20655,6 +20872,13 @@ function AiChatTabView({
     chatChangeScopeOptions,
     vcsRunExtraCounts,
   );
+  const chatWorkspaceContext = getAiChatWorkspaceContext(chatId, scenario);
+  const runWorkspaceTransferAction = useCallback((action) => {
+    updateComposerState({ workspaceActionState: { action, status: 'processing' } });
+    window.setTimeout(() => {
+      updateComposerState({ workspaceActionState: { action, status: 'completed' } });
+    }, 900);
+  }, [updateComposerState]);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const defaultModelLabel = initialSessionModel ?? 'GPT-5.6-Sol';
   const selectedModelLabel = selectedModelOverride ?? defaultModelLabel;
@@ -21201,10 +21425,14 @@ function AiChatTabView({
           />
         </div>
       )}
-      {!changeScopePanelCollapsed && !isNewSessionState && liveChatChangeScopeOptions.length > 0 && (
+      {!changeScopePanelCollapsed && (
         <ChatProjectChangesToolbar
           scopeOptions={liveChatChangeScopeOptions}
+          workspaceContext={chatWorkspaceContext}
+          workspaceActionState={workspaceActionState}
           reviewDisabled={isAgentRunProcessing}
+          onOpenCommit={() => onOpenCommitToolWindow?.(chatId, chatWorkspaceContext)}
+          onWorkspaceAction={runWorkspaceTransferAction}
           onOpenScope={(scope) => {
             if (onOpenChangeScope) {
               onOpenChangeScope(chatId, scope.id);
@@ -36058,6 +36286,7 @@ export default function App() {
                       getCommentCodeSnippet={getCommentCodeSnippet}
                       onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(reviewSplitChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                       onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, reviewSplitChatId)}
+                      onOpenCommitToolWindow={() => openCommitToolWindow()}
                       onOpenChangeScope={openChatChangeScope}
                       changeScopePanelExpanded={Boolean(aiChatChangeScopePanelExpandedByChatId[reviewSplitChatId])}
                       onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}
@@ -36277,6 +36506,7 @@ export default function App() {
                       onOpenDiffTab={(diffRequest) => openPlanDiffInReviewSplit(diffRequest, specSplitChatId)}
                       onOpenArchivedSnapshot={openPlanDiffTab}
                       getCommentCodeSnippet={getCommentCodeSnippet}
+                      onOpenCommitToolWindow={() => openCommitToolWindow()}
                       onOpenAttachment={handleOpenChatAttachment}
                       composerDiffAttachments={aiChatComposerDiffAttachments}
                       onRemoveComposerAttachment={handleRemoveComposerAttachment}
@@ -36369,6 +36599,7 @@ export default function App() {
                   getCommentCodeSnippet={getCommentCodeSnippet}
                   onOpenAllProjectChanges={(filterTabIds) => openLatestChangedFilesReviewScope(activeAiChatTabChatId, { initialScopeId: 'all-project-changes', filterTabIds })}
                   onOpenFileInAllProjectChanges={(diffRequest) => openFileInAllProjectChangesScope(diffRequest, activeAiChatTabChatId)}
+                  onOpenCommitToolWindow={() => openCommitToolWindow()}
                   onOpenChangeScope={openChatChangeScope}
                   changeScopePanelExpanded={aiChatChangeScopePanelExpandedByChatId[activeAiChatTabChatId] ?? true}
                   onChangeScopePanelExpandedChange={handleAiChatChangeScopePanelExpandedChange}

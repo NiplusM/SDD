@@ -14279,6 +14279,10 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   font: 600 9px/16px Inter, system-ui, sans-serif;
 }
 
+.aiux543-chat-project-icon.is-neutral {
+  background: #777b82;
+}
+
 .aiux543-chat-project-name,
 .aiux543-chat-project-branch {
   overflow: hidden;
@@ -14344,6 +14348,27 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   gap: 2px;
   padding: 0 2px 0 5px;
   border-radius: 5px;
+}
+
+.aiux543-chat-project-review-action.has-menu .aiux543-chat-project-review-main {
+  border-radius: 5px 0 0 5px;
+}
+
+.aiux543-chat-project-operation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #96999f;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-operation.is-complete {
+  color: #6db083;
+}
+
+.aiux543-chat-project-operation .loader {
+  width: 16px;
+  height: 16px;
 }
 
 .aiux543-chat-project-review-main > span:last-child {
