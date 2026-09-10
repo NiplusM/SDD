@@ -84,6 +84,9 @@ export function AiChatAttachmentPathTooltip({ attachment = null }) {
 // All Changes, an allChangesOnly file only under Session Changes and All
 // Changes (Last Turn is its narrower subset), everything else is Last Turn.
 export function getAiChatAttachmentScopeLabel(attachment = null) {
+  if (typeof attachment?.reviewScopeLabel === 'string' && attachment.reviewScopeLabel.trim()) {
+    return attachment.reviewScopeLabel.trim();
+  }
   const diffRequest = attachment?.diffRequest ?? null;
   if (!diffRequest) return null;
   if (diffRequest.reviewCommitScope) return 'All Changes';
@@ -550,6 +553,7 @@ export function AiChatAttachmentStrip({
                   contextLabel={attachment.label}
                   renderCodeSnippet={renderCodeSnippet}
                   onNavigate={onNavigateComment}
+                  scopeLabel={getAiChatAttachmentScopeLabel(attachment)}
                 />
               </span>
             )}

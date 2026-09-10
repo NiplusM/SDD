@@ -16128,6 +16128,15 @@ function buildChatChangedFilesScopeOptions(entries = []) {
   });
 }
 
+function getReviewAttachmentScopeLabel(scopeId = null) {
+  return {
+    'last-turn': 'Last Turn',
+    'session-changes': 'Session Changes',
+    'all-project-changes': 'All Changes',
+    'local-changes': 'Local Changes',
+  }[scopeId] ?? null;
+}
+
 function getCommitScopeLineCounts(file = null, index = 0) {
   const base = 4 + ((index * 3) % 11);
   if (file?.status === 'added' || file?.status === 'untracked') {
@@ -25221,7 +25230,7 @@ export default function App() {
     removedIssueIndices,
   ]);
 
-  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, allowSendToAgentAction = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null, openedFromCommitToolWindow = false }) => {
+  const openPlanDiffTab = useCallback(({ text, statusItem, issueTarget, source = null, navigation = null, initialDiffCommentsOverride = null, commentsReadOnly = false, isArchivedSnapshot = false, showScopeControl = true, allowSendToAgentAction = true, contextMessageId = null, contextChatId = null, fileCount = null, registerEditorTab = true, activateTab = true, reviewAttribution = null, reviewModifiedAfterSession = false, reviewCommitGroupId = null, reviewFilePath = null, reviewPreviousLabel = null, reviewVcsStatus = null, openedFromCommitToolWindow = false, reviewAttachmentOrigin = null, reviewAttachmentScopeLabel = null }) => {
     const sourceTab = source?.tabId
       ? (ideTabs.find((tab) => tab.id === source.tabId) ?? null)
       : (ideTabs[activeEditorTab ?? 0] ?? null);
@@ -25361,6 +25370,8 @@ export default function App() {
           reviewPreviousLabel,
           reviewVcsStatus,
           diffOpenedFromCommitToolWindow: Boolean(openedFromCommitToolWindow),
+          diffReviewAttachmentOrigin: reviewAttachmentOrigin,
+          diffReviewAttachmentScopeLabel: reviewAttachmentScopeLabel,
           diffSessionCommentsByChatId: nextSessionComments,
         },
       };
@@ -29999,6 +30010,19 @@ export default function App() {
     const nextScope = reviewSplitChangeScopeOptions.find((option) => option.id === scopeId) ?? null;
     setReviewSplitChangeScopeId(scopeId);
     if (!nextScope?.tabIds?.length) return;
+    const attachmentScopeLabel = getReviewAttachmentScopeLabel(scopeId);
+    setIdeTabContents((current) => nextScope.tabIds.reduce((next, tabId) => (
+      next[tabId]
+        ? {
+            ...next,
+            [tabId]: {
+              ...next[tabId],
+              diffReviewAttachmentOrigin: 'agent',
+              diffReviewAttachmentScopeLabel: attachmentScopeLabel,
+            },
+          }
+        : next
+    ), current));
     setReviewSplitActiveTabId((currentTabId) => (
       nextScope.tabIds.includes(currentTabId) ? currentTabId : nextScope.tabIds[0]
     ));
@@ -30188,6 +30212,8 @@ export default function App() {
         contextChatId: request.contextChatId ?? targetChatId,
         registerEditorTab: false,
         activateTab: false,
+        reviewAttachmentOrigin: 'agent',
+        reviewAttachmentScopeLabel: getReviewAttachmentScopeLabel(initialScopeId ?? 'last-turn'),
       })).filter(Boolean);
       if (Array.isArray(scopeRequestsOverride)) {
         const changedFileCards = getChatChangeCards(scenario);
@@ -30270,6 +30296,8 @@ export default function App() {
       contextChatId: diffRequest.contextChatId ?? targetChatId,
       registerEditorTab: false,
       activateTab: false,
+      reviewAttachmentOrigin: 'agent',
+      reviewAttachmentScopeLabel: getReviewAttachmentScopeLabel(initialScopeId ?? reviewSplitChangeScopeId),
     });
     if (!diffTabId) return null;
     const activeRowId = diffRequest.navigation?.activeRowId ?? null;
@@ -30294,6 +30322,7 @@ export default function App() {
     isReviewDiffTab,
     openPlanDiffTab,
     openReviewDiffTab,
+    reviewSplitChangeScopeId,
     reviewSplitChatId,
     selectedAiChatId,
   ]);
@@ -31938,7 +31967,9 @@ export default function App() {
       attachments.push({
         id: `diff-${selectedAiChatId}-${diffTabId}`,
         composerSequenceKey: `file-context-${selectedAiChatId}-${diffTabId}`,
-        label: isPlainFile ? sourceLabel : (fileData?.title || `Diff ${sourceLabel}`),
+        label: isPlainFile
+          ? sourceLabel
+          : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
         icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : 'vcs/diff',
         commentCount: selectedSessionCommentCount,
         updated: hasAgentReply,
@@ -31946,6 +31977,10 @@ export default function App() {
         diffRequest,
         diffTabId,
         isPlainFile,
+        sourceLabel,
+        reviewOrigin: tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'vcs' : 'agent',
+        reviewScopeLabel: tabContent.diffReviewAttachmentScopeLabel
+          ?? (tabContent.diffOpenedFromCommitToolWindow ? 'Local Changes' : null),
         // getAiChatAttachmentCommentPreviewItems reads this flat field (not
         // diffRequest.source.tabId) to tag each comment preview item with
         // where to look up its row — without it, hover-card navigation and
@@ -35369,6 +35404,8 @@ export default function App() {
       showScopeControl: false,
       allowSendToAgentAction: false,
       openedFromCommitToolWindow: true,
+      reviewAttachmentOrigin: 'vcs',
+      reviewAttachmentScopeLabel: 'Local Changes',
     });
   }, [aiChatScenarios, openPlanDiffTab]);
 
