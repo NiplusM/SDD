@@ -34148,6 +34148,38 @@ export default function App() {
 
     if (commentAttachments.length > 0 && !isReviewCommand) {
       renameDraftChatAfterCommentSend(targetChatId, commentAttachments);
+      // The editor chat can remount as soon as its split/diff state changes.
+      // Persist the dismissal synchronously in the draft store as well as in
+      // AiChatTabView's local state; otherwise that remount restores the old
+      // chip before the component's passive draft-saving effect gets a turn.
+      const sentAttachmentIds = new Set();
+      const sentDismissalKeys = commentAttachments
+        .filter((attachment) => attachment?.diffTabId && attachment?.diffComments)
+        .map((attachment, index) => {
+          const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+          sentAttachmentIds.add(attachmentId);
+          return `${attachmentId}\u0000${getSentDiffCommentAttachmentSignature(attachment.diffComments)}`;
+        });
+      if (sentDismissalKeys.length > 0) {
+        setAiChatComposerDraftByChatId((prev) => {
+          const current = prev[targetChatId] ?? { text: '', contentParts: [], dismissedAttachmentKeys: [] };
+          const dismissedAttachmentKeys = Array.from(new Set([
+            ...(Array.isArray(current.dismissedAttachmentKeys) ? current.dismissedAttachmentKeys : []),
+            ...sentDismissalKeys,
+          ]));
+          return {
+            ...prev,
+            [targetChatId]: {
+              ...current,
+              // Do not leave a stale inline attachment part behind for a
+              // composer that is restored before its props have refreshed.
+              contentParts: (Array.isArray(current.contentParts) ? current.contentParts : [])
+                .filter((part) => part?.type !== 'attachment' || !sentAttachmentIds.has(part.attachmentId)),
+              dismissedAttachmentKeys,
+            },
+          };
+        });
+      }
     }
 
     // Any agent request sweeps previously-Solved notes.
