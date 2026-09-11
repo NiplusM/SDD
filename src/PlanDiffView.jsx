@@ -2124,7 +2124,7 @@ export function AiReviewComposerDialog({
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(initialShowQuickActions);
   const isCommitLaunch = launchSource === 'commit';
-  const isShortcutLaunch = launchSource === 'shortcut';
+  const isShortcutLaunch = launchSource === 'shortcut' || launchSource === 'file-selection';
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
   const [openMenu, setOpenMenu] = useState(null);

@@ -35105,7 +35105,9 @@ export default function App() {
         handleOpenChatAttachment(attachment, { archived: false });
       }}
       launchSource={globalReviewLaunchSource}
-      popupClassName={globalReviewLaunchSource === 'shortcut' ? 'is-control-control-launch' : ''}
+      popupClassName={globalReviewLaunchSource === 'shortcut' || globalReviewLaunchSource === 'file-selection'
+        ? 'is-control-control-launch'
+        : ''}
     />
   );
 
