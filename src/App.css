@@ -7714,8 +7714,8 @@ body {
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-picker {
   color: #ced0d6;
-  font-size: 16px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 16px;
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-pin {
@@ -7733,8 +7733,8 @@ body {
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-main > textarea {
   min-height: 62px;
   padding-top: 0;
-  font-size: 16px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 16px;
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-context-side {
