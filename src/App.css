@@ -24641,6 +24641,17 @@ button.aiux543-answer-change-card:focus-visible {
   color: #8f929a;
 }
 
+.agent-sessions-project-row[role='button'] {
+  cursor: pointer;
+}
+
+.agent-sessions-project-row[role='button']:hover,
+.agent-sessions-project-row[role='button']:focus-visible,
+.agent-sessions-project-row.is-active {
+  background: rgb(255 255 255 / 6%);
+  outline: none;
+}
+
 .agent-sessions-project-actions {
   margin-left: auto;
   gap: 4px;

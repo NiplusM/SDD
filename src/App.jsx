@@ -23172,6 +23172,7 @@ export default function App() {
   const [ideOpenWindows, setIdeOpenWindows] = useState(() => (
     getPrototypeEntryPoint() === 'commit' ? ['commit'] : []
   ));
+  const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState('spring-petclinic');
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(() => (
     getPrototypeEntryPoint() === 'file'
   ));
@@ -35458,6 +35459,22 @@ export default function App() {
     ) stripe.click();
   }, []);
 
+  const handleAgentSessionsProjectSelect = useCallback((project) => {
+    const nextProjectId = project?.id === 'sdd-mvp' ? 'sdd-mvp' : 'spring-petclinic';
+    setActiveWorkspaceProjectId(nextProjectId);
+    if (nextProjectId !== 'sdd-mvp' || typeof document === 'undefined') return;
+
+    setCommitWorkspaceContext(null);
+    setCommitScopeRequest(null);
+    setIdeOpenWindows((openWindows) => openWindows.filter((id) => id !== 'commit'));
+    const commitStripe = Array.from(document.querySelectorAll('.main-window-stripe-left .stripe'))
+      .find((element) => (element.getAttribute('aria-label') || element.getAttribute('title')) === 'Commit');
+    if (
+      commitStripe instanceof HTMLElement
+      && (commitStripe.getAttribute('aria-pressed') === 'true' || commitStripe.classList.contains('stripe-selected'))
+    ) commitStripe.click();
+  }, []);
+
   const openChatCommitToolWindow = useCallback((chatId, workspaceContext = null) => {
     const scenario = chatId ? getAiChatScenarioById(chatId) : null;
     const files = getChatChangeCards(scenario).map((card) => ({
@@ -36308,7 +36325,7 @@ export default function App() {
                 ctx={ctx}
               />
             );
-            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+            if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} activeProjectId={activeWorkspaceProjectId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onProjectSelect={handleAgentSessionsProjectSelect} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
             return defaultLeftPanelContent(id, ctx);
           }}
 	          rightPanelContent={(id, ctx) => defaultRightPanelContent(id, ctx)}
@@ -36432,22 +36449,25 @@ export default function App() {
   }];
   const ideRightStripeItems = MY_RIGHT_STRIPE;
   const ideDefaultOpenToolWindows = ideOpenWindows;
+  const activeWorkspaceProject = activeWorkspaceProjectId === 'sdd-mvp'
+    ? { name: 'SDD-mvp', icon: 'SD', color: 'neutral', branch: 'marketing-video' }
+    : { name: PROJECT_NAME, icon: 'SP', color: 'blue', branch: REVIEW_CURRENT_BRANCH_NAME };
   return (
     <ThemeProvider defaultTheme="dark">
       <MainWindow
         key={`ide-${ideDefaultOpenToolWindows.join('-')}`}
         className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'ai-review-editor-split-active' : ''}
         height={865}
-        projectName={PROJECT_NAME}
-        projectIcon="SP"
-        projectColor="blue"
-        branchName={REVIEW_CURRENT_BRANCH_NAME}
+        projectName={activeWorkspaceProject.name}
+        projectIcon={activeWorkspaceProject.icon}
+        projectColor={activeWorkspaceProject.color}
+        branchName={activeWorkspaceProject.branch}
         toolbar={(
           <MainToolbar
-            projectName={PROJECT_NAME}
-            projectIcon="SP"
-            projectColor="blue"
-            branchName={REVIEW_CURRENT_BRANCH_NAME}
+            projectName={activeWorkspaceProject.name}
+            projectIcon={activeWorkspaceProject.icon}
+            projectColor={activeWorkspaceProject.color}
+            branchName={activeWorkspaceProject.branch}
             runConfig="Current File"
             onSettings={() => setIsSettingsDialogOpen(true)}
             rightActions={(
@@ -37118,7 +37138,7 @@ export default function App() {
         leftPanelContent={(id, ctx) => {
           if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
-          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
+          if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} activeProjectId={activeWorkspaceProjectId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onProjectSelect={handleAgentSessionsProjectSelect} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
         }}
 	        rightPanelContent={(id, ctx) => {

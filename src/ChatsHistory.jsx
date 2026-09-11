@@ -109,10 +109,12 @@ const AGENT_SESSION_ACTIVE_CHANGES = [
 function ChatsHistoryToolWindow({
   ctx,
   activeChatId = null,
+  activeProjectId = 'spring-petclinic',
   chatRows = [],
   onOpenNewSession = null,
   onOpenChatInTab = null,
   onOpenSpecChat = null,
+  onProjectSelect = null,
   onSettings = null,
   onOpenChangesList = null,
   onOpenUnassignedChanges = null,
@@ -250,7 +252,18 @@ function ChatsHistoryToolWindow({
           {projectGroups.map((project, projectIndex) => (
             <section className="agent-sessions-project" key={project.id}>
               {projectIndex > 0 ? <div className="agent-sessions-project-divider" /> : null}
-              <div className="agent-sessions-project-row">
+              <div
+                className={`agent-sessions-project-row${activeProjectId === project.id ? ' is-active' : ''}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onProjectSelect?.(project)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onProjectSelect?.(project);
+                  }
+                }}
+              >
                 <span className={`agent-sessions-project-avatar is-${project.color}`}>{project.initials}</span>
                 <span className="agent-sessions-project-name">{project.name}</span>
                 <span className="agent-sessions-project-status">{project.status}</span>
@@ -276,10 +289,14 @@ function ChatsHistoryToolWindow({
                         'agent-sessions-session',
                         selectedId === row.id ? 'is-selected' : '',
                       ].filter(Boolean).join(' ')}
-                      onClick={() => handleSelectChat(row.id)}
+                      onClick={() => {
+                        onProjectSelect?.(project);
+                        handleSelectChat(row.id);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
+                          onProjectSelect?.(project);
                           handleSelectChat(row.id);
                         }
                       }}
