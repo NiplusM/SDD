@@ -35496,8 +35496,7 @@ export default function App() {
   }, [openChatInEditorTab, openLatestChangedFilesReviewScope]);
 
   const openHistoryUnassignedChangesInReviewScope = useCallback((file = null) => {
-    const targetChatId = activeAiChatTabChatId ?? selectedAiChatId ?? 'refactor-time-slots';
-    const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
+    const scopeRequests = buildCommitReviewScopeRequests();
     const unassignedRequests = scopeRequests.filter(
       (request) => request?.reviewCommitCategory === 'unassigned',
     );
@@ -35506,17 +35505,25 @@ export default function App() {
       (request) => request?.source?.tabId === selectedSourceTabId,
     ) ?? unassignedRequests[0] ?? null;
     if (!selectedRequest) return null;
-    return openPlanDiffInReviewSplit(
-      selectedRequest,
-      targetChatId,
-      scopeRequests,
-      'all-project-changes',
-    );
+    // Unassigned changes belong to VCS, not to whichever chat happens to be
+    // open in Agent Sessions. Render them with the exact Commit diff toolbar
+    // and require an explicit recipient for their first note.
+    setCommitCommentTargetChatId(null);
+    setReviewSplitChatId(null);
+    setReviewSplitFileTabIds([]);
+    setReviewSplitChangeScopeOptions([]);
+    return openPlanDiffTab({
+      ...selectedRequest,
+      contextChatId: null,
+      fileCount: 1,
+      showScopeControl: false,
+      allowSendToAgentAction: false,
+      openedFromCommitToolWindow: true,
+      reviewAttachmentOrigin: 'vcs',
+      reviewAttachmentScopeLabel: 'Local Changes',
+    });
   }, [
-    activeAiChatTabChatId,
-    getAiChatScenarioById,
-    openPlanDiffInReviewSplit,
-    selectedAiChatId,
+    openPlanDiffTab,
   ]);
 
   // Switch the left tool window to the Commit panel. MainWindow's active left
