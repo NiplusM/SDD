@@ -55,6 +55,7 @@ import {
   ThemeProvider,
   MainWindow,
   MainToolbar,
+  MainToolbarDropdown,
   MainToolbarIconButton,
   Banner,
   SettingsDialog,
@@ -36449,13 +36450,12 @@ export default function App() {
   }];
   const ideRightStripeItems = MY_RIGHT_STRIPE;
   const ideDefaultOpenToolWindows = ideOpenWindows;
-  const activeWorkspaceProject = activeWorkspaceProjectId === 'sdd-mvp'
-    ? { name: 'SDD-mvp', icon: 'SD', color: 'neutral', branch: 'marketing-video' }
-    : { name: PROJECT_NAME, icon: 'SP', color: 'blue', branch: REVIEW_CURRENT_BRANCH_NAME };
+  const isAttachedWorkspaceProject = activeWorkspaceProjectId === 'sdd-mvp';
+  const activeWorkspaceProject = { name: PROJECT_NAME, icon: 'SP', color: 'blue', branch: REVIEW_CURRENT_BRANCH_NAME };
   return (
     <ThemeProvider defaultTheme="dark">
       <MainWindow
-        key={`ide-${ideDefaultOpenToolWindows.join('-')}`}
+        key={`ide-${activeWorkspaceProjectId}-${ideDefaultOpenToolWindows.join('-')}`}
         className={(isReviewEditorSplitActive || isSpecEditorSplitActive) ? 'ai-review-editor-split-active' : ''}
         height={865}
         projectName={activeWorkspaceProject.name}
@@ -36464,12 +36464,20 @@ export default function App() {
         branchName={activeWorkspaceProject.branch}
         toolbar={(
           <MainToolbar
+            className={isAttachedWorkspaceProject ? 'is-attached-home-toolbar' : ''}
             projectName={activeWorkspaceProject.name}
             projectIcon={activeWorkspaceProject.icon}
             projectColor={activeWorkspaceProject.color}
             branchName={activeWorkspaceProject.branch}
             runConfig="Current File"
             onSettings={() => setIsSettingsDialogOpen(true)}
+            leftExtra={isAttachedWorkspaceProject ? (
+              <MainToolbarDropdown
+                className="attached-home-toolbar-control"
+                icon={<Icon name="nodes/homeFolder" size={16} />}
+                text="IntelliJ IDEA Home"
+              />
+            ) : null}
             rightActions={(
               <>
                 {finalToolbarSessionControl}
@@ -37126,7 +37134,9 @@ export default function App() {
         projectTreeData={projectTreeData}
 
         leftStripeItems={[
-          ...MY_LEFT_STRIPE,
+          ...(isAttachedWorkspaceProject
+            ? MY_LEFT_STRIPE.filter((item) => item.id !== 'commit')
+            : MY_LEFT_STRIPE),
           { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },

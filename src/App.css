@@ -24700,6 +24700,24 @@ button.aiux543-answer-change-card:focus-visible {
   outline: none;
 }
 
+/* Attached projects are browsed from IDEA Home rather than opened as the active IDE project.
+   The kit MainToolbar still owns the layout; this variant replaces only its project/branch slot. */
+.main-toolbar.is-attached-home-toolbar .toolbar-left {
+  visibility: hidden;
+}
+
+.main-toolbar.is-attached-home-toolbar .attached-home-toolbar-control {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 104px;
+  padding-left: 10px;
+}
+
+.main-toolbar.is-attached-home-toolbar .attached-home-toolbar-control > .main-toolbar-dropdown-content > .icon {
+  color: var(--icon-secondary-stroke, #818594);
+}
+
 .agent-sessions-session.is-selected {
   background: #2d3035;
 }
