@@ -3054,7 +3054,9 @@ export function DiffInlineCommentPopup({
     onSubmit?.({
       attachMode,
       submitAction,
-      targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
+      targetChatId: submitAttachTarget?.attachMode === attachMode
+        ? submitAttachTarget.targetChatId
+        : (attachMode === 'current' ? normalizedActiveChatTargetKey : null),
       targetDocumentTabId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetDocumentTabId : null,
     });
   };

@@ -23836,6 +23836,10 @@ export default function App() {
   const [globalReviewTargetChatId, setGlobalReviewTargetChatId] = useState(null);
   const [globalReviewSelectionContext, setGlobalReviewSelectionContext] = useState(null);
   const [commitReviewContext, setCommitReviewContext] = useState(null);
+  // Recipient selected for notes while reviewing one Commit tool-window
+  // change set. It intentionally spans its files, but is reset for a new
+  // Commit flow.
+  const [commitCommentTargetChatId, setCommitCommentTargetChatId] = useState(null);
   const [commitScopeRequest, setCommitScopeRequest] = useState(null);
   const [commitWorkspaceContext, setCommitWorkspaceContext] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
@@ -31654,9 +31658,15 @@ export default function App() {
   const activeDiffOriginChatId = activePlanDiffContextChatId
     ?? ((isPlainFileOverlayTab || isCommitOriginDiffWithoutSession) ? null : planDiffContextChatId);
   const hasActivePlainFileCommentSession = !isPlainFileOverlayTab || Boolean(activePlanDiffContextChatId);
+  const commitCommentTargetScenario = commitCommentTargetChatId
+    ? getAiChatScenarioById(commitCommentTargetChatId)
+    : null;
+  const commitCommentTargetListItem = commitCommentTargetChatId
+    ? getAiChatListItemById(commitCommentTargetChatId)
+    : null;
   const requiresExplicitDiffCommentSession = (
     (isPlainFileOverlayTab && !hasActivePlainFileCommentSession)
-    || isCommitOriginDiffWithoutSession
+    || (isCommitOriginDiffWithoutSession && !commitCommentTargetChatId)
   );
   // The review-scope lookup keys files by the *source* file's own tab id, not
   // the diff tab's id — on a diff tab that's activePlanDiffSourceTabId; on a
@@ -32539,6 +32549,9 @@ export default function App() {
       ? metadata.targetChatId
       : null;
     const targetChatId = newChatSession?.id ?? explicitTargetChatId ?? selectedAiChatId;
+    if (activeTabContent?.diffOpenedFromCommitToolWindow && targetChatId) {
+      setCommitCommentTargetChatId(targetChatId);
+    }
     const metadataRowIds = Array.isArray(metadata?.rowIds) && metadata.rowIds.length > 0
       ? metadata.rowIds.filter((rowId) => typeof rowId === 'string' && rowId.length > 0)
       : (typeof metadata?.rowId === 'string' ? [metadata.rowId] : []);
@@ -32762,6 +32775,7 @@ export default function App() {
     });
   }, [
     activeTabId,
+	    activeTabContent,
 	    activePlanDiffSessionCommentsByChatId,
 	    activePlanDiffLineText,
 	    activePlanDiffData,
@@ -35510,6 +35524,7 @@ export default function App() {
   // way a user would — by clicking the "Commit" stripe item.
   const openCommitToolWindow = useCallback((scopeRequest = null) => {
     if (typeof document === 'undefined') return;
+    setCommitCommentTargetChatId(null);
     setCommitWorkspaceContext(scopeRequest?.workspaceContext ?? null);
     setCommitScopeRequest(scopeRequest?.files?.length ? {
       ...scopeRequest,
@@ -37070,17 +37085,19 @@ export default function App() {
                     requireSubmitTargetChoice={requiresExplicitDiffCommentSession}
                     defaultSubmitTargetLabel={requiresExplicitDiffCommentSession
                       ? 'Choose chat session'
-                      : activePlanDiffDefaultSubmitTargetLabel}
+                      : (commitCommentTargetScenario?.title ?? activePlanDiffDefaultSubmitTargetLabel)}
                     defaultSubmitTargetIcon={requiresExplicitDiffCommentSession
                       ? 'aiAssistant/toolWindowChat@20x20'
-                      : activePlanDiffDefaultSubmitTargetIcon}
+                      : (commitCommentTargetListItem?.icon ?? commitCommentTargetScenario?.icon ?? activePlanDiffDefaultSubmitTargetIcon)}
                     defaultSubmitTargetKey={requiresExplicitDiffCommentSession
                       ? ''
-                      : activePlanDiffDefaultSubmitTargetKey}
+                      : (commitCommentTargetChatId ?? activePlanDiffDefaultSubmitTargetKey)}
                     submitSessionChoices={commentSubmitSessionChoices}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
-                    commentContextLabel={requiresExplicitDiffCommentSession ? '' : planDiffContextChatTitle}
+                    commentContextLabel={requiresExplicitDiffCommentSession
+                      ? ''
+                      : (commitCommentTargetScenario?.title ?? planDiffContextChatTitle)}
                     onOpenChat={activeTabContent?.diffOpenedFromCommitToolWindow && activePlanDiffCommentChatId
                       ? () => {
                           // Keep the VCS tab which owns the in-code note on
@@ -37113,7 +37130,7 @@ export default function App() {
                         openChatInEditorTab(activeDiffOriginChatId);
                       }
                     } : null}
-                    commentContextIcon={planDiffContextChatIcon}
+                    commentContextIcon={commitCommentTargetListItem?.icon ?? commitCommentTargetScenario?.icon ?? planDiffContextChatIcon}
                     commentContextSessionLabel={planDiffContextSessionLabel}
                     commentRowIds={activeDiffCommentRowIds}
                     activeCommentRowId={activePlanDiffUiState?.activeRowId ?? null}
@@ -37127,7 +37144,7 @@ export default function App() {
 	                    // makes a second copy of each thread and lets a selected
 	                    // chat hide the first one after the split is reopened.
 	                    commentSessions={[]}
-	                    commentSessionActiveChatId={activeDiffOriginChatId}
+	                    commentSessionActiveChatId={commitCommentTargetChatId ?? activeDiffOriginChatId}
 	                    commentShortcutHintRowId={commentShortcutHintTarget?.tabId === activeTabId ? commentShortcutHintTarget.rowId : null}
                       onTextSelectionChange={(selectionState) => {
                         if (editorInlineCommentOpenRef.current) {
