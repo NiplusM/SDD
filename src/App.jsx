@@ -31627,7 +31627,11 @@ export default function App() {
   const activePlanDiffLineText = (isDiffTab || isPlainFileOverlayTab) ? (activeTabContent?.diffLineText ?? '') : '';
   const planDiffContextChatId = activePlanDiffCommentsReadOnly
     ? (activePlanDiffContextChatId ?? activePlanDiffCommentChatId)
-    : activePlanDiffCommentChatId;
+    // The comment composer begins with the owner chat of this diff. A stale
+    // globally selected draft must not replace that chat's agent mark in the
+    // Add Note header; an explicitly selected target still supplies its own
+    // icon through submitAttachTarget.
+    : (activePlanDiffContextChatId ?? activePlanDiffCommentChatId);
   const planDiffContextChatTitle = getAiChatScenarioById(planDiffContextChatId)?.title ?? AI_CHAT_SCENARIOS['visit-model-attributes'].title;
   const planDiffContextChatListItem = getAiChatListItemById(planDiffContextChatId);
   const planDiffContextChatIcon = planDiffContextChatListItem?.icon ?? 'claude';
