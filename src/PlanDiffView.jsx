@@ -2124,6 +2124,7 @@ export function AiReviewComposerDialog({
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(initialShowQuickActions);
   const isCommitLaunch = launchSource === 'commit';
+  const isShortcutLaunch = launchSource === 'shortcut';
   // Sub-menus live inside the popup (same DOM subtree), so opening one never
   // dismisses the popup itself. Only one is open at a time.
   const [openMenu, setOpenMenu] = useState(null);
@@ -2263,10 +2264,12 @@ export function AiReviewComposerDialog({
             className={`plan-diff-ai-review-dialog text-ui-default${isCommitLaunch ? ' is-commit-launch' : ' is-diff-launch'}${popupClassName ? ` ${popupClassName}` : ''}`}
           >
             <div className="plan-diff-ai-review-dialog-header">
-              <div className="plan-diff-ai-review-dialog-title">
-                <Icon name="general/balloon" size={16} />
-                <span>AI Review</span>
-              </div>
+              {!isShortcutLaunch && (
+                <div className="plan-diff-ai-review-dialog-title">
+                  <Icon name="general/balloon" size={16} />
+                  <span>AI Review</span>
+                </div>
+              )}
               <div className="plan-diff-ai-review-dialog-pickers">
                 <span className="plan-diff-ai-review-dropdown">
                   <button
@@ -2315,7 +2318,7 @@ export function AiReviewComposerDialog({
                     </>
                   ))}
                 </span>
-                <span className="plan-diff-ai-review-dropdown">
+                {!isShortcutLaunch && <span className="plan-diff-ai-review-dropdown">
                   <button
                     type="button"
                     className={`plan-diff-ai-review-dialog-picker${openMenu === 'scope' ? ' is-open' : ''}`}
@@ -2348,11 +2351,16 @@ export function AiReviewComposerDialog({
                       {option.label}
                     </PopupCell>
                   )))}
-                </span>
+                </span>}
+                {isShortcutLaunch && (
+                  <button type="button" className="plan-diff-ai-review-dialog-pin" aria-label="Pin">
+                    <Icon name="actions/pinTab" size={16} />
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="plan-diff-ai-review-dialog-scope-note">
+            {!isShortcutLaunch && <div className="plan-diff-ai-review-dialog-scope-note">
               <span>Review scope</span>
               <strong>{attachments.length > 0
                 ? `${attachments.length} file${attachments.length === 1 ? '' : 's'}`
@@ -2360,7 +2368,7 @@ export function AiReviewComposerDialog({
               <span>{attachments.length > 0
                 ? 'The selected model will provide an independent assessment before commit.'
                 : 'Add a changed file or return to a context with prepared changes.'}</span>
-            </div>
+            </div>}
 
             <div className="plan-diff-ai-review-dialog-main">
               <span className="plan-diff-ai-review-dialog-context-side" aria-hidden="true">
@@ -2382,7 +2390,7 @@ export function AiReviewComposerDialog({
                 autoFocus
                 rows={1}
                 value={instructions}
-                placeholder="Optional review focus, constraints, or additional criteria"
+                placeholder={isShortcutLaunch ? 'Describe the task for the agent' : 'Optional review focus, constraints, or additional criteria'}
                 aria-label="Review instructions"
                 onChange={(event) => setInstructions(event.target.value)}
               />
@@ -2406,14 +2414,14 @@ export function AiReviewComposerDialog({
                   <Icon name="general/add" size={16} />
                 </button>
                 <span className="plan-diff-ai-review-dialog-main-actions-right">
-                  <button
+                  {!isShortcutLaunch && <button
                     type="button"
                     className="plan-diff-ai-review-dialog-mic"
                     aria-label="Dictate"
                     title="Dictate"
                   >
                     <PlanDiffMicIcon />
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     className={`plan-diff-ai-review-dialog-send plan-diff-ai-review-dialog-start${canStartReview ? ' is-active' : ''}`}
@@ -2422,17 +2430,22 @@ export function AiReviewComposerDialog({
                     disabled={!canStartReview}
                     onClick={startReview}
                   >
-                    <span>Start Review</span>
+                    {isShortcutLaunch
+                      ? <Icon name="general/arrowUp" size={16} />
+                      : <span>Start Review</span>}
                   </button>
                 </span>
               </div>
             </div>
 
             <div className="plan-diff-ai-review-dialog-footer">
-              {[
+              {(isShortcutLaunch ? [
+                { menu: 'model', options: AI_REVIEW_MODEL_OPTIONS, value: modelId, onSelect: setModelId, label: 'Model' },
+                { menu: 'effort', options: AI_REVIEW_EFFORT_OPTIONS, value: 'low', onSelect: setEffortId, label: 'Effort' },
+              ] : [
                 { menu: 'model', options: AI_REVIEW_MODEL_OPTIONS, value: modelId, onSelect: setModelId, label: 'Model' },
                 { menu: 'effort', options: AI_REVIEW_EFFORT_OPTIONS, value: effortId, onSelect: setEffortId, label: 'Effort' },
-              ].map(({ menu, options, value, onSelect, label }) => (
+              ]).map(({ menu, options, value, onSelect, label }) => (
                 <span className="plan-diff-ai-review-dropdown" key={menu}>
                   <button
                     type="button"
@@ -2456,6 +2469,24 @@ export function AiReviewComposerDialog({
                   )))}
                 </span>
               ))}
+              {isShortcutLaunch && (
+                <>
+                  <button type="button" className="plan-diff-ai-review-dialog-picker">
+                    <Icon name="general/robot" size={16} />
+                    <span>Approve for me</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  <button type="button" className="plan-diff-ai-review-dialog-picker">
+                    <span>Fast mode · On</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                  <button type="button" className="plan-diff-ai-review-dialog-picker plan-diff-ai-review-dialog-provider">
+                    <Icon name="general/user" size={16} />
+                    <span>JetBrains AI</span>
+                    <Icon name="general/chevronDown" size={16} />
+                  </button>
+                </>
+              )}
             </div>
           </div>
           {addContextRect && (

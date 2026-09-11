@@ -7690,6 +7690,79 @@ body {
   margin-left: 4px;
 }
 
+/* Control+Control uses the wide Codex launcher shown by the IDE. Its input area is deliberately
+   half the reference height so it remains a quick command surface rather than a full modal. */
+.plan-diff-ai-review-dialog.is-control-control-launch {
+  width: min(980px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  border-color: #5b5e64;
+  border-radius: 10px;
+  background: #26282c;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-header {
+  min-height: 54px;
+  justify-content: center;
+  padding: 8px 20px;
+  border-bottom: 1px solid #34363b;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-pickers {
+  width: 100%;
+  gap: 8px;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-picker {
+  color: #ced0d6;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-pin {
+  margin-left: auto;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-main {
+  min-height: 210px;
+  margin: 0;
+  padding: 18px 20px 8px;
+  border: 0;
+  border-radius: 0;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-main > textarea {
+  min-height: 130px;
+  padding-top: 0;
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-context-side {
+  top: 18px;
+  right: 20px;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-send.plan-diff-ai-review-dialog-start {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-footer {
+  min-height: 46px;
+  padding: 7px 20px;
+  border-top: 1px solid #34363b;
+  gap: 6px;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-footer > .plan-diff-ai-review-dialog-picker {
+  color: #898d95;
+}
+
+.plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-provider {
+  margin-left: auto;
+}
+
 /* Every picker in the popup drops its menu below the trigger. The submenu wrapper is a
    zero-size anchor (the kit Popup lays itself out inside it), so a `bottom`-based flip
    would not actually move the menu above the button — it would only shift the anchor. */

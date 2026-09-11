@@ -10014,8 +10014,9 @@ function SpecSelectionToolbar({ position, onAction, chatTargets = [], onMenuOpen
                 className={`editor-selection-toolbar-btn is-text editor-selection-toolbar-selection-main${primaryAction.accent ? ` is-${primaryAction.accent}` : ''}`}
                 aria-label={primaryAction.label}
                 title={primaryAction.title ?? primaryAction.label}
-                onMouseDown={(event) => handleActionMouseDown(event, primaryAction.id)}
-              >
+              onMouseDown={(event) => handleActionMouseDown(event, primaryAction.id)}
+            >
+                {primaryAction.iconName ? <Icon name={primaryAction.iconName} size={16} /> : null}
                 <span className="editor-selection-toolbar-text">{primaryAction.label}</span>
               </button>
               <span className="editor-selection-toolbar-separator is-split" aria-hidden="true" />
@@ -35104,6 +35105,7 @@ export default function App() {
         handleOpenChatAttachment(attachment, { archived: false });
       }}
       launchSource={globalReviewLaunchSource}
+      popupClassName={globalReviewLaunchSource === 'shortcut' ? 'is-control-control-launch' : ''}
     />
   );
 

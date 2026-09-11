@@ -8,7 +8,7 @@ const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
   { id: 'selection-start', kind: 'separator' },
   { id: 'ask-ai', kind: 'iconText', iconUrl: airIconUrl, text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
-  { id: 'comment', kind: 'text', text: 'Add Note', ariaLabel: 'Add Note' },
+  { id: 'comment', kind: 'iconText', iconName: 'general/balloon', text: 'Add Note', ariaLabel: 'Add Note' },
   { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
   { id: 'search', kind: 'icon', iconName: 'general/search_dark', ariaLabel: 'Search' },
@@ -145,6 +145,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       title={action.title ?? action.label}
       onMouseDown={(event) => handleActionMouseDown(event, action.id)}
     >
+      {action.iconName ? <Icon name={action.iconName} size={16} /> : null}
       <span className="editor-selection-toolbar-text">{action.label}</span>
     </button>
   );
