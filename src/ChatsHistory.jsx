@@ -151,6 +151,7 @@ function ChatsHistoryToolWindow({
       {
         id: 'spring-petclinic',
         name: 'spring-petclinic',
+        branch: 'code-notes-v3-release',
         initials: 'SP',
         status: 'Opened Project',
         color: 'blue',
@@ -159,6 +160,7 @@ function ChatsHistoryToolWindow({
       {
         id: 'sdd-mvp',
         name: 'SDD-mvp',
+        branch: 'marketing-video',
         initials: 'SD',
         status: 'Attached',
         color: 'neutral',
@@ -266,7 +268,7 @@ function ChatsHistoryToolWindow({
               >
                 <span className={`agent-sessions-project-avatar is-${project.color}`}>{project.initials}</span>
                 <span className="agent-sessions-project-name">{project.name}</span>
-                <span className="agent-sessions-project-status">{project.status}</span>
+                <span className="agent-sessions-project-branch">[{project.branch}]</span>
                 {projectIndex > 0 ? <Aiux550ChevronIcon expanded /> : null}
                 {projectIndex > 0 ? (
                   <span className="agent-sessions-project-actions">

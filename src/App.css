@@ -24657,7 +24657,8 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-.agent-sessions-project-status {
+.agent-sessions-project-status,
+.agent-sessions-project-branch {
   flex: 0 0 auto;
   color: #74777e;
   white-space: nowrap;
