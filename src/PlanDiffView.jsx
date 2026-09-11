@@ -2091,6 +2091,7 @@ export function AiReviewComposerDialog({
   initialInstructions = '',
   initialSession = null,
   availableSessions = [],
+  renderSessionPicker = null,
   initialShowQuickActions = true,
   currentScopeLabel = 'New changes',
   currentFileLabel = 'VisitController.java',
@@ -2137,7 +2138,7 @@ export function AiReviewComposerDialog({
     setSelectedSessionId(initialSession?.id ?? null);
     setInstructions(initialInstructions);
     setScopeId(initialScopeId);
-    setAttachments(sourceAttachments);
+    setAttachments(isShortcutLaunch ? [] : sourceAttachments);
     setAttachmentsExpanded(false);
     setShowQuickActions(initialShowQuickActions);
     setAddContextRect(null);
@@ -2150,7 +2151,9 @@ export function AiReviewComposerDialog({
     ? [initialSession, ...normalizedAvailableSessions.filter((item) => item.id !== initialSession.id)]
     : normalizedAvailableSessions;
   const selectedSession = sessionOptions.find((item) => item.id === selectedSessionId) ?? null;
-  const canStartReview = attachments.length > 0 && Boolean(selectedAgent?.id) && Boolean(modelId);
+  const canStartReview = (isShortcutLaunch ? instructions.trim().length > 0 : attachments.length > 0)
+    && Boolean(selectedAgent?.id)
+    && Boolean(modelId);
   const selectAgent = (agent) => {
     setSelectedAgentId(agent.id);
     setOpenMenu(null);
@@ -2294,7 +2297,26 @@ export function AiReviewComposerDialog({
                     <span>{selectedSession ? selectedSession.label : 'New Session'}</span>
                     <Icon name="general/chevronDown" size={16} />
                   </button>
-                  {renderMenu('session', (
+                  {openMenu === 'session' && typeof renderSessionPicker === 'function'
+                    ? (
+                        <div className="plan-diff-ai-review-submenu plan-diff-ai-review-submenu-session">
+                          {renderSessionPicker({
+                            selectedSessionId,
+                            onSelectSession: (item) => {
+                              setSelectedSessionId(item?.id ?? null);
+                              setInstructions(typeof item?.commentText === 'string' ? item.commentText : '');
+                              setOpenMenu(null);
+                            },
+                            onCreateNewSession: () => {
+                              setSelectedSessionId(null);
+                              setInstructions('');
+                              setOpenMenu(null);
+                            },
+                            onDismiss: () => setOpenMenu(null),
+                          })}
+                        </div>
+                      )
+                    : renderMenu('session', (
                     <>
                       <PopupCell
                         selected={!selectedSessionId}
@@ -2821,7 +2843,8 @@ export function DiffInlineCommentPopup({
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
-  const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
+  const hasCommentText = typeof value === 'string' && value.trim().length > 0;
+  const canSubmitComment = hasCommentText && (!requireSubmitTargetChoice || Boolean(submitAttachTarget));
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -2995,7 +3018,7 @@ export function DiffInlineCommentPopup({
   }, [normalizedDefaultSubmitAttachMode, normalizedDefaultSubmitTargetKey, submitAttachTarget]);
 
   const handleSubmit = (attachMode = submitAttachMode, submitAction = selectedSubmitAction) => {
-    if (!canSubmitComment) return;
+    if (!hasCommentText) return;
     // Spec 12: when several sessions changed this file and the selected lines
     // do not pin the comment to one of them, the recipient cannot be guessed —
     // ask instead of sending somewhere plausible. Only the first attempt is

@@ -31693,9 +31693,18 @@ export default function App() {
   // A plain source file promoted directly from the editor has no owner yet.
   // Do not silently treat whichever chat happens to be selected as its owner:
   // the toolbar must show the session picker until the reviewer chooses one.
+  const isCommitOriginDiffWithoutSession = Boolean(
+    isDiffTab
+    && activeTabContent?.diffOpenedFromCommitToolWindow
+    && !activePlanDiffContextChatId
+  );
   const activeDiffOriginChatId = activePlanDiffContextChatId
-    ?? (isPlainFileOverlayTab ? null : planDiffContextChatId);
+    ?? ((isPlainFileOverlayTab || isCommitOriginDiffWithoutSession) ? null : planDiffContextChatId);
   const hasActivePlainFileCommentSession = !isPlainFileOverlayTab || Boolean(activePlanDiffContextChatId);
+  const requiresExplicitDiffCommentSession = (
+    (isPlainFileOverlayTab && !hasActivePlainFileCommentSession)
+    || isCommitOriginDiffWithoutSession
+  );
   // The review-scope lookup keys files by the *source* file's own tab id, not
   // the diff tab's id — on a diff tab that's activePlanDiffSourceTabId; on a
   // plain-file-overlay tab (jumped to source) the source file IS the active
@@ -35112,6 +35121,30 @@ export default function App() {
         time: 'Current',
       } : null}
       availableSessions={globalDialogSessionOptions}
+      renderSessionPicker={({ selectedSessionId, onSelectSession, onCreateNewSession }) => (
+        <ChatListPopup
+          className="plan-diff-launcher-session-popup"
+          style={{ position: 'static', width: 420, maxWidth: 'calc(100vw - 24px)' }}
+          selectedChatId={selectedSessionId}
+          activeChatId={selectedAiChatId}
+          onSelectChat={(chatId) => {
+            const option = globalDialogSessionOptions.find((item) => item.id === chatId);
+            if (option) onSelectSession(option);
+          }}
+          recentItems={aiChatRecentItems.slice(0, 5)}
+          documentItems={[]}
+          olderItems={[]}
+          hideSearch
+          showOlderSections={false}
+          hideMeta
+          showActiveBadge={false}
+          footerAction={{
+            label: 'Create New Chat',
+            icon: 'general/add',
+            onClick: onCreateNewSession,
+          }}
+        />
+      )}
       initialShowQuickActions={!globalReviewLaunchSource.startsWith('chat-')}
       currentScopeLabel="Local changes"
       currentFileLabel={globalAiReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}
@@ -36986,7 +37019,7 @@ export default function App() {
                     documentContextIcon="fileTypes/markdown"
                     documentContextSessionLabel={activePlanDiffDocumentContextSessionLabel}
                     documentContextSourceTabId={activePlanDiffDocumentSourceTabId}
-                    defaultSubmitAttachMode={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                    defaultSubmitAttachMode={requiresExplicitDiffCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
                     lockSubmitTarget={Boolean(
@@ -36994,20 +37027,20 @@ export default function App() {
                       && activePlanDiffContextChatId
                       && !activeTabContent?.diffOpenedFromCommitToolWindow
                     )}
-                    requireSubmitTargetChoice={isPlainFileOverlayTab && !hasActivePlainFileCommentSession}
-                    defaultSubmitTargetLabel={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                    requireSubmitTargetChoice={requiresExplicitDiffCommentSession}
+                    defaultSubmitTargetLabel={requiresExplicitDiffCommentSession
                       ? 'Choose chat session'
                       : activePlanDiffDefaultSubmitTargetLabel}
-                    defaultSubmitTargetIcon={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                    defaultSubmitTargetIcon={requiresExplicitDiffCommentSession
                       ? 'aiAssistant/toolWindowChat@20x20'
                       : activePlanDiffDefaultSubmitTargetIcon}
-                    defaultSubmitTargetKey={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
+                    defaultSubmitTargetKey={requiresExplicitDiffCommentSession
                       ? ''
                       : activePlanDiffDefaultSubmitTargetKey}
                     submitSessionChoices={commentSubmitSessionChoices}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
-                    commentContextLabel={hasActivePlainFileCommentSession ? planDiffContextChatTitle : ''}
+                    commentContextLabel={requiresExplicitDiffCommentSession ? '' : planDiffContextChatTitle}
                     onOpenChat={(activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
                       { source: { tabId: activeDiffOriginSourceTabId } },
                       activeDiffOriginChatId,

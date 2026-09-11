@@ -7693,7 +7693,7 @@ body {
 /* Control+Control uses the wide Codex launcher shown by the IDE. Its input area is deliberately
    half the reference height so it remains a quick command surface rather than a full modal. */
 .plan-diff-ai-review-dialog.is-control-control-launch {
-  width: min(980px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
   border-color: #5b5e64;
   border-radius: 10px;
@@ -7701,7 +7701,7 @@ body {
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-header {
-  min-height: 54px;
+  min-height: 44px;
   justify-content: center;
   padding: 8px 20px;
   border-bottom: 1px solid #34363b;
@@ -7723,7 +7723,7 @@ body {
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-main {
-  min-height: 210px;
+  min-height: 124px;
   margin: 0;
   padding: 18px 20px 8px;
   border: 0;
@@ -7731,7 +7731,7 @@ body {
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-main > textarea {
-  min-height: 130px;
+  min-height: 62px;
   padding-top: 0;
   font-size: 16px;
   line-height: 22px;
@@ -7749,10 +7749,14 @@ body {
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-footer {
-  min-height: 46px;
+  min-height: 40px;
   padding: 7px 20px;
   border-top: 1px solid #34363b;
   gap: 6px;
+}
+
+.plan-diff-ai-review-dialog .plan-diff-launcher-session-popup {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
 }
 
 .plan-diff-ai-review-dialog.is-control-control-launch .plan-diff-ai-review-dialog-footer > .plan-diff-ai-review-dialog-picker {
