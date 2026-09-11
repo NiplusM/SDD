@@ -32010,10 +32010,9 @@ export default function App() {
         composerSequenceKey: `file-context-${selectedAiChatId}-${diffTabId}`,
         label: isPlainFile
           ? sourceLabel
-          : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
-        // The chat composer represents a review context, so keep the diff
-        // glyph. The shortcut launcher below deliberately uses the file type
-        // glyph for its attachment list.
+          : `Diff · ${sourceLabel}`,
+        // A diff is one attachment type regardless of whether it was opened
+        // from a chat or from Commit.
         icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : DIFF_TAB_ICON_NAME,
         commentCount: selectedSessionCommentCount,
         updated: hasAgentReply,
@@ -35087,8 +35086,8 @@ export default function App() {
       return [{
         id: `diff-${item.id}-${diffTabId}`,
         composerSequenceKey: `file-context-${item.id}-${diffTabId}`,
-        label: isPlainFile ? sourceLabel : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
-        icon: isPlainFile ? 'fileTypes/text' : getCommitFileIcon(sourceLabel),
+        label: isPlainFile ? sourceLabel : `Diff · ${sourceLabel}`,
+        icon: isPlainFile ? 'fileTypes/text' : DIFF_TAB_ICON_NAME,
         commentCount,
         diffComments: comments,
         diffTabId,
