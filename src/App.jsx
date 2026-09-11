@@ -31593,7 +31593,10 @@ export default function App() {
   const activePlanDiffCommentChatId = typeof activeTabContent?.diffActiveCommentChatId === 'string'
     && activeTabContent.diffActiveCommentChatId.length > 0
     ? activeTabContent.diffActiveCommentChatId
-    : selectedAiChatId;
+    // A VCS/Commit-origin diff is deliberately unowned until the reviewer
+    // picks a recipient. Do not surface whichever chat happens to be active
+    // elsewhere as if it had been opened for Unassigned Changes.
+    : (activeTabContent?.diffOpenedFromCommitToolWindow ? null : selectedAiChatId);
   const activePlanDiffComments =
     (isDiffTab || isPlainFileOverlayTab) && activePlanDiffData
       ? mergeStoredDiffCommentsStates(
