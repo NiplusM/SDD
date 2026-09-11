@@ -20473,7 +20473,6 @@ function NewSessionFooterPicker({ id, label, options, open, onOpenChange, onSele
       >
         {leading}
         <span>{label}</span>
-        <Icon name="general/chevronDown" size={16} />
       </button>
       {open && (
         <div className="aiux543-new-session-setting-menu" role="menu" aria-label={label}>
