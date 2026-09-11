@@ -31790,15 +31790,21 @@ export default function App() {
     };
 
     const handleCreateNewChat = () => {
-      onSelectTarget?.({
-        // This is only a virtual target while the user is composing. The real
-        // chat is created on submit, not when this picker item is selected.
-        attachMode: 'new',
-        targetChatId: null,
-        targetDocumentTabId: null,
-        label: 'New Chat',
+      // A comment target is a real draft as soon as it is chosen. This lets
+      // the reviewer inspect its empty composer before writing the first
+      // note, and guarantees that the diff's "open chat" affordance returns
+      // to this same draft after the note becomes an attachment.
+      const session = createEmptyAiChatSession({
+        title: 'New Session',
         icon: 'codex',
-        buttonLabel: 'Add to New Chat',
+      });
+      onSelectTarget?.({
+        attachMode: 'current',
+        targetChatId: session.id,
+        targetDocumentTabId: null,
+        label: session.title,
+        icon: session.icon,
+        buttonLabel: `Add to ${session.title}`,
         createdNewChat: true,
       });
     };
@@ -31834,6 +31840,7 @@ export default function App() {
   }, [
     activePlanDiffDocumentSourceTabId,
     aiChatRecentItems,
+    createEmptyAiChatSession,
     getAiChatListItemById,
     getAiChatScenarioById,
     ideTabs,
