@@ -21151,6 +21151,16 @@ function AiChatTabView({
   };
   const rawEditorComposerAttachmentDraftKeys = rawEditorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
   const rawEditorComposerAttachmentDraftSignature = rawEditorComposerAttachmentDraftKeys.join('\n');
+  // The chat transcript is the authoritative record of what has actually
+  // been submitted. A split view may recreate its composer while the agent is
+  // responding, but it must never offer the exact same note batch again.
+  // This deliberately uses the stable diff-note key: a newly added comment
+  // changes that key and therefore appears as fresh context.
+  const sentCommentAttachmentDraftKeys = new Set(
+    sentMessages.flatMap((message) => (
+      Array.isArray(message?.attachments) ? message.attachments : []
+    )).map((attachment, index) => getEditorComposerAttachmentDraftKey(attachment, index)),
+  );
   useEffect(() => {
     // Once a dismissed attachment's underlying content changes (e.g. a new
     // comment gets added to a note that was already sent), it should resurface
@@ -21163,6 +21173,7 @@ function AiChatTabView({
   }, [chatId, rawEditorComposerAttachmentDraftSignature]);
   const editorComposerAttachments = rawEditorComposerAttachments.filter((attachment, index) => (
     !dismissedComposerAttachmentKeys.has(getEditorComposerAttachmentDraftKey(attachment, index))
+    && !sentCommentAttachmentDraftKeys.has(getEditorComposerAttachmentDraftKey(attachment, index))
   ));
   const editorComposerAttachmentDraftKeys = editorComposerAttachments.map(getEditorComposerAttachmentDraftKey);
   const hasComposerCommentAttachment = editorComposerAttachments
