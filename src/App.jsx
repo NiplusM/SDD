@@ -35348,6 +35348,15 @@ export default function App() {
   const openHistoryChangedFileInReviewScope = useCallback((file, { chatId = null } = {}) => {
     const targetChatId = chatId ?? selectedAiChatId;
     if (!file || !targetChatId) return null;
+    // A file nested beneath an Agent Sessions row bypasses that row's click
+    // handler. Restore the project which owns the target chat before opening
+    // its split diff, rather than retaining the currently selected attached
+    // project and treating the file as new composer context there.
+    const targetWorkspace = getAiChatWorkspaceContext(
+      targetChatId,
+      getAiChatScenarioById(targetChatId),
+    );
+    setActiveWorkspaceProjectId(targetWorkspace.type === 'foreign' ? 'sdd-mvp' : 'spring-petclinic');
     const scopeRequests = buildChatReviewScopeRequests(getAiChatScenarioById(targetChatId));
     const fileLabel = String(
       file?.label
