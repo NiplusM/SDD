@@ -36536,6 +36536,13 @@ export default function App() {
             ) : null}
             rightActions={(
               <>
+                {isAttachedWorkspaceProject ? (
+                  <MainToolbarDropdown
+                    className="attached-project-session-control"
+                    icon={<Icon name="nodes/folder" size={16} />}
+                    text="SDD-code-notes-v1"
+                  />
+                ) : null}
                 {finalToolbarSessionControl}
                 <MainToolbarIconButton icon="general/search@20x20" tooltip="Search Everywhere" />
                 <MainToolbarIconButton icon="general/settings@20x20" tooltip="Settings" onClick={() => setIsSettingsDialogOpen(true)} />
