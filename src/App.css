@@ -14306,12 +14306,8 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   font-family: Inter, system-ui, sans-serif;
 }
 
-.aiux543-chat-all-changes {
+.aiux543-chat-header-all-changes {
   all: unset;
-  position: absolute;
-  z-index: 2;
-  top: 10px;
-  right: 14px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -14325,11 +14321,12 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   font-weight: 600;
 }
 
-.aiux543-chat-all-changes:hover,
-.aiux543-chat-all-changes:focus-visible { background: rgba(255, 255, 255, 0.08); }
-.aiux543-chat-all-changes-counts { display: inline-flex; gap: 3px; margin-left: 2px; }
-.aiux543-chat-all-changes-counts span:first-child { color: #57a773; }
-.aiux543-chat-all-changes-counts span:last-child { color: #d46e6e; }
+.aiux543-chat-header-all-changes:hover:not(:disabled),
+.aiux543-chat-header-all-changes:focus-visible { background: rgba(255, 255, 255, 0.08); }
+.aiux543-chat-header-all-changes:disabled { cursor: default; opacity: .55; }
+.aiux543-chat-header-all-changes-counts { display: inline-flex; gap: 3px; margin-left: 2px; }
+.aiux543-chat-header-all-changes-counts span:first-child { color: #57a773; }
+.aiux543-chat-header-all-changes-counts span:last-child { color: #d46e6e; }
 
 .aiux543-chat-project-changes-toolbar {
   display: flex;

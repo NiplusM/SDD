@@ -19064,6 +19064,22 @@ function ChatProjectChangesToolbar({
             <span>Cherry-pick</span>
           </button>
         ) : null}
+        {hasUncommittedChanges && allChangesScope ? (
+          <button
+            type="button"
+            className="aiux543-chat-header-all-changes"
+            aria-label="Open All Changes"
+            disabled={reviewDisabled}
+            onClick={() => openScope(allChangesScope)}
+          >
+            <ChatChangeScopeInspectionGlyph />
+            <span>All Changes</span>
+            <span className="aiux543-chat-header-all-changes-counts">
+              <span>+{allChangesScope.added}</span>
+              <span>-{allChangesScope.removed}</span>
+            </span>
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -21478,21 +21494,6 @@ function AiChatTabView({
 
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
-      {liveChatChangeScopeOptions.find((scope) => scope.id === 'all-project-changes') && (
-        <button
-          type="button"
-          className="aiux543-chat-all-changes"
-          aria-label="Open All Changes"
-          onClick={() => onOpenChangeScope?.(chatId, 'all-project-changes')}
-        >
-          <ChatChangeScopeInspectionGlyph />
-          <span>All Changes</span>
-          {(() => {
-            const scope = liveChatChangeScopeOptions.find((item) => item.id === 'all-project-changes');
-            return <span className="aiux543-chat-all-changes-counts"><span>+{scope.added}</span><span>-{scope.removed}</span></span>;
-          })()}
-        </button>
-      )}
       {changeScopePanelCollapsed && liveChatChangeScopeOptions.length > 0 && onOpenChangeScope && (
         <div className="aiux543-chat-change-scope-entry">
           <ChatChangeScopeMenu
