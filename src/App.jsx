@@ -23134,6 +23134,11 @@ export default function App() {
   const [aiChatAutoSendRequest, setAiChatAutoSendRequest] = useState(null);
   const handledAutoSendNonceRef = useRef(null);
   const [aiChatComposerDiffTabByChatId, setAiChatComposerDiffTabByChatId] = useState({});
+  // A sent note stays visible in its diff and in the message transcript, but it
+  // must no longer be offered as unsent context in the composer. Keep this at
+  // the owner level (rather than only in AiChatTabView) so a remount while the
+  // agent is replying cannot bring the chip back.
+  const [sentCommentAttachmentSignaturesByChatId, setSentCommentAttachmentSignaturesByChatId] = useState({});
   const [aiChatSentMessagesByChatId, setAiChatSentMessagesByChatId] = useState({});
   const [aiChatComposerDraftByChatId, setAiChatComposerDraftByChatId] = useState({});
   const [aiChatChangeScopePanelExpandedByChatId, setAiChatChangeScopePanelExpandedByChatId] = useState({});
@@ -32173,7 +32178,16 @@ export default function App() {
         });
     }
 
-    return attachments;
+    const sentSignaturesByDiffTabId = sentCommentAttachmentSignaturesByChatId[selectedAiChatId] ?? {};
+    // Suppress only the exact batch that was sent. If the user adds another
+    // note to the same diff afterwards, its changed signature makes the file
+    // attachment available in the composer again.
+    return attachments.filter((attachment) => {
+      if (!attachment?.diffTabId || !attachment?.diffComments) return true;
+      const sentSignature = sentSignaturesByDiffTabId[attachment.diffTabId];
+      if (!sentSignature) return true;
+      return sentSignature !== JSON.stringify(normalizeStoredDiffCommentsState(attachment.diffComments));
+    });
   }, [
     aiChatComposerDiffTabByChatId,
     aiChatAnnotationsByChatId,
@@ -32190,6 +32204,7 @@ export default function App() {
     selectedAiChatScenario?.icon,
     selectedAiChatScenario?.showAttachmentsInComposer,
     selectedAiChatScenario?.title,
+    sentCommentAttachmentSignaturesByChatId,
   ]);
   const aiChatComposerDiffAttachment = aiChatComposerDiffAttachments.find((attachment) => (
     attachment?.diffRequest || attachment?.diffTabId || attachment?.diffComments
@@ -33465,6 +33480,20 @@ export default function App() {
         if (!Array.isArray(prev[targetChatId]) || prev[targetChatId].length === 0) return prev;
         const { [targetChatId]: _removed, ...rest } = prev;
         return rest;
+      });
+    }
+
+    if (diffAttachmentsToClear.length > 0) {
+      setSentCommentAttachmentSignaturesByChatId((prev) => {
+        const previousForChat = prev[targetChatId] ?? {};
+        const nextForChat = { ...previousForChat };
+        diffAttachmentsToClear.forEach((attachment) => {
+          const comments = normalizeStoredDiffCommentsState(attachment.diffComments);
+          if (Object.keys(comments).length > 0) {
+            nextForChat[attachment.diffTabId] = JSON.stringify(comments);
+          }
+        });
+        return { ...prev, [targetChatId]: nextForChat };
       });
     }
 
