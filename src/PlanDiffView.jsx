@@ -2305,11 +2305,13 @@ export function AiReviewComposerDialog({
                             onSelectSession: (item) => {
                               setSelectedSessionId(item?.id ?? null);
                               setInstructions(typeof item?.commentText === 'string' ? item.commentText : '');
+                              setAttachments(Array.isArray(item?.attachments) ? item.attachments : []);
                               setOpenMenu(null);
                             },
                             onCreateNewSession: () => {
                               setSelectedSessionId(null);
                               setInstructions('');
+                              setAttachments([]);
                               setOpenMenu(null);
                             },
                             onDismiss: () => setOpenMenu(null),
@@ -2333,6 +2335,7 @@ export function AiReviewComposerDialog({
                           onClick={() => {
                             setSelectedSessionId(item.id);
                             setInstructions(typeof item.commentText === 'string' ? item.commentText : '');
+                            setAttachments(Array.isArray(item.attachments) ? item.attachments : []);
                             setOpenMenu(null);
                           }}
                         >

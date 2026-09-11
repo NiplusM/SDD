@@ -35022,6 +35022,12 @@ export default function App() {
 
   const globalDialogSessionOptions = aiChatRecentItems.map((item) => {
     const scenario = aiChatScenarios[item.id] ?? null;
+    const sessionAttachments = [
+      ...(Array.isArray(scenario?.attachments) ? scenario.attachments : []),
+      ...(aiChatSentMessagesByChatId[item.id] ?? []).flatMap((message) => (
+        Array.isArray(message?.attachments) ? message.attachments : []
+      )),
+    ];
     const commentTexts = [
       ...(Array.isArray(scenario?.attachments) ? scenario.attachments : []),
       ...(aiChatSentMessagesByChatId[item.id] ?? []).flatMap((message) => (
@@ -35047,6 +35053,14 @@ export default function App() {
       label: item.title || scenario?.title || 'New Session',
       time: item.time || '',
       commentText: uniqueComments.join('\n\n'),
+      // Selecting an existing chat in the launcher restores the diff context
+      // which already contains its comments, rather than only changing the
+      // session name in the header.
+      attachments: sessionAttachments.filter((attachment, index) => (
+        attachment?.id
+        && getAiChatAttachmentCommentPreviewItems(attachment).length > 0
+        && sessionAttachments.findIndex((candidate) => candidate?.id === attachment.id) === index
+      )),
     };
   });
 
