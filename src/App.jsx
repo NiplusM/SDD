@@ -10101,7 +10101,7 @@ function SpecSelectionToolbar({ position, onAction, chatTargets = [], onMenuOpen
                                 <span className="editor-selection-toolbar-chat-target-icon" aria-hidden="true">
                                   <Icon name="general/add" size={16} />
                                 </span>
-                                <span className="editor-selection-toolbar-chat-target-title">Create New Chat</span>
+                                <span className="editor-selection-toolbar-chat-target-title">Create new chat session</span>
                               </button>
                             </div>
                           )}
@@ -31218,7 +31218,7 @@ export default function App() {
       ?? 'Spec';
 
     const requestedChatId = typeof chatId === 'string' ? chatId.trim() : '';
-    // "Create New Chat" in the target submenu.
+    // "Create new chat session" in the target submenu.
     const createsNewChat = requestedChatId === NEW_CHAT_TARGET_ID;
     const boundChatId = createsNewChat
       ? createEmptyAiChatSession({ title: 'New Chat', icon: 'claude', select: false }).id
@@ -31362,7 +31362,7 @@ export default function App() {
         : '';
       if (!selectedText) return;
 
-      // "Create New Chat" in the target submenu: the chat is made here and the quote lands in it.
+      // "Create new chat session" in the target submenu: the chat is made here and the quote lands in it.
       const createsNewChat = targetContextChatId === NEW_CHAT_TARGET_ID;
       const fixedChatId = typeof toolbarState?.fixedChatId === 'string'
         ? toolbarState.fixedChatId.trim()
@@ -31823,7 +31823,7 @@ export default function App() {
             hideMeta
             showActiveBadge={false}
             footerAction={canCreateNewChat && !hasSelectedCreatedNewChat ? {
-              label: 'Create New Chat',
+              label: 'Create new chat session',
               icon: 'general/add',
               onClick: handleCreateNewChat,
             } : null}
@@ -35102,7 +35102,7 @@ export default function App() {
           hideMeta
           showActiveBadge={false}
           footerAction={{
-            label: 'Create New Chat',
+            label: 'Create new chat session',
             icon: 'general/add',
             onClick: onCreateNewSession,
           }}
