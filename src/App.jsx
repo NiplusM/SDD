@@ -35501,9 +35501,6 @@ export default function App() {
       request?.source?.tabId === selectedRequestId
     )) ?? null;
     if (!selectedDiffRequest) return null;
-    const targetChatId = file.groupId && aiChatScenarios[file.groupId]
-      ? file.groupId
-      : null;
     // Commit uses the IDE's regular editor diff: the Commit tool window stays
     // open on the left, while the selected file gets a full Diff tab. It is
     // intentionally not promoted into the chat-owned review split.
@@ -35514,7 +35511,10 @@ export default function App() {
     setDiffGutterCommentsEnabled(true);
     return openPlanDiffTab({
       ...selectedDiffRequest,
-      contextChatId: targetChatId,
+      // A Commit diff may be grouped visually under a session, but the
+      // comment recipient is deliberately not inferred from that grouping.
+      // The reviewer must choose it in the composer before writing/sending.
+      contextChatId: null,
       fileCount: 1,
       showScopeControl: false,
       allowSendToAgentAction: false,
