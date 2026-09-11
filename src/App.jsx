@@ -35066,6 +35066,8 @@ export default function App() {
         sourceLabel,
         isPlainFile,
         reviewOrigin: tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'vcs' : 'agent',
+        codeRows: fileData?.rows ?? [],
+        language: fileData?.language ?? 'text',
       }];
     });
     const sessionAttachments = [

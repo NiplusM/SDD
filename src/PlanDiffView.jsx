@@ -2412,6 +2412,12 @@ export function AiReviewComposerDialog({
                   onExpandedChange={setAttachmentsExpanded}
                   onOpen={onOpenAttachment ?? undefined}
                   onRemove={(attachment) => removeAttachment(attachment.id)}
+                  renderCodeSnippet={(item, attachment) => {
+                    const rows = Array.isArray(attachment?.codeRows) ? attachment.codeRows : [];
+                    const targetRows = item?.rowId ? rows.filter((row) => row.id === item.rowId) : rows.slice(0, 4);
+                    if (targetRows.length === 0) return null;
+                    return <PlanDiffCommentCodeSnippet rows={targetRows} language={attachment?.language ?? 'text'} targetRowIds={item?.rowId ? [item.rowId] : []} />;
+                  }}
                   className="plan-diff-ai-review-dialog-attachments"
                 />
               </div>

@@ -551,7 +551,7 @@ export function AiChatAttachmentStrip({
                 <AttachmentCommentHoverCard
                   items={commentPreviewItems}
                   contextLabel={attachment.label}
-                  renderCodeSnippet={renderCodeSnippet}
+                  renderCodeSnippet={(item) => renderCodeSnippet?.(item, attachment)}
                   onNavigate={onNavigateComment}
                   scopeLabel={getAiChatAttachmentScopeLabel(attachment)}
                 />
