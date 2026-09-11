@@ -35023,11 +35023,43 @@ export default function App() {
 
   const globalDialogSessionOptions = aiChatRecentItems.map((item) => {
     const scenario = aiChatScenarios[item.id] ?? null;
+    // Composer diff chips are derived live from open diff tabs rather than
+    // stored on the chat scenario. Recreate that per-session view here, so
+    // selecting a chat in Control+Control restores exactly the chips visible
+    // in that chat's already-open composer.
+    const liveCommentAttachments = Object.entries(ideTabContents).flatMap(([diffTabId, tabContent]) => {
+      if (!tabContent?.diffData && !tabContent?.plainFileData) return [];
+      const comments = normalizeStoredDiffCommentsState(
+        normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId)[item.id]?.comments,
+      );
+      const commentCount = countCommentThreadMessages(Object.values(comments).flat());
+      if (commentCount === 0) return [];
+      const isPlainFile = !tabContent.diffData && Boolean(tabContent.plainFileData);
+      const fileData = tabContent.diffData ?? tabContent.plainFileData;
+      const sourceTabId = isPlainFile ? diffTabId : (tabContent.diffSourceTabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+      const sourceLabel = fileData?.sourceTabLabel ?? 'VisitController.java';
+      return [{
+        id: `diff-${item.id}-${diffTabId}`,
+        composerSequenceKey: `file-context-${item.id}-${diffTabId}`,
+        label: isPlainFile ? sourceLabel : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
+        icon: isPlainFile ? 'fileTypes/text' : 'vcs/diff',
+        commentCount,
+        diffComments: comments,
+        diffTabId,
+        sourceTabId,
+        sourceLabel,
+        isPlainFile,
+        reviewOrigin: tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'vcs' : 'agent',
+      }];
+    });
     const sessionAttachments = [
       ...(Array.isArray(scenario?.attachments) ? scenario.attachments : []),
       ...(aiChatSentMessagesByChatId[item.id] ?? []).flatMap((message) => (
         Array.isArray(message?.attachments) ? message.attachments : []
       )),
+      ...(aiChatSelectionContextByChatId[item.id] ?? []),
+      ...(aiChatExplicitFileContextByChatId[item.id] ?? []),
+      ...liveCommentAttachments,
     ];
     const commentTexts = [
       ...(Array.isArray(scenario?.attachments) ? scenario.attachments : []),
