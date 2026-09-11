@@ -23087,6 +23087,21 @@ function renderAiChatAnnotatedText(text = '', annotations = [], onEditAnnotation
   return parts;
 }
 
+// The response pipeline enriches a stored note with pending/resolution fields.
+// Those fields are presentation state, not a new composer batch: its stable
+// identity is the anchored rows and comment text.
+function getSentDiffCommentAttachmentSignature(comments) {
+  const normalized = normalizeStoredDiffCommentsState(comments);
+  return JSON.stringify(
+    Object.entries(normalized)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([rowId, rowComments]) => [
+        rowId,
+        rowComments.map((comment) => getStoredCommentText(comment).trim()),
+      ]),
+  );
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -32186,7 +32201,7 @@ export default function App() {
       if (!attachment?.diffTabId || !attachment?.diffComments) return true;
       const sentSignature = sentSignaturesByDiffTabId[attachment.diffTabId];
       if (!sentSignature) return true;
-      return sentSignature !== JSON.stringify(normalizeStoredDiffCommentsState(attachment.diffComments));
+      return sentSignature !== getSentDiffCommentAttachmentSignature(attachment.diffComments);
     });
   }, [
     aiChatComposerDiffTabByChatId,
@@ -33490,7 +33505,7 @@ export default function App() {
         diffAttachmentsToClear.forEach((attachment) => {
           const comments = normalizeStoredDiffCommentsState(attachment.diffComments);
           if (Object.keys(comments).length > 0) {
-            nextForChat[attachment.diffTabId] = JSON.stringify(comments);
+            nextForChat[attachment.diffTabId] = getSentDiffCommentAttachmentSignature(comments);
           }
         });
         return { ...prev, [targetChatId]: nextForChat };
