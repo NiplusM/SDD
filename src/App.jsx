@@ -4784,6 +4784,30 @@ function mergeStoredDiffCommentsStates(...states) {
   }, {});
 }
 
+function getReviewDiffPhysicalFileIdentity(tabId = null, content = null) {
+  if (!content?.diffData || content.diffIsArchivedSnapshot) return null;
+  const path = typeof content.reviewFilePath === 'string'
+    ? content.reviewFilePath.trim().replace(/\\/gu, '/').toLowerCase()
+    : '';
+  const label = String(
+    content.diffData?.sourceTabLabel
+      ?? content.plainFileData?.sourceTabLabel
+      ?? content.diffSourceLabel
+      ?? '',
+  ).trim().toLowerCase();
+  if (!path && !label) return null;
+  return { tabId, path, label };
+}
+
+function reviewDiffsRepresentSamePhysicalFile(leftTabId, leftContent, rightTabId, rightContent) {
+  if (!leftTabId || !rightTabId || leftTabId === rightTabId) return false;
+  const left = getReviewDiffPhysicalFileIdentity(leftTabId, leftContent);
+  const right = getReviewDiffPhysicalFileIdentity(rightTabId, rightContent);
+  if (!left || !right) return false;
+  if (left.path && right.path) return left.path === right.path;
+  return Boolean(left.label && right.label && left.label === right.label);
+}
+
 function getAiChatListItem(chatId) {
   return [...AI_CHAT_RECENT_ITEMS, ...AI_CHAT_OLDER_THAN_7_ITEMS]
     .find((item) => item.id === chatId) ?? null;
@@ -25310,7 +25334,32 @@ export default function App() {
     }
     setIdeTabContents((prev) => {
       const existingDiffTabContent = prev[diffTabId] ?? {};
-      const previousSessionComments = normalizeDiffSessionCommentsByChatId(existingDiffTabContent.diffSessionCommentsByChatId);
+      const nextIdentityContent = {
+        ...existingDiffTabContent,
+        diffData,
+        diffIsArchivedSnapshot: Boolean(isArchivedSnapshot),
+        reviewFilePath,
+      };
+      const siblingDiffContents = Object.entries(prev)
+        .filter(([candidateTabId, candidateContent]) => reviewDiffsRepresentSamePhysicalFile(
+          diffTabId,
+          nextIdentityContent,
+          candidateTabId,
+          candidateContent,
+        ))
+        .map(([, candidateContent]) => candidateContent);
+      const previousSessionComments = siblingDiffContents.reduce((sessions, siblingContent) => {
+        Object.entries(normalizeDiffSessionCommentsByChatId(siblingContent.diffSessionCommentsByChatId))
+          .forEach(([chatId, session]) => {
+            const previous = sessions[chatId];
+            sessions[chatId] = {
+              ...(previous ?? session),
+              ...session,
+              comments: mergeStoredDiffCommentsStates(previous?.comments, session.comments),
+            };
+          });
+        return sessions;
+      }, normalizeDiffSessionCommentsByChatId(existingDiffTabContent.diffSessionCommentsByChatId));
       // Opening/closing the chat pane can revisit this already-open diff. Its
       // generated rows may be refreshed, but its inline notes are state, not
       // generated output — preserve them instead of replacing them with the
@@ -25319,6 +25368,7 @@ export default function App() {
         ? {}
         : mergeStoredDiffCommentsStates(
             existingDiffTabContent.initialDiffComments,
+            ...siblingDiffContents.map((content) => content.initialDiffComments),
             initialDiffComments,
           );
       const sessionChatId = contextChatId ?? selectedAiChatId;
@@ -32657,23 +32707,39 @@ export default function App() {
             }
           : remainingSessionComments;
         const nextMergedDiffComments = mergeDiffCommentsFromSessions(nextSessionComments);
-        return {
-          ...prev,
-          [activeTabId]: {
-            ...existing,
-            initialDiffComments: nextMergedDiffComments,
-            diffSessionCommentsByChatId: nextSessionComments,
-            diffActiveCommentChatId: targetChatId,
-            // A note submitted on an unassigned source file establishes its
-            // session association as well, matching the explicit top-bar
-            // picker and preventing the toolbar from falling back to an
-            // unrelated currently selected chat.
-            diffContextChatId: isPlainFileOverlayTab
-              ? (existing.diffContextChatId ?? targetChatId)
-              : existing.diffContextChatId,
-            diffCommentsReadOnly: false,
-          },
+        const nextActiveContent = {
+          ...existing,
+          initialDiffComments: nextMergedDiffComments,
+          diffSessionCommentsByChatId: nextSessionComments,
+          diffActiveCommentChatId: targetChatId,
+          // A note submitted on an unassigned source file establishes its
+          // session association as well, matching the explicit top-bar
+          // picker and preventing the toolbar from falling back to an
+          // unrelated currently selected chat.
+          diffContextChatId: isPlainFileOverlayTab
+            ? (existing.diffContextChatId ?? targetChatId)
+            : existing.diffContextChatId,
+          diffCommentsReadOnly: false,
         };
+        return Object.entries(prev).reduce((nextContents, [candidateTabId, candidateContent]) => {
+          if (candidateTabId === activeTabId) {
+            nextContents[candidateTabId] = nextActiveContent;
+          } else if (reviewDiffsRepresentSamePhysicalFile(
+            activeTabId,
+            nextActiveContent,
+            candidateTabId,
+            candidateContent,
+          )) {
+            nextContents[candidateTabId] = {
+              ...candidateContent,
+              initialDiffComments: nextMergedDiffComments,
+              diffSessionCommentsByChatId: nextSessionComments,
+              diffActiveCommentChatId: targetChatId,
+              diffCommentsReadOnly: false,
+            };
+          }
+          return nextContents;
+        }, { ...prev });
       });
     }
 
