@@ -32011,7 +32011,10 @@ export default function App() {
         label: isPlainFile
           ? sourceLabel
           : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
-        icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : getCommitFileIcon(sourceLabel),
+        // The chat composer represents a review context, so keep the diff
+        // glyph. The shortcut launcher below deliberately uses the file type
+        // glyph for its attachment list.
+        icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : DIFF_TAB_ICON_NAME,
         commentCount: selectedSessionCommentCount,
         updated: hasAgentReply,
         diffComments: selectedSessionComments,
