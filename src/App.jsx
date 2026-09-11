@@ -35060,6 +35060,36 @@ export default function App() {
         ? 'Commit the changes from this chat'
         : '';
 
+  const globalDialogSessionOptions = aiChatRecentItems.map((item) => {
+    const scenario = aiChatScenarios[item.id] ?? null;
+    const commentTexts = [
+      ...(Array.isArray(scenario?.attachments) ? scenario.attachments : []),
+      ...(aiChatSentMessagesByChatId[item.id] ?? []).flatMap((message) => (
+        Array.isArray(message?.attachments) ? message.attachments : []
+      )),
+    ].flatMap((attachment) => (
+      getAiChatAttachmentCommentPreviewItems(attachment).map((comment) => comment.text)
+    ));
+    (agentRunByChatId[item.id]?.notes ?? []).forEach((note) => {
+      if (typeof note?.text === 'string') commentTexts.push(note.text);
+    });
+    const seenComments = new Set();
+    const uniqueComments = commentTexts
+      .map((comment) => (typeof comment === 'string' ? comment.trim() : ''))
+      .filter((comment) => {
+        const key = comment.toLowerCase();
+        if (!key || seenComments.has(key)) return false;
+        seenComments.add(key);
+        return true;
+      });
+    return {
+      id: item.id,
+      label: item.title || scenario?.title || 'New Session',
+      time: item.time || '',
+      commentText: uniqueComments.join('\n\n'),
+    };
+  });
+
   // The same popup the AI Review buttons open, mounted once for the Control+Control shortcut so it
   // can appear over whatever is on screen — including the Welcome screen.
   const globalAiReviewDialogNode = (
@@ -35079,6 +35109,7 @@ export default function App() {
         label: globalDialogTargetScenario?.title ?? 'Chat Session',
         time: 'Current',
       } : null}
+      availableSessions={globalDialogSessionOptions}
       initialShowQuickActions={!globalReviewLaunchSource.startsWith('chat-')}
       currentScopeLabel="Local changes"
       currentFileLabel={globalAiReviewSourceAttachments[0]?.sourceLabel ?? activeEditorTabMeta?.label ?? PRIMARY_BREADCRUMBS[PRIMARY_BREADCRUMBS.length - 1]}

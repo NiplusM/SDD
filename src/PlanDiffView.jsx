@@ -2025,10 +2025,6 @@ function getAiReviewAgentLabel(icon = 'codex') {
     ?? 'Claude Agent';
 }
 
-const AI_REVIEW_EXISTING_SESSIONS = [
-  { id: 'current-session', label: 'Current Session', time: 'Current' },
-];
-
 // Header/footer pickers of the Figma popup (501:57949). They carry no behaviour of their own
 // beyond the value they hand to onStartReview.
 // Chips shown before the strip collapses behind a "Show all +N" toggle.
@@ -2094,6 +2090,7 @@ export function AiReviewComposerDialog({
   initialAgentId = 'codex',
   initialInstructions = '',
   initialSession = null,
+  availableSessions = [],
   initialShowQuickActions = true,
   currentScopeLabel = 'New changes',
   currentFileLabel = 'VisitController.java',
@@ -2148,9 +2145,10 @@ export function AiReviewComposerDialog({
   const toggleMenu = (menu) => setOpenMenu((prev) => (prev === menu ? null : menu));
   const selectedAgent = AI_REVIEW_AGENT_OPTIONS.find((item) => item.id === selectedAgentId)
     ?? AI_REVIEW_AGENT_OPTIONS[0];
+  const normalizedAvailableSessions = Array.isArray(availableSessions) ? availableSessions : [];
   const sessionOptions = initialSession
-    ? [initialSession, ...AI_REVIEW_EXISTING_SESSIONS.filter((item) => item.id !== initialSession.id)]
-    : AI_REVIEW_EXISTING_SESSIONS;
+    ? [initialSession, ...normalizedAvailableSessions.filter((item) => item.id !== initialSession.id)]
+    : normalizedAvailableSessions;
   const selectedSession = sessionOptions.find((item) => item.id === selectedSessionId) ?? null;
   const canStartReview = attachments.length > 0 && Boolean(selectedAgent?.id) && Boolean(modelId);
   const selectAgent = (agent) => {
@@ -2310,11 +2308,18 @@ export function AiReviewComposerDialog({
                           key={item.id}
                           shortcut={item.time}
                           selected={item.id === selectedSessionId}
-                          onClick={() => { setSelectedSessionId(item.id); setOpenMenu(null); }}
+                          onClick={() => {
+                            setSelectedSessionId(item.id);
+                            setInstructions(typeof item.commentText === 'string' ? item.commentText : '');
+                            setOpenMenu(null);
+                          }}
                         >
                           {item.label}
                         </PopupCell>
                       ))}
+                      {sessionOptions.length === 0 && (
+                        <PopupCell disabled>No active sessions</PopupCell>
+                      )}
                     </>
                   ))}
                 </span>
