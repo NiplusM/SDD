@@ -24746,6 +24746,11 @@ button.aiux543-answer-change-card:focus-visible {
   color: var(--icon-secondary-stroke, #818594);
 }
 
+/* This is a project-context indicator, not a menu. */
+.main-toolbar .attached-project-session-control .main-toolbar-dropdown-chevron {
+  display: none;
+}
+
 .agent-sessions-session.is-selected {
   background: #2d3035;
 }
