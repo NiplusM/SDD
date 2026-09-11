@@ -5046,8 +5046,10 @@ body {
 }
 
 .spec-done-comment-popup-context-header.is-muted-session .spec-done-comment-popup-context-title {
-  color: #9FA2A8;
-  font-weight: 400;
+  /* A comment's owner is still a chat title, even if another session is
+     currently active. Keep it readable and visually consistent with chat. */
+  color: var(--text-default, #d1d3d9);
+  font-weight: 500;
 }
 
 .spec-done-comment-popup-context-header.is-muted-session .spec-done-comment-popup-context-prefix > :first-child {
