@@ -31988,7 +31988,7 @@ export default function App() {
         label: isPlainFile
           ? sourceLabel
           : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
-        icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : 'vcs/diff',
+        icon: isPlainFile ? (tabMeta?.icon ?? 'fileTypes/text') : getCommitFileIcon(sourceLabel),
         commentCount: selectedSessionCommentCount,
         updated: hasAgentReply,
         diffComments: selectedSessionComments,
@@ -35058,7 +35058,7 @@ export default function App() {
         id: `diff-${item.id}-${diffTabId}`,
         composerSequenceKey: `file-context-${item.id}-${diffTabId}`,
         label: isPlainFile ? sourceLabel : `${tabContent.diffReviewAttachmentOrigin === 'vcs' ? 'VCS' : 'Agent'} · ${sourceLabel}`,
-        icon: isPlainFile ? 'fileTypes/text' : 'vcs/diff',
+        icon: isPlainFile ? 'fileTypes/text' : getCommitFileIcon(sourceLabel),
         commentCount,
         diffComments: comments,
         diffTabId,
