@@ -24656,7 +24656,7 @@ button.aiux543-answer-change-card:focus-visible {
 .agent-sessions-session {
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: 18px 18px minmax(0, 1fr) auto auto;
+  grid-template-columns: 18px 18px minmax(0, 1fr) auto auto auto;
   align-items: center;
   column-gap: 5px;
   width: 100%;
@@ -24669,6 +24669,24 @@ button.aiux543-answer-change-card:focus-visible {
   color: #d1d3d9;
   text-align: left;
   cursor: pointer;
+}
+
+.agent-sessions-session-all-changes {
+  all: unset;
+  box-sizing: border-box;
+  min-width: max-content;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #9fa2a8;
+  cursor: pointer;
+  font: 500 11px/16px Inter, system-ui, sans-serif;
+}
+
+.agent-sessions-session-all-changes:hover,
+.agent-sessions-session-all-changes:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  color: #d1d3d9;
+  outline: none;
 }
 
 .agent-sessions-session.is-selected {

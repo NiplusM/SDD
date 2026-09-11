@@ -269,13 +269,20 @@ function ChatsHistoryToolWindow({
                   const showCost = rowIndex < 4;
                   return (
                     <React.Fragment key={row.id}>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       className={[
                         'agent-sessions-session',
                         selectedId === row.id ? 'is-selected' : '',
                       ].filter(Boolean).join(' ')}
                       onClick={() => handleSelectChat(row.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleSelectChat(row.id);
+                        }
+                      }}
                     >
                       <span
                         className="agent-sessions-session-chevron"
@@ -296,7 +303,17 @@ function ChatsHistoryToolWindow({
                       <span className="agent-sessions-session-title">{row.title}</span>
                       <span className="agent-sessions-session-time">{row.time || '1h'}</span>
                       {showCost ? <span className="agent-sessions-session-cost">$5.67</span> : null}
-                    </button>
+                      <button
+                        type="button"
+                        className="agent-sessions-session-all-changes"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenChangesList?.(row.id);
+                        }}
+                      >
+                        All Changes
+                      </button>
+                    </div>
                     {row.id === 'refactor-time-slots' && expanded ? (
                       <AgentSessionChanges
                         files={AGENT_SESSION_ACTIVE_CHANGES}
