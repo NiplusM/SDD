@@ -31790,13 +31790,13 @@ export default function App() {
     };
 
     const handleCreateNewChat = () => {
-      // A comment target is a real draft as soon as it is chosen. This lets
-      // the reviewer inspect its empty composer before writing the first
-      // note, and guarantees that the diff's "open chat" affordance returns
-      // to this same draft after the note becomes an attachment.
+      // A comment target is a real draft as soon as it is chosen, but it
+      // stays in the background while the reviewer writes the note in this
+      // diff. The comment heading opens this exact draft afterwards.
       const session = createEmptyAiChatSession({
         title: 'New Session',
         icon: 'codex',
+        select: false,
       });
       onSelectTarget?.({
         attachMode: 'current',
