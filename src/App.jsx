@@ -31952,15 +31952,15 @@ export default function App() {
       const sourceTabId = isPlainFile
         ? diffTabId
         : (tabContent.diffSourceTabId ?? selectedAiChatScenario?.diffRequest?.source?.tabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
-      // Different UI entry points can open the same source file as separate
-      // VCS and Agent diff tabs. A chat composer keeps only the pinned/original
-      // context for that file, never duplicate chips.
-      if (representedComposerSourceTabIds.has(sourceTabId)) continue;
-      representedComposerSourceTabIds.add(sourceTabId);
       const sourceLabel =
         fileData?.sourceTabLabel
         ?? selectedAiChatScenario?.diffRequest?.source?.label
         ?? 'VisitController.java';
+      // VCS and Agent copies have distinct internal tab ids but represent the
+      // same physical file. Preserve only the first (pinned) source.
+      const physicalFileKey = sourceLabel.toLocaleLowerCase();
+      if (representedComposerSourceTabIds.has(physicalFileKey)) continue;
+      representedComposerSourceTabIds.add(physicalFileKey);
       const diffRequest = {
         text: tabContent.diffLineText || fileData?.lineText || fileData?.title || '',
         statusItem: selectedAiChatScenario?.diffRequest?.statusItem ?? { status: 'passed' },
@@ -35050,9 +35050,10 @@ export default function App() {
       const isPlainFile = !tabContent.diffData && Boolean(tabContent.plainFileData);
       const fileData = tabContent.diffData ?? tabContent.plainFileData;
       const sourceTabId = isPlainFile ? diffTabId : (tabContent.diffSourceTabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
-      if (representedSourceTabIds.has(sourceTabId)) return [];
-      representedSourceTabIds.add(sourceTabId);
       const sourceLabel = fileData?.sourceTabLabel ?? 'VisitController.java';
+      const physicalFileKey = sourceLabel.toLocaleLowerCase();
+      if (representedSourceTabIds.has(physicalFileKey)) return [];
+      representedSourceTabIds.add(physicalFileKey);
       return [{
         id: `diff-${item.id}-${diffTabId}`,
         composerSequenceKey: `file-context-${item.id}-${diffTabId}`,
@@ -37061,10 +37062,21 @@ export default function App() {
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
                     commentContextLabel={requiresExplicitDiffCommentSession ? '' : planDiffContextChatTitle}
-                    onOpenChat={(activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
-                      { source: { tabId: activeDiffOriginSourceTabId } },
-                      activeDiffOriginChatId,
-                    ) : null}
+                    onOpenChat={activeTabContent?.diffOpenedFromCommitToolWindow && activePlanDiffCommentChatId
+                      ? () => {
+                          // Keep the VCS tab which owns the in-code note on
+                          // the right. Opening its chat must not substitute a
+                          // regular Agent diff or inject a review scope.
+                          setReviewSplitChatId(activePlanDiffCommentChatId);
+                          setReviewSplitFileTabIds([activeTabId]);
+                          setReviewSplitActiveTabId(activeTabId);
+                          setReviewSplitChangeScopeOptions([]);
+                          setSelectedAiChatId(activePlanDiffCommentChatId);
+                        }
+                      : ((activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
+                          { source: { tabId: activeDiffOriginSourceTabId } },
+                          activeDiffOriginChatId,
+                        ) : null)}
                     commentCount={activeDiffSendableCommentCount}
                     sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffOriginChatId]?.status)}
                     onSendComments={activeDiffOriginChatId ? (count) => {

@@ -24794,6 +24794,7 @@ button.aiux543-answer-change-card:focus-visible {
 .agent-sessions-session-title {
   min-width: 0;
   overflow: hidden;
+  color: #dfe1e5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
