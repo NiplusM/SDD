@@ -320,16 +320,6 @@ function ChatsHistoryToolWindow({
                       <span className="agent-sessions-session-title">{row.title}</span>
                       <span className="agent-sessions-session-time">{row.time || '1h'}</span>
                       {showCost ? <span className="agent-sessions-session-cost">$5.67</span> : null}
-                      <button
-                        type="button"
-                        className="agent-sessions-session-all-changes"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onOpenChangesList?.(row.id);
-                        }}
-                      >
-                        All Changes
-                      </button>
                     </div>
                     {row.id === 'refactor-time-slots' && expanded ? (
                       <AgentSessionChanges
