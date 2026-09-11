@@ -31930,6 +31930,7 @@ export default function App() {
       if (!attachment?.id || attachments.some((candidate) => candidate?.id === attachment.id)) return;
       attachments.push(attachment);
     });
+    const representedComposerSourceTabIds = new Set();
 
     for (const [diffTabId, tabContent] of orderedDiffEntries) {
       const sessionCommentsByChatId = normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId);
@@ -31951,6 +31952,11 @@ export default function App() {
       const sourceTabId = isPlainFile
         ? diffTabId
         : (tabContent.diffSourceTabId ?? selectedAiChatScenario?.diffRequest?.source?.tabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+      // Different UI entry points can open the same source file as separate
+      // VCS and Agent diff tabs. A chat composer keeps only the pinned/original
+      // context for that file, never duplicate chips.
+      if (representedComposerSourceTabIds.has(sourceTabId)) continue;
+      representedComposerSourceTabIds.add(sourceTabId);
       const sourceLabel =
         fileData?.sourceTabLabel
         ?? selectedAiChatScenario?.diffRequest?.source?.label
@@ -35027,7 +35033,14 @@ export default function App() {
     // stored on the chat scenario. Recreate that per-session view here, so
     // selecting a chat in Control+Control restores exactly the chips visible
     // in that chat's already-open composer.
-    const liveCommentAttachments = Object.entries(ideTabContents).flatMap(([diffTabId, tabContent]) => {
+    const sessionDiffEntries = Object.entries(ideTabContents)
+      .filter(([, tabContent]) => Boolean(tabContent?.diffData) || Boolean(tabContent?.plainFileData));
+    const pinnedSessionDiffTabId = aiChatComposerDiffTabByChatId[item.id] ?? null;
+    const representedSourceTabIds = new Set();
+    const liveCommentAttachments = [
+      ...sessionDiffEntries.filter(([tabId]) => tabId === pinnedSessionDiffTabId),
+      ...sessionDiffEntries.filter(([tabId]) => tabId !== pinnedSessionDiffTabId),
+    ].flatMap(([diffTabId, tabContent]) => {
       if (!tabContent?.diffData && !tabContent?.plainFileData) return [];
       const comments = normalizeStoredDiffCommentsState(
         normalizeDiffSessionCommentsByChatId(tabContent.diffSessionCommentsByChatId)[item.id]?.comments,
@@ -35037,6 +35050,8 @@ export default function App() {
       const isPlainFile = !tabContent.diffData && Boolean(tabContent.plainFileData);
       const fileData = tabContent.diffData ?? tabContent.plainFileData;
       const sourceTabId = isPlainFile ? diffTabId : (tabContent.diffSourceTabId ?? INITIAL_PLAN_DIFF_SOURCE_TAB_ID);
+      if (representedSourceTabIds.has(sourceTabId)) return [];
+      representedSourceTabIds.add(sourceTabId);
       const sourceLabel = fileData?.sourceTabLabel ?? 'VisitController.java';
       return [{
         id: `diff-${item.id}-${diffTabId}`,
