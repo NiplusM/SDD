@@ -19053,72 +19053,6 @@ function ChatProjectChangesToolbar({
             <span>{operationLabel}</span>
           </span>
         ) : null}
-        {hasUncommittedChanges && allChangesScope ? (
-          <>
-            <span ref={anchorRef} className={`aiux543-chat-project-review-action${hasChangeActions ? ' has-menu' : ''}`}>
-              <button
-                type="button"
-                className="aiux543-chat-project-review-main"
-                disabled={reviewDisabled}
-                onClick={() => openScope(allChangesScope)}
-              >
-                <ChatChangeScopeInspectionGlyph />
-                <span>All Changes</span>
-              </button>
-              {hasChangeActions ? (
-                <button
-                  type="button"
-                  className={`aiux543-chat-project-review-menu-trigger${menuOpen ? ' is-open' : ''}`}
-                  aria-label="Change actions"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  disabled={reviewDisabled}
-                  onClick={() => setMenuOpen((open) => !open)}
-                >
-                  <Icon name="general/chevronDown" size={16} />
-                </button>
-              ) : null}
-              <FinalAnchoredPopup
-                align="end"
-                anchorRef={anchorRef}
-                ariaLabel="Change actions"
-                className="aiux543-chat-change-scope-popup aiux543-chat-project-changes-popup"
-                estimatedHeight={canApplyPatch ? 112 : 80}
-                onClose={() => setMenuOpen(false)}
-                open={hasChangeActions && menuOpen}
-                width={224}
-              >
-                <aside className="aiux543-chat-project-review-popup" aria-label="Change actions">
-                  <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => openScope(allChangesScope)}>
-                    <ChatChangeScopeInspectionGlyph />
-                    <span className="aiux543-chat-project-review-popup-action-label">Review</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="aiux543-chat-project-review-popup-action"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onOpenCommit?.();
-                    }}
-                  >
-                    <Icon name="vcs/commit" size={16} />
-                    <span className="aiux543-chat-project-review-popup-action-label">Commit</span>
-                  </button>
-                  {canApplyPatch ? (
-                    <button type="button" className="aiux543-chat-project-review-popup-action" onClick={() => runWorkspaceAction('apply-patch')}>
-                      <Icon name="vcs/patch" size={16} />
-                      <span className="aiux543-chat-project-review-popup-action-label">Apply Patch</span>
-                    </button>
-                  ) : null}
-                </aside>
-              </FinalAnchoredPopup>
-            </span>
-            <span className="aiux543-chat-project-counts" aria-label={`${allChangesScope.added} lines added, ${allChangesScope.removed} lines removed`}>
-              <span className="is-added">+{allChangesScope.added}</span>
-              <span className="is-removed">-{allChangesScope.removed}</span>
-            </span>
-          </>
-        ) : null}
         {canCherryPick ? (
           <button
             type="button"
@@ -21544,6 +21478,21 @@ function AiChatTabView({
 
   return (
     <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
+      {liveChatChangeScopeOptions.find((scope) => scope.id === 'all-project-changes') && (
+        <button
+          type="button"
+          className="aiux543-chat-all-changes"
+          aria-label="Open All Changes"
+          onClick={() => onOpenChangeScope?.(chatId, 'all-project-changes')}
+        >
+          <ChatChangeScopeInspectionGlyph />
+          <span>All Changes</span>
+          {(() => {
+            const scope = liveChatChangeScopeOptions.find((item) => item.id === 'all-project-changes');
+            return <span className="aiux543-chat-all-changes-counts"><span>+{scope.added}</span><span>-{scope.removed}</span></span>;
+          })()}
+        </button>
+      )}
       {changeScopePanelCollapsed && liveChatChangeScopeOptions.length > 0 && onOpenChangeScope && (
         <div className="aiux543-chat-change-scope-entry">
           <ChatChangeScopeMenu
