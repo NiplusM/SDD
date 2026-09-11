@@ -26220,6 +26220,35 @@ export default function App() {
     )));
   }, []);
 
+  // Notes created from Commit begin as an intentionally anonymous draft. Once
+  // its first comment batch is actually sent, name it after the reviewed file
+  // so the resulting chat is recognisable in tabs and Agent Sessions.
+  const renameDraftChatAfterCommentSend = useCallback((chatId, attachments = []) => {
+    if (!chatId) return;
+    const session = aiChatDraftSessionsByIdRef.current[chatId];
+    const currentTitle = String(session?.title || '').trim();
+    if (!session || !['New Session', 'New Chat'].includes(currentTitle)) return;
+    const firstDiffAttachment = (Array.isArray(attachments) ? attachments : []).find((attachment) => (
+      attachment?.diffTabId && Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+    ));
+    const sourceLabel = String(
+      firstDiffAttachment?.sourceLabel
+      ?? firstDiffAttachment?.diffRequest?.source?.label
+      ?? firstDiffAttachment?.label
+      ?? '',
+    ).replace(/^diff\s*·?\s*/iu, '').trim();
+    const nextTitle = sourceLabel ? `Notes on ${sourceLabel}` : 'Review notes';
+    setAiChatDraftSessionsById((prev) => (
+      prev[chatId] ? { ...prev, [chatId]: { ...prev[chatId], title: nextTitle } } : prev
+    ));
+    const chatTabId = `ai-chat-${chatId}`;
+    setIdeTabs((prev) => prev.map((tab) => (
+      tab.id === chatTabId
+        ? { ...tab, label: nextTitle, icon: <AiChatAgentIcon icon={session.icon ?? 'codex'} title={nextTitle} /> }
+        : tab
+    )));
+  }, []);
+
   const openEditorTabByLabel = useCallback((label, { line = null, section = null } = {}) => {
     if (typeof label !== 'string' || label.trim().length === 0) return;
     const revealLine = Number.isInteger(line) && line > 0 ? line : null;
@@ -34066,6 +34095,10 @@ export default function App() {
     const transientContextAttachments = getTransientComposerContextAttachments(messageAttachments);
     if (!messageText && messageAttachments.length === 0) return;
 
+    if (commentAttachments.length > 0 && !isReviewCommand) {
+      renameDraftChatAfterCommentSend(targetChatId, commentAttachments);
+    }
+
     // Any agent request sweeps previously-Solved notes.
     sweepSolvedComments();
 
@@ -34736,6 +34769,7 @@ export default function App() {
     handleSelectedAiChatSentMessagesChange,
     getAiChatScenarioById,
     renameChatAfterReview,
+    renameDraftChatAfterCommentSend,
     agentRunByChatId,
   ]);
 
