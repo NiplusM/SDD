@@ -21134,6 +21134,13 @@ function AiChatTabView({
   const rawEditorComposerAttachments = Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [];
   const getEditorComposerAttachmentDraftKey = (attachment, index = 0) => {
     const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+    // Agent processing decorates comments with pending/resolution properties.
+    // Those fields must not make a sent chip look like new composer context.
+    // For diff notes their stable batch identity is therefore the anchored
+    // comment text, not the hover-preview object's incidental metadata.
+    if (attachment?.diffTabId && attachment?.diffComments) {
+      return `${attachmentId}\u0000${getSentDiffCommentAttachmentSignature(attachment.diffComments)}`;
+    }
     const previewFingerprint = getAiChatAttachmentCommentPreviewItems(attachment).map((item) => ({
       text: item?.text ?? '',
       sourceLabel: item?.sourceLabel ?? '',
