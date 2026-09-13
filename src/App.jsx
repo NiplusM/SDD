@@ -36085,6 +36085,7 @@ export default function App() {
                     defaultSubmitAttachMode={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
+                    lockSubmitTarget={Boolean(activeDiffOriginChatId)}
                     requireSubmitTargetChoice={isPlainFileOverlayTab && !hasActivePlainFileCommentSession}
                     defaultSubmitTargetLabel={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'Choose chat session'
@@ -36097,7 +36098,7 @@ export default function App() {
                       : activePlanDiffDefaultSubmitTargetKey}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
-                    commentContextLabel={hasActivePlainFileCommentSession ? planDiffContextChatTitle : ''}
+                    commentContextLabel={activeDiffOriginChatId ? planDiffContextChatTitle : ''}
                     onOpenChat={(activeDiffOriginChatId && activeDiffOriginSourceTabId) ? () => openChangedFileInReviewScope(
                       { source: { tabId: activeDiffOriginSourceTabId } },
                       activeDiffOriginChatId,

@@ -2986,7 +2986,9 @@ export function DiffInlineCommentPopup({
     onSubmit?.({
       attachMode,
       submitAction,
-      targetChatId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetChatId : null,
+      targetChatId: submitAttachTarget?.attachMode === attachMode
+        ? submitAttachTarget.targetChatId
+        : (attachMode === 'current' ? normalizedActiveChatTargetKey : null),
       targetDocumentTabId: submitAttachTarget?.attachMode === attachMode ? submitAttachTarget.targetDocumentTabId : null,
     });
   };
@@ -4119,6 +4121,8 @@ export function PlanDiffOverlay({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  // Chat-owned diffs keep the comment header bound to their originating chat.
+  lockSubmitTarget = false,
   // Set when this file has more than one candidate session, so a send must
   // pick one rather than defaulting.
   requireSubmitTargetChoice = false,
@@ -5650,13 +5654,38 @@ export function PlanDiffOverlay({
             // active id, so filtering this canonical local state by chat id
             // makes the actual comment vanish while its gutter marker remains.
             const localRowComments = rowComments;
+            const resolveCommentChatContext = (comment = null) => {
+              const chatId = typeof comment?.chatId === 'string' ? comment.chatId.trim() : '';
+              if (!chatId) return null;
+              const storedSession = normalizedCommentSessions.find((session) => session.chatId === chatId) ?? null;
+              const sessionChoice = submitSessionChoices.find((session) => session?.id === chatId) ?? null;
+              const isActiveSession = chatId === commentSessionActiveChatId;
+
+              return {
+                label: storedSession?.title
+                  ?? sessionChoice?.label
+                  ?? (isActiveSession ? commentContextLabel : chatId),
+                icon: storedSession?.icon
+                  ?? sessionChoice?.agent
+                  ?? sessionChoice?.icon
+                  ?? (isActiveSession ? commentContextIcon : 'codex'),
+                sessionLabel: commentsReadOnly ? 'Archive' : (isActiveSession ? 'Active' : 'Inactive'),
+                messageId: storedSession?.messageId ?? sessionChoice?.messageId ?? null,
+                chatId,
+              };
+            };
+            const localContextComment = Number.isInteger(commentEditingIndex)
+              ? localRowComments[commentEditingIndex]
+              : localRowComments[0];
+            const localCommentChatContext = resolveCommentChatContext(localContextComment);
             const localGroup = (localRowComments.length > 0 || (canCreateInlineComments && commentRowId === row.id))
               ? {
-                  label: commentContextLabel,
-                  icon: commentContextIcon,
-                  sessionLabel: commentContextSessionLabel,
-                  messageId: null,
-                  chatId: null,
+                  label: localCommentChatContext?.label ?? commentContextLabel,
+                  icon: localCommentChatContext?.icon ?? commentContextIcon,
+                  sessionLabel: localCommentChatContext?.sessionLabel ?? commentContextSessionLabel,
+                  messageId: localCommentChatContext?.messageId ?? null,
+                  chatId: localCommentChatContext?.chatId
+                    ?? (lockSubmitTarget && commentSessionActiveChatId ? commentSessionActiveChatId : null),
                   hideHeader: commentRowId === row.id && localRowComments.length === 0,
                   comments: localRowComments.map((comment, index) => ({
                     ...((comment && typeof comment === 'object') ? comment : {}),
@@ -6368,16 +6397,16 @@ export function PlanDiffOverlay({
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                          submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current'] : undefined)}
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={false}
+                          showSubmitTargetLabel={lockSubmitTarget}
                           showSendToAgentAction={false}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
                           inputPlaceholder="Write a note"
-                          composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                          composeHeaderLabel=""
                           reviewScopeNoteCount={reviewScopeNoteCount}
                           commentContextLabel={commentContextLabel}
                           commentContextIcon={commentContextIcon}
@@ -6466,16 +6495,16 @@ export function PlanDiffOverlay({
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={reviewNoteComposer ? ['current'] : undefined}
+                        submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current'] : undefined)}
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={false}
+                        showSubmitTargetLabel={lockSubmitTarget}
                         showSendToAgentAction={false}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
                         inputPlaceholder="Write a note"
-                        composeHeaderLabel={reviewNoteComposer ? 'Note' : ''}
+                        composeHeaderLabel=""
                         reviewScopeNoteCount={reviewScopeNoteCount}
                         commentContextLabel={commentContextLabel}
                         commentContextIcon={commentContextIcon}
@@ -7327,6 +7356,7 @@ export function PlanDiffEditorArea({
   documentContextSessionLabel = 'Related Chats',
   documentContextSourceTabId = null,
   defaultSubmitAttachMode = 'current',
+  lockSubmitTarget = false,
   // Set when this file has more than one candidate session, so a send must
   // pick one rather than defaulting.
   requireSubmitTargetChoice = false,
@@ -7682,6 +7712,7 @@ export function PlanDiffEditorArea({
           documentContextSessionLabel={documentContextSessionLabel}
           documentContextSourceTabId={documentContextSourceTabId}
           defaultSubmitAttachMode={defaultSubmitAttachMode}
+          lockSubmitTarget={lockSubmitTarget}
                           requireSubmitTargetChoice={requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
           defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
