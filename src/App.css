@@ -3060,6 +3060,13 @@ body {
   flex-shrink: 0;
 }
 
+.editor-selection-toolbar-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .editor-selection-toolbar-btn:hover::before,
 .editor-selection-toolbar-btn:focus-visible::before {
   background: var(--editor-selection-toolbar-hover-bg);

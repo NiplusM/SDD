@@ -1,12 +1,15 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, Tooltip } from '@jetbrains/int-ui-kit';
-import { AI_NOTE_FILE_HINT } from './aiNoteHints.js';
+import { Icon } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
+import airIconUrl from './assets/ij-air-alpha.svg';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
-  { id: 'selection-action', kind: 'selectionAction' },
+  { id: 'selection-start', kind: 'separator' },
+  { id: 'ask-ai', kind: 'iconText', iconUrl: airIconUrl, text: 'Ask AI', accent: 'assistant', ariaLabel: 'Ask AI' },
+  { id: 'comment', kind: 'iconText', iconName: 'general/balloon', text: 'Add Note', ariaLabel: 'Add Note' },
+  { id: 'selection-end', kind: 'separator' },
   { id: 'refactor', kind: 'text', text: 'Refactor', ariaLabel: 'Refactor' },
   { id: 'search', kind: 'icon', iconName: 'general/search_dark', ariaLabel: 'Search' },
   { id: 'code', kind: 'icon', iconName: 'nodes/tag', ariaLabel: 'Code actions' },
@@ -19,11 +22,6 @@ export const NEW_CHAT_TARGET_ID = 'new-chat';
 
 const CHAT_SELECTION_TOOLBAR_ITEMS = [
   { id: 'selection-action', kind: 'selectionAction' },
-];
-
-const CODE_SELECTION_ACTIONS = [
-  { id: 'comment', iconName: 'general/balloon', label: 'Add Note', title: AI_NOTE_FILE_HINT },
-  { id: 'add-context', iconName: 'aiAssistant/toolWindowChat@20x20', label: 'Quote in chat', accent: 'assistant' },
 ];
 
 const REVIEW_DIFF_SELECTION_ACTIONS = [
@@ -52,7 +50,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
     ? CHAT_SELECTION_ACTIONS
     : surface === 'diff' || renderPosition?.reviewSplit
       ? REVIEW_DIFF_SELECTION_ACTIONS
-      : CODE_SELECTION_ACTIONS;
+      : [];
   const primaryAction = selectionActions[0];
 
   useEffect(() => {
@@ -147,6 +145,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       title={action.title ?? action.label}
       onMouseDown={(event) => handleActionMouseDown(event, action.id)}
     >
+      {action.iconName ? <Icon name={action.iconName} size={16} /> : null}
       <span className="editor-selection-toolbar-text">{action.label}</span>
     </button>
   );
@@ -161,6 +160,10 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       onMouseDown={preventSelectionReset}
     >
       {items.map((item) => {
+        if (item.kind === 'separator') {
+          return <span key={item.id} className="editor-selection-toolbar-separator" aria-hidden="true" />;
+        }
+
         if (item.kind === 'selectionAction') {
           if (surface === 'ai-chat' || surface === 'diff' || renderPosition?.reviewSplit) {
             return (
@@ -314,10 +317,14 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
             onClick={(event) => onAction?.(item.id, event.currentTarget.getBoundingClientRect(), renderPosition)}
           >
             {item.kind === 'icon' ? (
-              <Icon name={item.iconName} size={16} />
+              item.iconUrl
+                ? <img className="editor-selection-toolbar-icon" src={item.iconUrl} alt="" aria-hidden="true" />
+                : <Icon name={item.iconName} size={16} />
             ) : item.kind === 'iconText' ? (
               <>
-                <Icon name={item.iconName} size={16} />
+                {item.iconUrl
+                  ? <img className="editor-selection-toolbar-icon" src={item.iconUrl} alt="" aria-hidden="true" />
+                  : <Icon name={item.iconName} size={16} />}
                 <span className="editor-selection-toolbar-text">{item.text}</span>
               </>
             ) : (
@@ -328,11 +335,7 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
           </button>
         );
 
-        return item.title ? (
-          <Tooltip key={item.id} text={item.title} placement="bottom" delay={650} className="ai-note-tooltip">
-            {button}
-          </Tooltip>
-        ) : button;
+        return button;
       })}
     </div>,
     document.body
