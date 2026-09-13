@@ -7495,15 +7495,13 @@ export function PlanDiffEditorArea({
             </div>
           </div>
         )}
-        {/* Jumping "Jump to Source" out of a diff lands here: no diff nav to
-            show (reviewNav is null, there's no prev/next difference or file
-            scope on a plain source file), but the chat this file's diff came
-            from and the draft-comments send button still apply, so they get
-            their own reduced toolbar instead of disappearing entirely. */}
-        {singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && (
-          <div className="plan-diff-toolbar-shell">
-            <div className="plan-diff-toolbar">
-              <div className="plan-diff-toolbar-primary-row">
+        {/* Jumping "Jump to Source" out of a diff lands here with no diff nav
+            or file scope. Keep the session actions available in the same
+            centered bottom toolbar used by the diff instead of reserving a
+            full-width row above the source. */}
+        {overlayHost && singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && createPortal(
+          <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
+              <div className="plan-diff-toolbar-secondary-row">
                 <div className="plan-diff-toolbar-left">
                   <div className="plan-diff-toolbar-chat-group">
                   {commentContextLabel && (
@@ -7517,6 +7515,7 @@ export function PlanDiffEditorArea({
                       >
                         <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
                         <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                        <span className="plan-diff-toolbar-chat-back">Back</span>
                       </button>
                     ) : (
                       <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
@@ -7555,8 +7554,8 @@ export function PlanDiffEditorArea({
                   <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
-            </div>
-          </div>
+          </div>,
+          overlayHost,
         )}
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
