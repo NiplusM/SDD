@@ -7242,34 +7242,11 @@ export function PlanDiffEditorToolbar({
         </div>
       </div>
       )}
-        {sessionToolbarHost && !isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (!secondaryRowHidden || isPlainFile) && createPortal(
+        {sessionToolbarHost && !isArchivedSnapshot && commentCount > 0 && onSendComments && (!secondaryRowHidden || isPlainFile) && createPortal(
           <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
             <div className="plan-diff-toolbar-secondary-row">
             <div className="plan-diff-toolbar-left">
               <div className="plan-diff-toolbar-chat-group">
-              {!secondaryRowHidden && chatTitle && (
-                onOpenChat ? (
-                  <button
-                    type="button"
-                    className="plan-diff-toolbar-chat is-linked"
-                    title={chatTitle}
-                    aria-label={`Open chat: ${chatTitle}`}
-                    onClick={onOpenChat}
-                  >
-                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
-                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
-                    <span className="plan-diff-toolbar-chat-back">Back</span>
-                  </button>
-                ) : (
-                  <span className="plan-diff-toolbar-chat" title={chatTitle}>
-                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
-                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
-                  </span>
-                )
-              )}
-              {!secondaryRowHidden && chatTitle && commentRowIds.length > 0 && (
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
-              )}
               {!secondaryRowHidden && (
                 <PlanDiffCommentNavControl
                   commentRowIds={commentRowIds}
@@ -7282,14 +7259,6 @@ export function PlanDiffEditorToolbar({
             <div className="plan-diff-toolbar-right">
               {!secondaryRowHidden && (
                 <>
-                  {!isPlainFile && onCommitScope && (
-                    <PlanDiffCommitButton
-                      onCommitScope={onCommitScope}
-                      checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
-                      scopeId={selectedCommitScope?.id}
-                      scopeLabel={selectedCommitScope?.label}
-                    />
-                  )}
                   {onSendComments && (
                     <Button
                       type="primary"
@@ -7529,34 +7498,11 @@ export function PlanDiffEditorArea({
             or file scope. Keep the session actions available in the same
             centered bottom toolbar used by the diff instead of reserving a
             full-width row above the source. */}
-        {overlayHost && singleLineNumbers && !reviewNav && hasCommentSession && (commentContextLabel || onSendComments) && createPortal(
+        {overlayHost && singleLineNumbers && !reviewNav && commentCount > 0 && onSendComments && createPortal(
           <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
               <div className="plan-diff-toolbar-secondary-row">
                 <div className="plan-diff-toolbar-left">
                   <div className="plan-diff-toolbar-chat-group">
-                  {commentContextLabel && (
-                    onOpenChat ? (
-                      <button
-                        type="button"
-                        className="plan-diff-toolbar-chat is-linked"
-                        title={commentContextLabel}
-                        aria-label={`Open chat: ${commentContextLabel}`}
-                        onClick={onOpenChat}
-                      >
-                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
-                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                        <span className="plan-diff-toolbar-chat-back">Back</span>
-                      </button>
-                    ) : (
-                      <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
-                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
-                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                      </span>
-                    )
-                  )}
-                  {commentContextLabel && commentRowIds.length > 0 && (
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                  )}
                   <PlanDiffCommentNavControl
                     commentRowIds={commentRowIds}
                     activeRowId={activeCommentRowId}
@@ -7645,34 +7591,11 @@ export function PlanDiffEditorArea({
                 </div>
               </div>
             </div>
-              {overlayHost && !isArchivedSnapshot && !areaSecondaryRowHidden && (commentContextLabel || onCommitScope || onSendComments) && createPortal(
+              {overlayHost && !isArchivedSnapshot && !areaSecondaryRowHidden && commentCount > 0 && onSendComments && createPortal(
                 <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
                   <div className="plan-diff-toolbar-secondary-row">
                   <div className="plan-diff-toolbar-left">
                     <div className="plan-diff-toolbar-chat-group">
-                    {!areaSecondaryRowHidden && commentContextLabel && (
-                      onOpenChat ? (
-                        <button
-                          type="button"
-                          className="plan-diff-toolbar-chat is-linked"
-                          title={commentContextLabel}
-                          aria-label={`Open chat: ${commentContextLabel}`}
-                          onClick={onOpenChat}
-                        >
-                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
-                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                          <span className="plan-diff-toolbar-chat-back">Back</span>
-                        </button>
-                      ) : (
-                        <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
-                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
-                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                        </span>
-                      )
-                    )}
-                    {!areaSecondaryRowHidden && commentContextLabel && commentRowIds.length > 0 && (
-                      <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    )}
                     {!areaSecondaryRowHidden && (
                       <PlanDiffCommentNavControl
                         commentRowIds={commentRowIds}
@@ -7685,19 +7608,6 @@ export function PlanDiffEditorArea({
                   <div className="plan-diff-toolbar-right">
                     {!areaSecondaryRowHidden && (
                       <>
-                        {onCommitScope && (
-                          <Button
-                            type="secondary"
-                            size="slim"
-                            onClick={() => onCommitScope({
-                              scopeId: selectedChangeScopeId,
-                              scopeLabel: selectedChangeScope?.label ?? 'Current scope',
-                              files: demoScopeFiles,
-                            })}
-                          >
-                            Commit with Agent
-                          </Button>
-                        )}
                         {onSendComments && (
                           <Button
                             type="primary"
