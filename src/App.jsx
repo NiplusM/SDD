@@ -22864,6 +22864,13 @@ export default function App() {
     (chatId) => [...aiChatRecentItems, ...AI_CHAT_OLDER_THAN_7_ITEMS].find((item) => item.id === chatId) ?? null,
     [aiChatRecentItems],
   );
+  const commentSubmitSessionChoices = useMemo(() => selectionChatTargets.map((target) => ({
+    id: target.id,
+    label: target.title,
+    agent: target.icon,
+    icon: target.icon,
+    messageId: aiChatScenarios[target.id]?.messageId ?? `chat-${target.id}`,
+  })), [aiChatScenarios, selectionChatTargets]);
   const createEmptyAiChatSession = useCallback(({
     id: providedId = null,
     createdAt: providedCreatedAt = null,
@@ -36085,7 +36092,7 @@ export default function App() {
                     defaultSubmitAttachMode={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
-                    lockSubmitTarget={Boolean(activeDiffOriginChatId)}
+                    lockSubmitTarget={!isPlainFileOverlayTab && Boolean(activeDiffOriginChatId)}
                     requireSubmitTargetChoice={isPlainFileOverlayTab && !hasActivePlainFileCommentSession}
                     defaultSubmitTargetLabel={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? 'Choose chat session'
@@ -36096,6 +36103,7 @@ export default function App() {
                     defaultSubmitTargetKey={isPlainFileOverlayTab && !hasActivePlainFileCommentSession
                       ? ''
                       : activePlanDiffDefaultSubmitTargetKey}
+                    submitSessionChoices={isPlainFileOverlayTab ? commentSubmitSessionChoices : []}
                     commentsReadOnly={activePlanDiffCommentsReadOnly}
                     isArchivedSnapshot={activePlanDiffIsArchivedSnapshot}
                     commentContextLabel={activeDiffOriginChatId ? planDiffContextChatTitle : ''}
@@ -36200,12 +36208,8 @@ export default function App() {
                     uiState={activePlanDiffUiState}
                     onUiStateChange={handleActivePlanDiffUiStateChange}
                     singleLineNumbers={isPlainFileOverlayTab}
-                    showGutterComments={(isDiffTab && diffGutterCommentsEnabled) || isPlainFileOverlayTab}
-                    // A source file jumped to from a diff should always be
-                    // able to take a comment, regardless of the general
-                    // "show gutter comments on plain files" preference —
-                    // that toggle is about ordinary files, not this one.
-                    plainFileGutterCommentsEnabled={isPlainFileOverlayTab || plainFileGutterCommentsEnabled}
+                    showGutterComments={isDiffTab && diffGutterCommentsEnabled}
+                    plainFileGutterCommentsEnabled={false}
                     onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                     diffGutterCommentsEnabled={diffGutterCommentsEnabled}
                     onDiffGutterCommentsEnabledChange={setDiffGutterCommentsEnabled}

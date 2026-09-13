@@ -6395,13 +6395,13 @@ export function PlanDiffOverlay({
                           showCompose={showGroupCompose}
                           commentsReadOnly={commentsReadOnly}
                           defaultSubmitAttachMode={defaultSubmitAttachMode}
-                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          requireSubmitTargetChoice={lockSubmitTarget ? false : requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                          submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current'] : undefined)}
+                          submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current', 'new'] : undefined)}
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={lockSubmitTarget}
+                          showSubmitTargetLabel={singleLineNumbers || lockSubmitTarget}
                           showSendToAgentAction={false}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
@@ -6416,7 +6416,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={null}
+                          renderSubmitTargetPicker={singleLineNumbers && !lockSubmitTarget ? renderSubmitTargetPicker : null}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6493,13 +6493,13 @@ export function PlanDiffOverlay({
                         showCompose
                         commentsReadOnly={commentsReadOnly}
                         defaultSubmitAttachMode={defaultSubmitAttachMode}
-                          requireSubmitTargetChoice={requireSubmitTargetChoice}
+                          requireSubmitTargetChoice={lockSubmitTarget ? false : requireSubmitTargetChoice}
                           submitSessionChoices={submitSessionChoices}
-                        submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current'] : undefined)}
+                        submitAttachModes={lockSubmitTarget ? ['current'] : (reviewNoteComposer ? ['current', 'new'] : undefined)}
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={lockSubmitTarget}
+                        showSubmitTargetLabel={singleLineNumbers || lockSubmitTarget}
                         showSendToAgentAction={false}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
@@ -6514,7 +6514,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={null}
+                        renderSubmitTargetPicker={singleLineNumbers && !lockSubmitTarget ? renderSubmitTargetPicker : null}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
