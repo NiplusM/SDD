@@ -35324,6 +35324,22 @@ export default function App() {
       contextIcon="general/listFiles"
       sourceAttachments={globalAiReviewSourceAttachments}
       onStartReview={(payload) => {
+        // Control+Control / Ask AI is a conversation handoff, not a new AI
+        // Review. When the user chose an existing session, send precisely the
+        // text and comment attachments left in this dialog to that session.
+        // The attachments then become part of its chat history and the agent
+        // can act on them just as if they were sent from its own composer.
+        if (
+          (globalReviewLaunchSource === 'shortcut' || globalReviewLaunchSource === 'file-selection')
+          && payload?.sessionId
+        ) {
+          handleAiChatTabSend(
+            payload.sessionId,
+            payload.instructions,
+            Array.isArray(payload.attachments) ? payload.attachments : [],
+          );
+          return;
+        }
         if (globalReviewLaunchSource === 'chat-spec') {
           handleAgentTaskSelect('t2');
           return;
