@@ -6372,8 +6372,8 @@ export function PlanDiffOverlay({
                           submitButtonLabel={singleLineNumbers
                             ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note')
                             : (reviewNoteComposer ? (Number.isInteger(commentEditingIndex) ? 'Save Note' : 'Add Note') : '')}
-                          showSubmitTargetLabel={!reviewNoteComposer}
-                          showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                          showSubmitTargetLabel={false}
+                          showSendToAgentAction={false}
                           showSubmitActionMenu={!reviewNoteComposer}
                           sendToAgentLabel="Send Note to Agent"
                           inputPlaceholder="Write a note"
@@ -6387,7 +6387,7 @@ export function PlanDiffOverlay({
                           defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                           defaultSubmitTargetKey={defaultSubmitTargetKey}
                           activeChatTargetKey={commentSessionActiveChatId}
-                          renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                          renderSubmitTargetPicker={null}
                           preserveEditorSelection={preserveSelectionCommentRowId === row.id && showGroupCompose}
                           preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                           severityFilter={severityFilter}
@@ -6470,8 +6470,8 @@ export function PlanDiffOverlay({
                         submitButtonLabel={singleLineNumbers
                           ? 'Add Note'
                           : (reviewNoteComposer ? 'Add Note' : '')}
-                        showSubmitTargetLabel={!reviewNoteComposer}
-                        showSendToAgentAction={!reviewNoteComposer && !singleLineNumbers}
+                        showSubmitTargetLabel={false}
+                        showSendToAgentAction={false}
                         showSubmitActionMenu={!reviewNoteComposer}
                         sendToAgentLabel="Send Note to Agent"
                         inputPlaceholder="Write a note"
@@ -6485,7 +6485,7 @@ export function PlanDiffOverlay({
                         defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
                         defaultSubmitTargetKey={defaultSubmitTargetKey}
                         activeChatTargetKey={commentSessionActiveChatId}
-                        renderSubmitTargetPicker={reviewNoteComposer ? null : renderSubmitTargetPicker}
+                        renderSubmitTargetPicker={null}
                         preserveEditorSelection={preserveSelectionCommentRowId === row.id}
                         preservedEditorSelectionSnapshot={preservedSelectionSnapshotRef.current}
                         severityFilter={severityFilter}
