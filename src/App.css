@@ -5906,7 +5906,32 @@ body {
   overflow: hidden;
   padding: 0 10px;
   box-sizing: border-box;
-  border-top: 1px solid #2b2d31;
+}
+
+/* Session identity and actions are a compact companion toolbar, not a second
+   storey of the full-width diff controls. It grows only as wide as its
+   contents and caps at the available editor width on narrow panes. */
+.plan-diff-session-toolbar {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 6px;
+  box-sizing: border-box;
+  vertical-align: top;
+  border: 1px solid #2b2d31;
+  border-radius: 8px;
+  background: #202124;
+}
+
+.plan-diff-session-toolbar .plan-diff-toolbar-secondary-row {
+  width: auto;
+  max-width: 100%;
+  gap: 12px;
+}
+
+.plan-diff-session-toolbar .plan-diff-toolbar-left {
+  flex: 0 1 auto;
 }
 
 .plan-diff-toolbar-secondary-row .plan-diff-toolbar-left,

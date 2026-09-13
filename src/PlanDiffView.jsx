@@ -830,9 +830,9 @@ export const PLAN_DIFF_DEFAULT_VIEWER_SETTINGS = {
 function PlanDiffSettingsMenu({
   settings,
   onSettingsChange,
-  // Optional: lets this menu also toggle the toolbar's secondary row
+  // Optional: lets this menu also toggle the separate session toolbar
   // (chat label, comment nav, Send Comments) — only rendered when a host
-  // actually has that row to hide, so plain settings-only callers see no
+  // actually has that toolbar to hide, so plain settings-only callers see no
   // extra section.
   secondaryRowHidden = null,
   onToggleSecondaryRow = null,
@@ -7109,8 +7109,8 @@ export function PlanDiffEditorToolbar({
 
   return (
     <div className="plan-diff-toolbar-shell">
+      {!isPlainFile && (
       <div className="plan-diff-toolbar">
-        {!isPlainFile && (
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
           <div className="plan-diff-toolbar-group">
@@ -7188,9 +7188,11 @@ export function PlanDiffEditorToolbar({
             />
           </div>
         </div>
-        )}
-        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (
-          <div className="plan-diff-toolbar-secondary-row">
+      </div>
+      )}
+        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (!secondaryRowHidden || isPlainFile) && (
+          <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
+            <div className="plan-diff-toolbar-secondary-row">
             <div className="plan-diff-toolbar-left">
               <div className="plan-diff-toolbar-chat-group">
               {!secondaryRowHidden && chatTitle && (
@@ -7263,8 +7265,8 @@ export function PlanDiffEditorToolbar({
               )}
             </div>
           </div>
+          </div>
         )}
-      </div>
       {/* Revision labels describe the two sides of a diff. A plain source has
           only one content stream, so keeping this row there creates a stray
           diff artefact directly below its toolbar. */}
@@ -7588,8 +7590,10 @@ export function PlanDiffEditorArea({
                 />
                 </div>
               </div>
-              {!isArchivedSnapshot && (commentContextLabel || onCommitScope || onSendComments) && (
-                <div className="plan-diff-toolbar-secondary-row">
+            </div>
+              {!isArchivedSnapshot && !areaSecondaryRowHidden && (commentContextLabel || onCommitScope || onSendComments) && (
+                <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
+                  <div className="plan-diff-toolbar-secondary-row">
                   <div className="plan-diff-toolbar-left">
                     <div className="plan-diff-toolbar-chat-group">
                     {!areaSecondaryRowHidden && commentContextLabel && (
@@ -7659,8 +7663,8 @@ export function PlanDiffEditorArea({
                     )}
                   </div>
                 </div>
+                </div>
               )}
-            </div>
             <div className="plan-diff-content-labels">
               <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
               <PlanDiffContentLabel>New content</PlanDiffContentLabel>
