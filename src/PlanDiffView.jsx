@@ -7538,7 +7538,6 @@ export function PlanDiffEditorArea({
                       Send Comments
                     </Button>
                   )}
-                  <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
           </div>,
