@@ -2788,7 +2788,8 @@ export function DiffInlineCommentPopup({
   const selectedSubmitActionOption = normalizedSubmitActionOptions.find((option) => option.id === selectedSubmitAction)
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
-  const canSubmitComment = typeof value === 'string' && value.trim().length > 0;
+  const hasCommentText = typeof value === 'string' && value.trim().length > 0;
+  const canSubmitComment = hasCommentText && (!requireSubmitTargetChoice || Boolean(submitAttachTarget));
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -2797,6 +2798,9 @@ export function DiffInlineCommentPopup({
     if (explicitLabel.length > 0) return explicitLabel;
     if (submitAttachMode === 'document') return normalizedDefaultSubmitTargetLabel;
     if (submitAttachMode === 'current') {
+      if (requireSubmitTargetChoice && !submitAttachTarget) {
+        return normalizedDefaultSubmitTargetLabel || 'Choose chat session';
+      }
       return normalizedCommentContextLabel
         || (requireSubmitTargetChoice ? normalizedDefaultSubmitTargetLabel : '');
     }
@@ -2807,7 +2811,12 @@ export function DiffInlineCommentPopup({
     const explicitIcon = typeof submitAttachTarget?.icon === 'string' ? submitAttachTarget.icon.trim() : '';
     if (explicitIcon.length > 0) return explicitIcon;
     if (submitAttachMode === 'document') return defaultSubmitTargetIcon || 'fileTypes/markdown';
-    if (submitAttachMode === 'current') return commentContextIcon || 'claude';
+    if (submitAttachMode === 'current') {
+      if (requireSubmitTargetChoice && !submitAttachTarget) {
+        return 'air';
+      }
+      return commentContextIcon || 'aiAssistant/toolWindowChat@20x20';
+    }
     if (submitAttachMode === 'new') return 'claude';
     return '';
   })();
