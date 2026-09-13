@@ -7033,6 +7033,8 @@ export function PlanDiffEditorToolbar({
   activeCommentRowId = null,
   onNavigateComment = null,
 }) {
+  const toolbarRef = useRef(null);
+  const [sessionToolbarHost, setSessionToolbarHost] = useState(null);
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
   const [secondaryRowHidden, setSecondaryRowHidden] = useState(false);
@@ -7107,8 +7109,29 @@ export function PlanDiffEditorToolbar({
   const selectedCommitScope = resolvedCommitScopeOptions.find((option) => option.id === selectedChangeScopeId)
     ?? resolvedCommitScopeOptions[0];
 
+  useEffect(() => {
+    if (!toolbarRef.current) {
+      setSessionToolbarHost(null);
+      return undefined;
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      const splitFileView = toolbarRef.current?.closest('.aiux-review-split-file-view');
+      const splitFileBody = splitFileView?.querySelector(':scope > .aiux-review-split-file-body');
+      const editorEl = toolbarRef.current?.closest('.editor');
+      const editorBody = editorEl?.querySelector('.editor-body');
+      const nextHost = splitFileBody ?? editorBody;
+      setSessionToolbarHost(nextHost instanceof HTMLElement ? nextHost : null);
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      setSessionToolbarHost(null);
+    };
+  }, [diffData?.sourceTabLabel, diffData?.title]);
+
   return (
-    <div className="plan-diff-toolbar-shell">
+    <div className="plan-diff-toolbar-shell" ref={toolbarRef}>
       {!isPlainFile && (
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-primary-row">
@@ -7190,7 +7213,7 @@ export function PlanDiffEditorToolbar({
         </div>
       </div>
       )}
-        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (!secondaryRowHidden || isPlainFile) && (
+        {sessionToolbarHost && !isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (!secondaryRowHidden || isPlainFile) && createPortal(
           <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
             <div className="plan-diff-toolbar-secondary-row">
             <div className="plan-diff-toolbar-left">
@@ -7265,7 +7288,8 @@ export function PlanDiffEditorToolbar({
               )}
             </div>
           </div>
-          </div>
+          </div>,
+          sessionToolbarHost,
         )}
       {/* Revision labels describe the two sides of a diff. A plain source has
           only one content stream, so keeping this row there creates a stray
@@ -7591,7 +7615,7 @@ export function PlanDiffEditorArea({
                 </div>
               </div>
             </div>
-              {!isArchivedSnapshot && !areaSecondaryRowHidden && (commentContextLabel || onCommitScope || onSendComments) && (
+              {overlayHost && !isArchivedSnapshot && !areaSecondaryRowHidden && (commentContextLabel || onCommitScope || onSendComments) && createPortal(
                 <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
                   <div className="plan-diff-toolbar-secondary-row">
                   <div className="plan-diff-toolbar-left">
@@ -7663,7 +7687,8 @@ export function PlanDiffEditorArea({
                     )}
                   </div>
                 </div>
-                </div>
+                </div>,
+                overlayHost,
               )}
             <div className="plan-diff-content-labels">
               <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
