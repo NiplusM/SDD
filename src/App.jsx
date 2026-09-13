@@ -17,7 +17,7 @@ import {
   PLAN_DIFF_DEFAULT_VIEWER_SETTINGS,
   applyPlanDiffViewerSettings,
 } from './PlanDiffView.jsx';
-import { AiChatAgentIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
+import { AiChatAgentIcon, AiChatAirIcon, AiChatClaudeIcon, AiChatCodexIcon, AiChatListLeading } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import {
   flattenStoredDiffCommentsState,
@@ -15974,6 +15974,17 @@ function buildChatReviewScopePreviewOptions(scenario) {
   return buildChatChangedFilesScopeOptions(entries);
 }
 
+function applyChatReviewScopeLineCountDelta(scopeOptions = [], delta = null) {
+  const addedDelta = Number.isFinite(delta?.added) ? delta.added : 0;
+  const removedDelta = Number.isFinite(delta?.removed) ? delta.removed : 0;
+  if (addedDelta === 0 && removedDelta === 0) return scopeOptions;
+  return scopeOptions.map((scope) => ({
+    ...scope,
+    added: scope.added + addedDelta,
+    removed: scope.removed + removedDelta,
+  }));
+}
+
 function getChatChangedFileLineCount(value) {
   const parsed = Number.parseInt(String(value ?? '').replace(/[^\d]/gu, ''), 10);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -16149,6 +16160,35 @@ const AI_CHAT_OLDER_THAN_7_ITEMS = [
     icon: 'junie',
   },
 ];
+
+const AI_CHAT_WORKSPACE_CONTEXT_OVERRIDES = Object.freeze({
+  'request-logging': {
+    type: 'worktree',
+    project: PROJECT_NAME,
+    branch: RELEASE_BRANCH_NAME,
+    hasUncommittedChanges: true,
+  },
+  'understand-codebase': {
+    type: 'worktree',
+    project: PROJECT_NAME,
+    branch: RELEASE_BRANCH_NAME,
+    hasUncommittedChanges: false,
+    hasTransferableCommit: true,
+  },
+});
+
+function getAiChatWorkspaceContext(chatId) {
+  const override = AI_CHAT_WORKSPACE_CONTEXT_OVERRIDES[chatId] ?? null;
+  return {
+    type: override?.type ?? 'current',
+    project: override?.project ?? PROJECT_NAME,
+    branch: override?.branch ?? REVIEW_CURRENT_BRANCH_NAME,
+    hasUncommittedChanges: typeof override?.hasUncommittedChanges === 'boolean'
+      ? override.hasUncommittedChanges
+      : true,
+    hasTransferableCommit: Boolean(override?.hasTransferableCommit),
+  };
+}
 
 function buildSpecStatusScenarioEntries(specId, label) {
   return {
@@ -18693,6 +18733,102 @@ function ChatChangeScopeMenu({
   );
 }
 
+function ChatProjectChangesToolbar({
+  scopeOptions = [],
+  workspaceContext = null,
+  workspaceActionState = null,
+  onOpenScope = null,
+  onWorkspaceAction = null,
+  reviewDisabled = false,
+}) {
+  const workspace = workspaceContext ?? {
+    type: 'current',
+    project: PROJECT_NAME,
+    branch: REVIEW_CURRENT_BRANCH_NAME,
+    hasUncommittedChanges: true,
+    hasTransferableCommit: false,
+  };
+  const transferCompleted = workspaceActionState?.status === 'completed';
+  const transferProcessing = workspaceActionState?.status === 'processing';
+  const patchWasApplied = transferCompleted && workspaceActionState?.action === 'apply-patch';
+  const cherryPickCompleted = transferCompleted && workspaceActionState?.action === 'cherry-pick';
+  const hasUncommittedChanges = workspace.hasUncommittedChanges && !patchWasApplied;
+  const shouldShow = hasUncommittedChanges || workspace.type !== 'current';
+  const allChangesScope = scopeOptions.find((scope) => scope.id === 'all-project-changes')
+    ?? scopeOptions[scopeOptions.length - 1]
+    ?? null;
+  const projectBadge = getReviewProjectBadge(workspace.project);
+  const canCherryPick = workspace.type === 'worktree'
+    && !hasUncommittedChanges
+    && workspace.hasTransferableCommit
+    && !cherryPickCompleted;
+  if (!shouldShow) return null;
+
+  const runWorkspaceAction = (action) => {
+    onWorkspaceAction?.(action);
+  };
+
+  const operationLabel = transferProcessing
+    ? (workspaceActionState?.action === 'cherry-pick' ? 'Cherry-picking…' : 'Applying patch…')
+    : patchWasApplied
+      ? 'Patch applied'
+      : cherryPickCompleted
+        ? 'Cherry-picked'
+        : null;
+
+  return (
+    <div className="aiux543-chat-project-changes-toolbar" aria-label="Project changes">
+      <div className="aiux543-chat-project-context">
+        <span className="aiux543-chat-project-context-item">
+          <span className={`aiux543-chat-project-icon is-${projectBadge.color}`} aria-hidden="true">
+            {projectBadge.initials}
+          </span>
+          <span className="aiux543-chat-project-name">{workspace.project}</span>
+        </span>
+        <span className="aiux543-chat-project-context-item">
+          <Icon name="vcs/vcs" size={16} />
+          <span className="aiux543-chat-project-branch">{workspace.branch}</span>
+        </span>
+      </div>
+      <div className="aiux543-chat-project-review">
+        {operationLabel ? (
+          <span className={`aiux543-chat-project-operation${transferProcessing ? ' is-processing' : ' is-complete'}`}>
+            {transferProcessing ? <Loader size={16} /> : <Icon name="general/checkmark" size={16} />}
+            <span>{operationLabel}</span>
+          </span>
+        ) : null}
+        {canCherryPick ? (
+          <button
+            type="button"
+            className="aiux543-chat-project-review-main"
+            disabled={reviewDisabled || transferProcessing}
+            onClick={() => runWorkspaceAction('cherry-pick')}
+          >
+            <Icon name="vcs/cherryPick" size={16} />
+            <span>Cherry-pick</span>
+          </button>
+        ) : null}
+        {hasUncommittedChanges && allChangesScope ? (
+          <button
+            type="button"
+            className="aiux543-chat-header-all-changes"
+            aria-label="Open All Changes"
+            disabled={reviewDisabled}
+            onClick={() => onOpenScope?.(allChangesScope)}
+          >
+            <ChatChangeScopeInspectionGlyph />
+            <span>All Changes</span>
+            <span className="aiux543-chat-header-all-changes-counts">
+              <span>+{allChangesScope.added}</span>
+              <span>-{allChangesScope.removed}</span>
+            </span>
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AiReviewEditorSplit({
   chatLabel,
   reviewLabel,
@@ -20157,6 +20293,7 @@ const AI_CHAT_COMPOSER_STATE_DEFAULTS = {
   vcsSummaryPermanentlyHidden: false,
   completedFileEditRunCount: 0,
   vcsRunExtraCounts: { added: 0, removed: 0 },
+  workspaceActionState: null,
 };
 
 function AiChatTabView({
@@ -20293,6 +20430,7 @@ function AiChatTabView({
     vcsSummaryPermanentlyHidden,
     completedFileEditRunCount,
     vcsRunExtraCounts,
+    workspaceActionState,
   } = resolvedComposerState;
   const updateComposerState = useCallback((patch) => {
     if (!onComposerStateChange || !chatId) return;
@@ -20463,6 +20601,17 @@ function AiChatTabView({
     && Boolean(onRunAiReview);
   const reviewPromptFiles = getChatChangeCards(scenario);
   const chatChangeScopeOptions = buildChatReviewScopePreviewOptions(scenario);
+  const liveChatChangeScopeOptions = applyChatReviewScopeLineCountDelta(
+    chatChangeScopeOptions,
+    vcsRunExtraCounts,
+  );
+  const chatWorkspaceContext = getAiChatWorkspaceContext(chatId);
+  const runWorkspaceTransferAction = useCallback((action) => {
+    updateComposerState({ workspaceActionState: { action, status: 'processing' } });
+    window.setTimeout(() => {
+      updateComposerState({ workspaceActionState: { action, status: 'completed' } });
+    }, 900);
+  }, [updateComposerState]);
   const selectedAgent = AI_CHAT_AGENTS.find((agent) => agent.id === selectedAgentId) ?? AI_CHAT_AGENTS[0];
   const defaultModelLabel = initialSessionModel ?? 'GPT-5.6-Sol';
   const selectedModelLabel = selectedModelOverride ?? defaultModelLabel;
@@ -20989,7 +21138,38 @@ function AiChatTabView({
   };
 
   return (
-    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}`}>
+    <div className={`aiux543-conversation${isNewSessionState ? ' is-new-session' : ''}${isReviewDecisionReady ? ' is-review-decision-ready' : ''}${changeScopePanelCollapsed ? ' is-change-scope-control-compact' : ''}`}>
+      {changeScopePanelCollapsed && liveChatChangeScopeOptions.length > 0 && onOpenChangeScope && (
+        <div className="aiux543-chat-change-scope-entry">
+          <ChatChangeScopeMenu
+            scopeOptions={liveChatChangeScopeOptions}
+            expanded={changeScopePanelExpanded}
+            collapsed={changeScopePanelCollapsed}
+            onExpandedChange={(expanded) => onChangeScopePanelExpandedChange?.(chatId, expanded)}
+            onOpenScope={(scope) => onOpenChangeScope(chatId, scope.id)}
+          />
+        </div>
+      )}
+      {!changeScopePanelCollapsed && (
+        <ChatProjectChangesToolbar
+          scopeOptions={liveChatChangeScopeOptions}
+          workspaceContext={chatWorkspaceContext}
+          workspaceActionState={workspaceActionState}
+          reviewDisabled={isAgentRunProcessing}
+          onWorkspaceAction={runWorkspaceTransferAction}
+          onOpenScope={(scope) => {
+            if (onOpenChangeScope) {
+              onOpenChangeScope(chatId, scope.id);
+              return;
+            }
+            if (scope.id === 'all-project-changes') {
+              onOpenAllProjectChanges?.(scope.tabIds);
+            } else {
+              onOpenDiffTab?.(scenario?.diffRequest);
+            }
+          }}
+        />
+      )}
       <div ref={scrollRef} className="aiux543-conversation-scroll">
         {conversationTurns.length > 0 ? (
           conversationTurns.map((turn, index) => (
@@ -35474,7 +35654,7 @@ export default function App() {
 
           leftStripeItems={[
             ...MY_LEFT_STRIPE,
-            { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top'   },
+            { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
             { id: 'terminal',    icon: 'toolwindows/terminal@20x20', tooltip: 'Terminal', panel: 'bottom', section: 'bottom' },
             { id: 'git',         icon: 'toolwindows/vcs@20x20',      tooltip: 'Git',      panel: 'bottom', section: 'bottom' },
             { id: 'problems',    icon: 'toolwindows/problems@20x20', tooltip: 'Problems', panel: 'bottom', section: 'bottom' },
@@ -36292,7 +36472,7 @@ export default function App() {
 
         leftStripeItems={[
           ...MY_LEFT_STRIPE,
-          { id: 'chat-history', icon: 'aiAssistant/toolWindowChat@20x20', tooltip: 'Chat History', section: 'top' },
+          { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
           { id: 'problems',    icon: 'toolwindows/problems@20x20',  tooltip: 'Problems',   panel: 'bottom', section: 'bottom' },

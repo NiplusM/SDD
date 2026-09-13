@@ -13251,6 +13251,19 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   color: #73767C;
 }
 
+/* The UI-kit action background is blue, but its inherited foreground can be
+   transparent in the standalone composer dialog. Keep the send glyph explicit
+   so this is recognisably an action, not an empty blue button. */
+.ai-chat-composer-icon-button[aria-label="Send"] {
+  color: #FFFFFF;
+}
+
+.ai-chat-composer-icon-button[aria-label="Send"] svg,
+.ai-chat-composer-icon-button[aria-label="Send"] svg path {
+  display: block;
+  stroke: currentColor;
+}
+
 .ai-chat-progress-button {
   pointer-events: none;
 }
@@ -14277,6 +14290,167 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   background: #191a1c;
   color: #dfe1e5;
   font-family: Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-header-all-changes {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: #ced0d6;
+  cursor: pointer;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.aiux543-chat-header-all-changes:hover:not(:disabled),
+.aiux543-chat-header-all-changes:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.aiux543-chat-header-all-changes:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.aiux543-chat-header-all-changes-counts {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+}
+
+.aiux543-chat-header-all-changes-counts span:first-child {
+  color: #57a773;
+}
+
+.aiux543-chat-header-all-changes-counts span:last-child {
+  color: #d46e6e;
+}
+
+.aiux543-chat-project-changes-toolbar {
+  display: flex;
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 11px;
+  padding: 0 16px;
+  background: #191a1c;
+  color: #73767c;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-context,
+.aiux543-chat-project-review,
+.aiux543-chat-project-review-main {
+  display: inline-flex;
+  align-items: center;
+}
+
+.aiux543-chat-project-context {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.aiux543-chat-project-context-item {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.aiux543-chat-project-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: #5966d9;
+  color: #f4f5ff;
+  font: 600 9px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-icon.is-neutral {
+  background: #777b82;
+}
+
+.aiux543-chat-project-name,
+.aiux543-chat-project-branch {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-name {
+  color: #73767c;
+}
+
+.aiux543-chat-project-branch {
+  max-width: 210px;
+  color: #73767c;
+}
+
+.aiux543-chat-project-context-item > .icon {
+  flex: 0 0 auto;
+  color: #868a91;
+}
+
+.aiux543-chat-project-review {
+  min-width: 0;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.aiux543-chat-project-review-main {
+  min-width: 0;
+  height: 26px;
+  box-sizing: border-box;
+  gap: 2px;
+  padding: 0 2px 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #b4b8bf;
+  cursor: pointer;
+  font: 500 13px/16px Inter, system-ui, sans-serif;
+}
+
+.aiux543-chat-project-operation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #96999f;
+  white-space: nowrap;
+}
+
+.aiux543-chat-project-operation.is-complete {
+  color: #6db083;
+}
+
+.aiux543-chat-project-operation .loader {
+  width: 16px;
+  height: 16px;
+}
+
+.aiux543-chat-project-review-main:hover:not(:disabled),
+.aiux543-chat-project-review-main:focus-visible {
+  background: var(--icon-button-hover-bg, rgb(255 255 255 / 8%));
+  outline: none;
+}
+
+.aiux543-chat-project-review-main:disabled {
+  color: var(--text-disabled, #5f6269);
+  cursor: default;
 }
 
 .aiux543-chat-change-scope-entry {
