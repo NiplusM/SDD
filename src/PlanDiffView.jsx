@@ -7165,6 +7165,17 @@ export function PlanDiffEditorToolbar({
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
+          {onOpenChat && (
+            <>
+              <ToolbarButton
+                text="To chat session"
+                icon={<PlanDiffToolbarIcon type="left" />}
+                title="To chat session"
+                onClick={onOpenChat}
+              />
+              <ToolbarSeparator className="plan-diff-toolbar-separator" />
+            </>
+          )}
           <div className="plan-diff-toolbar-group">
             <PlanDiffToolbarIconButton
               label={atFirstDifference && pendingFileJump === 'previous'
@@ -7538,6 +7549,17 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
+                {onOpenChat && (
+                  <>
+                    <ToolbarButton
+                      text="To chat session"
+                      icon={<PlanDiffToolbarIcon type="left" />}
+                      title="To chat session"
+                      onClick={onOpenChat}
+                    />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                  </>
+                )}
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
