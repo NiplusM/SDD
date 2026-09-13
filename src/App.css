@@ -6102,6 +6102,11 @@ body {
   white-space: nowrap;
 }
 
+.plan-diff-toolbar-chat-back {
+  flex: 0 0 auto;
+  color: var(--text-secondary, #8b8e94);
+}
+
 .plan-diff-toolbar-icon-btn {
   width: 26px;
   min-width: 26px;

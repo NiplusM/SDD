@@ -7229,6 +7229,7 @@ export function PlanDiffEditorToolbar({
                   >
                     <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
                     <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
+                    <span className="plan-diff-toolbar-chat-back">Back</span>
                   </button>
                 ) : (
                   <span className="plan-diff-toolbar-chat" title={chatTitle}>
@@ -7631,6 +7632,7 @@ export function PlanDiffEditorArea({
                         >
                           <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
                           <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                          <span className="plan-diff-toolbar-chat-back">Back</span>
                         </button>
                       ) : (
                         <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
