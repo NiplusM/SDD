@@ -13279,6 +13279,18 @@ button.ai-chat-attachment-hover-note.is-navigable:hover {
   color: #73767C;
 }
 
+/* The standalone Ask AI composer receives the UI-kit blue action background,
+   but not always its foreground token. Explicitly retain the Send arrow. */
+.ai-chat-composer-icon-button[aria-label="Send"] {
+  color: #FFFFFF;
+}
+
+.ai-chat-composer-icon-button[aria-label="Send"] svg,
+.ai-chat-composer-icon-button[aria-label="Send"] svg path {
+  display: block;
+  stroke: currentColor;
+}
+
 .ai-chat-progress-button {
   pointer-events: none;
 }
