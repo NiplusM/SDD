@@ -2138,7 +2138,10 @@ export function AiReviewComposerDialog({
     setSelectedSessionId(initialSession?.id ?? null);
     setInstructions(initialInstructions);
     setScopeId(initialScopeId);
-    setAttachments(isShortcutLaunch ? [] : sourceAttachments);
+    // A selection from a source file is explicit Ask AI context. Preserve it
+    // while the user chooses a session, then combine it with that session's
+    // already-created comment attachments.
+    setAttachments(launchSource === 'shortcut' ? [] : sourceAttachments);
     setAttachmentsExpanded(false);
     setShowQuickActions(initialShowQuickActions);
     setAddContextRect(null);
@@ -2151,6 +2154,14 @@ export function AiReviewComposerDialog({
     ? [initialSession, ...normalizedAvailableSessions.filter((item) => item.id !== initialSession.id)]
     : normalizedAvailableSessions;
   const selectedSession = sessionOptions.find((item) => item.id === selectedSessionId) ?? null;
+  const mergeDialogAttachments = (...attachmentGroups) => {
+    const seenIds = new Set();
+    return attachmentGroups.flat().filter((attachment) => {
+      if (!attachment?.id || seenIds.has(attachment.id)) return false;
+      seenIds.add(attachment.id);
+      return true;
+    });
+  };
   const canStartReview = (isShortcutLaunch ? instructions.trim().length > 0 : attachments.length > 0)
     && Boolean(selectedAgent?.id)
     && Boolean(modelId);
@@ -2305,13 +2316,16 @@ export function AiReviewComposerDialog({
                             onSelectSession: (item) => {
                               setSelectedSessionId(item?.id ?? null);
                               setInstructions(typeof item?.commentText === 'string' ? item.commentText : '');
-                              setAttachments(Array.isArray(item?.attachments) ? item.attachments : []);
+                              setAttachments(mergeDialogAttachments(
+                                launchSource === 'file-selection' ? sourceAttachments : [],
+                                Array.isArray(item?.attachments) ? item.attachments : [],
+                              ));
                               setOpenMenu(null);
                             },
                             onCreateNewSession: () => {
                               setSelectedSessionId(null);
                               setInstructions('');
-                              setAttachments([]);
+                              setAttachments(launchSource === 'file-selection' ? sourceAttachments : []);
                               setOpenMenu(null);
                             },
                             onDismiss: () => setOpenMenu(null),
@@ -2335,7 +2349,10 @@ export function AiReviewComposerDialog({
                           onClick={() => {
                             setSelectedSessionId(item.id);
                             setInstructions(typeof item.commentText === 'string' ? item.commentText : '');
-                            setAttachments(Array.isArray(item.attachments) ? item.attachments : []);
+                            setAttachments(mergeDialogAttachments(
+                              launchSource === 'file-selection' ? sourceAttachments : [],
+                              Array.isArray(item.attachments) ? item.attachments : [],
+                            ));
                             setOpenMenu(null);
                           }}
                         >
