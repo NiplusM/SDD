@@ -1714,12 +1714,14 @@ function PlanDiffViewingScopeControl({
         {/* Commit scope: which files this Commit button will actually act on.
             Stopping propagation keeps a click here from also opening the file,
             same as the viewed-toggle button below it. */}
-        <Checkbox
-          checked={isFileChecked(item)}
-          aria-label={`Include ${item.label} in commit`}
-          onClick={(event) => event.stopPropagation()}
-          onChange={() => setFileChecked(item, !isFileChecked(item))}
-        />
+        {!usesFilesSidePanel && (
+          <Checkbox
+            checked={isFileChecked(item)}
+            aria-label={`Include ${item.label} in commit`}
+            onClick={(event) => event.stopPropagation()}
+            onChange={() => setFileChecked(item, !isFileChecked(item))}
+          />
+        )}
         <Icon name={item.icon} size={16} />
         <span className="plan-diff-files-file-name">
           {status === 'renamed' && item.previousLabel ? `${item.previousLabel} → ${item.label}` : item.label}
@@ -1795,13 +1797,15 @@ function PlanDiffViewingScopeControl({
           }}
         >
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
-          <Checkbox
-            checked={groupCheckState === 'checked'}
-            indeterminate={groupCheckState === 'indeterminate'}
-            aria-label={`Include all files in ${group.label} in commit`}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
-          />
+          {!usesFilesSidePanel && (
+            <Checkbox
+              checked={groupCheckState === 'checked'}
+              indeterminate={groupCheckState === 'indeterminate'}
+              aria-label={`Include all files in ${group.label} in commit`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => setFilesChecked(groupFiles, groupCheckState !== 'checked')}
+            />
+          )}
           {group.kind === 'checkout' ? (
             <span className={`agent-sessions-project-avatar is-${group.projectColor ?? 'neutral'}`}>
               {group.projectInitials}
@@ -1851,13 +1855,15 @@ function PlanDiffViewingScopeControl({
           }}
         >
           <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
-          <Checkbox
-            checked={dirCheckState === 'checked'}
-            indeterminate={dirCheckState === 'indeterminate'}
-            aria-label={`Include all files in ${node.label} in commit`}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
-          />
+          {!usesFilesSidePanel && (
+            <Checkbox
+              checked={dirCheckState === 'checked'}
+              indeterminate={dirCheckState === 'indeterminate'}
+              aria-label={`Include all files in ${node.label} in commit`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => setFilesChecked(dirFiles, dirCheckState !== 'checked')}
+            />
+          )}
           <Icon name="nodes/folder" size={16} />
           <span className="plan-diff-files-tree-label">{node.label}</span>
           <span className="plan-diff-files-tree-count">
