@@ -23604,7 +23604,8 @@ button.aiux543-answer-change-card:focus-visible {
   min-height: 0;
   flex: 0 0 clamp(260px, 28%, 340px);
   overflow: hidden;
-  border-left: 1px solid var(--border-secondary, #33353b);
+  border-right: 1px solid var(--border-secondary, #33353b);
+  background: #202124;
 }
 
 .plan-diff-files-side-panel {
@@ -23623,6 +23624,11 @@ button.aiux543-answer-change-card:focus-visible {
   max-height: none;
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.plan-diff-files-side-panel .plan-diff-files-popup-header,
+.plan-diff-files-side-panel .plan-diff-files-tree {
+  background: #202124;
 }
 
 .aiux-review-split-file-body > .plan-diff-overlay {

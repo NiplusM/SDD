@@ -7686,6 +7686,13 @@ export function PlanDiffEditorArea({
       </div>
       {overlayHost && createPortal(
         <div className="plan-diff-standalone-content">
+          {!singleLineNumbers && (
+            <aside
+              ref={setFilesPanelHost}
+              className="plan-diff-standalone-files-panel-host"
+              aria-label="Changed files panel"
+            />
+          )}
           <div className="plan-diff-standalone-body">
             <PlanDiffOverlay
               diffData={diffData}
@@ -7742,13 +7749,6 @@ export function PlanDiffEditorArea({
               commentShortcutHintRowId={commentShortcutHintRowId}
             />
           </div>
-          {!singleLineNumbers && (
-            <aside
-              ref={setFilesPanelHost}
-              className="plan-diff-standalone-files-panel-host"
-              aria-label="Changed files panel"
-            />
-          )}
         </div>,
         overlayHost
       )}
