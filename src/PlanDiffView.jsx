@@ -7188,9 +7188,9 @@ export function PlanDiffEditorToolbar({
           {onOpenChat && (
             <>
               <ToolbarButton
-                text="To chat session"
+                text={chatTitle || 'Chat session'}
                 icon={<PlanDiffToolbarIcon type="left" />}
-                title="To chat session"
+                title={`Back to ${chatTitle || 'chat session'}`}
                 onClick={onOpenChat}
               />
               <ToolbarSeparator className="plan-diff-toolbar-separator" />
@@ -7574,9 +7574,9 @@ export function PlanDiffEditorArea({
                 {onOpenChat && (
                   <>
                     <ToolbarButton
-                      text="To chat session"
+                      text={commentContextLabel || 'Chat session'}
                       icon={<PlanDiffToolbarIcon type="left" />}
-                      title="To chat session"
+                      title={`Back to ${commentContextLabel || 'chat session'}`}
                       onClick={onOpenChat}
                     />
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
