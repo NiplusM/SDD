@@ -1882,38 +1882,46 @@ function PlanDiffViewingScopeControl({
 
   const filesListContent = (
     <>
-      {!usesFilesSidePanel && (
-        <div className="plan-diff-files-popup-header">
-          <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
-            <Icon name="actions/preview" size={16} />
-          </span>
-          <span
-            className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
-            aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+      <div className="plan-diff-files-popup-header">
+        <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
+          <Icon name="actions/preview" size={16} />
+        </span>
+        <span
+          className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
+          aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+        >
+          {allFilesViewed && <Icon name="general/checkmark" size={16} />}
+          {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
+        </span>
+        <span className="plan-diff-files-popup-actions">
+          <button
+            type="button"
+            aria-label="Expand all"
+            disabled={isTreeFullyExpanded}
+            onClick={() => setCollapsedDirKeys(new Set())}
           >
-            {allFilesViewed && <Icon name="general/checkmark" size={16} />}
-            {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
-          </span>
-          <span className="plan-diff-files-popup-actions">
+            <Icon name="general/expandAll" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Collapse all"
+            disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
+            onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
+          >
+            <Icon name="general/collapseAll" size={16} />
+          </button>
+          {usesFilesSidePanel && (
             <button
               type="button"
-              aria-label="Expand all"
-              disabled={isTreeFullyExpanded}
-              onClick={() => setCollapsedDirKeys(new Set())}
+              aria-label="Close files panel"
+              title="Close files panel"
+              onClick={closeFiles}
             >
-              <Icon name="general/expandAll" size={16} />
+              <Icon name="general/close" size={16} />
             </button>
-            <button
-              type="button"
-              aria-label="Collapse all"
-              disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
-              onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
-            >
-              <Icon name="general/collapseAll" size={16} />
-            </button>
-          </span>
-        </div>
-      )}
+          )}
+        </span>
+      </div>
       <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
         {isGroupedScope
           ? scopeTrees.map((group) => renderScopeGroup(group, 0))
