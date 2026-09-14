@@ -23599,10 +23599,10 @@ button.aiux543-answer-change-card:focus-visible {
 
 .plan-diff-standalone-files-panel-host:not(:empty) {
   display: block;
-  width: clamp(300px, 38%, 420px);
-  min-width: 300px;
+  width: clamp(260px, 28%, 340px);
+  min-width: 260px;
   min-height: 0;
-  flex: 0 0 clamp(300px, 38%, 420px);
+  flex: 0 0 clamp(260px, 28%, 340px);
   overflow: hidden;
   border-left: 1px solid var(--border-secondary, #33353b);
 }
