@@ -7226,18 +7226,6 @@ export function PlanDiffEditorToolbar({
           )}
           </div>
           <div className="plan-diff-toolbar-right">
-          <span className="plan-diff-toolbar-meta text-ui-default">
-            {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
-          </span>
-          <SegmentedControl
-            className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
-            value={viewMode}
-            onChange={onViewModeChange}
-            options={[
-              { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
-              { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
-            ]}
-          />
           {!isArchivedSnapshot && commentCount > 0 && onSendComments && (
             <>
               <PlanDiffCommentNavControl
@@ -7259,6 +7247,18 @@ export function PlanDiffEditorToolbar({
               </Button>
             </>
           )}
+          <span className="plan-diff-toolbar-meta text-ui-default">
+            {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
+          </span>
+          <SegmentedControl
+            className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
+            value={viewMode}
+            onChange={onViewModeChange}
+            options={[
+              { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
+              { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
+            ]}
+          />
           <PlanDiffSettingsMenu settings={viewerSettings} onSettingsChange={setViewerSettings} />
           </div>
         </div>
@@ -7580,18 +7580,6 @@ export function PlanDiffEditorArea({
                 )}
                 </div>
                 <div className="plan-diff-toolbar-right">
-                <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
-                {viewMode !== 'aside' && (
-                  <SegmentedControl
-                    className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
-                    value={diffLayout}
-                    onChange={setDiffLayout}
-                    options={[
-                      { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
-                      { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
-                    ]}
-                  />
-                )}
                 {!isArchivedSnapshot && commentCount > 0 && onSendComments && (
                   <>
                     <PlanDiffCommentNavControl
@@ -7612,6 +7600,18 @@ export function PlanDiffEditorArea({
                       Send Comments
                     </Button>
                   </>
+                )}
+                <span className="plan-diff-toolbar-meta text-ui-default">{formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}</span>
+                {viewMode !== 'aside' && (
+                  <SegmentedControl
+                    className="aiux-review-overview-viewtoggle plan-diff-toolbar-viewtoggle"
+                    value={diffLayout}
+                    onChange={setDiffLayout}
+                    options={[
+                      { value: 'split', label: <Icon name="general/splitVertically" size={16} /> },
+                      { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
+                    ]}
+                  />
                 )}
                 <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
