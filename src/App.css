@@ -23587,10 +23587,27 @@ button.aiux543-answer-change-card:focus-visible {
 
 .plan-diff-standalone-body {
   position: relative;
+  display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.plan-diff-standalone-body > .plan-diff-content-labels {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  padding: 8px 18px;
+  border-bottom: 1px solid #2b2d31;
+  background: #1b1c1f;
+}
+
+.plan-diff-standalone-body > .plan-diff-overlay {
+  position: relative;
+  inset: auto;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .plan-diff-standalone-files-panel-host:empty {

@@ -7680,10 +7680,6 @@ export function PlanDiffEditorArea({
                 </div>,
                 standaloneBodyHost,
               )}
-            <div className="plan-diff-content-labels">
-              <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
-              <PlanDiffContentLabel>New content</PlanDiffContentLabel>
-            </div>
           </div>
         )}
       </div>
@@ -7697,6 +7693,12 @@ export function PlanDiffEditorArea({
             />
           )}
           <div ref={setStandaloneBodyHost} className="plan-diff-standalone-body">
+            {!singleLineNumbers && (
+              <div className="plan-diff-content-labels">
+                <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
+                <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+              </div>
+            )}
             <PlanDiffOverlay
               diffData={diffData}
               contextSelections={contextSelections}
