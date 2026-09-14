@@ -5894,6 +5894,32 @@ body {
   box-sizing: border-box;
 }
 
+.plan-diff-toolbar-secondary-row {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 16px;
+  overflow: hidden;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-top: 1px solid #2b2d31;
+}
+
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-left,
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.plan-diff-toolbar-secondary-row .plan-diff-toolbar-right {
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
 .plan-diff-branch-comparison-row {
   display: inline-flex;
   min-width: 0;
