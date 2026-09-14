@@ -1932,19 +1932,6 @@ function PlanDiffViewingScopeControl({
 
   return (
     <div className="plan-diff-review-scope-controls">
-      <PlanDiffChangeScopeControl
-        selectedScopeId={selectedChangeScopeId}
-        onScopeChange={onChangeScope}
-        options={effectiveChangeScopeOptions}
-      />
-      {effectiveSelectedChangeScope?.id === 'branch' && (
-        <PlanDiffBranchComparisonControl
-          scope={effectiveSelectedChangeScope}
-          value={activeCompareBranch}
-          onChange={onCompareBranchChange}
-        />
-      )}
-      <ToolbarSeparator className="plan-diff-toolbar-separator" />
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
@@ -2029,6 +2016,19 @@ function PlanDiffViewingScopeControl({
         document.body,
       )}
       </div>
+      <ToolbarSeparator className="plan-diff-toolbar-separator" />
+      <PlanDiffChangeScopeControl
+        selectedScopeId={selectedChangeScopeId}
+        onScopeChange={onChangeScope}
+        options={effectiveChangeScopeOptions}
+      />
+      {effectiveSelectedChangeScope?.id === 'branch' && (
+        <PlanDiffBranchComparisonControl
+          scope={effectiveSelectedChangeScope}
+          value={activeCompareBranch}
+          onChange={onCompareBranchChange}
+        />
+      )}
     </div>
   );
 }
