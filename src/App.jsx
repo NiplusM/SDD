@@ -19189,6 +19189,7 @@ function AiReviewSplitFileView({
         checkedFileIds={checkedFileIds}
         onToggleFileChecked={onToggleFileChecked}
         filesPanelHost={filesPanelHost}
+        filesPanelMode="split"
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
         baseRevision={getReviewBaseRevision(fileLocation.project, REVIEW_BASE_BRANCH_NAME)}

@@ -1450,6 +1450,7 @@ function PlanDiffViewingScopeControl({
   checkedFileIds = null,
   onToggleFileChecked = null,
   filesPanelHost = null,
+  filesPanelMode = 'popup',
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1571,6 +1572,7 @@ function PlanDiffViewingScopeControl({
   )));
 
   const closeFiles = () => setFilesRect(null);
+  const usesFilesSidePanel = filesPanelMode === 'split';
   const navigateFiles = (delta) => {
     if (usesProvidedFiles) {
       (delta < 0 ? onNavigatePrevious : onNavigateNext)?.();
@@ -1581,7 +1583,7 @@ function PlanDiffViewingScopeControl({
   const selectFile = (item, index) => {
     if (item.tabId) onSelectFile?.(item.tabId);
     else setFallbackFileIndex(index);
-    if (!filesPanelHost) closeFiles();
+    if (!usesFilesSidePanel) closeFiles();
   };
 
   // A file is keyed by tabId where the host provides one, so the viewed flag
@@ -1940,7 +1942,7 @@ function PlanDiffViewingScopeControl({
             type="button"
             className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
             title="Changed files"
-            aria-haspopup={filesPanelHost ? undefined : 'dialog'}
+            aria-haspopup={usesFilesSidePanel ? undefined : 'dialog'}
             aria-expanded={Boolean(filesRect)}
             onClick={() => {
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
@@ -1956,8 +1958,8 @@ function PlanDiffViewingScopeControl({
           disabled={currentDedupedIndex >= visibleFileCount - 1}
           onClick={() => navigateFiles(1)}
         />
-      {filesRect && typeof document !== 'undefined' && createPortal(
-        filesPanelHost
+      {filesRect && typeof document !== 'undefined' && (!usesFilesSidePanel || filesPanelHost) && createPortal(
+        usesFilesSidePanel
           ? (
               <div className="theme-dark plan-diff-files-side-panel text-ui-default">
                 {filesListContent}
@@ -1972,7 +1974,7 @@ function PlanDiffViewingScopeControl({
                 </PositionedPopup>
               </div>
             ),
-        filesPanelHost ?? document.body,
+        usesFilesSidePanel ? filesPanelHost : document.body,
       )}
       {sessionsPopup && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
@@ -7052,6 +7054,7 @@ export function PlanDiffEditorToolbar({
   checkedFileIds = null,
   onToggleFileChecked = null,
   filesPanelHost = null,
+  filesPanelMode = 'popup',
   // Some settings (notably "Show All Files in One Diff View") can only be
   // honoured by whoever owns the scope files, so the host may take them over.
   viewerSettings: controlledViewerSettings = null,
@@ -7244,6 +7247,7 @@ export function PlanDiffEditorToolbar({
                 checkedFileIds={checkedFileIds}
                 onToggleFileChecked={onToggleFileChecked}
                 filesPanelHost={filesPanelHost}
+                filesPanelMode={filesPanelMode}
               />
             </>
           )}
