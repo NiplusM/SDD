@@ -830,12 +830,6 @@ export const PLAN_DIFF_DEFAULT_VIEWER_SETTINGS = {
 function PlanDiffSettingsMenu({
   settings,
   onSettingsChange,
-  // Optional: lets this menu also toggle the separate session toolbar
-  // (chat label, comment nav, Send Comments) — only rendered when a host
-  // actually has that toolbar to hide, so plain settings-only callers see no
-  // extra section.
-  secondaryRowHidden = null,
-  onToggleSecondaryRow = null,
 }) {
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
@@ -959,19 +953,6 @@ function PlanDiffSettingsMenu({
                 {mark(settings.allInOne)}
                 Show All Files in One Diff View
               </PopupCell>
-              {onToggleSecondaryRow && (
-                <>
-                  <PopupCell type="separator" />
-                  <PopupCell
-                    role="menuitemcheckbox"
-                    aria-checked={Boolean(secondaryRowHidden)}
-                    onClick={() => onToggleSecondaryRow(!secondaryRowHidden)}
-                  >
-                    {mark(Boolean(secondaryRowHidden))}
-                    Hide Bottom Panel
-                  </PopupCell>
-                </>
-              )}
             </Popup>
           </PositionedPopup>
         </div>,
@@ -7098,11 +7079,8 @@ export function PlanDiffEditorToolbar({
   activeCommentRowId = null,
   onNavigateComment = null,
 }) {
-  const toolbarRef = useRef(null);
-  const [sessionToolbarHost, setSessionToolbarHost] = useState(null);
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
-  const [secondaryRowHidden, setSecondaryRowHidden] = useState(false);
   const [localViewerSettings, setLocalViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
   const viewerSettings = controlledViewerSettings ?? localViewerSettings;
   const setViewerSettings = (next) => {
@@ -7174,29 +7152,8 @@ export function PlanDiffEditorToolbar({
   const selectedCommitScope = resolvedCommitScopeOptions.find((option) => option.id === selectedChangeScopeId)
     ?? resolvedCommitScopeOptions[0];
 
-  useEffect(() => {
-    if (!toolbarRef.current) {
-      setSessionToolbarHost(null);
-      return undefined;
-    }
-
-    const frameId = requestAnimationFrame(() => {
-      const splitFileView = toolbarRef.current?.closest('.aiux-review-split-file-view');
-      const splitFileBody = splitFileView?.querySelector(':scope > .aiux-review-split-file-body');
-      const editorEl = toolbarRef.current?.closest('.editor');
-      const editorBody = editorEl?.querySelector('.editor-body');
-      const nextHost = splitFileBody ?? editorBody;
-      setSessionToolbarHost(nextHost instanceof HTMLElement ? nextHost : null);
-    });
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      setSessionToolbarHost(null);
-    };
-  }, [diffData?.sourceTabLabel, diffData?.title]);
-
   return (
-    <div className="plan-diff-toolbar-shell" ref={toolbarRef}>
+    <div className="plan-diff-toolbar-shell">
       {!isPlainFile && (
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-primary-row">
@@ -7281,64 +7238,63 @@ export function PlanDiffEditorToolbar({
               { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
             ]}
           />
-            <PlanDiffSettingsMenu
-              settings={viewerSettings}
-              onSettingsChange={setViewerSettings}
-              secondaryRowHidden={secondaryRowHidden}
-              onToggleSecondaryRow={setSecondaryRowHidden}
-            />
+          {!isArchivedSnapshot && commentCount > 0 && onSendComments && (
+            <>
+              <PlanDiffCommentNavControl
+                commentRowIds={commentRowIds}
+                activeRowId={activeCommentRowId}
+                onNavigate={onNavigateComment}
+              />
+              <Button
+                type="primary"
+                size="slim"
+                className="plan-diff-send-comments-button"
+                disabled={sendCommentsDisabled}
+                aria-label={sendCommentsDisabled
+                  ? 'Comments are being processed by the agent.'
+                  : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
+                onClick={() => onSendComments(commentCount)}
+              >
+                Send Comments
+              </Button>
+            </>
+          )}
+          <PlanDiffSettingsMenu settings={viewerSettings} onSettingsChange={setViewerSettings} />
           </div>
         </div>
       </div>
       )}
-        {sessionToolbarHost && !isArchivedSnapshot && commentCount > 0 && onSendComments && (!secondaryRowHidden || isPlainFile) && createPortal(
-          <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
-            <div className="plan-diff-toolbar-secondary-row">
+      {isPlainFile && !isArchivedSnapshot && commentCount > 0 && onSendComments && (
+        <div className="plan-diff-toolbar">
+          <div className="plan-diff-toolbar-primary-row">
             <div className="plan-diff-toolbar-left">
-              <div className="plan-diff-toolbar-chat-group">
-              {!secondaryRowHidden && (
-                <PlanDiffCommentNavControl
-                  commentRowIds={commentRowIds}
-                  activeRowId={activeCommentRowId}
-                  onNavigate={onNavigateComment}
-                />
-              )}
-              </div>
+              <PlanDiffCommentNavControl
+                commentRowIds={commentRowIds}
+                activeRowId={activeCommentRowId}
+                onNavigate={onNavigateComment}
+              />
             </div>
             <div className="plan-diff-toolbar-right">
-              {!secondaryRowHidden && (
-                <>
-                  {onSendComments && (
-                    <Button
-                      type="primary"
-                      size="slim"
-                      className="plan-diff-send-comments-button"
-                      disabled={commentCount === 0 || sendCommentsDisabled}
-                      aria-label={sendCommentsDisabled
-                        ? 'Comments are being processed by the agent.'
-                        : commentCount > 0
-                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
-                        : 'No comments to send yet.'}
-                      onClick={() => onSendComments(commentCount)}
-                    >
-                      Send Comments
-                    </Button>
-                  )}
-                </>
-              )}
-              {isPlainFile && (
-                <PlanDiffSettingsMenu
-                  settings={viewerSettings}
-                  onSettingsChange={setViewerSettings}
-                  secondaryRowHidden={secondaryRowHidden}
-                  onToggleSecondaryRow={setSecondaryRowHidden}
-                />
-              )}
+              <Button
+                type="primary"
+                size="slim"
+                className="plan-diff-send-comments-button"
+                disabled={sendCommentsDisabled}
+                aria-label={sendCommentsDisabled
+                  ? 'Comments are being processed by the agent.'
+                  : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
+                onClick={() => onSendComments(commentCount)}
+              >
+                Send Comments
+              </Button>
+              <PlanDiffSettingsMenu
+                settings={viewerSettings}
+                onSettingsChange={setViewerSettings}
+              />
             </div>
           </div>
-          </div>,
-          sessionToolbarHost,
-        )}
+        </div>
+      )}
       {/* Revision labels describe the two sides of a diff. A plain source has
           only one content stream, so keeping this row there creates a stray
           diff artefact directly below its toolbar. */}
@@ -7435,9 +7391,8 @@ export function PlanDiffEditorArea({
   commentCount = 0,
   sendCommentsDisabled = false,
   onSendComments = null,
-  // Prev/next through drafted comments, shown next to the chat label on the
-  // secondary toolbar row. The row id list and active id are owned by the
-  // host, same as commentCount above.
+  // Prev/next through drafted comments in the upper toolbar. The row id list
+  // and active id are owned by the host, same as commentCount above.
   commentRowIds = [],
   activeCommentRowId = null,
   onNavigateComment = null,
@@ -7478,13 +7433,11 @@ export function PlanDiffEditorArea({
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
   const [filesPanelHost, setFilesPanelHost] = useState(null);
-  const [standaloneBodyHost, setStandaloneBodyHost] = useState(null);
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
   const [selectedChangeScopeId, setSelectedChangeScopeId] = useState('last-turn');
   const [areaViewerSettings, setAreaViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
-  const [areaSecondaryRowHidden, setAreaSecondaryRowHidden] = useState(false);
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -7545,43 +7498,37 @@ export function PlanDiffEditorArea({
             </div>
           </div>
         )}
-        {/* Jumping "Jump to Source" out of a diff lands here with no diff nav
-            or file scope. Keep the session actions available in the same
-            centered bottom toolbar used by the diff instead of reserving a
-            full-width row above the source. */}
-        {standaloneBodyHost && singleLineNumbers && !reviewNav && commentCount > 0 && onSendComments && createPortal(
-          <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
-              <div className="plan-diff-toolbar-secondary-row">
+        {/* A source file has no diff navigation, but drafted-comment actions
+            still use the same upper-toolbar placement as the diff. */}
+        {singleLineNumbers && !reviewNav && commentCount > 0 && onSendComments && (
+          <div className="plan-diff-toolbar-shell">
+            <div className="plan-diff-toolbar">
+              <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
-                  <div className="plan-diff-toolbar-chat-group">
                   <PlanDiffCommentNavControl
                     commentRowIds={commentRowIds}
                     activeRowId={activeCommentRowId}
                     onNavigate={onNavigateComment}
                   />
-                  </div>
                 </div>
                 <div className="plan-diff-toolbar-right">
-                  {onSendComments && (
-                    <Button
-                      type="primary"
-                      size="slim"
-                      className="plan-diff-send-comments-button"
-                      disabled={commentCount === 0 || sendCommentsDisabled}
-                      aria-label={sendCommentsDisabled
-                        ? 'Comments are being processed by the agent.'
-                        : commentCount > 0
-                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
-                        : 'No comments to send yet.'}
-                      onClick={() => onSendComments(commentCount)}
-                    >
-                      Send Comments
-                    </Button>
-                  )}
+                  <Button
+                    type="primary"
+                    size="slim"
+                    className="plan-diff-send-comments-button"
+                    disabled={sendCommentsDisabled}
+                    aria-label={sendCommentsDisabled
+                      ? 'Comments are being processed by the agent.'
+                      : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
+                    onClick={() => onSendComments(commentCount)}
+                  >
+                    Send Comments
+                  </Button>
+                  <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
-          </div>,
-          standaloneBodyHost,
+            </div>
+          </div>
         )}
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
@@ -7645,55 +7592,31 @@ export function PlanDiffEditorArea({
                     ]}
                   />
                 )}
-                <PlanDiffSettingsMenu
-                  settings={areaViewerSettings}
-                  onSettingsChange={setAreaViewerSettings}
-                  secondaryRowHidden={areaSecondaryRowHidden}
-                  onToggleSecondaryRow={setAreaSecondaryRowHidden}
-                />
+                {!isArchivedSnapshot && commentCount > 0 && onSendComments && (
+                  <>
+                    <PlanDiffCommentNavControl
+                      commentRowIds={commentRowIds}
+                      activeRowId={activeCommentRowId}
+                      onNavigate={onNavigateComment}
+                    />
+                    <Button
+                      type="primary"
+                      size="slim"
+                      className="plan-diff-send-comments-button"
+                      disabled={sendCommentsDisabled}
+                      aria-label={sendCommentsDisabled
+                        ? 'Comments are being processed by the agent.'
+                        : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
+                      onClick={() => onSendComments(commentCount)}
+                    >
+                      Send Comments
+                    </Button>
+                  </>
+                )}
+                <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
             </div>
-              {standaloneBodyHost && !isArchivedSnapshot && !areaSecondaryRowHidden && commentCount > 0 && onSendComments && createPortal(
-                <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
-                  <div className="plan-diff-toolbar-secondary-row">
-                  <div className="plan-diff-toolbar-left">
-                    <div className="plan-diff-toolbar-chat-group">
-                    {!areaSecondaryRowHidden && (
-                      <PlanDiffCommentNavControl
-                        commentRowIds={commentRowIds}
-                        activeRowId={activeCommentRowId}
-                        onNavigate={onNavigateComment}
-                      />
-                    )}
-                    </div>
-                  </div>
-                  <div className="plan-diff-toolbar-right">
-                    {!areaSecondaryRowHidden && (
-                      <>
-                        {onSendComments && (
-                          <Button
-                            type="primary"
-                            size="slim"
-                            className="plan-diff-send-comments-button"
-                            disabled={commentCount === 0 || sendCommentsDisabled}
-                            aria-label={sendCommentsDisabled
-                              ? 'Comments are being processed by the agent.'
-                              : commentCount > 0
-                              ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
-                              : 'No comments to send yet.'}
-                            onClick={() => onSendComments(commentCount)}
-                          >
-                            Send Comments
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-                </div>,
-                standaloneBodyHost,
-              )}
           </div>
         )}
       </div>
@@ -7706,7 +7629,7 @@ export function PlanDiffEditorArea({
               aria-label="Changed files panel"
             />
           )}
-          <div ref={setStandaloneBodyHost} className="plan-diff-standalone-body">
+          <div className="plan-diff-standalone-body">
             {!singleLineNumbers && (
               <div className="plan-diff-content-labels">
                 <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
