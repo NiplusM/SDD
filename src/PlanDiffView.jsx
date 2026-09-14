@@ -7461,6 +7461,7 @@ export function PlanDiffEditorArea({
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
+  const [filesPanelHost, setFilesPanelHost] = useState(null);
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
@@ -7608,6 +7609,8 @@ export function PlanDiffEditorArea({
                       files={demoScopeFiles}
                       selectedChangeScopeId={selectedChangeScopeId}
                       onChangeScope={setSelectedChangeScopeId}
+                      filesPanelHost={filesPanelHost}
+                      filesPanelMode="split"
                     />
                   </>
                 )}
@@ -7682,60 +7685,71 @@ export function PlanDiffEditorArea({
         )}
       </div>
       {overlayHost && createPortal(
-        <PlanDiffOverlay
-          diffData={diffData}
-          contextSelections={contextSelections}
-          initialDiffComments={initialDiffComments}
-          documentDiffComments={documentDiffComments}
-          documentContextLabel={documentContextLabel}
-          documentContextIcon={documentContextIcon}
-          documentContextSessionLabel={documentContextSessionLabel}
-          documentContextSourceTabId={documentContextSourceTabId}
-          defaultSubmitAttachMode={defaultSubmitAttachMode}
-          lockSubmitTarget={lockSubmitTarget}
-                          requireSubmitTargetChoice={requireSubmitTargetChoice}
-                          submitSessionChoices={submitSessionChoices}
-          defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
-          defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
-          defaultSubmitTargetKey={defaultSubmitTargetKey}
-          commentSessions={commentSessions}
-          commentSessionActiveChatId={commentSessionActiveChatId}
-          commentsReadOnly={commentsReadOnly}
-          commentContextLabel={commentContextLabel}
-          commentContextIcon={commentContextIcon}
-          commentContextSessionLabel={commentContextSessionLabel}
-          onDiffCommentsChange={onDiffCommentsChange}
-          onDiffCommentSubmit={onDiffCommentSubmit}
-          onGutterCommentToggle={onGutterCommentToggle}
-          onRowDelete={onRowDelete}
-          onRowFix={onRowFix}
-          onPlanMarkerClick={onPlanMarkerClick}
-          onReturnToChat={onReturnToChat}
-          severityFilter={severityFilter}
-          resolveKeepsComment={resolveKeepsComment}
-          allowInlineCommentCompose={allowInlineCommentCompose}
-          reviewNoteComposer={reviewNoteComposer}
-          viewMode={effectiveViewMode}
-          onCommentNavigate={onCommentNavigate}
-          inlineCommentRowIdOnly={inlineCommentRowIdOnly}
-          expandedInlineCommentRowId={expandedInlineCommentRowId}
-          onInlineCommentExpand={onInlineCommentExpand}
-          uiState={uiState}
-          onUiStateChange={onUiStateChange}
-          singleLineNumbers={singleLineNumbers}
-          showGutterComments={showGutterComments}
-          plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
-          onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
-          diffGutterCommentsEnabled={diffGutterCommentsEnabled}
-          onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
-          inspectionWidget={inspectionWidget}
-          renderSubmitTargetPicker={renderSubmitTargetPicker}
-          externalCommentRequest={externalCommentRequest}
-          onTextSelectionChange={onTextSelectionChange}
-          onInlineCommentOpenChange={onInlineCommentOpenChange}
-	          pendingCommentRowIds={pendingCommentRowIds}
-	          commentShortcutHintRowId={commentShortcutHintRowId}
-	        />,
+        <div className="plan-diff-standalone-content">
+          <div className="plan-diff-standalone-body">
+            <PlanDiffOverlay
+              diffData={diffData}
+              contextSelections={contextSelections}
+              initialDiffComments={initialDiffComments}
+              documentDiffComments={documentDiffComments}
+              documentContextLabel={documentContextLabel}
+              documentContextIcon={documentContextIcon}
+              documentContextSessionLabel={documentContextSessionLabel}
+              documentContextSourceTabId={documentContextSourceTabId}
+              defaultSubmitAttachMode={defaultSubmitAttachMode}
+              lockSubmitTarget={lockSubmitTarget}
+              requireSubmitTargetChoice={requireSubmitTargetChoice}
+              submitSessionChoices={submitSessionChoices}
+              defaultSubmitTargetLabel={defaultSubmitTargetLabel || documentContextLabel}
+              defaultSubmitTargetIcon={defaultSubmitTargetIcon || documentContextIcon}
+              defaultSubmitTargetKey={defaultSubmitTargetKey}
+              commentSessions={commentSessions}
+              commentSessionActiveChatId={commentSessionActiveChatId}
+              commentsReadOnly={commentsReadOnly}
+              commentContextLabel={commentContextLabel}
+              commentContextIcon={commentContextIcon}
+              commentContextSessionLabel={commentContextSessionLabel}
+              onDiffCommentsChange={onDiffCommentsChange}
+              onDiffCommentSubmit={onDiffCommentSubmit}
+              onGutterCommentToggle={onGutterCommentToggle}
+              onRowDelete={onRowDelete}
+              onRowFix={onRowFix}
+              onPlanMarkerClick={onPlanMarkerClick}
+              onReturnToChat={onReturnToChat}
+              severityFilter={severityFilter}
+              resolveKeepsComment={resolveKeepsComment}
+              allowInlineCommentCompose={allowInlineCommentCompose}
+              reviewNoteComposer={reviewNoteComposer}
+              viewMode={effectiveViewMode}
+              onCommentNavigate={onCommentNavigate}
+              inlineCommentRowIdOnly={inlineCommentRowIdOnly}
+              expandedInlineCommentRowId={expandedInlineCommentRowId}
+              onInlineCommentExpand={onInlineCommentExpand}
+              uiState={uiState}
+              onUiStateChange={onUiStateChange}
+              singleLineNumbers={singleLineNumbers}
+              showGutterComments={showGutterComments}
+              plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
+              onPlainFileGutterCommentsEnabledChange={onPlainFileGutterCommentsEnabledChange}
+              diffGutterCommentsEnabled={diffGutterCommentsEnabled}
+              onDiffGutterCommentsEnabledChange={onDiffGutterCommentsEnabledChange}
+              inspectionWidget={inspectionWidget}
+              renderSubmitTargetPicker={renderSubmitTargetPicker}
+              externalCommentRequest={externalCommentRequest}
+              onTextSelectionChange={onTextSelectionChange}
+              onInlineCommentOpenChange={onInlineCommentOpenChange}
+              pendingCommentRowIds={pendingCommentRowIds}
+              commentShortcutHintRowId={commentShortcutHintRowId}
+            />
+          </div>
+          {!singleLineNumbers && (
+            <aside
+              ref={setFilesPanelHost}
+              className="plan-diff-standalone-files-panel-host"
+              aria-label="Changed files panel"
+            />
+          )}
+        </div>,
         overlayHost
       )}
     </>

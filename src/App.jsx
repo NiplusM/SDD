@@ -18978,7 +18978,6 @@ function AiReviewSplitFileView({
 }) {
   const [viewMode, setViewMode] = useState('unified');
   const [viewerSettings, setViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
-  const [filesPanelHost, setFilesPanelHost] = useState(null);
   // Tracks the active scope comment for the comment-nav control below. The
   // target includes its file so Previous/Next Comment can cross file
   // boundaries instead of being limited to the currently rendered diff.
@@ -19188,8 +19187,6 @@ function AiReviewSplitFileView({
         onToggleFileViewed={onToggleFileViewed}
         checkedFileIds={checkedFileIds}
         onToggleFileChecked={onToggleFileChecked}
-        filesPanelHost={filesPanelHost}
-        filesPanelMode="split"
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
         baseRevision={getReviewBaseRevision(fileLocation.project, REVIEW_BASE_BRANCH_NAME)}
@@ -19244,17 +19241,16 @@ function AiReviewSplitFileView({
           ...commitOptions,
         })}
       />
-      <div className="aiux-review-split-file-content">
-        <div
-          className={[
-            'aiux-review-split-file-body',
-            viewerSettings.allInOne ? 'is-all-in-one' : '',
-            viewerSettings.highlightMode === 'none' ? 'is-highlight-none' : '',
-            viewerSettings.alignChanges ? 'is-aligned' : '',
-            viewerSettings.syncScroll ? 'is-sync-scroll' : '',
-          ].filter(Boolean).join(' ')}
-          ref={splitScrollSyncRef}
-        >
+      <div
+        className={[
+          'aiux-review-split-file-body',
+          viewerSettings.allInOne ? 'is-all-in-one' : '',
+          viewerSettings.highlightMode === 'none' ? 'is-highlight-none' : '',
+          viewerSettings.alignChanges ? 'is-aligned' : '',
+          viewerSettings.syncScroll ? 'is-sync-scroll' : '',
+        ].filter(Boolean).join(' ')}
+        ref={splitScrollSyncRef}
+      >
         {branchMismatch && !acceptedStaleScope ? (
           <div className="aiux-review-branch-guard" role="alert">
             <Icon name="status/warning" size={20} className="aiux-review-branch-guard-icon" />
@@ -19370,12 +19366,6 @@ function AiReviewSplitFileView({
           onUiStateChange={setFileCommentUiState}
         />
         )}
-        </div>
-        <aside
-          ref={setFilesPanelHost}
-          className="aiux-review-split-files-panel-host"
-          aria-label="Changed files panel"
-        />
       </div>
     </div>
   );

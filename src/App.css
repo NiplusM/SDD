@@ -22291,7 +22291,7 @@ button.aiux543-answer-change-card:focus-visible {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  grid-template-columns: minmax(360px, 1fr) 1px minmax(420px, 1.08fr);
+  grid-template-columns: minmax(300px, 3fr) 1px minmax(420px, 7fr);
   overflow: hidden;
   background: #191a1c;
 }
@@ -23566,8 +23566,8 @@ button.aiux543-answer-change-card:focus-visible {
   background: #1b1c1f;
 }
 
-.aiux-review-split-file-content {
-  display: flex;
+.aiux-review-split-file-body {
+  position: relative;
   width: 100%;
   min-width: 0;
   min-height: 0;
@@ -23575,20 +23575,29 @@ button.aiux543-answer-change-card:focus-visible {
   overflow: hidden;
 }
 
-.aiux-review-split-file-body {
+.plan-diff-standalone-content {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plan-diff-standalone-body {
   position: relative;
-  width: auto;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
 }
 
-.aiux-review-split-files-panel-host:empty {
+.plan-diff-standalone-files-panel-host:empty {
   display: none;
 }
 
-.aiux-review-split-files-panel-host:not(:empty) {
+.plan-diff-standalone-files-panel-host:not(:empty) {
   display: block;
   width: clamp(300px, 38%, 420px);
   min-width: 300px;
