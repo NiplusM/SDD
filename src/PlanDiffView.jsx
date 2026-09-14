@@ -830,12 +830,6 @@ export const PLAN_DIFF_DEFAULT_VIEWER_SETTINGS = {
 function PlanDiffSettingsMenu({
   settings,
   onSettingsChange,
-  // Optional: lets this menu also toggle the toolbar's secondary row
-  // (chat label, comment nav, Send Comments) — only rendered when a host
-  // actually has that row to hide, so plain settings-only callers see no
-  // extra section.
-  secondaryRowHidden = null,
-  onToggleSecondaryRow = null,
 }) {
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
@@ -959,19 +953,6 @@ function PlanDiffSettingsMenu({
                 {mark(settings.allInOne)}
                 Show All Files in One Diff View
               </PopupCell>
-              {onToggleSecondaryRow && (
-                <>
-                  <PopupCell type="separator" />
-                  <PopupCell
-                    role="menuitemcheckbox"
-                    aria-checked={Boolean(secondaryRowHidden)}
-                    onClick={() => onToggleSecondaryRow(!secondaryRowHidden)}
-                  >
-                    {mark(Boolean(secondaryRowHidden))}
-                    Hide Bottom Panel
-                  </PopupCell>
-                </>
-              )}
             </Popup>
           </PositionedPopup>
         </div>,
@@ -7064,7 +7045,6 @@ export function PlanDiffEditorToolbar({
 }) {
   const fileLabel = diffData?.sourceTabLabel || diffData?.title || 'File';
   const fileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 1;
-  const [secondaryRowHidden, setSecondaryRowHidden] = useState(false);
   const [localViewerSettings, setLocalViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
   const viewerSettings = controlledViewerSettings ?? localViewerSettings;
   const setViewerSettings = (next) => {
@@ -7138,10 +7118,36 @@ export function PlanDiffEditorToolbar({
 
   return (
     <div className="plan-diff-toolbar-shell">
+      {(!isPlainFile || (!isArchivedSnapshot && (chatTitle || onSendComments))) && (
       <div className="plan-diff-toolbar">
-        {!isPlainFile && (
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
+          {!isArchivedSnapshot && chatTitle && (
+            <div className="plan-diff-toolbar-chat-group">
+              {onOpenChat ? (
+                <button
+                  type="button"
+                  className="plan-diff-toolbar-chat is-linked"
+                  title={chatTitle}
+                  aria-label={`Open chat: ${chatTitle}`}
+                  onClick={onOpenChat}
+                >
+                  <PlanDiffToolbarIcon type="left" />
+                  <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
+                </button>
+              ) : (
+                <span className="plan-diff-toolbar-chat" title={chatTitle}>
+                  <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
+                  <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
+                </span>
+              )}
+            </div>
+          )}
+          {!isPlainFile && !isArchivedSnapshot && chatTitle && (
+            <ToolbarSeparator className="plan-diff-toolbar-separator" />
+          )}
+          {!isPlainFile && (
+          <>
           <div className="plan-diff-toolbar-group">
             <PlanDiffToolbarIconButton
               label={atFirstDifference && pendingFileJump === 'previous'
@@ -7195,8 +7201,12 @@ export function PlanDiffEditorToolbar({
               />
             </>
           )}
+          </>
+          )}
           </div>
           <div className="plan-diff-toolbar-right">
+          {!isPlainFile && (
+          <>
           <span className="plan-diff-toolbar-meta text-ui-default">
             {formatPlanDiffDifferenceLabel(diffData?.differenceCount ?? 0)}
           </span>
@@ -7209,91 +7219,44 @@ export function PlanDiffEditorToolbar({
               { value: 'unified', label: <Icon name="general/editorOnly" size={16} /> },
             ]}
           />
-            <PlanDiffSettingsMenu
-              settings={viewerSettings}
-              onSettingsChange={setViewerSettings}
-              secondaryRowHidden={secondaryRowHidden}
-              onToggleSecondaryRow={setSecondaryRowHidden}
+          </>
+          )}
+          {!isArchivedSnapshot && commentRowIds.length > 0 && (
+            <PlanDiffCommentNavControl
+              commentRowIds={commentRowIds}
+              activeRowId={activeCommentRowId}
+              onNavigate={onNavigateComment}
             />
+          )}
+          {!isPlainFile && !isArchivedSnapshot && onCommitScope && (
+            <PlanDiffCommitButton
+              onCommitScope={onCommitScope}
+              checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
+              scopeId={selectedCommitScope?.id}
+              scopeLabel={selectedCommitScope?.label}
+            />
+          )}
+          {!isArchivedSnapshot && onSendComments && (
+            <Button
+              type="primary"
+              size="slim"
+              className="plan-diff-send-comments-button"
+              disabled={commentCount === 0 || sendCommentsDisabled}
+              aria-label={sendCommentsDisabled
+                ? 'Comments are being processed by the agent.'
+                : commentCount > 0
+                ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                : 'No comments to send yet.'}
+              onClick={() => onSendComments(commentCount)}
+            >
+              Send Comments
+            </Button>
+          )}
+          <PlanDiffSettingsMenu settings={viewerSettings} onSettingsChange={setViewerSettings} />
           </div>
         </div>
-        )}
-        {!isArchivedSnapshot && (chatTitle || onCommitScope || onSendComments) && (
-          <div className="plan-diff-toolbar-secondary-row">
-            <div className="plan-diff-toolbar-left">
-              <div className="plan-diff-toolbar-chat-group">
-              {!secondaryRowHidden && chatTitle && (
-                onOpenChat ? (
-                  <button
-                    type="button"
-                    className="plan-diff-toolbar-chat is-linked"
-                    title={chatTitle}
-                    aria-label={`Open chat: ${chatTitle}`}
-                    onClick={onOpenChat}
-                  >
-                    <PlanDiffToolbarIcon type="left" />
-                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
-                  </button>
-                ) : (
-                  <span className="plan-diff-toolbar-chat" title={chatTitle}>
-                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
-                    <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
-                  </span>
-                )
-              )}
-              {!secondaryRowHidden && chatTitle && commentRowIds.length > 0 && (
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
-              )}
-              {!secondaryRowHidden && (
-                <PlanDiffCommentNavControl
-                  commentRowIds={commentRowIds}
-                  activeRowId={activeCommentRowId}
-                  onNavigate={onNavigateComment}
-                />
-              )}
-              </div>
-            </div>
-            <div className="plan-diff-toolbar-right">
-              {!secondaryRowHidden && (
-                <>
-                  {!isPlainFile && onCommitScope && (
-                    <PlanDiffCommitButton
-                      onCommitScope={onCommitScope}
-                      checkedCount={Array.isArray(checkedFileIds) ? checkedFileIds.length : null}
-                      scopeId={selectedCommitScope?.id}
-                      scopeLabel={selectedCommitScope?.label}
-                    />
-                  )}
-                  {onSendComments && (
-                    <Button
-                      type="primary"
-                      size="slim"
-                      className="plan-diff-send-comments-button"
-                      disabled={commentCount === 0 || sendCommentsDisabled}
-                      aria-label={sendCommentsDisabled
-                        ? 'Comments are being processed by the agent.'
-                        : commentCount > 0
-                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
-                        : 'No comments to send yet.'}
-                      onClick={() => onSendComments(commentCount)}
-                    >
-                      Send Comments
-                    </Button>
-                  )}
-                </>
-              )}
-              {isPlainFile && (
-                <PlanDiffSettingsMenu
-                  settings={viewerSettings}
-                  onSettingsChange={setViewerSettings}
-                  secondaryRowHidden={secondaryRowHidden}
-                  onToggleSecondaryRow={setSecondaryRowHidden}
-                />
-              )}
-            </div>
-          </div>
-        )}
       </div>
+      )}
       {/* Revision labels describe the two sides of a diff. A plain source has
           only one content stream, so keeping this row there creates a stray
           diff artefact directly below its toolbar. */}
@@ -7437,7 +7400,6 @@ export function PlanDiffEditorArea({
   const [diffLayout, setDiffLayout] = useState('unified');
   const [selectedChangeScopeId, setSelectedChangeScopeId] = useState('last-turn');
   const [areaViewerSettings, setAreaViewerSettings] = useState(PLAN_DIFF_DEFAULT_VIEWER_SETTINGS);
-  const [areaSecondaryRowHidden, setAreaSecondaryRowHidden] = useState(false);
   const effectiveViewMode = viewMode === 'aside' ? 'aside' : diffLayout;
   const toolbarFileLabel = diffData?.sourceTabLabel || diffData?.title || 'VisitController.java';
   const toolbarFileCount = Number.isFinite(diffData?.fileCount) ? diffData.fileCount : 3;
@@ -7566,6 +7528,30 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
+                {!isArchivedSnapshot && commentContextLabel && (
+                  <div className="plan-diff-toolbar-chat-group">
+                    {onOpenChat ? (
+                      <button
+                        type="button"
+                        className="plan-diff-toolbar-chat is-linked"
+                        title={commentContextLabel}
+                        aria-label={`Open chat: ${commentContextLabel}`}
+                        onClick={onOpenChat}
+                      >
+                        <PlanDiffToolbarIcon type="left" />
+                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                      </button>
+                    ) : (
+                      <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
+                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                        <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {!isArchivedSnapshot && commentContextLabel && (
+                  <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                )}
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
@@ -7610,86 +7596,45 @@ export function PlanDiffEditorArea({
                     ]}
                   />
                 )}
-                <PlanDiffSettingsMenu
-                  settings={areaViewerSettings}
-                  onSettingsChange={setAreaViewerSettings}
-                  secondaryRowHidden={areaSecondaryRowHidden}
-                  onToggleSecondaryRow={setAreaSecondaryRowHidden}
-                />
+                {!isArchivedSnapshot && commentRowIds.length > 0 && (
+                  <PlanDiffCommentNavControl
+                    commentRowIds={commentRowIds}
+                    activeRowId={activeCommentRowId}
+                    onNavigate={onNavigateComment}
+                  />
+                )}
+                {!isArchivedSnapshot && onCommitScope && (
+                  <Button
+                    type="secondary"
+                    size="slim"
+                    onClick={() => onCommitScope({
+                      scopeId: selectedChangeScopeId,
+                      scopeLabel: selectedChangeScope?.label ?? 'Current scope',
+                      files: demoScopeFiles,
+                    })}
+                  >
+                    Commit with Agent
+                  </Button>
+                )}
+                {!isArchivedSnapshot && onSendComments && (
+                  <Button
+                    type="primary"
+                    size="slim"
+                    className="plan-diff-send-comments-button"
+                    disabled={commentCount === 0 || sendCommentsDisabled}
+                    aria-label={sendCommentsDisabled
+                      ? 'Comments are being processed by the agent.'
+                      : commentCount > 0
+                      ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                      : 'No comments to send yet.'}
+                    onClick={() => onSendComments(commentCount)}
+                  >
+                    Send Comments
+                  </Button>
+                )}
+                <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
                 </div>
               </div>
-              {!isArchivedSnapshot && (commentContextLabel || onCommitScope || onSendComments) && (
-                <div className="plan-diff-toolbar-secondary-row">
-                  <div className="plan-diff-toolbar-left">
-                    <div className="plan-diff-toolbar-chat-group">
-                    {!areaSecondaryRowHidden && commentContextLabel && (
-                      onOpenChat ? (
-                        <button
-                          type="button"
-                          className="plan-diff-toolbar-chat is-linked"
-                          title={commentContextLabel}
-                          aria-label={`Open chat: ${commentContextLabel}`}
-                          onClick={onOpenChat}
-                        >
-                          <PlanDiffToolbarIcon type="left" />
-                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                        </button>
-                      ) : (
-                        <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
-                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
-                          <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                        </span>
-                      )
-                    )}
-                    {!areaSecondaryRowHidden && commentContextLabel && commentRowIds.length > 0 && (
-                      <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    )}
-                    {!areaSecondaryRowHidden && (
-                      <PlanDiffCommentNavControl
-                        commentRowIds={commentRowIds}
-                        activeRowId={activeCommentRowId}
-                        onNavigate={onNavigateComment}
-                      />
-                    )}
-                    </div>
-                  </div>
-                  <div className="plan-diff-toolbar-right">
-                    {!areaSecondaryRowHidden && (
-                      <>
-                        {onCommitScope && (
-                          <Button
-                            type="secondary"
-                            size="slim"
-                            onClick={() => onCommitScope({
-                              scopeId: selectedChangeScopeId,
-                              scopeLabel: selectedChangeScope?.label ?? 'Current scope',
-                              files: demoScopeFiles,
-                            })}
-                          >
-                            Commit with Agent
-                          </Button>
-                        )}
-                        {onSendComments && (
-                          <Button
-                            type="primary"
-                            size="slim"
-                            className="plan-diff-send-comments-button"
-                            disabled={commentCount === 0 || sendCommentsDisabled}
-                            aria-label={sendCommentsDisabled
-                              ? 'Comments are being processed by the agent.'
-                              : commentCount > 0
-                              ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
-                              : 'No comments to send yet.'}
-                            onClick={() => onSendComments(commentCount)}
-                          >
-                            Send Comments
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
             <div className="plan-diff-content-labels">
               <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
