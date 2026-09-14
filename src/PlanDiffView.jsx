@@ -7462,6 +7462,7 @@ export function PlanDiffEditorArea({
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
   const [filesPanelHost, setFilesPanelHost] = useState(null);
+  const [standaloneBodyHost, setStandaloneBodyHost] = useState(null);
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
@@ -7532,7 +7533,7 @@ export function PlanDiffEditorArea({
             or file scope. Keep the session actions available in the same
             centered bottom toolbar used by the diff instead of reserving a
             full-width row above the source. */}
-        {overlayHost && singleLineNumbers && !reviewNav && commentCount > 0 && onSendComments && createPortal(
+        {standaloneBodyHost && singleLineNumbers && !reviewNav && commentCount > 0 && onSendComments && createPortal(
           <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
               <div className="plan-diff-toolbar-secondary-row">
                 <div className="plan-diff-toolbar-left">
@@ -7564,7 +7565,7 @@ export function PlanDiffEditorArea({
                 </div>
               </div>
           </div>,
-          overlayHost,
+          standaloneBodyHost,
         )}
         {!singleLineNumbers && (
           <div className="plan-diff-toolbar-shell">
@@ -7637,7 +7638,7 @@ export function PlanDiffEditorArea({
                 </div>
               </div>
             </div>
-              {overlayHost && !isArchivedSnapshot && !areaSecondaryRowHidden && commentCount > 0 && onSendComments && createPortal(
+              {standaloneBodyHost && !isArchivedSnapshot && !areaSecondaryRowHidden && commentCount > 0 && onSendComments && createPortal(
                 <div className="plan-diff-session-toolbar" role="toolbar" aria-label="Session actions">
                   <div className="plan-diff-toolbar-secondary-row">
                   <div className="plan-diff-toolbar-left">
@@ -7675,7 +7676,7 @@ export function PlanDiffEditorArea({
                   </div>
                 </div>
                 </div>,
-                overlayHost,
+                standaloneBodyHost,
               )}
             <div className="plan-diff-content-labels">
               <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
@@ -7693,7 +7694,7 @@ export function PlanDiffEditorArea({
               aria-label="Changed files panel"
             />
           )}
-          <div className="plan-diff-standalone-body">
+          <div ref={setStandaloneBodyHost} className="plan-diff-standalone-body">
             <PlanDiffOverlay
               diffData={diffData}
               contextSelections={contextSelections}
