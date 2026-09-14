@@ -1449,6 +1449,7 @@ function PlanDiffViewingScopeControl({
   // default of "everything checked".
   checkedFileIds = null,
   onToggleFileChecked = null,
+  filesPanelHost = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1580,7 +1581,7 @@ function PlanDiffViewingScopeControl({
   const selectFile = (item, index) => {
     if (item.tabId) onSelectFile?.(item.tabId);
     else setFallbackFileIndex(index);
-    closeFiles();
+    if (!filesPanelHost) closeFiles();
   };
 
   // A file is keyed by tabId where the host provides one, so the viewed flag
@@ -1871,6 +1872,46 @@ function PlanDiffViewingScopeControl({
     );
   };
 
+  const filesListContent = (
+    <>
+      <div className="plan-diff-files-popup-header">
+        <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
+          <Icon name="actions/preview" size={16} />
+        </span>
+        <span
+          className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
+          aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+        >
+          {allFilesViewed && <Icon name="general/checkmark" size={16} />}
+          {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
+        </span>
+        <span className="plan-diff-files-popup-actions">
+          <button
+            type="button"
+            aria-label="Expand all"
+            disabled={isTreeFullyExpanded}
+            onClick={() => setCollapsedDirKeys(new Set())}
+          >
+            <Icon name="general/expandAll" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Collapse all"
+            disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
+            onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
+          >
+            <Icon name="general/collapseAll" size={16} />
+          </button>
+        </span>
+      </div>
+      <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
+        {isGroupedScope
+          ? scopeTrees.map((group) => renderScopeGroup(group, 0))
+          : renderTreeNode(fileTree, 0)}
+      </div>
+    </>
+  );
+
   return (
     <div className="plan-diff-review-scope-controls">
       <PlanDiffChangeScopeControl
@@ -1899,7 +1940,7 @@ function PlanDiffViewingScopeControl({
             type="button"
             className="aiux-review-diffnav-count plan-diff-viewing-file-count-link"
             title="Changed files"
-            aria-haspopup="dialog"
+            aria-haspopup={filesPanelHost ? undefined : 'dialog'}
             aria-expanded={Boolean(filesRect)}
             onClick={() => {
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
@@ -1916,48 +1957,22 @@ function PlanDiffViewingScopeControl({
           onClick={() => navigateFiles(1)}
         />
       {filesRect && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
-            <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
-              <div className="plan-diff-files-popup-header">
-                <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
-                  <Icon name="actions/preview" size={16} />
-                </span>
-                <span
-                  className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
-                  aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
-                >
-                  {allFilesViewed && <Icon name="general/checkmark" size={16} />}
-                  {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
-                </span>
-                <span className="plan-diff-files-popup-actions">
-                  <button
-                    type="button"
-                    aria-label="Expand all"
-                    disabled={isTreeFullyExpanded}
-                    onClick={() => setCollapsedDirKeys(new Set())}
-                  >
-                    <Icon name="general/expandAll" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Collapse all"
-                    disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
-                    onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
-                  >
-                    <Icon name="general/collapseAll" size={16} />
-                  </button>
-                </span>
+        filesPanelHost
+          ? (
+              <div className="theme-dark plan-diff-files-side-panel text-ui-default">
+                {filesListContent}
               </div>
-              <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
-                {isGroupedScope
-                  ? scopeTrees.map((group) => renderScopeGroup(group, 0))
-                  : renderTreeNode(fileTree, 0)}
+            )
+          : (
+              <div className="theme-dark">
+                <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
+                  <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
+                    {filesListContent}
+                  </Popup>
+                </PositionedPopup>
               </div>
-            </Popup>
-          </PositionedPopup>
-        </div>,
-        document.body,
+            ),
+        filesPanelHost ?? document.body,
       )}
       {sessionsPopup && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
@@ -7036,6 +7051,7 @@ export function PlanDiffEditorToolbar({
   // controlled/uncontrolled duality as viewedFileIds above.
   checkedFileIds = null,
   onToggleFileChecked = null,
+  filesPanelHost = null,
   // Some settings (notably "Show All Files in One Diff View") can only be
   // honoured by whoever owns the scope files, so the host may take them over.
   viewerSettings: controlledViewerSettings = null,
@@ -7227,6 +7243,7 @@ export function PlanDiffEditorToolbar({
                 onToggleFileViewed={onToggleFileViewed}
                 checkedFileIds={checkedFileIds}
                 onToggleFileChecked={onToggleFileChecked}
+                filesPanelHost={filesPanelHost}
               />
             </>
           )}
