@@ -23605,7 +23605,7 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 0 clamp(260px, 28%, 340px);
   overflow: hidden;
   border-right: 1px solid var(--border-secondary, #33353b);
-  background: #202124;
+  background: #1b1c1f;
 }
 
 .plan-diff-files-side-panel {
@@ -23616,7 +23616,7 @@ button.aiux543-answer-change-card:focus-visible {
   box-sizing: border-box;
   flex-direction: column;
   overflow: hidden;
-  background: #202124;
+  background: #1b1c1f;
   color: var(--text-default, #d1d3d9);
 }
 
@@ -23628,7 +23628,7 @@ button.aiux543-answer-change-card:focus-visible {
 
 .plan-diff-files-side-panel .plan-diff-files-popup-header,
 .plan-diff-files-side-panel .plan-diff-files-tree {
-  background: #202124;
+  background: #1b1c1f;
 }
 
 .aiux-review-split-file-body > .plan-diff-overlay {
