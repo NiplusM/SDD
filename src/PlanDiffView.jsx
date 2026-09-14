@@ -7231,9 +7231,8 @@ export function PlanDiffEditorToolbar({
                     aria-label={`Open chat: ${chatTitle}`}
                     onClick={onOpenChat}
                   >
-                    <AiChatAgentIcon icon={chatIcon} title={chatTitle} />
+                    <PlanDiffToolbarIcon type="left" />
                     <span className="plan-diff-toolbar-chat-label">{chatTitle}</span>
-                    <span className="plan-diff-toolbar-chat-back">Back</span>
                   </button>
                 ) : (
                   <span className="plan-diff-toolbar-chat" title={chatTitle}>
@@ -7519,9 +7518,8 @@ export function PlanDiffEditorArea({
                         aria-label={`Open chat: ${commentContextLabel}`}
                         onClick={onOpenChat}
                       >
-                        <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                        <PlanDiffToolbarIcon type="left" />
                         <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                        <span className="plan-diff-toolbar-chat-back">Back</span>
                       </button>
                     ) : (
                       <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
@@ -7633,9 +7631,8 @@ export function PlanDiffEditorArea({
                           aria-label={`Open chat: ${commentContextLabel}`}
                           onClick={onOpenChat}
                         >
-                          <AiChatAgentIcon icon={commentContextIcon} title={commentContextLabel} />
+                          <PlanDiffToolbarIcon type="left" />
                           <span className="plan-diff-toolbar-chat-label">{commentContextLabel}</span>
-                          <span className="plan-diff-toolbar-chat-back">Back</span>
                         </button>
                       ) : (
                         <span className="plan-diff-toolbar-chat" title={commentContextLabel}>
