@@ -23615,7 +23615,7 @@ button.aiux543-answer-change-card:focus-visible {
   box-sizing: border-box;
   flex-direction: column;
   overflow: hidden;
-  background: var(--popup-bg, #26282c);
+  background: #202124;
   color: var(--text-default, #d1d3d9);
 }
 
