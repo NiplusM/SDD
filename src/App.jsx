@@ -37358,6 +37358,7 @@ export default function App() {
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     showScopeControl={activeTabContent?.diffShowScopeControl !== false}
+                    referenceDiffControls={prototypeEntryPoint === 'chat'}
                     allowSendToAgentAction={prototypeEntryPoint === 'chat'
                       ? false
                       : activeTabContent?.diffAllowSendToAgentAction !== false}

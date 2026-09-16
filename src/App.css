@@ -6136,6 +6136,16 @@ body {
   flex: 0 0 auto;
 }
 
+.plan-diff-review-scope-controls.is-compact-toolbar {
+  min-width: 0;
+  gap: 8px;
+}
+
+.plan-diff-review-scope-controls.is-compact-toolbar .plan-diff-viewing-file-count-link.aiux-review-diffnav-count {
+  color: var(--text-secondary, #8b8e94);
+  font-weight: 500;
+}
+
 .plan-diff-change-scope-trigger {
   display: inline-flex;
   align-items: center;
@@ -7798,6 +7808,12 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
   padding: 8px 18px;
+}
+
+.plan-diff-content-labels.is-reference:not(.is-split) {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .plan-diff-content-label {

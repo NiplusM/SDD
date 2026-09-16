@@ -1442,6 +1442,9 @@ function PlanDiffViewingScopeControl({
   showViewedState = false,
   showCommitSelection = false,
   showSessionAttribution = false,
+  compactToolbar = false,
+  beforeFileControl = null,
+  afterFileControl = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1867,7 +1870,7 @@ function PlanDiffViewingScopeControl({
   };
 
   return (
-    <div className="plan-diff-review-scope-controls">
+    <div className={`plan-diff-review-scope-controls${compactToolbar ? ' is-compact-toolbar' : ''}`}>
       <PlanDiffChangeScopeControl
         selectedScopeId={selectedChangeScopeId}
         onScopeChange={onChangeScope}
@@ -1881,7 +1884,9 @@ function PlanDiffViewingScopeControl({
         />
       )}
       <ToolbarSeparator className="plan-diff-toolbar-separator" />
+      {compactToolbar && beforeFileControl}
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
+        {!compactToolbar && (
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
           className="plan-diff-viewing-file-arrow"
@@ -1889,6 +1894,7 @@ function PlanDiffViewingScopeControl({
           disabled={currentDedupedIndex <= 0}
           onClick={() => navigateFiles(-1)}
         />
+        )}
         <span ref={filesRef} className="plan-diff-viewing-files-trigger">
           <button
             type="button"
@@ -1900,9 +1906,12 @@ function PlanDiffViewingScopeControl({
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
             }}
           >
-            {`${currentDedupedIndex + 1} of ${visibleFileCount} files`}
+            {compactToolbar
+              ? `${visibleFileCount} ${visibleFileCount === 1 ? 'file' : 'files'}`
+              : `${currentDedupedIndex + 1} of ${visibleFileCount} files`}
           </button>
         </span>
+        {!compactToolbar && (
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
           className="plan-diff-viewing-file-arrow"
@@ -1910,6 +1919,7 @@ function PlanDiffViewingScopeControl({
           disabled={currentDedupedIndex >= visibleFileCount - 1}
           onClick={() => navigateFiles(1)}
         />
+        )}
       {filesRect && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
           <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
@@ -1993,6 +2003,7 @@ function PlanDiffViewingScopeControl({
         document.body,
       )}
       </div>
+      {compactToolbar && afterFileControl}
     </div>
   );
 }
@@ -2609,9 +2620,9 @@ function PlanDiffContentLabel({ children, tooltip = '', variant = 'read-only', m
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M4 7V5C4 2.79086 5.79086 1 8 1C10.2091 1 12 2.79086 12 5V7H12.5C13.3284 7 14 7.67157 14 8.5V13.5C14 14.3284 13.3284 15 12.5 15H3.5C2.67157 15 2 14.3284 2 13.5V8.5C2 7.67157 2.67157 7 3.5 7H4ZM5 7H11V5C11 3.34315 9.65685 2 8 2C6.34315 2 5 3.34315 5 5V7ZM3.5 8C3.22386 8 3 8.22386 3 8.5V13.5C3 13.7761 3.22386 14 3.5 14H12.5C12.7761 14 13 13.7761 13 13.5V8.5C13 8.22386 12.7761 8 12.5 8H3.5Z" fill="currentColor" />
         </svg>
-      ) : (
+      ) : variant === 'editable' ? (
         <PlanDiffToolbarIcon type="edit" />
-      )}
+      ) : null}
       <span>{children}</span>
     </div>
   );
@@ -7469,6 +7480,7 @@ export function PlanDiffEditorArea({
   // it back to a chat, a commit, or a comments thread.
   isArchivedSnapshot = false,
   showScopeControl = true,
+  referenceDiffControls = false,
   // Keep Diff and Source focused on file navigation and content. Session
   // identity and actions live in the owning chat/commit surfaces instead.
   showSessionToolbar = false,
@@ -7668,6 +7680,43 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
+                {referenceDiffControls && !isArchivedSnapshot && showScopeControl ? (
+                  <PlanDiffViewingScopeControl
+                    fileCount={demoScopeFiles.length}
+                    currentFileLabel={toolbarFileLabel}
+                    files={demoScopeFiles}
+                    selectedChangeScopeId={selectedChangeScopeId}
+                    onChangeScope={setSelectedChangeScopeId}
+                    compactToolbar
+                    beforeFileControl={(
+                      <>
+                        <div className="plan-diff-toolbar-group">
+                          <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
+                          <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
+                        </div>
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                        <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                      </>
+                    )}
+                    afterFileControl={(
+                      <>
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                        <PlanDiffToolbarIconButton
+                          label={areaViewerSettings.collapseUnchanged
+                            ? 'Expand Unchanged Fragments'
+                            : 'Collapse Unchanged Fragments'}
+                          icon="collapse"
+                          onClick={() => setAreaViewerSettings((prev) => ({
+                            ...prev,
+                            collapseUnchanged: !prev.collapseUnchanged,
+                          }))}
+                        />
+                      </>
+                    )}
+                  />
+                ) : (
+                  <>
                 <div className="plan-diff-toolbar-group">
                   <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
                   <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
@@ -7696,6 +7745,8 @@ export function PlanDiffEditorArea({
                       selectedChangeScopeId={selectedChangeScopeId}
                       onChangeScope={setSelectedChangeScopeId}
                     />
+                  </>
+                )}
                   </>
                 )}
                 </div>
@@ -7793,13 +7844,22 @@ export function PlanDiffEditorArea({
                 </div>
               )}
             </div>
-            <div className="plan-diff-content-labels">
-              <PlanDiffContentLabel variant={showScopeControl ? undefined : 'read-only'} mono={!showScopeControl}>
-                {showScopeControl ? 'Initial content' : 'Base revision'}
-              </PlanDiffContentLabel>
-              <PlanDiffContentLabel variant={showScopeControl ? undefined : 'editable'}>
-                {showScopeControl ? 'New content' : 'Local changes'}
-              </PlanDiffContentLabel>
+            <div className={`plan-diff-content-labels${effectiveViewMode === 'split' ? ' is-split' : ''}${referenceDiffControls ? ' is-reference' : ''}`}>
+              {referenceDiffControls ? (
+                <>
+                  <PlanDiffContentLabel variant="plain">Before</PlanDiffContentLabel>
+                  <PlanDiffContentLabel variant="plain">Current</PlanDiffContentLabel>
+                </>
+              ) : (
+                <>
+                  <PlanDiffContentLabel variant={showScopeControl ? undefined : 'read-only'} mono={!showScopeControl}>
+                    {showScopeControl ? 'Initial content' : 'Base revision'}
+                  </PlanDiffContentLabel>
+                  <PlanDiffContentLabel variant={showScopeControl ? undefined : 'editable'}>
+                    {showScopeControl ? 'New content' : 'Local changes'}
+                  </PlanDiffContentLabel>
+                </>
+              )}
             </div>
           </div>
         )}
