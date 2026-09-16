@@ -23123,6 +23123,7 @@ function getSentDiffCommentAttachmentSignature(comments) {
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const prototypeEntryPoint = getPrototypeEntryPoint();
   const [screen, setScreen] = useState(() => (
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('screen') === 'welcome'
       ? 'welcome'
@@ -37233,7 +37234,7 @@ export default function App() {
                     defaultSubmitAttachMode={requiresExplicitDiffCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
-                    lockSubmitTarget={Boolean(
+                    lockSubmitTarget={prototypeEntryPoint === 'chat' || Boolean(
                       isDiffTab
                       && activePlanDiffContextChatId
                       && !activeTabContent?.diffOpenedFromCommitToolWindow
@@ -37357,7 +37358,9 @@ export default function App() {
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
                     showScopeControl={activeTabContent?.diffShowScopeControl !== false}
-                    allowSendToAgentAction={activeTabContent?.diffAllowSendToAgentAction !== false}
+                    allowSendToAgentAction={prototypeEntryPoint === 'chat'
+                      ? false
+                      : activeTabContent?.diffAllowSendToAgentAction !== false}
                     resolveKeepsComment={activeReviewFileIndex >= 0}
                     // Keep the compact review-note presentation after a diff
                     // leaves the split or opens its session-owned source. A
