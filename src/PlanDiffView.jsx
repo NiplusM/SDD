@@ -1432,6 +1432,9 @@ function PlanDiffViewingScopeControl({
   onToggleFileChecked = null,
   filesPanelHost = null,
   filesPanelMode = 'popup',
+  compactToolbar = false,
+  beforeFileControl = null,
+  afterFileControl = null,
 }) {
   const filesRef = useRef(null);
   const [filesRect, setFilesRect] = useState(null);
@@ -1912,8 +1915,27 @@ function PlanDiffViewingScopeControl({
   );
 
   return (
-    <div className="plan-diff-review-scope-controls">
+    <div className={`plan-diff-review-scope-controls${compactToolbar ? ' is-compact-toolbar' : ''}`}>
+      {compactToolbar && (
+        <>
+          <PlanDiffChangeScopeControl
+            selectedScopeId={selectedChangeScopeId}
+            onScopeChange={onChangeScope}
+            options={effectiveChangeScopeOptions}
+          />
+          {effectiveSelectedChangeScope?.id === 'branch' && (
+            <PlanDiffBranchComparisonControl
+              scope={effectiveSelectedChangeScope}
+              value={activeCompareBranch}
+              onChange={onCompareBranchChange}
+            />
+          )}
+          <ToolbarSeparator className="plan-diff-toolbar-separator" />
+          {beforeFileControl}
+        </>
+      )}
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
+        {!compactToolbar && (
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
           className="plan-diff-viewing-file-arrow"
@@ -1921,6 +1943,7 @@ function PlanDiffViewingScopeControl({
           disabled={currentDedupedIndex <= 0}
           onClick={() => navigateFiles(-1)}
         />
+        )}
         <span ref={filesRef} className="plan-diff-viewing-files-trigger">
           <button
             type="button"
@@ -1932,9 +1955,12 @@ function PlanDiffViewingScopeControl({
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
             }}
           >
-            {`${currentDedupedIndex + 1} of ${visibleFileCount} files`}
+            {compactToolbar
+              ? `${visibleFileCount} ${visibleFileCount === 1 ? 'file' : 'files'}`
+              : `${currentDedupedIndex + 1} of ${visibleFileCount} files`}
           </button>
         </span>
+        {!compactToolbar && (
         <ToolbarButton
           icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
           className="plan-diff-viewing-file-arrow"
@@ -1942,6 +1968,7 @@ function PlanDiffViewingScopeControl({
           disabled={currentDedupedIndex >= visibleFileCount - 1}
           onClick={() => navigateFiles(1)}
         />
+        )}
       {filesRect && typeof document !== 'undefined' && (!usesFilesSidePanel || filesPanelHost) && createPortal(
         usesFilesSidePanel
           ? (
@@ -1997,18 +2024,22 @@ function PlanDiffViewingScopeControl({
         document.body,
       )}
       </div>
-      <ToolbarSeparator className="plan-diff-toolbar-separator" />
-      <PlanDiffChangeScopeControl
-        selectedScopeId={selectedChangeScopeId}
-        onScopeChange={onChangeScope}
-        options={effectiveChangeScopeOptions}
-      />
-      {effectiveSelectedChangeScope?.id === 'branch' && (
-        <PlanDiffBranchComparisonControl
-          scope={effectiveSelectedChangeScope}
-          value={activeCompareBranch}
-          onChange={onCompareBranchChange}
-        />
+      {compactToolbar ? afterFileControl : (
+        <>
+          <ToolbarSeparator className="plan-diff-toolbar-separator" />
+          <PlanDiffChangeScopeControl
+            selectedScopeId={selectedChangeScopeId}
+            onScopeChange={onChangeScope}
+            options={effectiveChangeScopeOptions}
+          />
+          {effectiveSelectedChangeScope?.id === 'branch' && (
+            <PlanDiffBranchComparisonControl
+              scope={effectiveSelectedChangeScope}
+              value={activeCompareBranch}
+              onChange={onCompareBranchChange}
+            />
+          )}
+        </>
       )}
     </div>
   );
@@ -2542,9 +2573,9 @@ function PlanDiffContentLabel({ children, tooltip = '', variant = 'read-only', m
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
           <path d="M4 7V5C4 2.79086 5.79086 1 8 1C10.2091 1 12 2.79086 12 5V7H12.5C13.3284 7 14 7.67157 14 8.5V13.5C14 14.3284 13.3284 15 12.5 15H3.5C2.67157 15 2 14.3284 2 13.5V8.5C2 7.67157 2.67157 7 3.5 7H4ZM5 7H11V5C11 3.34315 9.65685 2 8 2C6.34315 2 5 3.34315 5 5V7ZM3.5 8C3.22386 8 3 8.22386 3 8.5V13.5C3 13.7761 3.22386 14 3.5 14H12.5C12.7761 14 13 13.7761 13 13.5V8.5C13 8.22386 12.7761 8 12.5 8H3.5Z" fill="currentColor" />
         </svg>
-      ) : (
+      ) : variant === 'editable' ? (
         <PlanDiffToolbarIcon type="edit" />
-      )}
+      ) : null}
       <span>{children}</span>
     </div>
   );
@@ -7158,69 +7189,85 @@ export function PlanDiffEditorToolbar({
       <div className="plan-diff-toolbar">
         <div className="plan-diff-toolbar-primary-row">
           <div className="plan-diff-toolbar-left">
-          {onOpenChat && (
-            <>
-              <ToolbarButton
-                text={chatTitle || 'Chat session'}
-                icon={<PlanDiffToolbarIcon type="left" />}
-                title={`Back to ${chatTitle || 'chat session'}`}
-                onClick={onOpenChat}
-              />
-              <ToolbarSeparator className="plan-diff-toolbar-separator" />
-            </>
-          )}
-          <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton
-              label={atFirstDifference && pendingFileJump === 'previous'
-                ? 'Press again to compare the previous file'
-                : 'Previous Difference (⇧F7)'}
-              icon="up"
-              onClick={goToPreviousDifference}
-            />
-            <PlanDiffToolbarIconButton
-              label={atLastDifference && pendingFileJump === 'next'
-                ? 'Press again to compare the next file'
-                : 'Next Difference (F7)'}
-              icon="down"
-              onClick={goToNextDifference}
-            />
-          </div>
-          <ToolbarSeparator className="plan-diff-toolbar-separator" />
-          <div className="plan-diff-toolbar-group">
-            <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
-            <PlanDiffToolbarIconButton
-              label={viewerSettings.collapseUnchanged
-                ? 'Expand Unchanged Fragments'
-                : 'Collapse Unchanged Fragments'}
-              icon="collapse"
-              onClick={() => setViewerSettings((prev) => ({
-                ...prev,
-                collapseUnchanged: !prev.collapseUnchanged,
-              }))}
-            />
-          </div>
           {!isArchivedSnapshot && (
+            <PlanDiffViewingScopeControl
+              fileCount={fileCount}
+              currentFileLabel={fileLabel}
+              files={scopeFiles}
+              currentFileIndex={currentFileIndex}
+              onSelectFile={onSelectFile}
+              onNavigatePrevious={onNavigatePreviousFile}
+              onNavigateNext={onNavigateNextFile}
+              selectedChangeScopeId={selectedChangeScopeId}
+              onChangeScope={onChangeScope}
+              changeScopeOptions={changeScopeOptions}
+              selectedCompareBranch={selectedCompareBranch}
+              onCompareBranchChange={onCompareBranchChange}
+              viewedFileIds={viewedFileIds}
+              onToggleFileViewed={onToggleFileViewed}
+              checkedFileIds={checkedFileIds}
+              onToggleFileChecked={onToggleFileChecked}
+              filesPanelHost={filesPanelHost}
+              filesPanelMode={filesPanelMode}
+              compactToolbar
+              beforeFileControl={(
+                <>
+                  <div className="plan-diff-toolbar-group">
+                    <PlanDiffToolbarIconButton
+                      label={atFirstDifference && pendingFileJump === 'previous'
+                        ? 'Press again to compare the previous file'
+                        : 'Previous Difference (⇧F7)'}
+                      icon="up"
+                      onClick={goToPreviousDifference}
+                    />
+                    <PlanDiffToolbarIconButton
+                      label={atLastDifference && pendingFileJump === 'next'
+                        ? 'Press again to compare the next file'
+                        : 'Next Difference (F7)'}
+                      icon="down"
+                      onClick={goToNextDifference}
+                    />
+                  </div>
+                  <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                  <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                  <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                </>
+              )}
+              afterFileControl={(
+                <>
+                  <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                  <PlanDiffToolbarIconButton
+                    label={viewerSettings.collapseUnchanged
+                      ? 'Expand Unchanged Fragments'
+                      : 'Collapse Unchanged Fragments'}
+                    icon="collapse"
+                    onClick={() => setViewerSettings((prev) => ({
+                      ...prev,
+                      collapseUnchanged: !prev.collapseUnchanged,
+                    }))}
+                  />
+                </>
+              )}
+            />
+          )}
+          {isArchivedSnapshot && (
             <>
+              <div className="plan-diff-toolbar-group">
+                <PlanDiffToolbarIconButton label="Previous Difference (⇧F7)" icon="up" onClick={goToPreviousDifference} />
+                <PlanDiffToolbarIconButton label="Next Difference (F7)" icon="down" onClick={goToNextDifference} />
+              </div>
               <ToolbarSeparator className="plan-diff-toolbar-separator" />
-              <PlanDiffViewingScopeControl
-                fileCount={fileCount}
-                currentFileLabel={fileLabel}
-                files={scopeFiles}
-                currentFileIndex={currentFileIndex}
-                onSelectFile={onSelectFile}
-                onNavigatePrevious={onNavigatePreviousFile}
-                onNavigateNext={onNavigateNextFile}
-                selectedChangeScopeId={selectedChangeScopeId}
-                onChangeScope={onChangeScope}
-                changeScopeOptions={changeScopeOptions}
-                selectedCompareBranch={selectedCompareBranch}
-                onCompareBranchChange={onCompareBranchChange}
-                viewedFileIds={viewedFileIds}
-                onToggleFileViewed={onToggleFileViewed}
-                checkedFileIds={checkedFileIds}
-                onToggleFileChecked={onToggleFileChecked}
-                filesPanelHost={filesPanelHost}
-                filesPanelMode={filesPanelMode}
+              <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+              <ToolbarSeparator className="plan-diff-toolbar-separator" />
+              <PlanDiffToolbarIconButton
+                label={viewerSettings.collapseUnchanged
+                  ? 'Expand Unchanged Fragments'
+                  : 'Collapse Unchanged Fragments'}
+                icon="collapse"
+                onClick={() => setViewerSettings((prev) => ({
+                  ...prev,
+                  collapseUnchanged: !prev.collapseUnchanged,
+                }))}
               />
             </>
           )}
@@ -7300,10 +7347,8 @@ export function PlanDiffEditorToolbar({
           diff artefact directly below its toolbar. */}
       {!isPlainFile && (
         <div className={`plan-diff-content-labels${viewMode === 'split' ? ' is-split' : ''}`}>
-          <PlanDiffContentLabel tooltip={baseRevision?.tooltip} variant="read-only" mono>
-            {baseRevision?.hash ?? 'Base revision'}
-          </PlanDiffContentLabel>
-          <PlanDiffContentLabel variant="editable">Local changes</PlanDiffContentLabel>
+          <PlanDiffContentLabel variant="plain">Before</PlanDiffContentLabel>
+          <PlanDiffContentLabel variant="plain">Current</PlanDiffContentLabel>
         </div>
       )}
     </div>
@@ -7535,46 +7580,62 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
-                {onOpenChat && (
-                  <>
-                    <ToolbarButton
-                      text={commentContextLabel || 'Chat session'}
-                      icon={<PlanDiffToolbarIcon type="left" />}
-                      title={`Back to ${commentContextLabel || 'chat session'}`}
-                      onClick={onOpenChat}
-                    />
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                  </>
-                )}
-                <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
-                  <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
-                </div>
-                <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                <div className="plan-diff-toolbar-group">
-                  <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
-                  <PlanDiffToolbarIconButton
-                    label={areaViewerSettings.collapseUnchanged
-                      ? 'Expand Unchanged Fragments'
-                      : 'Collapse Unchanged Fragments'}
-                    icon="collapse"
-                    onClick={() => setAreaViewerSettings((prev) => ({
-                      ...prev,
-                      collapseUnchanged: !prev.collapseUnchanged,
-                    }))}
-                  />
-                </div>
                 {!isArchivedSnapshot && (
+                  <PlanDiffViewingScopeControl
+                    fileCount={demoScopeFiles.length}
+                    currentFileLabel={toolbarFileLabel}
+                    files={demoScopeFiles}
+                    selectedChangeScopeId={selectedChangeScopeId}
+                    onChangeScope={setSelectedChangeScopeId}
+                    filesPanelHost={filesPanelHost}
+                    filesPanelMode="split"
+                    compactToolbar
+                    beforeFileControl={(
+                      <>
+                        <div className="plan-diff-toolbar-group">
+                          <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
+                          <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
+                        </div>
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                        <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                      </>
+                    )}
+                    afterFileControl={(
+                      <>
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                        <PlanDiffToolbarIconButton
+                          label={areaViewerSettings.collapseUnchanged
+                            ? 'Expand Unchanged Fragments'
+                            : 'Collapse Unchanged Fragments'}
+                          icon="collapse"
+                          onClick={() => setAreaViewerSettings((prev) => ({
+                            ...prev,
+                            collapseUnchanged: !prev.collapseUnchanged,
+                          }))}
+                        />
+                      </>
+                    )}
+                  />
+                )}
+                {isArchivedSnapshot && (
                   <>
+                    <div className="plan-diff-toolbar-group">
+                      <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
+                      <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
+                    </div>
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    <PlanDiffViewingScopeControl
-                      fileCount={demoScopeFiles.length}
-                      currentFileLabel={toolbarFileLabel}
-                      files={demoScopeFiles}
-                      selectedChangeScopeId={selectedChangeScopeId}
-                      onChangeScope={setSelectedChangeScopeId}
-                      filesPanelHost={filesPanelHost}
-                      filesPanelMode="split"
+                    <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <PlanDiffToolbarIconButton
+                      label={areaViewerSettings.collapseUnchanged
+                        ? 'Expand Unchanged Fragments'
+                        : 'Collapse Unchanged Fragments'}
+                      icon="collapse"
+                      onClick={() => setAreaViewerSettings((prev) => ({
+                        ...prev,
+                        collapseUnchanged: !prev.collapseUnchanged,
+                      }))}
                     />
                   </>
                 )}
@@ -7631,9 +7692,9 @@ export function PlanDiffEditorArea({
           )}
           <div className="plan-diff-standalone-body">
             {!singleLineNumbers && (
-              <div className="plan-diff-content-labels">
-                <PlanDiffContentLabel>Initial content</PlanDiffContentLabel>
-                <PlanDiffContentLabel>New content</PlanDiffContentLabel>
+              <div className={`plan-diff-content-labels${effectiveViewMode === 'split' ? ' is-split' : ''}`}>
+                <PlanDiffContentLabel variant="plain">Before</PlanDiffContentLabel>
+                <PlanDiffContentLabel variant="plain">Current</PlanDiffContentLabel>
               </div>
             )}
             <PlanDiffOverlay
