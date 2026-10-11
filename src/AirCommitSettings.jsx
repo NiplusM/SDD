@@ -69,7 +69,7 @@ function AirSelectorMenu({ title, options, value, defaultValue, anchor, onChange
   </div>, document.body)
 }
 
-function AirFields({ value, onChange, prefix, disabled = false, compact = false, branch, openSettings }) {
+function AirFields({ value, onChange, prefix, disabled = false, compact = false, openSettings }) {
   const agent = AGENTS.find(a => a.value === value.agent)
   const textareaRef = useRef(null)
   const changeAgent = id => onChange(normalizeSettings({ ...value, agent: id, model: null }))
@@ -80,13 +80,6 @@ function AirFields({ value, onChange, prefix, disabled = false, compact = false,
   }
   const agentOptions = AGENTS.map(({ value, label }) => ({ value, label, icon: <AiChatAgentIcon icon={value} /> }))
   const modelOptions = agent.models.map(model => ({ value: model, label: model }))
-  function insertBranch() {
-    const input = textareaRef.current
-    const start = input?.selectionStart ?? value.prompt.length
-    const end = input?.selectionEnd ?? start
-    onChange({ ...value, prompt: value.prompt.slice(0, start) + '$GIT_BRANCH_NAME' + value.prompt.slice(end) })
-    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + 16, start + 16) })
-  }
   return (
     <div className="ij2499-air-fields">
       <div className="ij2499-selector-row" data-testid={`${prefix}-agent`}>
@@ -111,11 +104,8 @@ function AirFields({ value, onChange, prefix, disabled = false, compact = false,
       <div className="ij2499-prompt-label"><label htmlFor={`${prefix}-prompt`}>Prompt for generation:</label></div>
       <textarea ref={textareaRef} id={`${prefix}-prompt`} className="commit-message-textarea ij2499-prompt" value={value.prompt}
         onChange={event => onChange({ ...value, prompt: event.target.value })} disabled={disabled} />
-      {!compact && <><p className="ij2499-help ij2499-branch-help">Use the <span>$GIT_BRANCH_NAME</span> variable to reference the branch name.</p>
-      <p className="ij2499-help">Set the length, language, and format of the message.</p>
-      <div className="ij2499-prompt-actions"><Link onClick={insertBranch} disabled={disabled}>Insert branch name</Link>
-        <Link onClick={() => onChange({ ...value, prompt: DEFAULT_PROMPT })} disabled={disabled || value.prompt === DEFAULT_PROMPT}>Restore default</Link></div>
-      <p className="ij2499-help"><code>$GIT_BRANCH_NAME</code> → {branch}</p></>}
+      {!compact && <><p className="ij2499-help">Set the length, language, and format of the message.</p>
+      <div className="ij2499-prompt-actions"><Link onClick={() => onChange({ ...value, prompt: DEFAULT_PROMPT })} disabled={disabled || value.prompt === DEFAULT_PROMPT}>Restore default</Link></div></>}
       {openSettings && <Link className="ij2499-open-settings" onClick={openSettings}>Open in Settings…</Link>}
       </div>
     </div>
@@ -227,7 +217,7 @@ export function AirGenerationSettingsSection({ settings, onChange, storageError,
   return <section className="ij2499-settings-page" aria-label="Commit Message Generation">
     {breadcrumb ?? <div className="ij2499-settings-breadcrumb">Air <Icon name="general/chevronRight" size={16} /> Commit Message Generation</div>}
     <p>Generate a message from the changes selected for a commit.</p>
-    <AirFields value={settings} onChange={onChange} prefix="settings" branch={branch} />
+    <AirFields value={settings} onChange={onChange} prefix="settings" />
     {storageError && <p role="status">Settings apply to this session. Browser storage is unavailable.</p>}
   </section>
 }

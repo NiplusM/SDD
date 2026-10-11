@@ -16,6 +16,7 @@ async function checkBrowserLayout() {
   const outputDir = path.join(root, 'test-results', 'air-commit');
   fs.mkdirSync(outputDir, { recursive: true });
   try {
+    if (!process.argv.includes('--handoff-only')) {
     for (const viewport of [{ width: 1656, height: 1032 }, { width: 1386, height: 875 }, { width: 1000, height: 700 }]) {
       const page = await browser.newPage({ viewport });
       await page.goto(`${previewUrl}/?entry=commit&scenario=no-files`);
@@ -124,6 +125,9 @@ async function checkBrowserLayout() {
       await page.getByRole('button', { name: 'Open in Settings…', exact: true }).click();
       const settings = page.getByRole('region', { name: 'Commit Message Generation', exact: true });
       await settings.waitFor();
+      assert.equal(await settings.getByText('Insert branch name', { exact: true }).count(), 0);
+      assert.equal(await settings.locator('.ij2499-branch-help').count(), 0);
+      assert.ok(!(await settings.innerText()).includes('$GIT_BRANCH_NAME'), 'settings omit branch-variable instructions and examples');
       assert.match(await settings.locator('.settings-breadcrumb').innerText(), /Tools[\s\S]*Air[\s\S]*Commit Message Generation/);
       await settings.locator('[data-testid="settings-agent"] .toolbar-button').click();
       await page.locator('.ij2499-selector-menu').getByText('Codex', { exact: true }).click();
@@ -285,12 +289,14 @@ async function checkBrowserLayout() {
       await alert.getByRole('button', { name: 'Continue in Chat', exact: true }).click();
       const chat = page.locator('.aiux543-chat-editor-host');
       await chat.waitFor();
-      assert.match(await chat.innerText(), /Generation instructions/);
-      assert.match(await chat.innerText(), /Preserve this draft/);
+      assert.equal(await chat.locator('.ai-chat-user-card, .aiux543-user-attachments, .aiux543-answer').count(), 0, 'handoff opens an unsent prepared request without fabricated history');
+      assert.match(await chat.locator('.ij2499-chat-handoff-intro').innerText(), /generation settings and previous draft are included/);
+      assert.equal(await chat.locator('.ij2499-chat-context-label').innerText(), '1 selected file');
+      assert.ok(!(await chat.innerText()).includes('Existing draft:'), 'the previous draft is retained as request context instead of pasted into the transcript');
       assert.match(await chat.innerText(), /GPT-5 mini/);
       const composer = chat.locator('.aiux543-chat-input');
       await composer.waitFor();
-      assert.match(await composer.inputValue(), /Generate the commit message/);
+      assert.equal(await composer.inputValue(), 'Generate a commit message from the selected changes.');
       assert.equal(await page.locator('.commit-file-node input:checked').count(), 1);
       await page.screenshot({ path: path.join(outputDir, `continue-in-chat-${width}.png`) });
       await composer.fill('One-line Conventional Commits in Russian.');
@@ -312,7 +318,68 @@ async function checkBrowserLayout() {
       assert.equal(await alert.count(), 0);
       await page.close();
     }
-    console.log('PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, chat handoff with selected diffs/instructions/draft/model, editable continuation and relevant response, preserved Commit state.');
+    }
+    for (const width of [1656, 1000]) {
+      const page = await browser.newPage({ viewport: { width, height: 875 } });
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${previewUrl}/?entry=commit&scenario=error`);
+      const checkedCount = await page.locator('.commit-file-node input:checked').count();
+      assert.equal(checkedCount, 20);
+      const message = page.getByRole('textbox', { name: 'Commit Message', exact: true });
+      await message.fill('A previous draft with several lines.\nKeep this draft in Commit.');
+      await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
+      const alert = page.locator('.ij2499-status-error');
+      await alert.waitFor();
+      await alert.getByRole('button', { name: 'Continue in Chat', exact: true }).click();
+      const chat = page.locator('.ij2499-commit-chat');
+      const composer = chat.locator('.aiux543-chat-input');
+      await composer.waitFor();
+      assert.equal(await chat.locator('.ai-chat-user-card, .aiux543-user-attachments').count(), 0);
+      assert.equal(await chat.locator('.ij2499-chat-context-label').innerText(), '20 selected files');
+      assert.equal(await chat.locator('.ij2499-chat-context .ai-chat-attachment-chip').count(), 2);
+      assert.equal(await chat.getByRole('button', { name: 'Generating', exact: true }).count(), 0, 'idle handoff has no generation spinner');
+      const more = chat.getByRole('button', { name: 'Show all +18', exact: true });
+      await more.click();
+      assert.equal(await chat.locator('.ij2499-chat-context .ai-chat-attachment-chip').count(), 20);
+      const contextGeometry = await chat.locator('.ij2499-chat-context').evaluate(element => ({ height: element.getBoundingClientRect().height, overflow: getComputedStyle(element).overflowY }));
+      assert.ok(contextGeometry.height <= 156, `expanded context stays bounded within the composer: ${JSON.stringify(contextGeometry)}`);
+      assert.equal(contextGeometry.overflow, 'auto', 'long attachment lists scroll within the composer');
+      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-all-files-expanded-${width}.png`) });
+      await chat.getByRole('button', { name: 'Show less', exact: true }).click();
+      const composerBounds = await chat.locator('.aiux543-chat-composer').boundingBox();
+      assert.ok(composerBounds.height <= 240, 'twenty files do not inflate the initial composer');
+      assert.ok(composerBounds.y > 0 && composerBounds.y + composerBounds.height < 875);
+      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-all-files-${width}.png`) });
+      if (width === 1656) {
+        await chat.locator('.ij2499-chat-context .ai-chat-attachment-chip').first().click();
+        await page.locator('.ai-review-editor-split .plan-diff-overlay').waitFor();
+        await page.locator('.ai-review-editor-split-pane.is-review .tab-close').first().click();
+        await page.locator('.main-window-editor-tabs').getByText('Commit message generation', { exact: true }).click();
+        await composer.waitFor();
+        assert.equal(await composer.inputValue(), 'Generate a commit message from the selected changes.');
+        assert.equal(await chat.locator('.ij2499-chat-context-label').innerText(), '20 selected files', 'opening a diff preserves prepared context');
+      }
+      await composer.fill('One-line Conventional Commits in Russian.');
+      await composer.press('Enter');
+      await page.waitForFunction(() => document.querySelector('.ij2499-commit-chat .aiux543-answer')?.textContent.includes('chore: обновить')
+        && !document.querySelector('.ij2499-commit-chat .ai-chat-streaming-caret'));
+      const sent = chat.locator('.ai-chat-user-card');
+      assert.equal(await sent.count(), 1);
+      assert.equal(await sent.locator('.ai-chat-sent-attachment-chip').count(), 2, 'the sent context is compact too');
+      assert.equal(await chat.locator('.ij2499-chat-context-group, .ij2499-chat-handoff-intro').count(), 0, 'sending clears prepared context from the composer');
+      await sent.getByRole('button', { name: 'Show all +18', exact: true }).click();
+      assert.equal(await sent.locator('.ai-chat-sent-attachment-chip').count(), 20, 'every selected file survives Send');
+      await sent.getByRole('button', { name: 'Show less', exact: true }).click();
+      await page.screenshot({ path: path.join(outputDir, `chat-result-all-files-${width}.png`) });
+      assert.equal(await message.inputValue(), 'A previous draft with several lines.\nKeep this draft in Commit.');
+      assert.equal(await page.locator('.commit-file-node input:checked').count(), checkedCount);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+    console.log(process.argv.includes('--handoff-only')
+      ? 'PASS: twenty-file chat handoff at two widths; bounded expandable context; compact sent message; streaming response; preserved draft and selection.'
+      : 'PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, compact twenty-file chat handoff, editable continuation and relevant response, preserved Commit state.');
   } finally { await browser.close(); }
 }
 (async () => {
