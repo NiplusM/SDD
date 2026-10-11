@@ -17043,7 +17043,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                 );
         })}
         {hasAttachmentOverflow && <Button type="secondary" size="slim" className="ai-chat-attachments-show-all"
-          style={{ order: hasOrderedContent ? attachments.length : 3 }} aria-expanded={attachmentsExpanded}
+          style={{ order: hasExplicitContentOrder ? attachments.length : (attachmentsFirst ? 1 : 3) }} aria-expanded={attachmentsExpanded}
           onClick={() => setAttachmentsExpanded(expanded => !expanded)}>
           {attachmentsExpanded ? 'Show less' : `Show all +${attachments.length - visibleAttachments.length}`}
         </Button>}
@@ -21268,10 +21268,7 @@ function AiChatTabView({
     .some((attachment) => attachment?.isSelectionContext);
   const editorComposerAttachmentIds = editorComposerAttachments.map(getAiChatAttachmentSequenceKey);
   const editorComposerAttachmentSignature = editorComposerAttachmentIds.join('\n');
-  const commitComposerAttachments = scenario?.commitGenerationContext
-    ? editorComposerAttachments.filter(attachment => attachment.id?.startsWith('commit-generation-'))
-    : [];
-  const hasComposerAttachmentOverflow = editorComposerAttachments.length > (commitComposerAttachments.length > 0 ? 2 : COMPOSER_ATTACHMENT_COLLAPSED_LIMIT);
+  const hasComposerAttachmentOverflow = editorComposerAttachments.length > COMPOSER_ATTACHMENT_COLLAPSED_LIMIT;
   const committedComposerText = composerContentParts
     .filter((part) => part.type === 'text')
     .map((part) => part.text)
@@ -21528,11 +21525,11 @@ function AiChatTabView({
     });
     setComposerAttachmentsExpanded(false);
   }, [chatId, editorComposerAttachments, onRemoveComposerAttachment]);
-  const renderComposerAttachments = (attachments, partId, compact = false) => (
+  const renderComposerAttachment = (attachment, partId) => (
     <AiChatAttachmentStrip
       key={partId}
-      attachments={attachments}
-      collapsedLimit={compact ? 2 : COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
+      attachments={attachment ? [attachment] : []}
+      collapsedLimit={COMPOSER_ATTACHMENT_COLLAPSED_LIMIT}
       expanded={composerAttachmentsExpanded}
       onExpandedChange={setComposerAttachmentsExpanded}
       getCommentPreviewItems={(itemAttachment) => (
@@ -21540,13 +21537,13 @@ function AiChatTabView({
         ?? getAiChatAttachmentCommentPreviewItems(itemAttachment)
       )}
       onOpen={onOpenAttachment || onOpenDiffTab ? handleComposerAttachmentOpen : null}
-      onNavigateComment={(item) => handleComposerAttachmentOpen(attachments[0], { rowId: item?.rowId ?? null })}
+      onNavigateComment={(item) => handleComposerAttachmentOpen(attachment, { rowId: item?.rowId ?? null })}
       onContextMenu={handleComposerAttachmentContextMenu}
       onRemove={onRemoveComposerAttachment
         ? (attachment) => onRemoveComposerAttachment(attachment, { chatId })
         : null}
       renderCodeSnippet={getCommentCodeSnippet}
-      className={compact ? "aiux543-composer-attachments ij2499-chat-context" : "aiux543-composer-attachments is-inline-composer-attachments"}
+      className="aiux543-composer-attachments is-inline-composer-attachments"
       chipClassName="aiux543-composer-attachment-chip"
       removeButtonClassName="aiux543-composer-attachment-remove"
       removeLabel={(attachment) => `Remove ${attachment.label ?? 'attachment'}`}
@@ -21562,8 +21559,7 @@ function AiChatTabView({
       .filter((attachmentId) => !representedComposerAttachmentIds.has(attachmentId))
       .map((attachmentId) => ({ id: `pending-${attachmentId}`, type: 'attachment', attachmentId })),
   ];
-  const commitComposerAttachmentIds = new Set(commitComposerAttachments.map(attachment => attachment.id));
-  const inlineOrderedComposerParts = orderedComposerParts.filter(part => !commitComposerAttachmentIds.has(part.attachmentId));
+  const inlineOrderedComposerParts = orderedComposerParts;
   const handleComposerBackspace = (event) => {
     if (
       event.key !== 'Backspace'
@@ -21668,10 +21664,12 @@ function AiChatTabView({
           ))
         ) : (
           <>
-            {isSpecChat && scenario?.userPrompt ? (
+            {(isSpecChat || scenario?.commitGenerationContext) && scenario?.userPrompt ? (
               <ChatUserCard
                 messageId={messageId}
                 attachments={scenarioAttachments}
+                attachmentCollapsedLimit={scenario?.commitGenerationContext ? 2 : Infinity}
+                attachmentsFirst={Boolean(scenario?.commitGenerationContext)}
                 onAttachmentOpen={(attachment, options) => {
                   if (onOpenAttachment) {
                     onOpenAttachment(attachment, { messageId, chatId, archived: true, ...options });
@@ -22079,16 +22077,8 @@ function AiChatTabView({
             />
           );
         })()}
-        {isNewSessionState && scenario?.commitGenerationContext && <div className="ij2499-chat-handoff-intro">
-          <h2>Continue commit message generation</h2>
-          <p>Your generation settings and previous draft are included. Edit the request or send it to continue.</p>
-        </div>}
         {!isReviewDecisionReady && (
         <div className="aiux543-chat-composer" onClick={() => composerRef.current?.focus()}>
-          {commitComposerAttachments.length > 0 && <div className="ij2499-chat-context-group">
-            <span className="ij2499-chat-context-label">{commitComposerAttachments.length} selected {commitComposerAttachments.length === 1 ? 'file' : 'files'}</span>
-            {renderComposerAttachments(commitComposerAttachments, 'commit-generation-context', true)}
-          </div>}
           {showSlashCommandMenu && (
             <div className="aiux543-slash-command-menu" role="listbox" aria-label="Slash commands">
               <div className="aiux543-slash-command-list">
@@ -22120,7 +22110,7 @@ function AiChatTabView({
             {inlineOrderedComposerParts.map((part) => (
               part.type === 'text'
                 ? <span key={part.id} className="ai-chat-composer-text-segment">{part.text}</span>
-                : renderComposerAttachments([composerAttachmentById.get(part.attachmentId)].filter(Boolean), part.id)
+                : renderComposerAttachment(composerAttachmentById.get(part.attachmentId), part.id)
             ))}
             <textarea
               ref={composerRef}
@@ -35894,10 +35884,10 @@ export default function App() {
       icon: request.settings.agent,
       initialModel: request.settings.model,
       initialEffort: 'Medium',
-      emptyState: true,
-      initialComposerText: 'Generate a commit message from the selected changes.',
+      emptyState: false,
+      userPrompt: 'Generate a commit message from the selected changes.',
       attachments,
-      showAttachmentsInComposer: true,
+      showAttachmentsInComposer: false,
       commitGenerationContext: request,
     });
   }, [createEmptyAiChatSession]);

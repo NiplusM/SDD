@@ -148,11 +148,4 @@
 .plan-diff-files-side-panel .plan-diff-files-tree { background: #1b1c1f; }
 .plan-diff-standalone-body > .plan-diff-content-labels .plan-diff-content-label { white-space: nowrap; }
 
-.ij2499-chat-handoff-intro { width: min(820px, 100%); margin-bottom: 16px; }
-.ij2499-chat-handoff-intro h2 { margin: 0 0 8px; color: var(--text-default); font-size: 16px; font-weight: 500; line-height: 24px; }
-.ij2499-chat-handoff-intro p { margin: 0; color: var(--text-secondary); font-size: 13px; font-weight: 400; line-height: 18px; }
-.ij2499-chat-context-group { padding: 10px 12px 0; min-width: 0; }
-.ij2499-chat-context-label { color: var(--text-secondary); font-size: 12px; font-weight: 400; line-height: 16px; }
-.ij2499-commit-chat .ij2499-chat-context { box-sizing: border-box; padding: 8px 0 2px; gap: 5px; }
-.ij2499-commit-chat .ij2499-chat-context.is-expanded { max-height: 156px; overflow-y: auto; }
 .ij2499-commit-chat .ai-chat-inline-input-content > .aiux543-chat-input { flex: 1 1 100%; width: 100%; }
