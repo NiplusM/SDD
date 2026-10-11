@@ -66,6 +66,9 @@ async function checkBrowserLayout() {
       assert.ok(fileTotal > 1, 'file count comes from the changed-file scope');
       const scopeLabel = diffHeader.locator('.ij2499-diff-scope');
       assert.equal(await scopeLabel.innerText(), 'Branch Changes');
+      const labelStyle = await scopeLabel.evaluate(element => ({ fontSize: getComputedStyle(element).fontSize, weight: getComputedStyle(element).fontWeight }));
+      assert.equal(labelStyle.fontSize, '14px');
+      assert.equal(labelStyle.weight, '400');
       assert.equal(await scopeLabel.locator('.dropdown, .dropdown-chevron, button').count(), 0, 'Commit diff has one fixed branch scope without a menu or chevron');
       await scopeLabel.click();
       assert.equal(await diffHeader.locator('.ij2499-diff-scope .dropdown-menu').count(), 0);

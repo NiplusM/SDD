@@ -117,7 +117,7 @@
 .ij2499-commit-diff .ij2499-go-to-session .toolbar-button-text { font-size: 14px; font-weight: 400; }
 .ij2499-diff-scope { display: inline-flex; flex-shrink: 0; --control-bg: var(--control-bg-raised); }
 .ij2499-diff-scope .dropdown-container { width: 160px; }
-.ij2499-diff-scope .text-ui-default { font-size: 14px; font-weight: 400; line-height: 20px; }
+.ij2499-diff-scope.text-ui-default, .ij2499-diff-scope .text-ui-default { font-size: 14px; font-weight: 400; line-height: 20px; }
 .ij2499-diff-scope .dropdown-menu { position: fixed; left: var(--scope-menu-left); top: var(--scope-menu-top); right: auto; width: var(--scope-menu-width); box-sizing: border-box; }
 
 /* Branch Changes reads as a plain toolbar label (reference); it keeps the kit
