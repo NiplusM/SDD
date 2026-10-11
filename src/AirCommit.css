@@ -89,10 +89,8 @@
 .ij2499-message-editor { position: relative; }
 .ij2499-message-loading { position: absolute; top: 7px; left: 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; line-height: 16px; pointer-events: none; }
 .ij2499-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-secondary); padding: 4px 12px; font-size: 12px; line-height: 16px; }
-.ij2499-status-error { flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; padding-bottom: 8px; }
-.ij2499-error-title { color: var(--vcs-deleted-text); }
-.ij2499-error-description { color: var(--text-secondary); }
-.ij2499-error-actions { display: flex; align-items: center; gap: 12px; }
+.ij2499-generation-error-position { position: fixed; z-index: 10010; }
+.ij2499-status-error.notification { width: 380px; max-width: calc(100vw - 32px); }
 .ij2499-gear { display: inline-flex; }
 .ij2499-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -105,7 +103,7 @@
 .ij2499-chat-header-menu { width: 248px; }
 
 /* Reference toolbar for the regular diff opened from Commit. */
-.ij2499-commit-diff .plan-diff-toolbar-shell { padding: 4px 8px; background: inherit; }
+.ij2499-commit-diff .plan-diff-toolbar-shell { padding: 4px 8px; border-bottom: 0; background: inherit; }
 .ij2499-commit-diff .plan-diff-toolbar-left { gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .ij2499-commit-diff .plan-diff-toolbar-left::-webkit-scrollbar { display: none; }
 .ij2499-commit-diff .plan-diff-toolbar-group { gap: 2px; }
@@ -146,6 +144,7 @@
 .plan-diff-standalone-files-panel-host:empty { display: none; }
 .plan-diff-standalone-files-panel-host:not(:empty) { display: block; flex: 0 0 clamp(260px, 28%, 340px); width: clamp(260px, 28%, 340px); min-width: 260px; min-height: 0; overflow: hidden; border-right: 1px solid var(--border-secondary, #33353b); background: #1b1c1f; }
 .plan-diff-files-side-panel { display: flex; width: 100%; height: 100%; min-height: 0; box-sizing: border-box; flex-direction: column; overflow: hidden; background: #1b1c1f; color: var(--text-default, #d1d3d9); }
+.plan-diff-files-side-panel .plan-diff-files-popup-header { flex: 0 0 32px; height: 32px; }
 .plan-diff-files-side-panel .plan-diff-files-tree { max-height: none; min-height: 0; flex: 1 1 auto; overflow-y: auto; }
 .plan-diff-files-side-panel .plan-diff-files-popup-header,
 .plan-diff-files-side-panel .plan-diff-files-tree { background: #1b1c1f; }

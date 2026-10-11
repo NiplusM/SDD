@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Dialog, DialogGroupHeader, Dropdown, Icon, IconButton, Input, Link, Popup, PopupCell, PositionedPopup, SettingsDialog, ToolbarButton, TreeNode } from '@jetbrains/int-ui-kit';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Button, Checkbox, Dialog, DialogGroupHeader, Dropdown, Icon, IconButton, Input, Link, Notification, Popup, PopupCell, PositionedPopup, SettingsDialog, ToolbarButton, TreeNode } from '@jetbrains/int-ui-kit';
 import { AGENTS, DEFAULT_PROMPT, DEFAULT_SETTINGS, normalizeSettings } from './airCommitState.js';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import './AirCommit.css';
@@ -188,6 +188,39 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
     </PositionedPopup>
     {preference && createPortal(<CommitPreferenceDialog preference={preference} value={git[preference]} close={() => setPreference(null)} save={value => setGit({ ...git, [preference]: value })} />, document.body)}</>
   )
+}
+
+export function CommitGenerationError({ anchor, error, retry, onContinue, close }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    function position() {
+      const target = anchor.current?.querySelector('.ij2499-generate')
+      if (!ref.current || !target?.isConnected) return
+      const rect = target.getBoundingClientRect()
+      const notification = ref.current.getBoundingClientRect()
+      const panel = target.closest('.commit-tool-window').getBoundingClientRect()
+      ref.current.style.left = `${Math.max(8, Math.min(panel.left + 16, window.innerWidth - notification.width - 8))}px`
+      ref.current.style.top = `${Math.max(8, rect.top - notification.height - 8)}px`
+    }
+    position()
+    const observer = new ResizeObserver(position)
+    observer.observe(ref.current)
+    observer.observe(anchor.current)
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
+  }, [anchor])
+  useEffect(() => {
+    function escape(event) { if (event.key === 'Escape') close() }
+    document.addEventListener('keydown', escape)
+    return () => document.removeEventListener('keydown', escape)
+  }, [close])
+  return createPortal(<div ref={ref} className="ij2499-generation-error-position theme-dark">
+    <Notification className="ij2499-status-error" type="error" title={error.title} aria-live="polite"
+      onClose={close} forceHoverButtons actions={[{ label: 'Retry', onClick: retry }, { label: 'Continue in Chat', onClick: onContinue }]}>
+      {error.description}
+    </Notification>
+  </div>, document.body)
 }
 
 export function AirGenerationSettingsSection({ settings, onChange, storageError, branch, breadcrumb }) {

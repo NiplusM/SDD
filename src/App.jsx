@@ -1,5 +1,5 @@
 import { useAirCommit, useAirCommitPreferences } from './useAirCommit.js';
-import { CommitOptions, AirSettings, AirGenerationSettingsSection } from './AirCommitSettings.jsx';
+import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitGenerationError } from './AirCommitSettings.jsx';
 import { AGENTS, generateDemoMessage } from './airCommitState.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -1143,6 +1143,7 @@ function CommitToolWindow({
   const [optionsAnchor, setOptionsAnchor] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const gearRef = useRef(null);
+  const generationRef = useRef(null);
   const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
     advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
     cleanup: 'Project Default', tests: 'All Tests' });
@@ -1360,7 +1361,7 @@ function CommitToolWindow({
 
         <div className="commit-bottom-panel">
           <div className="commit-amend-toolbar">
-            <div className="commit-amend-left">
+            <div className="commit-amend-left" ref={generationRef}>
               <label className="commit-amend-label">
                 <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
                 <span>Amend</span>
@@ -1403,17 +1404,9 @@ function CommitToolWindow({
               </div>}
             </div>
           </div>
-          {!air.job && (air.status || air.error || !air.checkedFiles.length) &&
-            <div className={`ij2499-status ${air.error ? 'ij2499-status-error' : ''}`} role={air.error ? 'alert' : 'status'} aria-live="polite">
-              {air.error ? <>
-                <span className="ij2499-error-title">{air.error.title}</span>
-                <span className="ij2499-error-description">{air.error.description}</span>
-                <div className="ij2499-error-actions">
-                  <Link disabled={!air.canGenerate} onClick={air.retry}>Retry</Link>
-                  <Link onClick={() => onContinueInChat?.({ ...air.error.request, draft: message, error: air.error.description })}>Continue in Chat</Link>
-                </div>
-              </>
-                : air.status || 'Select files to generate a commit message.'}
+          {!air.job && !air.error && (air.status || !air.checkedFiles.length) &&
+            <div className="ij2499-status" role="status" aria-live="polite">
+              {air.status || 'Select files to generate a commit message.'}
             </div>}
           <div className="commit-actions">
             <div className="commit-buttons">
@@ -1437,6 +1430,8 @@ function CommitToolWindow({
           )}
         </div>
       </div>
+      {!air.job && air.error && <CommitGenerationError anchor={generationRef} error={air.error} retry={air.retry} close={() => air.cancel()}
+        onContinue={() => onContinueInChat?.({ ...air.error.request, draft: message, error: air.error.description })} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
         openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}

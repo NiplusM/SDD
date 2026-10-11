@@ -247,6 +247,10 @@ async function checkBrowserLayout() {
     assert.equal(await defaultPage.locator('.ij2499-message-loading').innerText(), 'Generating…');
     const defaultError = defaultPage.locator('.ij2499-status-error');
     await defaultError.waitFor();
+    const errorBounds = await defaultError.boundingBox();
+    const generateBounds = await defaultGenerate.boundingBox();
+    assert.equal(Math.round(generateBounds.y - errorBounds.y - errorBounds.height), 8, 'error notification appears above Generate Message where the settings tip used to be');
+    assert.ok(await defaultError.evaluate(element => !element.closest('.commit-bottom-panel')), 'error notification is outside the Commit layout and does not consume message space');
     assert.equal(await defaultMessage.inputValue(), defaultDraft);
     await defaultError.getByRole('button', { name: 'Retry', exact: true }).click();
     await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
