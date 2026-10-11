@@ -241,11 +241,15 @@ async function checkBrowserLayout() {
     const defaultGenerate = defaultPage.getByRole('button', { name: 'Generate Message', exact: true });
     const defaultMessage = defaultPage.getByRole('textbox', { name: 'Commit Message', exact: true });
     await defaultGenerate.waitFor();
+    const defaultSelectedFiles = await defaultPage.locator('.commit-file-node').filter({ has: defaultPage.locator('input:checked') }).locator('.commit-file-name').allTextContents();
+    assert.deepEqual(defaultSelectedFiles, ['VisitController.java', 'application.properties', 'VisitControllerTests.java', 'VisitRequestFilter.java']);
     await defaultGenerate.click();
     await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
     await defaultGenerate.waitFor();
     const defaultDraft = await defaultMessage.inputValue();
     assert.ok(defaultDraft.length > 0, 'normal entry generates a message for the default checked files');
+    for (const name of defaultSelectedFiles) assert.ok(defaultDraft.includes(name), `generated message includes ${name}`);
+    assert.ok(!defaultDraft.includes('Owner.java') && !defaultDraft.includes('VetSchedule.java'), 'unchecked files are absent from the generated message');
     await defaultGenerate.click();
     await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
     assert.equal(await defaultPage.locator('.ij2499-message-loading').innerText(), 'Generating…');
@@ -326,7 +330,9 @@ async function checkBrowserLayout() {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${previewUrl}/?entry=commit&scenario=error`);
       const checkedCount = await page.locator('.commit-file-node input:checked').count();
-      assert.equal(checkedCount, 20);
+      assert.equal(checkedCount, 4);
+      const selectedFiles = await page.locator('.commit-file-node').filter({ has: page.locator('input:checked') }).locator('.commit-file-name').allTextContents();
+      assert.deepEqual(selectedFiles, ['VisitController.java', 'application.properties', 'VisitControllerTests.java', 'VisitRequestFilter.java']);
       const message = page.getByRole('textbox', { name: 'Commit Message', exact: true });
       await message.fill('A previous draft with several lines.\nKeep this draft in Commit.');
       await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
@@ -339,18 +345,17 @@ async function checkBrowserLayout() {
       const initialMessage = chat.locator('.ai-chat-user-card').first();
       assert.equal(await chat.locator('.ai-chat-user-card').count(), 1);
       assert.match(await initialMessage.innerText(), /Generate a commit message from the selected changes\./);
-      assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 2);
+      assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 4);
+      assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
+      assert.equal(await initialMessage.getByRole('button', { name: /^Show (all|less)/ }).count(), 0, 'attachments are never collapsed');
+      for (const chip of await initialMessage.locator('.ai-chat-sent-attachment-chip').all()) assert.ok(await chip.isVisible());
       assert.equal(await chat.locator('.aiux543-user-attachments, .aiux543-composer-attachment-chip, .aiux543-answer').count(), 0);
       assert.equal(await composer.inputValue(), '');
       assert.equal(await chat.getByRole('button', { name: 'Generating', exact: true }).count(), 0, 'idle handoff has no generation spinner');
-      await initialMessage.getByRole('button', { name: 'Show all +18', exact: true }).click();
-      assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 20);
-      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-all-files-expanded-${width}.png`) });
-      await initialMessage.getByRole('button', { name: 'Show less', exact: true }).click();
       const composerBounds = await chat.locator('.aiux543-chat-composer').boundingBox();
-      assert.ok(composerBounds.height <= 240, 'twenty files do not inflate the initial composer');
+      assert.ok(composerBounds.height <= 240, 'sent attachments do not inflate the empty composer');
       assert.ok(composerBounds.y > 0 && composerBounds.y + composerBounds.height < 875);
-      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-all-files-${width}.png`) });
+      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-selected-files-${width}.png`) });
       if (width === 1656) {
         await initialMessage.locator('.ai-chat-sent-attachment-chip').first().click();
         await page.locator('.ai-review-editor-split .plan-diff-overlay').waitFor();
@@ -358,7 +363,7 @@ async function checkBrowserLayout() {
         await page.locator('.main-window-editor-tabs').getByText('Commit message generation', { exact: true }).click();
         await composer.waitFor();
         assert.equal(await composer.inputValue(), '', 'handoff composer stays empty');
-        assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 2, 'opening a diff preserves sent context');
+        assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 4, 'opening a diff preserves all four sent attachments');
       }
       await composer.fill('One-line Conventional Commits in Russian.');
       await composer.press('Enter');
@@ -367,18 +372,16 @@ async function checkBrowserLayout() {
       assert.equal(await chat.locator('.ai-chat-user-card').count(), 2, 'follow-up adds one message after the initial request');
       assert.equal(await chat.locator('.aiux543-chat-composer .ai-chat-attachment-chip').count(), 0, 'context remains only in the sent message');
       assert.equal(await composer.inputValue(), '');
-      await initialMessage.getByRole('button', { name: 'Show all +18', exact: true }).click();
-      assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 20, 'follow-up retains all selected files');
-      await initialMessage.getByRole('button', { name: 'Show less', exact: true }).click();
-      await page.screenshot({ path: path.join(outputDir, `chat-result-all-files-${width}.png`) });
+      assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`), 'follow-up retains every selected file');
+      await page.screenshot({ path: path.join(outputDir, `chat-result-selected-files-${width}.png`) });
       assert.equal(await message.inputValue(), 'A previous draft with several lines.\nKeep this draft in Commit.');
       assert.equal(await page.locator('.commit-file-node input:checked').count(), checkedCount);
       assert.deepEqual(errors, []);
       await page.close();
     }
     console.log(process.argv.includes('--handoff-only')
-      ? 'PASS: twenty-file chat handoff at two widths; one short sent request; expandable attachments inside it; empty composer; streaming response; preserved draft and selection.'
-      : 'PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, compact twenty-file chat handoff, editable continuation and relevant response, preserved Commit state.');
+      ? 'PASS: four-file chat handoff at two widths; one short sent request; every attachment visible inside it; empty composer; streaming response; preserved draft and selection.'
+      : 'PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, four default checked files, fully visible sent attachments, empty composer and relevant follow-up response, preserved Commit state.');
   } finally { await browser.close(); }
 }
 (async () => {
@@ -550,6 +553,7 @@ async function checkBrowserLayout() {
   w.HTMLElement.prototype.scrollIntoView = function () {};
   w.mountFull(); await wait(150);
   assert.ok(d.querySelector('.commit-tool-window'), 'original V3 entry opens Commit');
+  assert.equal(d.querySelectorAll('.commit-file-node input:checked').length, 4, 'normal entry starts with the four request-logging files');
   assert.ok(d.querySelector('.main-window'), 'original IDE shell renders');
   assert.ok(d.querySelector('.plan-diff-editor-area'), 'Commit entry automatically opens the VisitController diff');
   assert.ok(!d.querySelector('.aiux543-chat-editor-host'), 'chat is not the initial active editor');

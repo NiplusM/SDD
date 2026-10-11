@@ -1137,7 +1137,7 @@ function CommitToolWindow({
   repositoryContext = null,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
-  const [checkedIds, setCheckedIds] = useState(() => new Set(new URLSearchParams(window.location.search).get('scenario') === 'no-files' ? [] : COMMIT_CHANGE_FILES.map((f) => f.id)));
+  const [checkedIds, setCheckedIds] = useState(() => new Set(new URLSearchParams(window.location.search).get('scenario') === 'no-files' ? [] : COMMIT_CHANGE_FILES.filter((file) => file.groupId === 'request-logging').map((file) => file.id)));
   const [amend, setAmend] = useState(false);
   const [committedIds, setCommittedIds] = useState(() => new Set());
   const [optionsAnchor, setOptionsAnchor] = useState(null);
@@ -16928,10 +16928,7 @@ const ChatListPopup = forwardRef(function ChatListPopup({
 // New messages keep placement per attachment, so a sequence such as
 // quote → text → file remains in that exact visual order after Send.
 // `attachmentsFirst` is retained as a fallback for older stored messages.
-function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null, attachmentsFirst = false, contentParts = null, appearance = 'sent', attachmentCollapsedLimit = Infinity }) {
-  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
-  const hasAttachmentOverflow = attachments.length > attachmentCollapsedLimit;
-  const visibleAttachments = attachmentsExpanded ? attachments : attachments.slice(0, attachmentCollapsedLimit);
+function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, messageId = null, attachmentsFirst = false, contentParts = null, appearance = 'sent' }) {
   const hasMessageText = typeof children === 'string'
     ? children.trim().length > 0
     : Boolean(children);
@@ -16971,7 +16968,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                 : null
             ))
           : (hasMessageText && <span className="ai-chat-user-card-text">{children}</span>)}
-        {visibleAttachments.map((attachment, attachmentIndex) => {
+        {attachments.map((attachment, attachmentIndex) => {
                 const commentPreviewItems = sentPreviewItemsByAttachmentId.get(
                   getAiChatAttachmentSequenceKey(attachment, attachmentIndex),
                 ) ?? getAiChatAttachmentCommentPreviewItems(attachment);
@@ -17042,11 +17039,7 @@ function ChatUserCard({ children, attachments = [], onAttachmentOpen = null, mes
                   </span>
                 );
         })}
-        {hasAttachmentOverflow && <Button type="secondary" size="slim" className="ai-chat-attachments-show-all"
-          style={{ order: hasExplicitContentOrder ? attachments.length : (attachmentsFirst ? 1 : 3) }} aria-expanded={attachmentsExpanded}
-          onClick={() => setAttachmentsExpanded(expanded => !expanded)}>
-          {attachmentsExpanded ? 'Show less' : `Show all +${attachments.length - visibleAttachments.length}`}
-        </Button>}
+
       </div>
       <button className="ai-chat-card-menu" type="button" aria-label="Message actions">
         <span />
@@ -21668,7 +21661,6 @@ function AiChatTabView({
               <ChatUserCard
                 messageId={messageId}
                 attachments={scenarioAttachments}
-                attachmentCollapsedLimit={scenario?.commitGenerationContext ? 2 : Infinity}
                 attachmentsFirst={Boolean(scenario?.commitGenerationContext)}
                 onAttachmentOpen={(attachment, options) => {
                   if (onOpenAttachment) {
@@ -21990,7 +21982,6 @@ function AiChatTabView({
           ) : (
             <ChatUserCard
               key={message.id}
-              attachmentCollapsedLimit={scenario?.commitGenerationContext ? 2 : Infinity}
               messageId={message.id}
               appearance="sent"
               attachments={message.attachments}
