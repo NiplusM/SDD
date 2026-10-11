@@ -183,8 +183,8 @@ async function checkBrowserLayout() {
     await returningPage.locator('.ij2499-gear').waitFor();
     const savedPreferences = JSON.stringify({ agent: 'codex', model: 'GPT-5', prompt: 'Keep my preferences' });
     await returningPage.evaluate(value => {
-      localStorage.setItem('ijai2499:petclinic:air:settings-hint:v1', 'seen');
-      localStorage.setItem('ijai2499:petclinic:air:v1', value);
+      localStorage.setItem('aiux594-v4:petclinic:air:settings-hint:v1', 'seen');
+      localStorage.setItem('aiux594-v4:petclinic:air:v1', value);
     }, savedPreferences);
     await returningPage.reload();
     await returningPage.locator('.ij2499-gear').waitFor();
@@ -192,7 +192,7 @@ async function checkBrowserLayout() {
     await returningPage.goto(`${previewUrl}/?entry=commit&scenario=no-files&onboarding=restart`);
     await returningPage.locator('.ij2499-gear').waitFor();
     assert.equal(await returningPage.locator('.ij2499-settings-hint').count(), 0);
-    const retained = await returningPage.evaluate(() => JSON.parse(localStorage.getItem('ijai2499:petclinic:air:v1')));
+    const retained = await returningPage.evaluate(() => JSON.parse(localStorage.getItem('aiux594-v4:petclinic:air:v1')));
     assert.equal(retained.model, 'GPT-5');
     assert.equal(retained.prompt, 'Keep my preferences');
     await returningPage.close();
