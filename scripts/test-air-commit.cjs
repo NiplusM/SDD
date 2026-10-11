@@ -210,8 +210,8 @@ async function checkBrowserLayout() {
     await returningPage.locator('.ij2499-gear').waitFor();
     const savedPreferences = JSON.stringify({ agent: 'codex', model: 'GPT-5', prompt: 'Keep my preferences' });
     await returningPage.evaluate(value => {
-      localStorage.setItem('ijai2499:petclinic:air:settings-hint:v1', 'seen');
-      localStorage.setItem('ijai2499:petclinic:air:v1', value);
+      localStorage.setItem('aiux594-v4:petclinic:air:settings-hint:v1', 'seen');
+      localStorage.setItem('aiux594-v4:petclinic:air:v1', value);
     }, savedPreferences);
     await returningPage.reload();
     await returningPage.locator('.ij2499-gear').waitFor();
@@ -219,7 +219,7 @@ async function checkBrowserLayout() {
     await returningPage.goto(`${previewUrl}/?entry=commit&scenario=no-files&onboarding=restart`);
     const restartedHint = returningPage.locator('.ij2499-settings-hint');
     await restartedHint.waitFor();
-    assert.equal(await returningPage.evaluate(() => localStorage.getItem('ijai2499:petclinic:air:v1')), savedPreferences, 'new demo clears only onboarding, preserving agent/model/prompt');
+    assert.equal(await returningPage.evaluate(() => localStorage.getItem('aiux594-v4:petclinic:air:v1')), savedPreferences, 'new demo clears only onboarding, preserving agent/model/prompt');
     await returningPage.screenshot({ path: path.join(outputDir, 'onboarding-restart.png') });
     await restartedHint.getByRole('button', { name: 'Got It', exact: true }).click();
     const commitStripe = returningPage.locator('.main-window-stripe-left [title="Commit"]').first();
@@ -229,7 +229,7 @@ async function checkBrowserLayout() {
     assert.equal(await restartedHint.count(), 0, 'reopening Commit in the same demo does not repeat Got It');
     await returningPage.reload();
     await restartedHint.waitFor();
-    assert.equal(await returningPage.evaluate(() => localStorage.getItem('ijai2499:petclinic:air:v1')), savedPreferences);
+    assert.equal(await returningPage.evaluate(() => localStorage.getItem('aiux594-v4:petclinic:air:v1')), savedPreferences);
     await restartedHint.getByRole('button', { name: 'Dismiss tip', exact: true }).click();
     assert.equal(await restartedHint.count(), 0, 'reference close action dismisses onboarding');
     await returningPage.reload();
@@ -281,10 +281,10 @@ async function checkBrowserLayout() {
   assert.match(hint.textContent, /Generate a commit message from selected changes\. Customize generation in Air settings\./);
   assert.notEqual(hint.parentElement.style.left, '', 'hint is positioned after the initial generation ref is attached');
   await click(button('Got It', hint));
-  assert.equal(w.localStorage.getItem('ijai2499:petclinic:air:settings-hint:v1'), 'seen');
+  assert.equal(w.localStorage.getItem('aiux594-v4:petclinic:air:settings-hint:v1'), 'seen');
   w.mountCommit('acknowledged'); await wait(60);
   assert.ok(!d.querySelector('.ij2499-settings-hint'), 'Got It stays dismissed when Commit reopens');
-  w.localStorage.removeItem('ijai2499:petclinic:air:settings-hint:v1');
+  w.localStorage.removeItem('aiux594-v4:petclinic:air:settings-hint:v1');
   w.mountCommit('first-settings-entry'); await wait(60);
   hint = d.querySelector('.ij2499-settings-hint'); assert.ok(hint);
   await click(button('Air settings', hint));
@@ -293,7 +293,7 @@ async function checkBrowserLayout() {
   assert.ok(d.querySelector('[data-testid="settings-model"]'));
   assert.ok(!d.querySelector('.ij2499-settings-hint'));
   await click(button('Cancel', d.querySelector('[aria-modal="true"]')));
-  assert.equal(w.localStorage.getItem('ijai2499:petclinic:air:settings-hint:v1'), 'seen');
+  assert.equal(w.localStorage.getItem('aiux594-v4:petclinic:air:settings-hint:v1'), 'seen');
   assert.ok(button('Generate Message').disabled);
   await click(d.querySelector('.commit-file-open'));
   assert.equal(w.openedFiles.length, 1);

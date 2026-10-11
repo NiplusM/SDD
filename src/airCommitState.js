@@ -1,5 +1,5 @@
-export const STORAGE_KEY = 'ijai2499:petclinic:air:v1';
-export const SETTINGS_HINT_STORAGE_KEY = 'ijai2499:petclinic:air:settings-hint:v1';
+export const STORAGE_KEY = 'aiux594-v4:petclinic:air:v1';
+export const SETTINGS_HINT_STORAGE_KEY = 'aiux594-v4:petclinic:air:settings-hint:v1';
 let demoHintResetApplied = false;
 
 // Restart onboarding only once per loaded demo. Commit can mount again within
