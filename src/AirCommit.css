@@ -119,3 +119,34 @@
 .ij2499-diff-scope .dropdown-container { width: 160px; }
 .ij2499-diff-scope .text-ui-default { font-size: 14px; font-weight: 400; line-height: 20px; }
 .ij2499-diff-scope .dropdown-menu { position: fixed; left: var(--scope-menu-left); top: var(--scope-menu-top); right: auto; width: var(--scope-menu-width); box-sizing: border-box; }
+
+/* Branch Changes reads as a plain toolbar label (reference); it keeps the kit
+   Dropdown's menu and keyboard behavior. Go to Session shows the kit
+   toolbar hover surface only on hover. */
+.ij2499-commit-diff .ij2499-go-to-session .toolbar-button-content { padding: 3px 8px 3px 6px; border-radius: 4px; }
+.ij2499-commit-diff .ij2499-go-to-session:hover:not(:disabled) .toolbar-button-content { background: var(--icon-button-hover-bg); }
+.ij2499-commit-diff .ij2499-go-to-session:active:not(:disabled) .toolbar-button-content { background: var(--icon-button-pressed-bg); }
+.ij2499-diff-scope { --control-bg: transparent; }
+.ij2499-diff-scope .dropdown-container { width: auto; }
+.ij2499-diff-scope .dropdown,
+.ij2499-diff-scope .dropdown-focused:not(.dropdown-disabled),
+.ij2499-diff-scope .dropdown:hover:not(.dropdown-disabled):not(.dropdown-focused) { min-height: 26px; margin: 0; padding: 0 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; }
+.ij2499-diff-scope .dropdown:hover:not(.dropdown-disabled) { background: var(--icon-button-hover-bg); }
+.ij2499-diff-scope .dropdown:focus-visible { outline: 2px solid var(--control-focus-border-brand); outline-offset: -1px; }
+.ij2499-diff-scope .dropdown-content { gap: 0; }
+.ij2499-diff-scope .dropdown-value { flex: 0 0 auto; }
+
+/* Full-view diff: the changed-files tree docks on the left of the diff body
+   (AIUX-594 V3 archive fork behavior); split views keep the popover. */
+.plan-diff-standalone-content { position: absolute; inset: 0; z-index: 5; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.plan-diff-standalone-body { position: relative; display: flex; min-width: 0; min-height: 0; flex: 1 1 auto; flex-direction: column; overflow: hidden; background: #1b1c1f; }
+.plan-diff-standalone-body > .plan-diff-content-labels { flex: 0 0 auto; box-sizing: border-box; padding-left: 8px; padding-right: 8px; }
+.plan-diff-standalone-body > .plan-diff-content-labels.is-split { padding-left: 26px; padding-right: 26px; }
+.plan-diff-standalone-body > .plan-diff-overlay { position: relative; inset: auto; min-height: 0; flex: 1 1 auto; }
+.plan-diff-standalone-files-panel-host:empty { display: none; }
+.plan-diff-standalone-files-panel-host:not(:empty) { display: block; flex: 0 0 clamp(260px, 28%, 340px); width: clamp(260px, 28%, 340px); min-width: 260px; min-height: 0; overflow: hidden; border-right: 1px solid var(--border-secondary, #33353b); background: #1b1c1f; }
+.plan-diff-files-side-panel { display: flex; width: 100%; height: 100%; min-height: 0; box-sizing: border-box; flex-direction: column; overflow: hidden; background: #1b1c1f; color: var(--text-default, #d1d3d9); }
+.plan-diff-files-side-panel .plan-diff-files-tree { max-height: none; min-height: 0; flex: 1 1 auto; overflow-y: auto; }
+.plan-diff-files-side-panel .plan-diff-files-popup-header,
+.plan-diff-files-side-panel .plan-diff-files-tree { background: #1b1c1f; }
+.plan-diff-standalone-body > .plan-diff-content-labels .plan-diff-content-label { white-space: nowrap; }

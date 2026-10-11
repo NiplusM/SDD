@@ -64,33 +64,18 @@ async function checkBrowserLayout() {
       assert.match(await diffHeader.locator('.plan-diff-viewing-file-count-link').innerText(), /^1\/\d+ files$/);
       const fileTotal = Number((await diffHeader.locator('.plan-diff-viewing-file-count-link').innerText()).match(/\/(\d+)/)[1]);
       assert.ok(fileTotal > 1, 'file count comes from the changed-file scope');
-      const scopeField = diffHeader.locator('.ij2499-diff-scope .dropdown');
-      const scopeGeometry = await scopeField.evaluate(el => {
-        const style = getComputedStyle(el);
-        return { height: el.getBoundingClientRect().height, border: style.borderColor, fontSize: getComputedStyle(el.querySelector('.dropdown-value')).fontSize, weight: getComputedStyle(el.querySelector('.dropdown-value')).fontWeight, chevronWidth: el.querySelector('.dropdown-chevron').getBoundingClientRect().width };
-      });
-      assert.equal(scopeGeometry.height, 30, 'kit field keeps its 28px interior plus border');
-      assert.equal(scopeGeometry.chevronWidth, 28, 'kit dropdown chevron area');
-      assert.equal(scopeGeometry.weight, '400');
-      assert.equal(scopeGeometry.fontSize, '14px');
-      await scopeField.click();
-      const scopeMenu = diffHeader.locator('.ij2499-diff-scope .dropdown-menu');
-      await scopeMenu.waitFor();
-      const visibleScopeMenu = await scopeMenu.evaluate(el => {
-        const rect = el.getBoundingClientRect();
-        const last = el.lastElementChild.getBoundingClientRect();
-        const target = document.elementFromPoint(last.left + last.width / 2, last.top + last.height / 2);
-        return { fits: rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight, unclipped: el.contains(target) };
-      });
-      assert.ok(visibleScopeMenu.fits && visibleScopeMenu.unclipped, 'dark kit scope menu is visible outside the toolbar without clipping');
-      await scopeMenu.screenshot({ path: path.join(outputDir, `diff-scope-menu-${viewport.width}.png`) });
-      await page.keyboard.press('Escape');
-      assert.equal(await scopeMenu.count(), 0);
+      const scopeLabel = diffHeader.locator('.ij2499-diff-scope');
+      assert.equal(await scopeLabel.innerText(), 'Branch Changes');
+      assert.equal(await scopeLabel.locator('.dropdown, .dropdown-chevron, button').count(), 0, 'Commit diff has one fixed branch scope without a menu or chevron');
+      await scopeLabel.click();
+      assert.equal(await diffHeader.locator('.ij2499-diff-scope .dropdown-menu').count(), 0);
+      const surfaces = await diffHeader.evaluate(element => ({ toolbar: getComputedStyle(element.closest('.plan-diff-toolbar-shell')).backgroundColor, editor: getComputedStyle(element.closest('.plan-diff-editor-area')).backgroundColor }));
+      assert.equal(surfaces.toolbar, surfaces.editor, 'toolbar underlay matches the editor canvas');
 
       assert.ok(await diffHeader.getByRole('button', { name: 'Compare Previous File (⌥←)', exact: true }).isDisabled());
       if (viewport.width >= 1386) {
         const sessionRect = await diffHeader.getByRole('button', { name: 'Go to Session', exact: true }).boundingBox();
-        const scopeRect = await diffHeader.locator('.ij2499-diff-scope .dropdown').boundingBox();
+        const scopeRect = await diffHeader.locator('.ij2499-diff-scope').boundingBox();
         const rightRect = await diffHeader.locator('.plan-diff-toolbar-right').boundingBox();
         assert.ok(sessionRect.x + sessionRect.width <= scopeRect.x && scopeRect.x + scopeRect.width <= rightRect.x, 'session and scope fit before the right-hand controls');
       }
@@ -103,15 +88,13 @@ async function checkBrowserLayout() {
         assert.ok(await page.getByRole('button', { name: 'Generate Message', exact: true }).isDisabled(), 'file navigation preserves unchecked Commit selection');
         await diffHeader.getByRole('button', { name: 'Compare Previous File (⌥←)', exact: true }).click();
         await diffHeader.locator('.plan-diff-viewing-file-count-link').click();
-        await page.locator('.plan-diff-files-popup').getByText('application.properties', { exact: true }).click();
+        await page.locator('.plan-diff-files-side-panel').getByText('application.properties', { exact: true }).click();
+        assert.equal(await page.locator('.plan-diff-files-side-panel').count(), 1, 'docked files remain visible after navigation');
+        await page.getByRole('button', { name: 'Close changed files', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('.main-window-editor-tabs .tab-selected')?.textContent.includes('application.properties'));
         await diffHeader.getByRole('button', { name: 'Compare Previous File (⌥←)', exact: true }).click();
-        await diffHeader.locator('.ij2499-diff-scope .dropdown').click();
-        await page.locator('.ij2499-diff-scope .dropdown-menu').getByText('Session Changes', { exact: true }).click();
-        assert.equal(await diffHeader.locator('.plan-diff-viewing-file-count-link').innerText(), '1/4 files');
-        await diffHeader.locator('.ij2499-diff-scope .dropdown').click();
-        await page.locator('.ij2499-diff-scope .dropdown-menu').getByText('Branch Changes', { exact: true }).click();
         assert.equal(await diffHeader.locator('.plan-diff-viewing-file-count-link').innerText(), `1/${fileTotal} files`);
+        assert.equal(await scopeLabel.innerText(), 'Branch Changes');
         await diffHeader.locator('.segmented-button').first().click();
         assert.ok(await page.locator('.plan-diff-overlay--split').count() > 0, 'split view renders both code panes');
         await diffHeader.locator('.segmented-button').last().click();
@@ -232,8 +215,8 @@ async function checkBrowserLayout() {
     await returningPage.locator('.ij2499-gear').waitFor();
     const savedPreferences = JSON.stringify({ agent: 'codex', model: 'GPT-5', prompt: 'Keep my preferences' });
     await returningPage.evaluate(value => {
-      localStorage.setItem('aiux594-v4:petclinic:air:settings-hint:v1', 'seen');
-      localStorage.setItem('aiux594-v4:petclinic:air:v1', value);
+      localStorage.setItem('ijai2499:petclinic:air:settings-hint:v1', 'seen');
+      localStorage.setItem('ijai2499:petclinic:air:v1', value);
     }, savedPreferences);
     await returningPage.reload();
     await returningPage.locator('.ij2499-gear').waitFor();
@@ -241,7 +224,7 @@ async function checkBrowserLayout() {
     await returningPage.goto(`${previewUrl}/?entry=commit&scenario=no-files&onboarding=restart`);
     await returningPage.locator('.ij2499-gear').waitFor();
     assert.equal(await returningPage.locator('.ij2499-settings-hint').count(), 0);
-    const retained = await returningPage.evaluate(() => JSON.parse(localStorage.getItem('aiux594-v4:petclinic:air:v1')));
+    const retained = await returningPage.evaluate(() => JSON.parse(localStorage.getItem('ijai2499:petclinic:air:v1')));
     assert.equal(retained.model, 'GPT-5');
     assert.equal(retained.prompt, 'Keep my preferences');
     await returningPage.close();

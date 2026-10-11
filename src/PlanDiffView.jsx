@@ -1195,9 +1195,6 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
   );
 }
 
-// Use the kit's raised field for the Commit header, retaining its spacing,
-// chevron and focus states. Position its menu in viewport coordinates so the
-// horizontally scrollable toolbar cannot clip it.
 function CommitDiffScopeDropdown({ value, options, onChange }) {
   const ref = useRef(null);
   const positionMenu = useCallback(() => {
@@ -1207,7 +1204,7 @@ function CommitDiffScopeDropdown({ value, options, onChange }) {
     const rect = field.getBoundingClientRect();
     host.style.setProperty('--scope-menu-left', `${Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8))}px`);
     host.style.setProperty('--scope-menu-top', `${rect.bottom + 4}px`);
-    host.style.setProperty('--scope-menu-width', `${rect.width}px`);
+    host.style.setProperty('--scope-menu-width', `${Math.max(rect.width, 180)}px`);
   }, []);
   useLayoutEffect(() => {
     positionMenu();
@@ -1218,6 +1215,9 @@ function CommitDiffScopeDropdown({ value, options, onChange }) {
       window.removeEventListener('scroll', positionMenu, true);
     };
   }, [positionMenu]);
+  if (options.length === 1) {
+    return <span className="ij2499-diff-scope text-ui-default">{options[0].label}</span>;
+  }
   return (
     <span ref={ref} className="ij2499-diff-scope" onClick={positionMenu} onKeyDown={event => { positionMenu(); if (event.key === 'Escape') event.stopPropagation(); }}>
       <Dropdown
@@ -1480,8 +1480,12 @@ function PlanDiffViewingScopeControl({
   fileNavigationOnly = false,
   beforeFileControl = null,
   afterFileControl = null,
+  // Full-view diffs dock the changed-files tree on their left edge; split
+  // views keep the popover so the chat column is not squeezed further.
+  filesPanelHost = null,
 }) {
   const filesRef = useRef(null);
+  const usesFilesSidePanel = Boolean(filesPanelHost);
   const [filesRect, setFilesRect] = useState(null);
   const [fallbackFileIndex, setFallbackFileIndex] = useState(0);
   const [collapsedDirKeys, setCollapsedDirKeys] = useState(() => new Set());
@@ -1611,7 +1615,7 @@ function PlanDiffViewingScopeControl({
   const selectFile = (item, index) => {
     if (item.tabId) onSelectFile?.(item.tabId);
     else setFallbackFileIndex(index);
-    closeFiles();
+    if (!usesFilesSidePanel) closeFiles();
   };
 
   // A file is keyed by tabId where the host provides one, so the viewed flag
@@ -1904,6 +1908,53 @@ function PlanDiffViewingScopeControl({
     );
   };
 
+  const filesListContent = (
+    <>
+      <div className="plan-diff-files-popup-header">
+        <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
+          <Icon name="actions/preview" size={16} />
+        </span>
+        {showViewedState && (
+          <span
+            className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
+            aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
+          >
+            {allFilesViewed && <Icon name="general/checkmark" size={16} />}
+            {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
+          </span>
+        )}
+        <span className="plan-diff-files-popup-actions">
+          <button
+            type="button"
+            aria-label="Expand all"
+            disabled={isTreeFullyExpanded}
+            onClick={() => setCollapsedDirKeys(new Set())}
+          >
+            <Icon name="general/expandAll" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Collapse all"
+            disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
+            onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
+          >
+            <Icon name="general/collapseAll" size={16} />
+          </button>
+          {usesFilesSidePanel && (
+            <button type="button" aria-label="Close changed files" onClick={closeFiles}>
+              <Icon name="general/close" size={16} />
+            </button>
+          )}
+        </span>
+      </div>
+      <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
+        {isGroupedScope
+          ? scopeTrees.map((group) => renderScopeGroup(group, 0))
+          : renderTreeNode(fileTree, 0)}
+      </div>
+    </>
+  );
+
   return (
     <div className={`plan-diff-review-scope-controls${compactToolbar ? ' is-compact-toolbar' : ''}`}>
       {!fileNavigationOnly && <>
@@ -1925,7 +1976,9 @@ function PlanDiffViewingScopeControl({
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
         {!compactToolbar && (
         <ToolbarButton
-          icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
+          icon={fileNavigationOnly
+            ? <PlanDiffToolbarIcon type="left" />
+            : <Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
           className="plan-diff-viewing-file-arrow"
           title="Compare Previous File (⌥←)"
           disabled={currentDedupedIndex <= 0}
@@ -1952,7 +2005,9 @@ function PlanDiffViewingScopeControl({
         </span>
         {!compactToolbar && (
         <ToolbarButton
-          icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
+          icon={fileNavigationOnly
+            ? <PlanDiffToolbarIcon type="right" />
+            : <Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
           className="plan-diff-viewing-file-arrow"
           title="Compare Next File (⌥→)"
           disabled={currentDedupedIndex >= visibleFileCount - 1}
@@ -1960,50 +2015,20 @@ function PlanDiffViewingScopeControl({
         />
         )}
       {filesRect && typeof document !== 'undefined' && createPortal(
-        <div className="theme-dark">
-          <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
-            <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
-              <div className="plan-diff-files-popup-header">
-                <span className="plan-diff-files-popup-preview" aria-label="Preview changed files">
-                  <Icon name="actions/preview" size={16} />
-                </span>
-                {showViewedState && (
-                  <span
-                    className={`plan-diff-files-popup-progress${allFilesViewed ? ' is-complete' : ''}`}
-                    aria-label={`${viewedFileCount} of ${dedupedFileOptions.length} files viewed`}
-                  >
-                    {allFilesViewed && <Icon name="general/checkmark" size={16} />}
-                    {`${viewedFileCount}/${dedupedFileOptions.length} viewed`}
-                  </span>
-                )}
-                <span className="plan-diff-files-popup-actions">
-                  <button
-                    type="button"
-                    aria-label="Expand all"
-                    disabled={isTreeFullyExpanded}
-                    onClick={() => setCollapsedDirKeys(new Set())}
-                  >
-                    <Icon name="general/expandAll" size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Collapse all"
-                    disabled={collapsedDirKeys.size >= allTreeDirKeys.length}
-                    onClick={() => setCollapsedDirKeys(new Set(allTreeDirKeys))}
-                  >
-                    <Icon name="general/collapseAll" size={16} />
-                  </button>
-                </span>
-              </div>
-              <div className="plan-diff-files-tree" role="tree" aria-label="Changed files">
-                {isGroupedScope
-                  ? scopeTrees.map((group) => renderScopeGroup(group, 0))
-                  : renderTreeNode(fileTree, 0)}
-              </div>
-            </Popup>
-          </PositionedPopup>
-        </div>,
-        document.body,
+        usesFilesSidePanel ? (
+          <div className="theme-dark plan-diff-files-side-panel text-ui-default">
+            {filesListContent}
+          </div>
+        ) : (
+          <div className="theme-dark">
+            <PositionedPopup triggerRect={filesRect} onDismiss={closeFiles} gap={4}>
+              <Popup visible className="plan-diff-popover plan-diff-files-popup text-ui-default" onClose={closeFiles}>
+                {filesListContent}
+              </Popup>
+            </PositionedPopup>
+          </div>
+        ),
+        usesFilesSidePanel ? filesPanelHost : document.body,
       )}
       {showSessionAttribution && sessionsPopup && typeof document !== 'undefined' && createPortal(
         <div className="theme-dark">
@@ -7586,6 +7611,8 @@ export function PlanDiffEditorArea({
 }) {
   const toolbarRef = useRef(null);
   const [overlayHost, setOverlayHost] = useState(null);
+  const [filesPanelHost, setFilesPanelHost] = useState(null);
+  const panelHost = singleLineNumbers ? null : filesPanelHost;
   // Local diff-display switch (split ↔ unified). The review "comments panel"
   // mode ('aside') comes in via `viewMode` and overrides this local layout.
   const [diffLayout, setDiffLayout] = useState('unified');
@@ -7731,6 +7758,7 @@ export function PlanDiffEditorArea({
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
                     <PlanDiffViewingScopeControl
                       fileNavigationOnly
+                      filesPanelHost={panelHost}
                       files={commitToolbar.files}
                       currentFileIndex={commitToolbar.currentFileIndex}
                       onSelectFile={commitToolbar.onSelectFile}
@@ -7752,6 +7780,7 @@ export function PlanDiffEditorArea({
                       title="Go to Session"
                       onClick={commitToolbar.onOpenSession}
                     />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
                     <CommitDiffScopeDropdown
                       value={commitToolbar.scopeId}
                       onChange={commitToolbar.onScopeChange}
@@ -7765,6 +7794,7 @@ export function PlanDiffEditorArea({
                     files={demoScopeFiles}
                     selectedChangeScopeId={selectedChangeScopeId}
                     onChangeScope={setSelectedChangeScopeId}
+                    filesPanelHost={panelHost}
                     compactToolbar
                     beforeFileControl={(
                       <>
@@ -7822,6 +7852,7 @@ export function PlanDiffEditorArea({
                       files={demoScopeFiles}
                       selectedChangeScopeId={selectedChangeScopeId}
                       onChangeScope={setSelectedChangeScopeId}
+                      filesPanelHost={panelHost}
                     />
                   </>
                 )}
@@ -7922,27 +7953,38 @@ export function PlanDiffEditorArea({
                 </div>
               )}
             </div>
-            <div className={`plan-diff-content-labels${effectiveViewMode === 'split' ? ' is-split' : ''}${referenceDiffControls ? ' is-reference' : ''}`}>
-              {referenceDiffControls ? (
-                <>
-                  <PlanDiffContentLabel variant="plain">Before</PlanDiffContentLabel>
-                  <PlanDiffContentLabel variant="plain">Current</PlanDiffContentLabel>
-                </>
-              ) : (
-                <>
-                  <PlanDiffContentLabel variant={showScopeControl ? undefined : 'read-only'} mono={!showScopeControl}>
-                    {showScopeControl ? 'Initial content' : 'Base revision'}
-                  </PlanDiffContentLabel>
-                  <PlanDiffContentLabel variant={showScopeControl ? undefined : 'editable'}>
-                    {showScopeControl ? 'New content' : 'Local changes'}
-                  </PlanDiffContentLabel>
-                </>
-              )}
-            </div>
           </div>
         )}
       </div>
       {overlayHost && createPortal(
+        <div className="plan-diff-standalone-content">
+          {!singleLineNumbers && (
+            <aside
+              ref={setFilesPanelHost}
+              className="plan-diff-standalone-files-panel-host"
+              aria-label="Changed files panel"
+            />
+          )}
+          <div className="plan-diff-standalone-body">
+          {!singleLineNumbers && (
+          <div className={`plan-diff-content-labels${effectiveViewMode === 'split' ? ' is-split' : ''}${referenceDiffControls ? ' is-reference' : ''}`}>
+            {referenceDiffControls ? (
+              <>
+                <PlanDiffContentLabel variant="plain">Before</PlanDiffContentLabel>
+                <PlanDiffContentLabel variant="plain">Current</PlanDiffContentLabel>
+              </>
+            ) : (
+              <>
+                <PlanDiffContentLabel variant={showScopeControl ? undefined : 'read-only'} mono={!showScopeControl}>
+                  {showScopeControl ? 'Initial content' : 'Base revision'}
+                </PlanDiffContentLabel>
+                <PlanDiffContentLabel variant={showScopeControl ? undefined : 'editable'}>
+                  {showScopeControl ? 'New content' : 'Local changes'}
+                </PlanDiffContentLabel>
+              </>
+            )}
+          </div>
+          )}
         <PlanDiffOverlay
           diffData={diffData}
           contextSelections={contextSelections}
@@ -7997,7 +8039,9 @@ export function PlanDiffEditorArea({
           onInlineCommentOpenChange={onInlineCommentOpenChange}
 	          pendingCommentRowIds={pendingCommentRowIds}
 	          commentShortcutHintRowId={commentShortcutHintRowId}
-	        />,
+	        />
+          </div>
+        </div>,
         overlayHost
       )}
     </>

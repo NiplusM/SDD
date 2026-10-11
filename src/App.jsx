@@ -35925,7 +35925,6 @@ export default function App() {
     });
   }, [aiChatScenarios, openPlanDiffTab]);
 
-  const [commitDiffScopeId, setCommitDiffScopeId] = useState('branch-changes');
   const activeCommitDiffFile = activeTabContent?.diffOpenedFromCommitToolWindow
     ? [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES].find(file => (
         `commit-review-scope-${file.id}` === activePlanDiffSourceTabId
@@ -35934,12 +35933,10 @@ export default function App() {
   const commitDiffSession = activeCommitDiffFile?.groupId
     ? COMMIT_CHAT_GROUPS.find(group => group.id === activeCommitDiffFile.groupId)
     : null;
-  const effectiveCommitDiffScopeId = commitDiffSession ? commitDiffScopeId : 'branch-changes';
   const commitDiffFiles = activeCommitDiffFile ? [...new Map(
     [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES]
       .filter(file => getReviewFileLocation(file.label, file.path).branch
         === getReviewFileLocation(activeCommitDiffFile.label, activeCommitDiffFile.path).branch)
-      .filter(file => effectiveCommitDiffScopeId !== 'session-changes' || file.groupId === commitDiffSession?.id)
       .map(file => [reviewFileSessionKey(file.path, file.label), file])
   ).values()] : [];
   const commitDiffFileIndex = Math.max(0, commitDiffFiles.findIndex(file => (
@@ -35948,12 +35945,10 @@ export default function App() {
   const commitDiffToolbar = activeCommitDiffFile ? {
     files: commitDiffFiles,
     currentFileIndex: commitDiffFileIndex,
-    scopeId: effectiveCommitDiffScopeId,
+    scopeId: 'branch-changes',
     scopeOptions: [
       { id: 'branch-changes', label: 'Branch Changes', section: 'branch' },
-      ...(commitDiffSession ? [{ id: 'session-changes', label: 'Session Changes', section: 'session' }] : []),
     ],
-    onScopeChange: setCommitDiffScopeId,
     onSelectFile: id => openCommitFileReview(commitDiffFiles.find(file => file.id === id)),
     onPreviousFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex - 1]),
     onNextFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex + 1]),
