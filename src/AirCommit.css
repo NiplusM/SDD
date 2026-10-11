@@ -1,0 +1,129 @@
+.ij2499-options {
+  width: 410px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  --popup-bg: var(--dialog-bg);
+  --input-bg: var(--dialog-bg);
+  background: var(--popup-bg);
+  border-color: var(--control-border-raised);
+}
+.ij2499-options > .popup-content > .popup-options { padding: 0; }
+.ij2499-options-content { box-sizing: border-box; overflow-y: auto; padding: 16px 12px 16px; color: var(--text-default); font-size: 14px; line-height: 18px; }
+.ij2499-options-content section + section { margin-top: 28px; }
+.ij2499-options .dialog-group-header { margin: 0 0 12px; padding: 0; gap: 6px; min-height: 20px; }
+.ij2499-options .dialog-group-header-line { background: var(--layer-0-border); }
+.ij2499-options .text-ui-default { font-size: 14px; line-height: 18px; font-weight: 400; }
+.ij2499-option-fields { margin-left: 24px; }
+.ij2499-options .input-container { margin-bottom: 6px; }
+.ij2499-options .input-wrapper, .ij2499-options .input-container-horizontal .input-field-wrapper .input-wrapper,
+.ij2499-options .dropdown-container-horizontal .dropdown-field-wrapper { padding: 0; }
+.ij2499-options .input-label, .ij2499-options .dropdown-container-horizontal .dropdown-label { padding: 5px 0; }
+.ij2499-options .input { min-height: 24px; height: 24px; padding: 3px 6px; border-radius: 0; }
+.ij2499-options .dropdown { min-height: 26px; background: var(--control-bg-raised); }
+.ij2499-options .dropdown-chevron { height: 26px; width: 26px; }
+.ij2499-options .dropdown-chevron [stroke] { stroke: var(--text-muted); }
+.ij2499-options .checkbox-container { padding: 6px 0; gap: 8px; }
+.ij2499-options .checkbox-box:not(.checkbox-checked) { background: var(--control-bg-raised); border-color: var(--control-border-raised); }
+.ij2499-checks { display: flex; flex-direction: column; }
+.ij2499-check-row { display: flex; gap: 12px; align-items: center; min-height: 29px; }
+.ij2499-options .link { padding: 0; }
+.ij2499-check-row > .link { white-space: nowrap; }
+.ij2499-advanced-after { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--layer-0-border); }
+.ij2499-advanced-after .ij2499-help { margin-left: 24px; margin-top: 2px; color: var(--text-secondary); }
+.ij2499-upload-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ij2499-upload-row > .dropdown-container { flex: 1; min-width: 0; }
+.ij2499-upload-row > .button { min-width: 28px; width: 28px; height: 28px; padding: 0; }
+.ij2499-options .ij2499-upload-default { margin-left: 24px; }
+.ij2499-options .ij2499-air-fields { gap: 2px; }
+.ij2499-options .ij2499-prompt-label { white-space: nowrap; }
+.ij2499-options .ij2499-prompt { min-height: 92px; height: 92px; padding: 4px 6px; font-size: 14px; font-weight: 400; line-height: 18px; }
+.ij2499-open-settings { align-self: flex-start; margin-top: 4px; }
+.ij2499-options .ij2499-help { font-size: 13px; line-height: 18px; }
+.ij2499-options .ij2499-branch-help { margin-top: 2px; color: var(--text-secondary); }
+.ij2499-branch-help span { color: var(--text-link); }
+.ij2499-preference-content { padding: 16px 20px 24px; }
+.ij2499-air-fields { display: flex; flex-direction: column; gap: 4px; }
+.ij2499-selector-row { display: flex; align-items: center; gap: 2px; min-height: 26px; }
+.ij2499-selector-label { width: 72px; flex-shrink: 0; }
+.ij2499-options .ij2499-selector-label { width: 48px; }
+.ij2499-selector-row .toolbar-button-text { font-weight: 400; }
+.ij2499-selector-layer > div:first-child { z-index: 30030 !important; }
+.ij2499-selector-layer > div:last-child { z-index: 30031 !important; }
+.ij2499-selector-menu { width: 248px; max-width: calc(100vw - 24px); border-color: var(--control-border-raised); }
+.ij2499-selector-menu .popup-options { padding: 0 0 6px; }
+.ij2499-selector-menu .popup-cell-header { padding: 8px 16px 4px; text-align: left; }
+.ij2499-selector-menu .popup-cell-header-text { color: var(--text-secondary); font-size: 12px; line-height: 16px; font-weight: 600; }
+.ij2499-selector-menu .text-ui-default { font-size: 14px; font-weight: 400; line-height: 18px; }
+.ij2499-selector-menu .popup-cell-advanced { padding: 4px 16px; }
+.ij2499-selector-menu .popup-cell-adv-content { height: 18px; }
+.ij2499-selector-menu .popup-cell-adv-left { max-width: calc(100% - 24px); }
+.ij2499-selector-menu [role="menuitemradio"] { outline: none; }
+.ij2499-prompt-block { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.ij2499-prompt-label { display: flex; align-items: center; gap: 4px; }
+.ij2499-prompt { min-height: 110px; height: 116px; line-height: 18px; }
+.ij2499-help { margin: 0; font-size: 12px; line-height: 17px; overflow-wrap: anywhere; }
+.ij2499-help code { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.ij2499-prompt-actions { display: flex; justify-content: space-between; gap: 12px; }
+.ij2499-modal { position: fixed; inset: 0; z-index: 10020; display: flex; align-items: center; justify-content: center; background: var(--transparent-black-40); padding: 16px; }
+.ij2499-settings.dialog { max-width: 100%; max-height: 100%; }
+.ij2499-settings-page { padding: 20px 24px; overflow-y: auto; height: 100%; box-sizing: border-box; color: var(--text-default); }
+.ij2499-settings-container { padding: 0; }
+.ij2499-settings-breadcrumb { display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 600; }
+.ij2499-settings-page > p { font-size: 13px; margin: 20px 0; line-height: 19px; }
+.ij2499-settings-page .ij2499-prompt { height: 180px; }
+
+.ij2499-options .ij2499-prompt { background: var(--input-bg); color: var(--text-default); border: 1px solid var(--input-border); border-radius: 4px; resize: vertical; width: 100%; box-sizing: border-box; }
+/* Widen only Commit; retain the original dock width for Project and Chats. */
+.main-window:has(.ij2499-commit) { max-height: 100dvh; }
+.main-window-left-panel-column:has(.ij2499-commit) { width: 420px !important; min-width: 420px !important; }
+.ij2499-commit .commit-amend-toolbar { gap: 8px; }
+.ij2499-commit .commit-amend-left { gap: 4px; flex-shrink: 0; }
+.ij2499-generate.toolbar-button { flex-shrink: 0; }
+.ij2499-generation-icon { display: block; overflow: visible; }
+.ij2499-generation-a { stroke: var(--text-link); }
+.ij2499-commit .commit-amend-label,
+.ij2499-commit .ij2499-generate .toolbar-button-text { font-weight: 400; }
+.ij2499-change-counts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; }
+.ij2499-added { color: var(--vcs-added-text); }
+.ij2499-modified, .ij2499-renamed { color: var(--text-link); }
+.ij2499-deleted { color: var(--vcs-deleted-text); }
+.ij2499-stop { flex-shrink: 0; }
+.ij2499-message-editor { position: relative; }
+.ij2499-message-loading { position: absolute; top: 7px; left: 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; line-height: 16px; pointer-events: none; }
+.ij2499-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-secondary); padding: 4px 12px; font-size: 12px; line-height: 16px; }
+.ij2499-status-error { color: var(--vcs-deleted-text); }
+.ij2499-gear { display: inline-flex; }
+.ij2499-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.ij2499-settings-hint-position { position: fixed; z-index: 10010; }
+.ij2499-settings-hint { width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box; position: relative; padding: 12px; border: 0; border-radius: 8px; background: var(--notification-bg, #2b2d30); color: var(--text-default); }
+.ij2499-hint-content { padding-right: 24px; }
+.ij2499-hint-text { margin: 0; font: 400 14px/20px Inter, sans-serif; }
+.ij2499-hint-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.ij2499-settings-hint .link { padding: 0; }
+.ij2499-settings-hint .link-text { font-size: 14px; line-height: 20px; font-weight: 400; }
+.ij2499-settings-hint .ij2499-hint-close { position: absolute; top: 8px; right: 8px; color: var(--icon-secondary-stroke); }
+
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header { height: 36px; min-height: 36px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--layer-0-border); color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .aiux543-chat-project-branch { max-width: none; color: var(--text-muted); }
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .aiux543-chat-project-context-item > .icon { color: var(--text-muted); }
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .toolbar-button-text { color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .toolbar-button-icon,
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .toolbar-icon-button { color: var(--text-muted); }
+.ij2499-chat-header-menu { width: 248px; }
+
+/* Reference toolbar for the regular diff opened from Commit. */
+.ij2499-commit-diff .plan-diff-toolbar-shell { padding: 4px 8px; background: var(--layer-1-bg, #2b2d30); }
+.ij2499-commit-diff .plan-diff-toolbar-left { gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.ij2499-commit-diff .plan-diff-toolbar-left::-webkit-scrollbar { display: none; }
+.ij2499-commit-diff .plan-diff-toolbar-group { gap: 2px; }
+.ij2499-commit-diff .plan-diff-review-scope-controls { gap: 0; }
+.ij2499-commit-diff .plan-diff-viewing-file-count-link.aiux-review-diffnav-count { color: var(--text-link); font-size: 14px; font-weight: 400; white-space: nowrap; }
+.ij2499-commit-diff .plan-diff-toolbar-right { flex-shrink: 0; gap: 8px; }
+.ij2499-commit-diff .plan-diff-toolbar-meta { font-size: 14px; font-weight: 400; white-space: nowrap; }
+.ij2499-commit-diff .ij2499-go-to-session { flex-shrink: 0; height: 26px; }
+.ij2499-commit-diff .ij2499-go-to-session .toolbar-button-text { font-size: 14px; font-weight: 400; }
+.ij2499-diff-scope { display: inline-flex; flex-shrink: 0; --control-bg: var(--control-bg-raised); }
+.ij2499-diff-scope .dropdown-container { width: 160px; }
+.ij2499-diff-scope .text-ui-default { font-size: 14px; font-weight: 400; line-height: 20px; }
+.ij2499-diff-scope .dropdown-menu { position: fixed; left: var(--scope-menu-left); top: var(--scope-menu-top); right: auto; width: var(--scope-menu-width); box-sizing: border-box; }

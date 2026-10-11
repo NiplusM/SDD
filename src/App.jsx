@@ -1,3 +1,6 @@
+import { useAirCommit, useAirCommitPreferences } from './useAirCommit.js';
+import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitSettingsHint } from './AirCommitSettings.jsx';
+import { AGENTS, GENERATE_ICON, SETTINGS_HINT_STORAGE_KEY, readSettingsHintDismissed } from './airCommitState.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
@@ -1122,19 +1125,45 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
   );
 }
 
+// Match the supplied generation symbol using the published kit arrows.
+// The kit's current variant has a play badge; clip that quadrant and use the
+// reference's blue A. Keep this task-specific composition out of the library.
+function CommitGenerationIcon() {
+  const clipId = useId();
+  const Arrows = getIcon(`${GENERATE_ICON}_dark`);
+  return (
+    <svg className="ij2499-generation-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <defs><clipPath id={clipId}><path d="M0 0H16V8H8V16H0Z" /></clipPath></defs>
+      <g clipPath={`url(#${clipId})`}><Arrows width={16} height={16} /></g>
+      <path className="ij2499-generation-a" d="M8.5 15.5L11.7 8.5L14.9 15.5M9.4 13.5H14" fill="none" strokeWidth="1.15" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Custom Commit tool window. Keeps the commit chrome, a grouped/collapsible file
 // tree with checkboxes, and the bottom panel (amend + summary + Commit).
 function CommitToolWindow({
   ctx,
   onOpenFile = null,
   onReviewContextChange = null,
+  onOpenAirSettings = null,
   scopeRequest = null,
   repositoryContext = null,
 }) {
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
-  const [checkedIds, setCheckedIds] = useState(() => new Set(COMMIT_CHANGE_FILES.map((f) => f.id)));
+  const [checkedIds, setCheckedIds] = useState(() => new Set(new URLSearchParams(window.location.search).get('scenario') === 'no-files' ? [] : COMMIT_CHANGE_FILES.map((f) => f.id)));
   const [amend, setAmend] = useState(false);
-  const [message, setMessage] = useState('');
+  const [committedIds, setCommittedIds] = useState(() => new Set());
+  const [optionsAnchor, setOptionsAnchor] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(() => {
+    try { return readSettingsHintDismissed(window.localStorage, window.location.search); } catch { return false; }
+  });
+  const gearRef = useRef(null);
+  const generationRef = useRef(null);
+  const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
+    advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
+    cleanup: 'Project Default', tests: 'All Tests' });
   const [commitResult, setCommitResult] = useState(null);
 
   const commitFiles = useMemo(() => {
@@ -1151,10 +1180,10 @@ function CommitToolWindow({
       };
     });
     const labels = new Set(requestedEntries.map((file) => file.label));
-    return [...requestedEntries, ...knownFiles.filter((file) => !labels.has(file.label))];
-  }, [scopeRequest]);
+    return [...requestedEntries, ...knownFiles.filter((file) => !labels.has(file.label))].filter(file => !committedIds.has(file.id));
+  }, [scopeRequest, committedIds]);
   const groups = useMemo(() => {
-    if (!scopeRequest) return buildCommitGroups(COMMIT_CHANGE_FILES, 'chat');
+    if (!scopeRequest) return buildCommitGroups(commitFiles.filter(file => COMMIT_CHANGE_FILES.some(known => known.id === file.id)), 'chat');
     const requestedLabels = new Set((scopeRequest.files ?? []).map((file) => file.label));
     const scopedFiles = commitFiles.filter((file) => requestedLabels.has(file.label));
     const otherFiles = commitFiles.filter((file) => !requestedLabels.has(file.label));
@@ -1174,8 +1203,35 @@ function CommitToolWindow({
       },
     ].filter((group) => group.children.length > 0);
   }, [commitFiles, scopeRequest]);
+  const air = useAirCommit({ files: commitFiles, checkedIds,
+    branch: repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME, scopeId: scopeRequest?.id });
+  const { message, editMessage: setMessage } = air;
+  const lastScope = useRef(null);
+  function commit(push = false) {
+    if (!air.canCommit) return;
+    setCommitResult({ count: air.checkedFiles.length, message: message.trim(), push, amend });
+    setCommittedIds(previous => new Set([...previous, ...air.checkedFiles.map(file => file.id)]));
+    setCheckedIds(new Set());
+    setMessage('');
+    setAmend(false);
+  }
+  function dismissSettingsHint() {
+    setHintDismissed(true);
+    try { window.localStorage.setItem(SETTINGS_HINT_STORAGE_KEY, 'seen'); } catch { /* Keep the dismissal for this session. */ }
+  }
+  function openAirSettings() {
+    dismissSettingsHint();
+    setOptionsAnchor(null);
+    if (onOpenAirSettings) { onOpenAirSettings(); return; }
+    setSettingsOpen(true);
+  }
+  function closeSettings() {
+    setSettingsOpen(false);
+    requestAnimationFrame(() => gearRef.current?.querySelector('button')?.focus());
+  }
   useEffect(() => {
-    if (!scopeRequest) return;
+    if (!scopeRequest || lastScope.current === scopeRequest) return;
+    lastScope.current = scopeRequest;
     const requestedLabels = new Set((scopeRequest.files ?? []).map((file) => file.label));
     setCheckedIds(new Set(commitFiles.filter((file) => requestedLabels.has(file.label)).map((file) => file.id)));
     setCollapsedGroups(new Set(['scope-other-changes']));
@@ -1220,10 +1276,16 @@ function CommitToolWindow({
     commitFiles.forEach((f) => {
       if (checkedIds.has(f.id) && tally[f.status] !== undefined) tally[f.status] += 1;
     });
-    return ['modified', 'added', 'deleted', 'renamed', 'untracked']
-      .filter((k) => tally[k] > 0)
-      .map((k) => `${tally[k]} ${k}`)
-      .join(', ');
+    return {
+      description: ['modified', 'added', 'deleted', 'renamed', 'untracked']
+        .filter((key) => tally[key] > 0)
+        .map((key) => `${tally[key]} ${key}`)
+        .join(', '),
+      added: tally.added + tally.untracked,
+      modified: tally.modified,
+      deleted: tally.deleted,
+      renamed: tally.renamed,
+    };
   }, [checkedIds, commitFiles]);
 
   return (
@@ -1235,7 +1297,7 @@ function CommitToolWindow({
       focused={ctx.focusedPanel === 'left'}
       onFocus={() => ctx.setFocusedPanel('left')}
       onActionClick={(action) => { if (action === 'minimize') ctx.setShowLeftPanel(false); }}
-      className="commit-tool-window main-window-tool-window main-window-tool-window-left"
+      className="commit-tool-window ij2499-commit main-window-tool-window main-window-tool-window-left"
     >
       <div className="commit-custom">
         {repositoryContext ? (
@@ -1277,7 +1339,7 @@ function CommitToolWindow({
                   >
                     <Icon name={collapsed ? 'general/chevronRight' : 'general/chevronDown'} size={16} />
                   </button>
-                  <Checkbox checked={groupChecked} onChange={toggleGroupChecked} />
+                  <Checkbox label={<span className="ij2499-sr-only">Include {group.label}</span>} checked={groupChecked} indeterminate={!groupChecked && group.children.some(file => checkedIds.has(file.id))} onChange={toggleGroupChecked} />
                   <span className="commit-group-label">{group.label}</span>
                   {group.isScopeChangelist && <span className="commit-scope-badge">Diff scope</span>}
                   <span className="commit-group-count">{group.count}</span>
@@ -1289,6 +1351,7 @@ function CommitToolWindow({
                         aligns under the group's checkbox (proper nesting). */}
                     <span className="tree-node-spacer" />
                     <Checkbox
+                      label={<span className="ij2499-sr-only">Include {file.label}</span>}
                       checked={checkedIds.has(file.id)}
                       onChange={() => toggleFile(file.id)}
                     />
@@ -1320,15 +1383,24 @@ function CommitToolWindow({
 
         <div className="commit-bottom-panel">
           <div className="commit-amend-toolbar">
-            <div className="commit-amend-left">
+            <div className="commit-amend-left" ref={generationRef}>
               <label className="commit-amend-label">
                 <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
                 <span>Amend</span>
               </label>
               <IconButton icon="general/history" tooltip="Show History" />
-              <IconButton icon="aiAssistant/aiAssistantColored" tooltip="Commit with Agent" />
+              {air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
+                  onClick={() => air.cancel('Generation stopped.')} />
+                : <ToolbarButton className="ij2499-generate" icon={<CommitGenerationIcon />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate}
+                    title={air.checkedFiles.length ? 'Generate a commit message with Air' : 'Select files using the checkboxes to generate a commit message'} />}
             </div>
-            <span className="commit-modified-count">{summary}</span>
+            <span className="commit-modified-count ij2499-change-counts" title={summary.description}
+              aria-label={`${air.checkedFiles.length} files selected${summary.description ? `: ${summary.description}` : ''}`}>
+              {summary.added > 0 && <span className="ij2499-added">+{summary.added}</span>}
+              {summary.modified > 0 && <span className="ij2499-modified">*{summary.modified}</span>}
+              {summary.deleted > 0 && <span className="ij2499-deleted">−{summary.deleted}</span>}
+              {summary.renamed > 0 && <span className="ij2499-renamed">→{summary.renamed}</span>}
+            </span>
           </div>
           <div className="commit-message-area">
             {scopeRequest && (
@@ -1337,34 +1409,55 @@ function CommitToolWindow({
                 <span>Changelist <strong>{scopeRequest.name}</strong> contains only the open diff scope.</span>
               </div>
             )}
-            <textarea
-              className="commit-message-textarea"
-              placeholder="Commit message"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-            />
+            <div className="ij2499-message-editor">
+              <textarea
+                ref={air.messageRef}
+                aria-label="Commit Message"
+                aria-busy={Boolean(air.job)}
+                readOnly={Boolean(air.job)}
+                className="commit-message-textarea"
+                placeholder={air.job ? '' : 'Commit message'}
+                value={air.job ? '' : message}
+                onChange={(event) => setMessage(event.target.value)}
+              />
+              {air.job && <div className="ij2499-message-loading" role="status" aria-live="polite">
+                <Loader size={14} /><span>Generating…</span>
+              </div>}
+            </div>
           </div>
+          {!air.job && (air.status || air.error || !air.checkedFiles.length) &&
+            <div className={`ij2499-status ${air.error ? 'ij2499-status-error' : ''}`} role={air.error ? 'alert' : 'status'} aria-live="polite">
+              {air.error ? <>{air.error}<Link disabled={!air.canGenerate} onClick={air.generate}>Retry</Link></>
+                : air.status || 'Select files to generate a commit message.'}
+            </div>}
           <div className="commit-actions">
             <div className="commit-buttons">
               <Button
                 type="primary"
-                disabled={checkedIds.size === 0 || Boolean(commitResult)}
-                onClick={() => setCommitResult({ count: checkedIds.size, message: message.trim() || 'Commit scoped changes' })}
+                disabled={!air.canCommit}
+                onClick={() => commit()}
               >
-                {commitResult ? 'Committed' : 'Commit'}
+                Commit
               </Button>
-              <Button type="secondary" disabled={checkedIds.size === 0}>Commit and Push</Button>
+              <Button type="secondary" disabled={!air.canCommit} onClick={() => commit(true)}>Commit and Push</Button>
             </div>
-            <IconButton icon="general/settings" tooltip="Commit Options" />
+            <span ref={gearRef} className="ij2499-gear"><IconButton icon="general/settings" tooltip="Commit Options" aria-pressed={!!optionsAnchor}
+              onClick={() => { dismissSettingsHint(); const element = gearRef.current.querySelector('button'); setOptionsAnchor(optionsAnchor ? null : { rect: element.getBoundingClientRect(), element }); }} /></span>
           </div>
           {commitResult && (
             <div className="commit-success" role="status">
               <Icon name="general/check" size={16} />
-              <span>{commitResult.count} selected file{commitResult.count === 1 ? '' : 's'} committed as “{commitResult.message}”. Unselected changes remain uncommitted.</span>
+              <span>{commitResult.count} selected file{commitResult.count === 1 ? '' : 's'} {commitResult.amend ? 'amended' : 'committed'}{commitResult.push ? ' and pushed' : ''} as “{commitResult.message}”. Unselected changes remain uncommitted.</span>
             </div>
           )}
         </div>
       </div>
+      {!hintDismissed && !air.job && !air.error && !optionsAnchor && !settingsOpen &&
+        <CommitSettingsHint anchor={generationRef} close={dismissSettingsHint} openSettings={openAirSettings} />}
+      {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
+        openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
+      {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}
+        branch={repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME} storageError={air.storageError} />, document.body)}
     </ToolWindow>
   );
 }
@@ -3636,7 +3729,7 @@ const MY_LEFT_STRIPE = DEFAULT_LEFT_STRIPE_ITEMS.filter(i =>
 );
 
 // Chats moved to editor tabs + a left "Chat History" tool window, so the
-// right-side AI Assistant stripe icon / tool window is removed.
+// right-side Air stripe icon / tool window is removed.
 const MY_RIGHT_STRIPE = DEFAULT_RIGHT_STRIPE_ITEMS.filter((i) => i.id !== 'ai');
 
 const AGENT_TASKS_ICON = (
@@ -14121,13 +14214,13 @@ function buildInitialEditorTabs() {
       closable: true,
     },
     visitControllerTab,
-    {
+    ...(getPrototypeEntryPoint() === 'commit' ? [] : [{
       id: INITIAL_PLAN_DIFF_TAB_ID,
       label: 'Diff VisitController.java',
       icon: DIFF_TAB_ICON_NAME,
       closable: true,
       sourceTabId: INITIAL_PLAN_DIFF_SOURCE_TAB_ID,
-    },
+    }]),
     ...remainingEditorTabs,
   ];
 }
@@ -19003,7 +19096,6 @@ function ChatProjectChangesToolbar({
   const allChangesScope = scopeOptions.find((scope) => scope.id === 'all-project-changes')
     ?? scopeOptions[scopeOptions.length - 1]
     ?? null;
-  const projectBadge = getReviewProjectBadge(workspace.project);
   const hasChangeActions = (workspace.type === 'worktree' || workspace.type === 'foreign')
     && hasUncommittedChanges;
   const canApplyPatch = workspace.type === 'worktree';
@@ -19011,6 +19103,14 @@ function ChatProjectChangesToolbar({
     && !hasUncommittedChanges
     && workspace.hasTransferableCommit
     && !cherryPickCompleted;
+  useEffect(() => {
+    if (!menuOpen) return;
+    function escape(event) {
+      if (event.key === 'Escape') { setMenuOpen(false); anchorRef.current?.querySelector('button')?.focus(); }
+    }
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [menuOpen]);
   if (!shouldShow) return null;
 
   const openScope = (scope) => {
@@ -19033,14 +19133,8 @@ function ChatProjectChangesToolbar({
         : null;
 
   return (
-    <div className="aiux543-chat-project-changes-toolbar" aria-label="Project changes">
+    <div className="aiux543-chat-project-changes-toolbar ij2499-chat-branch-header" aria-label="Branch changes">
       <div className="aiux543-chat-project-context">
-        <span className="aiux543-chat-project-context-item">
-          <span className={`aiux543-chat-project-icon is-${projectBadge.color}`} aria-hidden="true">
-            {projectBadge.initials}
-          </span>
-          <span className="aiux543-chat-project-name">{workspace.project}</span>
-        </span>
         <span className="aiux543-chat-project-context-item">
           <Icon name="vcs/vcs" size={16} />
           <span className="aiux543-chat-project-branch">{workspace.branch}</span>
@@ -19065,22 +19159,28 @@ function ChatProjectChangesToolbar({
           </button>
         ) : null}
         {hasUncommittedChanges && allChangesScope ? (
-          <button
-            type="button"
-            className="aiux543-chat-header-all-changes"
-            aria-label="Open All Changes"
+          <ToolbarButton
+            className="ij2499-chat-branch-changes"
+            text="Branch Changes"
+            icon={<ChatChangeScopeInspectionGlyph />}
+            aria-label="Open Branch Changes"
             disabled={reviewDisabled}
             onClick={() => openScope(allChangesScope)}
-          >
-            <ChatChangeScopeInspectionGlyph />
-            <span>All Changes</span>
-            <span className="aiux543-chat-header-all-changes-counts">
-              <span>+{allChangesScope.added}</span>
-              <span>-{allChangesScope.removed}</span>
-            </span>
-          </button>
+          />
         ) : null}
+        <span ref={anchorRef}><IconButton icon="general/moreVertical" tooltip="Branch actions" aria-haspopup="menu" aria-expanded={menuOpen} disabled={reviewDisabled || transferProcessing}
+          onClick={() => setMenuOpen(open => !open)} /></span>
       </div>
+      {menuOpen && createPortal(<PositionedPopup triggerRect={anchorRef.current.getBoundingClientRect()} onDismiss={() => setMenuOpen(false)}>
+        <Popup visible className="ij2499-chat-header-menu theme-dark" style={{ position: 'static' }}>
+          {scopeOptions.map(scope => <PopupCell key={scope.id} icon={CHAT_CHANGE_SCOPE_ICONS[scope.id] ?? 'vcs/diff'}
+            onClick={() => openScope(scope)}>{scope.id === 'all-project-changes' ? 'Branch Changes' : scope.label}</PopupCell>)}
+          {onOpenCommit && <PopupCell icon="vcs/commit" disabled={reviewDisabled || !hasUncommittedChanges}
+            onClick={() => { if (!reviewDisabled && hasUncommittedChanges) { setMenuOpen(false); onOpenCommit(); } }}>Commit…</PopupCell>}
+          {hasChangeActions && canApplyPatch && <PopupCell icon="vcs/patch" disabled={transferProcessing}
+            onClick={() => { if (!transferProcessing) runWorkspaceAction('apply-patch'); }}>Apply patch…</PopupCell>}
+        </Popup>
+      </PositionedPopup>, document.body)}
     </div>
   );
 }
@@ -22240,6 +22340,12 @@ function AiChatTabView({
 
 const AI_ASSISTANT_SETTINGS_SECTIONS = [
   {
+    id: 'ai-assistant-commit-message',
+    label: 'Commit Message Generation',
+    icon: 'vcs/commit',
+    description: 'Agent, model, and instructions for generating commit messages.',
+  },
+  {
     id: 'ai-assistant-general',
     label: 'General',
     icon: 'general/settings',
@@ -22279,7 +22385,7 @@ const SETTINGS_TREE_WITH_AI_ASSISTANT = DEFAULT_SETTINGS_TREE_ITEMS.map((item) =
         children: [
           {
             id: 'ai-assistant',
-            label: 'AI Assistant',
+            label: 'Air',
             expanded: true,
             children: AI_ASSISTANT_SETTINGS_SECTIONS.map(({ id, label }) => ({ id, label })),
           },
@@ -22346,7 +22452,7 @@ function AppSettingsDefaultContent({ path }) {
       <div className="settings-group app-settings-dialog-placeholder">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">{path[path.length - 1]?.label ?? 'Settings'}</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Select Tools, AI Assistant, or Notes to configure Notes workflows.
+          Select Tools, Air, or Notes to configure Notes workflows.
         </div>
       </div>
     </>
@@ -22369,7 +22475,7 @@ function AppSettingsToolsContent({ path, onSelectAiAssistant }) {
             <Icon name="aiAssistant/aiAssistantColored" size={16} />
           </span>
           <span className="app-settings-dialog-nav-card-body">
-            <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">AI Assistant</span>
+            <span className="app-settings-dialog-nav-card-title text-ui-default-semibold">Air</span>
             <span className="app-settings-dialog-nav-card-description text-ui-small">
               Chat, Notes, and code-review context settings.
             </span>
@@ -22386,7 +22492,7 @@ function AppSettingsAiAssistantContent({ path, onSelectSection }) {
     <>
       <AppSettingsBreadcrumb path={path} />
       <div className="settings-group">
-        <div className="app-settings-dialog-page-title text-ui-default-semibold">AI Assistant</div>
+        <div className="app-settings-dialog-page-title text-ui-default-semibold">Air</div>
         <div className="app-settings-dialog-page-description text-ui-default">
           Manage how assistant features collect context and attach Notes to chat sessions.
         </div>
@@ -22435,12 +22541,12 @@ function AppSettingsGeneralContent({ path }) {
       <div className="settings-group">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">General</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Configure how AI Assistant appears in the IDE and when it asks for confirmation.
+          Configure how Air appears in the IDE and when it asks for confirmation.
         </div>
       </div>
       <AppSettingsOptionGroup>
         <Checkbox
-          label="Show AI Assistant in Toolbar"
+          label="Show Air in Toolbar"
           hint="Keep quick access to the assistant in the main toolbar."
           checked={showAssistantInToolbar}
           onChange={setShowAssistantInToolbar}
@@ -22485,7 +22591,7 @@ function AppSettingsChatContent({ path }) {
         />
         <Checkbox
           label="Restore Last Chat Session"
-          hint="Open the most recent chat when the AI Assistant tool window is shown."
+          hint="Open the most recent chat when the Air tool window is shown."
           checked={restoreLastChat}
           onChange={setRestoreLastChat}
         />
@@ -22587,7 +22693,7 @@ function AppSettingsCommentsContent({
       <div className="settings-group">
         <div className="app-settings-dialog-page-title text-ui-default-semibold">Notes</div>
         <div className="app-settings-dialog-page-description text-ui-default">
-          Choose where the AI Assistant can collect Notes as chat context.
+          Choose where the Air can collect Notes as chat context.
         </div>
       </div>
       <div className="settings-group app-settings-dialog-options-group">
@@ -22603,17 +22709,26 @@ function AppSettingsCommentsContent({
 }
 
 function AppSettingsDialogContent({
+  initialSelectedId = 'ai-assistant-comments',
+  generationSettings,
+  onGenerationSettingsChange,
+  generationStorageError,
+  generationBranch,
   plainFileGutterCommentsEnabled,
   onPlainFileGutterCommentsEnabledChange,
   diffGutterCommentsEnabled,
   onDiffGutterCommentsEnabledChange,
 }) {
-  const [selectedId, setSelectedId] = useState('ai-assistant-comments');
+  const [selectedId, setSelectedId] = useState(initialSelectedId);
   const [searchQuery, setSearchQuery] = useState('');
   const selectedPath = findSettingsTreeItemPath(SETTINGS_TREE_WITH_AI_ASSISTANT, selectedId)
     ?? findSettingsTreeItemPath(SETTINGS_TREE_WITH_AI_ASSISTANT, 'ai-assistant-comments');
 
   const renderContent = () => {
+    if (selectedId === 'ai-assistant-commit-message') {
+      return <AirGenerationSettingsSection settings={generationSettings} onChange={onGenerationSettingsChange}
+        storageError={generationStorageError} branch={generationBranch} breadcrumb={<AppSettingsBreadcrumb path={selectedPath} />} />;
+    }
     if (selectedId === 'tools') {
       return <AppSettingsToolsContent path={selectedPath} onSelectAiAssistant={() => setSelectedId('ai-assistant')} />;
     }
@@ -22665,7 +22780,7 @@ function AppSettingsDialogContent({
           />
         </div>
       </div>
-      <div className="settings-content-panel">
+      <div className={`settings-content-panel${selectedId === 'ai-assistant-commit-message' ? ' ij2499-settings-container' : ''}`}>
         {renderContent()}
       </div>
     </div>
@@ -23130,6 +23245,19 @@ export default function App() {
       : 'ide'
   )); // 'welcome' | 'ide'
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+  const commitPreferences = useAirCommitPreferences();
+  const [generationSettingsDraft, setGenerationSettingsDraft] = useState(commitPreferences.settings);
+  const [settingsInitialSection, setSettingsInitialSection] = useState('ai-assistant-comments');
+  useLayoutEffect(() => {
+    if (isSettingsDialogOpen) setGenerationSettingsDraft(commitPreferences.settings);
+  // Draft is initialized on opening; Apply must not reset subsequent edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSettingsDialogOpen]);
+  const generationSettingsDirty = JSON.stringify(generationSettingsDraft) !== JSON.stringify(commitPreferences.settings);
+  function openCommitGenerationSettings() {
+    setSettingsInitialSection('ai-assistant-commit-message');
+    setIsSettingsDialogOpen(true);
+  }
   const [ideTabs, setIdeTabs] = useState(() => buildInitialEditorTabs());
   const [ideTabContents, setIdeTabContents] = useState(() => buildInitialEditorTabContents());
   // Read-only mirror for callbacks that must not re-create themselves on every tab edit.
@@ -23141,7 +23269,7 @@ export default function App() {
     const entryPoint = getPrototypeEntryPoint();
     const initialTabId = entryPoint === 'diff'
       ? INITIAL_PLAN_DIFF_TAB_ID
-      : entryPoint === 'file'
+      : entryPoint === 'file' || entryPoint === 'commit'
         ? INITIAL_PLAN_DIFF_SOURCE_TAB_ID
         : DEFAULT_OPEN_CHAT_TAB_ID;
     const initialTabIndex = initialTabs.findIndex((tab) => tab.id === initialTabId);
@@ -35766,6 +35894,50 @@ export default function App() {
     });
   }, [aiChatScenarios, openPlanDiffTab]);
 
+  const [commitDiffScopeId, setCommitDiffScopeId] = useState('branch-changes');
+  const activeCommitDiffFile = activeTabContent?.diffOpenedFromCommitToolWindow
+    ? [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES].find(file => (
+        `commit-review-scope-${file.id}` === activePlanDiffSourceTabId
+      ))
+    : null;
+  const commitDiffSession = activeCommitDiffFile?.groupId
+    ? COMMIT_CHAT_GROUPS.find(group => group.id === activeCommitDiffFile.groupId)
+    : null;
+  const effectiveCommitDiffScopeId = commitDiffSession ? commitDiffScopeId : 'branch-changes';
+  const commitDiffFiles = activeCommitDiffFile ? [...new Map(
+    [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES]
+      .filter(file => getReviewFileLocation(file.label, file.path).branch
+        === getReviewFileLocation(activeCommitDiffFile.label, activeCommitDiffFile.path).branch)
+      .filter(file => effectiveCommitDiffScopeId !== 'session-changes' || file.groupId === commitDiffSession?.id)
+      .map(file => [reviewFileSessionKey(file.path, file.label), file])
+  ).values()] : [];
+  const commitDiffFileIndex = Math.max(0, commitDiffFiles.findIndex(file => (
+    reviewFileSessionKey(file.path, file.label) === reviewFileSessionKey(activeCommitDiffFile?.path, activeCommitDiffFile?.label)
+  )));
+  const commitDiffToolbar = activeCommitDiffFile ? {
+    files: commitDiffFiles,
+    currentFileIndex: commitDiffFileIndex,
+    scopeId: effectiveCommitDiffScopeId,
+    scopeOptions: [
+      { id: 'branch-changes', label: 'Branch Changes', section: 'branch' },
+      ...(commitDiffSession ? [{ id: 'session-changes', label: 'Session Changes', section: 'session' }] : []),
+    ],
+    onScopeChange: setCommitDiffScopeId,
+    onSelectFile: id => openCommitFileReview(commitDiffFiles.find(file => file.id === id)),
+    onPreviousFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex - 1]),
+    onNextFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex + 1]),
+    sessionIcon: commitDiffSession?.agent ?? 'aiAssistant/toolWindowChat@20x20',
+    // Session navigation does not choose the recipient of a draft diff comment.
+    onOpenSession: commitDiffSession ? () => openChatInEditorTab(commitDiffSession.id) : null,
+  } : null;
+
+  const initialCommitDiffOpened = useRef(false);
+  useLayoutEffect(() => {
+    if (prototypeEntryPoint !== 'commit' || initialCommitDiffOpened.current) return;
+    initialCommitDiffOpened.current = true;
+    openCommitFileReview(COMMIT_CHANGE_FILES.find(file => file.label === 'VisitController.java'));
+  }, [prototypeEntryPoint, openCommitFileReview]);
+
   const openChatChangeScope = useCallback((chatId, scopeId) => (
     openLatestChangedFilesReviewScope(chatId, {
       initialScopeId: scopeId,
@@ -36270,6 +36442,23 @@ export default function App() {
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);
   }, [activeTabId, updatePlanDiffUiStateForTab]);
+  const navigateActiveCommitDifference = (direction) => {
+    const rows = activePlanDiffData?.rows ?? [];
+    const starts = rows.filter((row, index) => (
+      ['added', 'removed'].includes(row.kind)
+      && (index === 0 || !['added', 'removed'].includes(rows[index - 1].kind))
+    ));
+    if (!starts.length) return;
+    const activeIndex = rows.findIndex(row => row.id === activePlanDiffUiState?.activeRowId);
+    const next = direction > 0
+      ? starts.find(row => rows.indexOf(row) > activeIndex) ?? starts[starts.length - 1]
+      : [...starts].reverse().find(row => rows.indexOf(row) < activeIndex) ?? starts[0];
+    handleActivePlanDiffUiStateChange({
+      ...activePlanDiffUiState,
+      activeRowId: next.id,
+      caretState: { ...(activePlanDiffUiState?.caretState ?? {}), rowId: next.id },
+    });
+  };
   const navigateActivePlanDiffAgentTask = useCallback((direction) => {
     if (!activePlanDiffSourceTabId) return;
 
@@ -36497,11 +36686,17 @@ export default function App() {
               treeItems={DEFAULT_SETTINGS_TREE_ITEMS}
               buttons={[
                 { children: 'Cancel', onClick: () => setIsSettingsDialogOpen(false) },
-                { children: 'OK', type: 'primary', onClick: () => setIsSettingsDialogOpen(false) },
+                { children: 'Apply', disabled: !generationSettingsDirty, onClick: () => commitPreferences.changeSettings(generationSettingsDraft) },
+                { children: 'OK', type: 'primary', onClick: () => { if (generationSettingsDirty) commitPreferences.changeSettings(generationSettingsDraft); setIsSettingsDialogOpen(false); } },
               ]}
               onClose={() => setIsSettingsDialogOpen(false)}
             >
               <AppSettingsDialogContent
+                initialSelectedId={settingsInitialSection}
+                generationSettings={generationSettingsDraft}
+                onGenerationSettingsChange={setGenerationSettingsDraft}
+                generationStorageError={commitPreferences.storageError}
+                generationBranch={commitWorkspaceContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME}
                 plainFileGutterCommentsEnabled={plainFileGutterCommentsEnabled}
                 onPlainFileGutterCommentsEnabledChange={setPlainFileGutterCommentsEnabled}
                 diffGutterCommentsEnabled={diffGutterCommentsEnabled}
@@ -37352,8 +37547,9 @@ export default function App() {
                         handlePlanDiffReturnToChat({ source: 'diff-comment-context', chatId: planDiffContextChatId });
                       }
                     }}
-                    onNavigatePrevious={() => navigateActivePlanDiffAgentTask(-1)}
-                    onNavigateNext={() => navigateActivePlanDiffAgentTask(1)}
+                    commitToolbar={commitDiffToolbar}
+                    onNavigatePrevious={() => commitDiffToolbar ? navigateActiveCommitDifference(-1) : navigateActivePlanDiffAgentTask(-1)}
+                    onNavigateNext={() => commitDiffToolbar ? navigateActiveCommitDifference(1) : navigateActivePlanDiffAgentTask(1)}
                     reviewNav={null}
                     severityFilter={activeReviewFileIndex >= 0 ? reviewSeverityFilter : 'all'}
                     viewMode="unified"
@@ -37407,7 +37603,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} onOpenAirSettings={openCommitGenerationSettings} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} activeProjectId={activeWorkspaceProjectId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onProjectSelect={handleAgentSessionsProjectSelect} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);

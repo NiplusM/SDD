@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, IconButton, Button, Checkbox, Dialog, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton, Button, Checkbox, Dialog, Dropdown, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
@@ -1195,6 +1195,40 @@ function PlanDiffChangeScopeControl({ selectedScopeId = null, onScopeChange = nu
   );
 }
 
+// Use the kit's raised field for the Commit header, retaining its spacing,
+// chevron and focus states. Position its menu in viewport coordinates so the
+// horizontally scrollable toolbar cannot clip it.
+function CommitDiffScopeDropdown({ value, options, onChange }) {
+  const ref = useRef(null);
+  const positionMenu = useCallback(() => {
+    const host = ref.current;
+    const field = host?.querySelector('.dropdown');
+    if (!field) return;
+    const rect = field.getBoundingClientRect();
+    host.style.setProperty('--scope-menu-left', `${Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8))}px`);
+    host.style.setProperty('--scope-menu-top', `${rect.bottom + 4}px`);
+    host.style.setProperty('--scope-menu-width', `${rect.width}px`);
+  }, []);
+  useLayoutEffect(() => {
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [positionMenu]);
+  return (
+    <span ref={ref} className="ij2499-diff-scope" onClick={positionMenu} onKeyDown={event => { positionMenu(); if (event.key === 'Escape') event.stopPropagation(); }}>
+      <Dropdown
+        value={value}
+        options={options.map(option => ({ value: option.id, label: option.label }))}
+        onChange={onChange}
+      />
+    </span>
+  );
+}
+
 function PlanDiffBranchComparisonControl({ scope = null, value = null, onChange = null }) {
   const triggerRef = useRef(null);
   const [triggerRect, setTriggerRect] = useState(null);
@@ -1443,6 +1477,7 @@ function PlanDiffViewingScopeControl({
   showCommitSelection = false,
   showSessionAttribution = false,
   compactToolbar = false,
+  fileNavigationOnly = false,
   beforeFileControl = null,
   afterFileControl = null,
 }) {
@@ -1871,6 +1906,7 @@ function PlanDiffViewingScopeControl({
 
   return (
     <div className={`plan-diff-review-scope-controls${compactToolbar ? ' is-compact-toolbar' : ''}`}>
+      {!fileNavigationOnly && <>
       <PlanDiffChangeScopeControl
         selectedScopeId={selectedChangeScopeId}
         onScopeChange={onChangeScope}
@@ -1884,6 +1920,7 @@ function PlanDiffViewingScopeControl({
         />
       )}
       <ToolbarSeparator className="plan-diff-toolbar-separator" />
+      </>}
       {compactToolbar && beforeFileControl}
       <div className="plan-diff-viewing-scope" aria-label="Changed files navigation">
         {!compactToolbar && (
@@ -1906,7 +1943,9 @@ function PlanDiffViewingScopeControl({
               setFilesRect((prev) => (prev ? null : filesRef.current?.getBoundingClientRect() ?? null));
             }}
           >
-            {compactToolbar
+            {fileNavigationOnly
+              ? `${currentDedupedIndex + 1}/${visibleFileCount} files`
+              : compactToolbar
               ? `${visibleFileCount} ${visibleFileCount === 1 ? 'file' : 'files'}`
               : `${currentDedupedIndex + 1} of ${visibleFileCount} files`}
           </button>
@@ -7481,6 +7520,7 @@ export function PlanDiffEditorArea({
   isArchivedSnapshot = false,
   showScopeControl = true,
   referenceDiffControls = false,
+  commitToolbar = null,
   // Keep Diff and Source focused on file navigation and content. Session
   // identity and actions live in the owning chat/commit surfaces instead.
   showSessionToolbar = false,
@@ -7597,7 +7637,7 @@ export function PlanDiffEditorArea({
 
   return (
     <>
-      <div className="plan-diff-editor-area" ref={toolbarRef}>
+      <div className={`plan-diff-editor-area${commitToolbar ? ' ij2499-commit-diff' : ''}`} ref={toolbarRef}>
         {singleLineNumbers && reviewNav && (
           <div className="plan-diff-toolbar-shell">
             <div className="plan-diff-toolbar">
@@ -7680,7 +7720,45 @@ export function PlanDiffEditorArea({
             <div className="plan-diff-toolbar">
               <div className="plan-diff-toolbar-primary-row">
                 <div className="plan-diff-toolbar-left">
-                {referenceDiffControls && !isArchivedSnapshot && showScopeControl ? (
+                {commitToolbar ? (
+                  <>
+                    <div className="plan-diff-toolbar-group">
+                      <PlanDiffToolbarIconButton label="Previous Difference" icon="up" onClick={onNavigatePrevious} />
+                      <PlanDiffToolbarIconButton label="Next Difference" icon="down" onClick={onNavigateNext} />
+                    </div>
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <PlanDiffToolbarIconButton label="Jump to Source (F4)" icon="edit" onClick={onEditSource} />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <PlanDiffViewingScopeControl
+                      fileNavigationOnly
+                      files={commitToolbar.files}
+                      currentFileIndex={commitToolbar.currentFileIndex}
+                      onSelectFile={commitToolbar.onSelectFile}
+                      onNavigatePrevious={commitToolbar.onPreviousFile}
+                      onNavigateNext={commitToolbar.onNextFile}
+                    />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <PlanDiffToolbarIconButton
+                      label={areaViewerSettings.collapseUnchanged ? 'Expand Unchanged Fragments' : 'Collapse Unchanged Fragments'}
+                      icon="collapse"
+                      onClick={() => setAreaViewerSettings(prev => ({ ...prev, collapseUnchanged: !prev.collapseUnchanged }))}
+                    />
+                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                    <ToolbarButton
+                      className="ij2499-go-to-session"
+                      icon={<AiChatAgentIcon icon={commitToolbar.sessionIcon} />}
+                      disabled={!commitToolbar.onOpenSession}
+                      text="Go to Session"
+                      title="Go to Session"
+                      onClick={commitToolbar.onOpenSession}
+                    />
+                    <CommitDiffScopeDropdown
+                      value={commitToolbar.scopeId}
+                      onChange={commitToolbar.onScopeChange}
+                      options={commitToolbar.scopeOptions}
+                    />
+                  </>
+                ) : referenceDiffControls && !isArchivedSnapshot && showScopeControl ? (
                   <PlanDiffViewingScopeControl
                     fileCount={demoScopeFiles.length}
                     currentFileLabel={toolbarFileLabel}
