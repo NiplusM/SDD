@@ -33,7 +33,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
   const [error, setError] = useState(null);
   const requestId = useRef(0);
   const messageRef = useRef(null);
-  const failNext = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error');
+  const completedAttempts = useRef(0);
+  const errorAttempt = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error' ? 1 : 2);
   const checkedFiles = getCheckedFiles(files, checkedIds);
   const selectionKey = JSON.stringify(checkedFiles.map(file => [file.id, file.status, file.path]));
 
@@ -49,8 +50,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
     const timer = window.setTimeout(() => {
       if (job.id !== requestId.current) return;
       setJob(null);
-      if (failNext.current) {
-        failNext.current = false;
+      completedAttempts.current += 1;
+      if (completedAttempts.current === errorAttempt.current) {
         const agent = AGENTS.find(item => item.value === job.settings.agent);
         setError({
           title: 'Couldn’t generate a commit message',

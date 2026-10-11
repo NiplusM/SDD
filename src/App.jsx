@@ -1368,8 +1368,9 @@ function CommitToolWindow({
               <IconButton icon="general/history" tooltip="Show History" />
               {air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
                   onClick={() => air.cancel('Generation stopped.')} />
-                : <ToolbarButton className="ij2499-generate" icon={<AiChatAgentIcon icon={air.settings.agent} />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate}
-                    title={air.checkedFiles.length ? 'Generate a commit message with Air' : 'Select files using the checkboxes to generate a commit message'} />}
+                : <Tooltip text={air.checkedFiles.length ? 'Generate Commit Message' : 'Select files to generate a commit message'} placement="bottom" delay={500}>
+                    <ToolbarButton className="ij2499-generate" icon={<AiChatAgentIcon icon={air.settings.agent} />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate} />
+                  </Tooltip>}
             </div>
             <span className="commit-modified-count ij2499-change-counts" title={summary.description}
               aria-label={`${air.checkedFiles.length} files selected${summary.description ? `: ${summary.description}` : ''}`}>

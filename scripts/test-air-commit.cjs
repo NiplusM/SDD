@@ -25,6 +25,39 @@ async function checkBrowserLayout() {
       assert.equal(await page.locator('.main-window-editor-tabs .tab-selected').innerText(), 'Diff VisitController.java');
       assert.equal(await page.locator('.main-window-editor-tabs').getByText('Diff VisitController.java', { exact: true }).count(), 1, 'Commit entry has one VisitController diff tab');
       assert.ok(await page.getByRole('button', { name: 'Generate Message', exact: true }).isDisabled(), 'opening a diff does not check files');
+      const generationButton = page.getByRole('button', { name: 'Generate Message', exact: true });
+      assert.equal(await generationButton.getAttribute('title'), null, 'generation uses the kit tooltip instead of browser title');
+      await generationButton.locator('..').hover();
+      await page.waitForTimeout(200);
+      assert.equal(await page.locator('.tooltip').count(), 0, 'tooltip respects the 500ms delay');
+      const generationTooltip = page.locator('.tooltip');
+      await generationTooltip.waitFor();
+      assert.equal(await generationTooltip.innerText(), 'Select files to generate a commit message');
+      const tooltipGeometry = await generationTooltip.evaluate(element => {
+        const style = getComputedStyle(element);
+        const bounds = element.getBoundingClientRect();
+        const trigger = element.parentElement.getBoundingClientRect();
+        return { padding: style.padding, radius: style.borderRadius, fontSize: style.fontSize, weight: style.fontWeight,
+          background: style.backgroundColor, color: style.color, gap: bounds.top - trigger.bottom,
+          visible: bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight };
+      });
+      assert.equal(tooltipGeometry.padding, '8px');
+      assert.equal(tooltipGeometry.radius, '4px');
+      assert.equal(tooltipGeometry.fontSize, '13px');
+      assert.equal(tooltipGeometry.weight, '500');
+      assert.equal(tooltipGeometry.background, 'rgb(51, 53, 59)');
+      assert.equal(tooltipGeometry.color, 'rgb(209, 211, 217)');
+      assert.equal(tooltipGeometry.gap, 4);
+      assert.ok(tooltipGeometry.visible, 'kit tooltip is visible inside the viewport');
+      await page.screenshot({ path: path.join(outputDir, `generation-tooltip-disabled-${viewport.width}.png`) });
+      await page.mouse.move(600, 80);
+      assert.equal(await generationTooltip.count(), 0, 'tooltip hides when the pointer leaves');
+      await page.locator('.commit-file-node .checkbox-container').first().click();
+      await generationButton.hover();
+      await generationTooltip.waitFor();
+      assert.equal(await generationTooltip.innerText(), 'Generate Commit Message');
+      await page.screenshot({ path: path.join(outputDir, `generation-tooltip-${viewport.width}.png`) });
+      await page.locator('.commit-file-node .checkbox-container').first().click();
       await page.screenshot({ path: path.join(outputDir, `commit-diff-entry-${viewport.width}.png`) });
       const diffHeader = page.locator('.ij2499-commit-diff .plan-diff-toolbar-primary-row');
       assert.ok(await diffHeader.getByRole('button', { name: 'Go to Session', exact: true }).isVisible());
@@ -171,6 +204,17 @@ async function checkBrowserLayout() {
         assert.notEqual(await page.locator('[aria-label="Commit Message"]').inputValue(), 'Keep this draft');
         assert.equal(await page.locator('.ij2499-status').count(), 0, 'successful generation leaves the editable result without a status row');
         await page.screenshot({ path: path.join(outputDir, `result-${viewport.width}.png`) });
+        const generatedDraft = await page.locator('[aria-label="Commit Message"]').inputValue();
+        await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
+        const repeatError = page.locator('.ij2499-status-error');
+        await repeatError.waitFor();
+        assert.match(await repeatError.innerText(), /did not respond before the request timed out/);
+        assert.equal(await page.locator('[aria-label="Commit Message"]').inputValue(), generatedDraft, 'second generation fails without replacing the successful draft');
+        assert.ok(await repeatError.getByRole('button', { name: 'Continue in Chat', exact: true }).isVisible());
+        await page.screenshot({ path: path.join(outputDir, `second-generation-error-${viewport.width}.png`) });
+        await repeatError.getByRole('button', { name: 'Retry', exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
+        assert.equal(await page.locator('.ij2499-status-error').count(), 0, 'Retry succeeds after the second-generation error');
       }
       await page.locator('.main-window-editor-tabs').getByText('Refactor VisitController.java time slots', { exact: true }).click();
       await header.getByRole('button', { name: 'Open Branch Changes', exact: true }).click();
@@ -317,7 +361,13 @@ async function checkBrowserLayout() {
   assert.match(message().value, /VisitController.java/); assert.doesNotMatch(message().value, /application.properties|VetSchedule/);
   assert.ok(!d.querySelector('.ij2499-status'), 'successful generation does not add a status row');
   assert.ok(!d.querySelector('.ij2499-settings-hint'), 'generation does not bring back an acknowledged hint');
-
+  const successfulDraft = message().value;
+  await click(button('Generate Message')); await wait(3050);
+  assert.match(d.querySelector('.ij2499-status-error').textContent, /timed out/);
+  assert.equal(message().value, successfulDraft, 'second generation preserves the first result on failure');
+  assert.ok(button('Continue in Chat'));
+  await click(button('Retry')); await wait(3050);
+  assert.ok(!d.querySelector('.ij2499-status-error'), 'Retry succeeds after the normal-entry second attempt');
 
   await click(button('Commit Options'));
   const popup = d.querySelector('.ij2499-options'); assert.ok(popup.classList.contains('theme-dark'));
