@@ -1409,7 +1409,7 @@ function CommitToolWindow({
                 <span className="ij2499-error-title">{air.error.title}</span>
                 <span className="ij2499-error-description">{air.error.description}</span>
                 <div className="ij2499-error-actions">
-                  <Link disabled={!air.canGenerate} onClick={air.generate}>Retry</Link>
+                  <Link disabled={!air.canGenerate} onClick={air.retry}>Retry</Link>
                   <Link onClick={() => onContinueInChat?.({ ...air.error.request, draft: message, error: air.error.description })}>Continue in Chat</Link>
                 </div>
               </>

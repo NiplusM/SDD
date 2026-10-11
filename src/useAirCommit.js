@@ -33,8 +33,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
   const [error, setError] = useState(null);
   const requestId = useRef(0);
   const messageRef = useRef(null);
-  const completedAttempts = useRef(0);
-  const errorAttempt = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error' ? 1 : 2);
+  const generatedSuccessfully = useRef(false);
+  const failFirstAttempt = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error');
   const checkedFiles = getCheckedFiles(files, checkedIds);
   const selectionKey = JSON.stringify(checkedFiles.map(file => [file.id, file.status, file.path]));
 
@@ -50,8 +50,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
     const timer = window.setTimeout(() => {
       if (job.id !== requestId.current) return;
       setJob(null);
-      completedAttempts.current += 1;
-      if (completedAttempts.current === errorAttempt.current) {
+      failFirstAttempt.current = false;
+      if (job.shouldFail) {
         const agent = AGENTS.find(item => item.value === job.settings.agent);
         setError({
           title: 'Couldn’t generate a commit message',
@@ -59,6 +59,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
           request: job,
         });
       } else {
+        generatedSuccessfully.current = true;
         setMessage(generateDemoMessage(job));
         setStatus('');
         messageRef.current?.focus();
@@ -67,14 +68,16 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
     return () => window.clearTimeout(timer);
   }, [job]);
 
-  function generate() {
+  function startGeneration(shouldFail) {
     if (!checkedFiles.length || job) return;
     setError(null); setStatus('');
-    setJob({ id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })), settings: { ...settings }, branch });
+    setJob({ id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })), settings: { ...settings }, branch, shouldFail });
   }
+  function generate() { startGeneration(failFirstAttempt.current || generatedSuccessfully.current); }
+  function retry() { startGeneration(false); }
   function editMessage(value) { cancel(); setMessage(value); }
   function changeSettings(value) { cancel(); saveSettings(value); }
-  return { message, messageRef, editMessage, settings, changeSettings, storageError, job, generate, cancel,
+  return { message, messageRef, editMessage, settings, changeSettings, storageError, job, generate, retry, cancel,
     status, error, checkedFiles, canGenerate: checkedFiles.length > 0 && !job,
     canCommit: checkedFiles.length > 0 && !job && Boolean(message.trim()) };
 }

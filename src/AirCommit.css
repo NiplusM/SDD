@@ -105,7 +105,7 @@
 .ij2499-chat-header-menu { width: 248px; }
 
 /* Reference toolbar for the regular diff opened from Commit. */
-.ij2499-commit-diff .plan-diff-toolbar-shell { padding: 4px 8px; background: var(--layer-1-bg, #2b2d30); }
+.ij2499-commit-diff .plan-diff-toolbar-shell { padding: 4px 8px; background: inherit; }
 .ij2499-commit-diff .plan-diff-toolbar-left { gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .ij2499-commit-diff .plan-diff-toolbar-left::-webkit-scrollbar { display: none; }
 .ij2499-commit-diff .plan-diff-toolbar-group { gap: 2px; }

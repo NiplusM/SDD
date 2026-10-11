@@ -215,6 +215,11 @@ async function checkBrowserLayout() {
         await repeatError.getByRole('button', { name: 'Retry', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
         assert.equal(await page.locator('.ij2499-status-error').count(), 0, 'Retry succeeds after the second-generation error');
+        await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
+        await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+        assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Generating…');
+        await repeatError.waitFor();
+        assert.equal(await page.locator('[aria-label="Commit Message"]').inputValue(), generatedDraft, 'repeat generation after Retry still fails and preserves the draft');
       }
       await page.locator('.main-window-editor-tabs').getByText('Refactor VisitController.java time slots', { exact: true }).click();
       await header.getByRole('button', { name: 'Open Branch Changes', exact: true }).click();
@@ -240,6 +245,33 @@ async function checkBrowserLayout() {
     assert.equal(retained.model, 'GPT-5');
     assert.equal(retained.prompt, 'Keep my preferences');
     await returningPage.close();
+
+    const defaultPage = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+    await defaultPage.goto(`${previewUrl}/?entry=commit&scenario=default`);
+    const defaultGenerate = defaultPage.getByRole('button', { name: 'Generate Message', exact: true });
+    const defaultMessage = defaultPage.getByRole('textbox', { name: 'Commit Message', exact: true });
+    await defaultGenerate.waitFor();
+    await defaultGenerate.click();
+    await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    await defaultGenerate.waitFor();
+    const defaultDraft = await defaultMessage.inputValue();
+    assert.ok(defaultDraft.length > 0, 'normal entry generates a message for the default checked files');
+    await defaultGenerate.click();
+    await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    assert.equal(await defaultPage.locator('.ij2499-message-loading').innerText(), 'Generating…');
+    const defaultError = defaultPage.locator('.ij2499-status-error');
+    await defaultError.waitFor();
+    assert.equal(await defaultMessage.inputValue(), defaultDraft);
+    await defaultError.getByRole('button', { name: 'Retry', exact: true }).click();
+    await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    await defaultGenerate.waitFor();
+    assert.equal(await defaultError.count(), 0, 'normal-entry Retry succeeds');
+    await defaultGenerate.click();
+    await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    await defaultError.waitFor();
+    assert.equal(await defaultMessage.inputValue(), defaultDraft, 'every repeat generation after a success shows the recoverable error');
+    await defaultPage.screenshot({ path: path.join(outputDir, 'default-repeat-generation-error.png') });
+    await defaultPage.close();
 
     for (const width of [1656, 1000]) {
       const page = await browser.newPage({ viewport: { width, height: 875 } });
@@ -431,6 +463,8 @@ async function checkBrowserLayout() {
   await click(button('Commit Options')); assert.equal(d.querySelector('#popup-prompt').value, 'numbered Russian $GIT_BRANCH_NAME');
   d.querySelector('.ij2499-options-content').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(25);
   await click(button('Generate Message')); await wait(3050);
+  assert.ok(d.querySelector('.ij2499-status-error'), 'repeat generation uses the error path after previous success');
+  await click(button('Retry')); await wait(3050);
   assert.match(message().value, /Обновить VisitController.java/); assert.match(message().value, /1\./); assert.match(message().value, /code-notes-v3-release/);
   const count = d.querySelectorAll('.commit-file-node').length;
   await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - 1);
