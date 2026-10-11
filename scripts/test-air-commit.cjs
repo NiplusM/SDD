@@ -296,7 +296,13 @@ async function checkBrowserLayout() {
       assert.equal(await chat.locator('.ai-chat-user-card').count(), 1, 'handoff shows one short sent request');
       assert.match(await chat.locator('.ai-chat-user-card').innerText(), /Generate a commit message from the selected changes\./);
       assert.equal(await chat.locator('.ai-chat-user-card .ai-chat-sent-attachment-chip').count(), 1, 'selected diff is inside the sent message');
-      assert.equal(await chat.locator('.aiux543-user-attachments, .aiux543-answer, .aiux543-composer-attachment-chip').count(), 0, 'no duplicated context or fabricated reply');
+      assert.equal(await chat.locator('.aiux543-user-attachments, .aiux543-composer-attachment-chip').count(), 0, 'no duplicated attachment context');
+      const initialErrorAnswer = chat.locator('.aiux543-answer').first();
+      assert.equal(await chat.locator('.aiux543-answer').count(), 1, 'handoff includes the agent error answer');
+      assert.equal(await initialErrorAnswer.locator('h3').innerText(), 'Codex');
+      assert.match(await initialErrorAnswer.innerText(), /GPT-5 mini.*timed out/s);
+      assert.match(await initialErrorAnswer.innerText(), /draft.*left unchanged/s);
+      assert.match(await initialErrorAnswer.innerText(), /ask me to try again/);
       assert.ok(!(await chat.innerText()).includes('Existing draft:'), 'the previous draft is retained as request context instead of pasted into the transcript');
       assert.match(await chat.innerText(), /GPT-5 mini/);
       const composer = chat.locator('.aiux543-chat-input');
@@ -349,8 +355,18 @@ async function checkBrowserLayout() {
       assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
       assert.equal(await initialMessage.getByRole('button', { name: /^Show (all|less)/ }).count(), 0, 'attachments are never collapsed');
       for (const chip of await initialMessage.locator('.ai-chat-sent-attachment-chip').all()) assert.ok(await chip.isVisible());
-      assert.equal(await chat.locator('.aiux543-user-attachments, .aiux543-composer-attachment-chip, .aiux543-answer').count(), 0);
+      assert.equal(await chat.locator('.aiux543-user-attachments, .aiux543-composer-attachment-chip').count(), 0);
       assert.equal(await composer.inputValue(), '');
+      const initialErrorAnswer = chat.locator('.aiux543-answer').first();
+      assert.equal(await chat.locator('.aiux543-answer').count(), 1, 'the selected agent explains the generation failure');
+      assert.equal(await initialErrorAnswer.locator('h3').innerText(), 'Codex');
+      assert.match(await initialErrorAnswer.innerText(), /Commit message generation failed/);
+      assert.match(await initialErrorAnswer.innerText(), /GPT-5 mini.*timed out/s);
+      assert.match(await initialErrorAnswer.innerText(), /draft.*left unchanged/s);
+      assert.match(await initialErrorAnswer.innerText(), /selected diffs and generation settings/);
+      assert.match(await initialErrorAnswer.innerText(), /ask me to try again/);
+      assert.equal(await initialErrorAnswer.locator('p').count(), 3, 'error includes cause, preserved context and next step');
+      assert.ok(await initialErrorAnswer.evaluate(element => Boolean(element.previousElementSibling?.matches('.ai-chat-user-card'))), 'error answer follows the sent request');
       assert.equal(await chat.getByRole('button', { name: 'Generating', exact: true }).count(), 0, 'idle handoff has no generation spinner');
       const composerBounds = await chat.locator('.aiux543-chat-composer').boundingBox();
       assert.ok(composerBounds.height <= 240, 'sent attachments do not inflate the empty composer');
@@ -367,9 +383,11 @@ async function checkBrowserLayout() {
       }
       await composer.fill('One-line Conventional Commits in Russian.');
       await composer.press('Enter');
-      await page.waitForFunction(() => document.querySelector('.ij2499-commit-chat .aiux543-answer')?.textContent.includes('chore: обновить')
+      await page.waitForFunction(() => [...document.querySelectorAll('.ij2499-commit-chat .aiux543-answer')].some(element => element.textContent.includes('chore: обновить'))
         && !document.querySelector('.ij2499-commit-chat .ai-chat-streaming-caret'));
       assert.equal(await chat.locator('.ai-chat-user-card').count(), 2, 'follow-up adds one message after the initial request');
+      assert.equal(await chat.locator('.aiux543-answer').count(), 2, 'the error answer remains before the successful follow-up response');
+      assert.match(await initialErrorAnswer.innerText(), /timed out/);
       assert.equal(await chat.locator('.aiux543-chat-composer .ai-chat-attachment-chip').count(), 0, 'context remains only in the sent message');
       assert.equal(await composer.inputValue(), '');
       assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`), 'follow-up retains every selected file');
@@ -380,7 +398,7 @@ async function checkBrowserLayout() {
       await page.close();
     }
     console.log(process.argv.includes('--handoff-only')
-      ? 'PASS: four-file chat handoff at two widths; one short sent request; every attachment visible inside it; empty composer; streaming response; preserved draft and selection.'
+      ? 'PASS: four-file chat handoff at two widths; one short sent request; every attachment visible inside it; detailed agent error answer; empty composer; successful streaming follow-up; preserved draft and selection.'
       : 'PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, four default checked files, fully visible sent attachments, empty composer and relevant follow-up response, preserved Commit state.');
   } finally { await browser.close(); }
 }

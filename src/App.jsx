@@ -35877,6 +35877,12 @@ export default function App() {
       initialEffort: 'Medium',
       emptyState: false,
       userPrompt: 'Generate a commit message from the selected changes.',
+      assistantHeading: AGENTS.find((agent) => agent.value === request.settings.agent)?.label ?? 'Agent',
+      assistantParagraphs: [
+        `Commit message generation failed. The request using ${request.settings.model} timed out before a result was returned.`,
+        'The draft in the Commit tool window was left unchanged. The selected diffs and generation settings have been carried into this chat.',
+        'You can continue here: ask me to try again or add instructions for the commit message. I’ll use the attached changes and your generation settings.',
+      ],
       attachments,
       showAttachmentsInComposer: false,
       commitGenerationContext: request,
