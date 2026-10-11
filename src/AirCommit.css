@@ -79,8 +79,6 @@
 .ij2499-commit .commit-amend-toolbar { gap: 8px; }
 .ij2499-commit .commit-amend-left { gap: 4px; flex-shrink: 0; }
 .ij2499-generate.toolbar-button { flex-shrink: 0; }
-.ij2499-generation-icon { display: block; overflow: visible; }
-.ij2499-generation-a { stroke: var(--text-link); }
 .ij2499-commit .commit-amend-label,
 .ij2499-commit .ij2499-generate .toolbar-button-text { font-weight: 400; }
 .ij2499-change-counts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; }
@@ -91,18 +89,12 @@
 .ij2499-message-editor { position: relative; }
 .ij2499-message-loading { position: absolute; top: 7px; left: 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; line-height: 16px; pointer-events: none; }
 .ij2499-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-secondary); padding: 4px 12px; font-size: 12px; line-height: 16px; }
-.ij2499-status-error { color: var(--vcs-deleted-text); }
+.ij2499-status-error { flex-direction: column; align-items: flex-start; gap: 4px; padding-top: 8px; padding-bottom: 8px; }
+.ij2499-error-title { color: var(--vcs-deleted-text); }
+.ij2499-error-description { color: var(--text-secondary); }
+.ij2499-error-actions { display: flex; align-items: center; gap: 12px; }
 .ij2499-gear { display: inline-flex; }
 .ij2499-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-
-.ij2499-settings-hint-position { position: fixed; z-index: 10010; }
-.ij2499-settings-hint { width: 380px; max-width: calc(100vw - 32px); box-sizing: border-box; position: relative; padding: 12px; border: 0; border-radius: 8px; background: var(--notification-bg, #2b2d30); color: var(--text-default); }
-.ij2499-hint-content { padding-right: 24px; }
-.ij2499-hint-text { margin: 0; font: 400 14px/20px Inter, sans-serif; }
-.ij2499-hint-actions { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
-.ij2499-settings-hint .link { padding: 0; }
-.ij2499-settings-hint .link-text { font-size: 14px; line-height: 20px; font-weight: 400; }
-.ij2499-settings-hint .ij2499-hint-close { position: absolute; top: 8px; right: 8px; color: var(--icon-secondary-stroke); }
 
 .aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header { height: 36px; min-height: 36px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--layer-0-border); color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }
 .aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .aiux543-chat-project-branch { max-width: none; color: var(--text-muted); }

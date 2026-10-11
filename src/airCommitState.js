@@ -1,34 +1,16 @@
-export const STORAGE_KEY = 'aiux594-v4:petclinic:air:v1';
-export const SETTINGS_HINT_STORAGE_KEY = 'aiux594-v4:petclinic:air:settings-hint:v1';
-let demoHintResetApplied = false;
-
-// Restart onboarding only once per loaded demo. Commit can mount again within
-// that run without reviving an acknowledged tip; generation preferences stay saved.
-export function readSettingsHintDismissed(storage, search = '') {
-  try {
-    if (!demoHintResetApplied) {
-      demoHintResetApplied = true;
-      if (new URLSearchParams(search).get('onboarding') === 'restart') {
-        storage.removeItem(SETTINGS_HINT_STORAGE_KEY);
-      }
-    }
-    return storage.getItem(SETTINGS_HINT_STORAGE_KEY) === 'seen';
-  } catch { return false; }
-}
-
-// Arrow base for the user-supplied generation icon; the A badge is composed in App.
-export const GENERATE_ICON = 'actions/rerunAutomatically';
+export const STORAGE_KEY = 'ijai2499:petclinic:air:v1';
 export const AGENTS = [
   { value: 'junie', label: 'Junie', models: ['Claude Sonnet 4.5', 'GPT-5'] },
-  { value: 'claude', label: 'Claude Agent', models: ['Claude Sonnet 4.5'] },
-  { value: 'codex', label: 'Codex', models: ['GPT-5', 'GPT-5 mini · medium'] },
+  { value: 'claude', label: 'Claude Agent', models: ['Claude Haiku 4.5', 'Claude Sonnet 4.5'] },
+  { value: 'codex', label: 'Codex', models: ['GPT-5 mini · medium', 'GPT-5'] },
 ];
 export const DEFAULT_PROMPT = 'Avoid overly verbose descriptions or unnecessary details.';
 const LEGACY_DEFAULT_PROMPT = 'Avoid overly verbose descriptions or unnecessary details.\nStart with a short sentence in imperative form, no more than 50 characters long.\nThen leave an empty line and continue with a short list of changes.';
-export const DEFAULT_SETTINGS = { agent: 'junie', model: 'Claude Sonnet 4.5', prompt: DEFAULT_PROMPT };
+export const DEFAULT_SETTINGS = { agent: 'codex', model: 'GPT-5 mini · medium', prompt: DEFAULT_PROMPT };
 
 export function normalizeSettings(value) {
-  const agent = AGENTS.find(item => item.value === value?.agent) ?? AGENTS[0];
+  const agent = AGENTS.find(item => item.value === (value?.agent ?? DEFAULT_SETTINGS.agent))
+    ?? AGENTS.find(item => item.value === DEFAULT_SETTINGS.agent);
   return {
     agent: agent.value,
     model: agent.models.includes(value?.model) ? value.model : agent.models[0],
@@ -37,7 +19,13 @@ export function normalizeSettings(value) {
 }
 
 export function readSettings(storage) {
-  try { return normalizeSettings(JSON.parse(storage.getItem(STORAGE_KEY))); }
+  try {
+    const saved = JSON.parse(storage.getItem(STORAGE_KEY));
+    const isPreviousDefault = !saved?.defaultsVersion && saved?.agent === 'junie'
+      && saved?.model === 'Claude Sonnet 4.5'
+      && [DEFAULT_PROMPT, LEGACY_DEFAULT_PROMPT].includes(saved?.prompt);
+    return isPreviousDefault ? { ...DEFAULT_SETTINGS } : normalizeSettings(saved);
+  }
   catch { return { ...DEFAULT_SETTINGS }; }
 }
 

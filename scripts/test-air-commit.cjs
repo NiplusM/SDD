@@ -97,41 +97,14 @@ async function checkBrowserLayout() {
       assert.equal(await header.locator('.aiux543-chat-project-name, .aiux543-chat-project-icon, .aiux543-chat-header-all-changes-counts').count(), 0);
       assert.ok(await header.getByRole('button', { name: 'Open Branch Changes', exact: true }).isVisible());
       assert.ok(await header.getByRole('button', { name: 'Branch actions', exact: true }).isVisible());
-      const hint = page.locator('.ij2499-settings-hint');
-      await hint.waitFor();
-      assert.equal(await hint.locator('.ij2499-hint-text').innerText(), 'Generate a commit message from selected changes. Customize generation in Air settings.');
-      await page.evaluate(() => document.fonts.ready);
-      const headerType = await header.evaluate(el => [...el.querySelectorAll('.aiux543-chat-project-branch, .toolbar-button-text')].map(n => {
-        const style = getComputedStyle(n); return { size: style.fontSize, weight: style.fontWeight, color: style.color };
-      }));
-      assert.deepEqual(headerType, [{ size: '14px', weight: '400', color: 'rgb(159, 162, 168)' }, { size: '14px', weight: '400', color: 'rgb(159, 162, 168)' }]);
-      await header.screenshot({ path: path.join(outputDir, `chat-header-${viewport.width}.png`) });
-      const geometry = await hint.evaluate(el => {
-        const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
-        const body = el;
-        return { hint: rect(el), body: rect(body), content: rect(body.querySelector('.ij2499-hint-content')),
-          button: rect(el.querySelectorAll('.link')[0]), link: rect(el.querySelectorAll('.link')[1]),
-          generate: rect(document.querySelector('.ij2499-generate')), close: rect(el.querySelector('.ij2499-hint-close')) };
-      });
-      assert.ok(geometry.body.bottom >= geometry.content.bottom + 11, 'full content fits inside the tooltip body');
-      for (const key of ['button', 'link', 'close']) {
-        assert.ok(geometry[key].y >= geometry.body.y && geometry[key].bottom <= geometry.body.bottom, `${key} is not clipped`);
-      }
-      assert.ok(geometry.hint.y >= 8 && geometry.hint.bottom <= geometry.generate.y - 7, 'hint fits above Generate Message');
-      assert.ok(geometry.hint.bottom <= viewport.height - 8, 'whole hint fits vertically inside the viewport');
-      assert.ok(geometry.hint.x >= 8 && geometry.hint.right <= viewport.width - 8, 'hint fits within the viewport');
-      const appearance = await hint.evaluate(el => ({ color: getComputedStyle(el).backgroundColor, radius: getComputedStyle(el).borderRadius }));
-      assert.equal(appearance.radius, '8px');
-      assert.equal(appearance.color, 'rgb(43, 45, 48)', 'reference dark card surface');
-      assert.equal(await hint.locator('.got-it-corner, .got-it-button').count(), 0, 'reference uses text actions without a speech-bubble arrow or raised Got It');
-      assert.ok(await hint.getByRole('button', { name: 'Got It', exact: true }).isVisible());
-      assert.ok(await page.getByRole('button', { name: 'Generate Message', exact: true }).isDisabled());
-      await page.screenshot({ path: path.join(outputDir, `hint-${viewport.width}.png`) });
-      await hint.getByRole('button', { name: 'Air settings', exact: true }).click();
+      assert.equal(await page.locator('.ij2499-settings-hint').count(), 0);
+      await page.getByRole('button', { name: 'Commit Options', exact: true }).click();
+      assert.match(await page.locator('[data-testid="popup-agent"]').innerText(), /Codex/);
+      assert.match(await page.locator('[data-testid="popup-model"]').innerText(), /GPT-5 mini/);
+      assert.equal(await page.locator('.ij2499-generate [data-agent="codex"]').count(), 1);
+      await page.getByRole('button', { name: 'Open in Settings…', exact: true }).click();
       const settings = page.getByRole('region', { name: 'Commit Message Generation', exact: true });
       await settings.waitFor();
-      assert.ok(await settings.locator('[data-testid="settings-agent"]').isVisible());
-      assert.ok(await settings.locator('[data-testid="settings-model"]').isVisible());
       assert.match(await settings.locator('.settings-breadcrumb').innerText(), /Tools[\s\S]*Air[\s\S]*Commit Message Generation/);
       await settings.locator('[data-testid="settings-agent"] .toolbar-button').click();
       await page.locator('.ij2499-selector-menu').getByText('Codex', { exact: true }).click();
@@ -173,7 +146,7 @@ async function checkBrowserLayout() {
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.reload();
       await page.locator('.ij2499-gear').waitFor();
-      assert.equal(await page.locator('.ij2499-settings-hint').count(), 0, 'acknowledged hint stays dismissed after reload');
+      assert.equal(await page.locator('.ij2499-settings-hint').count(), 0, 'banner stays absent after reload');
       await page.locator('.main-toolbar').getByRole('button', { name: 'Settings', exact: true }).click();
       await page.locator('.settings-tree-nodes').getByText('Commit Message Generation', { exact: true }).click();
       await settings.waitFor();
@@ -210,34 +183,70 @@ async function checkBrowserLayout() {
     await returningPage.locator('.ij2499-gear').waitFor();
     const savedPreferences = JSON.stringify({ agent: 'codex', model: 'GPT-5', prompt: 'Keep my preferences' });
     await returningPage.evaluate(value => {
-      localStorage.setItem('aiux594-v4:petclinic:air:settings-hint:v1', 'seen');
-      localStorage.setItem('aiux594-v4:petclinic:air:v1', value);
+      localStorage.setItem('ijai2499:petclinic:air:settings-hint:v1', 'seen');
+      localStorage.setItem('ijai2499:petclinic:air:v1', value);
     }, savedPreferences);
     await returningPage.reload();
     await returningPage.locator('.ij2499-gear').waitFor();
     assert.equal(await returningPage.locator('.ij2499-settings-hint').count(), 0, 'normal reopening preserves the acknowledged first-use state');
     await returningPage.goto(`${previewUrl}/?entry=commit&scenario=no-files&onboarding=restart`);
-    const restartedHint = returningPage.locator('.ij2499-settings-hint');
-    await restartedHint.waitFor();
-    assert.equal(await returningPage.evaluate(() => localStorage.getItem('aiux594-v4:petclinic:air:v1')), savedPreferences, 'new demo clears only onboarding, preserving agent/model/prompt');
-    await returningPage.screenshot({ path: path.join(outputDir, 'onboarding-restart.png') });
-    await restartedHint.getByRole('button', { name: 'Got It', exact: true }).click();
-    const commitStripe = returningPage.locator('.main-window-stripe-left [title="Commit"]').first();
-    await commitStripe.click();
-    await commitStripe.click();
     await returningPage.locator('.ij2499-gear').waitFor();
-    assert.equal(await restartedHint.count(), 0, 'reopening Commit in the same demo does not repeat Got It');
-    await returningPage.reload();
-    await restartedHint.waitFor();
-    assert.equal(await returningPage.evaluate(() => localStorage.getItem('aiux594-v4:petclinic:air:v1')), savedPreferences);
-    await restartedHint.getByRole('button', { name: 'Dismiss tip', exact: true }).click();
-    assert.equal(await restartedHint.count(), 0, 'reference close action dismisses onboarding');
-    await returningPage.reload();
-    await restartedHint.waitFor();
-    await returningPage.keyboard.press('Escape');
-    assert.equal(await restartedHint.count(), 0, 'Escape dismisses onboarding');
+    assert.equal(await returningPage.locator('.ij2499-settings-hint').count(), 0);
+    const retained = await returningPage.evaluate(() => JSON.parse(localStorage.getItem('ijai2499:petclinic:air:v1')));
+    assert.equal(retained.model, 'GPT-5');
+    assert.equal(retained.prompt, 'Keep my preferences');
     await returningPage.close();
-    console.log('PASS: returning-user onboarding reset, dismissal within a run and preserved preferences; Chromium at 1656×1032, 1386×875, 1000×700; Commit diff header, file navigation/popup, branch/session scope, Go to Session, changed-row focus, split/unified, standard scope dropdown and unclipped menu; dark reference Got It with links/close above Generate Message; prompt spacing; bottom Settings link; global Settings section, selectors, Apply/Cancel, persistence and generation invalidation.');
+
+    for (const width of [1656, 1000]) {
+      const page = await browser.newPage({ viewport: { width, height: 875 } });
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${previewUrl}/?entry=commit&scenario=error`);
+      await page.locator('.ij2499-generate').waitFor();
+      const files = page.locator('.commit-file-node input[type="checkbox"]');
+      for (let index = 1; index < await files.count(); index++) {
+        if (await files.nth(index).isChecked()) await page.locator('.commit-file-node .checkbox-container').nth(index).click();
+      }
+      const selectedFile = await page.locator('.commit-file-node').first().locator('.commit-file-name').innerText();
+      const message = page.getByRole('textbox', { name: 'Commit Message', exact: true });
+      await message.fill('Preserve this draft');
+      await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
+      const alert = page.locator('.ij2499-status-error');
+      await alert.waitFor();
+      assert.match(await alert.innerText(), /Codex did not respond before the request timed out/);
+      assert.equal(await message.inputValue(), 'Preserve this draft');
+      await page.screenshot({ path: path.join(outputDir, `generation-error-${width}.png`) });
+      await alert.getByRole('button', { name: 'Continue in Chat', exact: true }).click();
+      const chat = page.locator('.aiux543-chat-editor-host');
+      await chat.waitFor();
+      assert.match(await chat.innerText(), /Generation instructions/);
+      assert.match(await chat.innerText(), /Preserve this draft/);
+      assert.match(await chat.innerText(), /GPT-5 mini/);
+      const composer = chat.locator('.aiux543-chat-input');
+      await composer.waitFor();
+      assert.match(await composer.inputValue(), /Generate the commit message/);
+      assert.equal(await page.locator('.commit-file-node input:checked').count(), 1);
+      await page.screenshot({ path: path.join(outputDir, `continue-in-chat-${width}.png`) });
+      await composer.fill('One-line Conventional Commits in Russian.');
+      await composer.press('Enter');
+      await page.waitForFunction(label => [...document.querySelectorAll('.aiux543-chat-editor-host .aiux543-answer')].some(element => /chore: обновить/.test(element.textContent) && element.textContent.includes(label))
+        && !document.querySelector('.aiux543-chat-editor-host .ai-chat-streaming-caret'), selectedFile);
+      assert.ok((await chat.innerText()).includes(selectedFile));
+      await composer.fill('Make it shorter.');
+      await composer.press('Enter');
+      await page.waitForFunction(label => [...document.querySelectorAll('.aiux543-chat-editor-host .aiux543-answer')].filter(element => /chore: обновить/.test(element.textContent) && element.textContent.includes(label)).length === 2
+        && !document.querySelector('.aiux543-chat-editor-host .ai-chat-streaming-caret'), selectedFile);
+      assert.equal(await message.inputValue(), 'Preserve this draft');
+      assert.equal(await page.locator('.commit-file-node input:checked').count(), 1);
+      await page.screenshot({ path: path.join(outputDir, `chat-result-${width}.png`) });
+      assert.deepEqual(errors, []);
+      await alert.getByRole('button', { name: 'Retry', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
+      assert.notEqual(await message.inputValue(), 'Preserve this draft');
+      assert.equal(await alert.count(), 0);
+      await page.close();
+    }
+    console.log('PASS: current prototype at three widths, default mini model/agent icon, no banner, shared settings and retained preferences, timeout/retry, chat handoff with selected diffs/instructions/draft/model, editable continuation and relevant response, preserved Commit state.');
   } finally { await browser.close(); }
 }
 (async () => {
@@ -246,9 +255,9 @@ async function checkBrowserLayout() {
     stdin: { contents: `import React from 'react'; import { createRoot } from 'react-dom/client';
       import { ThemeProvider } from '@jetbrains/int-ui-kit';
       import App, { CommitToolWindow } from './src/App.jsx'; window.React = React;
-      window.openedFiles = []; const root = createRoot(document.getElementById('root'));
+      window.openedFiles = []; window.chatRequests = []; const root = createRoot(document.getElementById('root'));
       window.mountCommit = (key, scopeRequest = null) => root.render(<ThemeProvider defaultTheme="dark"><CommitToolWindow key={key} scopeRequest={scopeRequest}
-        ctx={{ focusedPanel: 'left', setFocusedPanel() {}, setShowLeftPanel() {} }} onOpenFile={file => window.openedFiles.push(file)} /></ThemeProvider>);
+        ctx={{ focusedPanel: 'left', setFocusedPanel() {}, setShowLeftPanel() {} }} onOpenFile={file => window.openedFiles.push(file)} onContinueInChat={request => window.chatRequests.push(request)} /></ThemeProvider>);
       window.mountCommit('first'); window.mountFull = () => root.render(<App />);`, loader: 'jsx', resolveDir: root },
     bundle: true, write: false, jsx: 'automatic', format: 'iife', logLevel: 'silent',
     define: { 'import.meta.env.DEV': 'false' }, loader: { '.css': 'empty', '.svg': 'dataurl' },
@@ -275,26 +284,14 @@ async function checkBrowserLayout() {
   };
   const message = () => d.querySelector('[aria-label="Commit Message"]');
   const check = () => d.querySelector('.commit-file-node input[type="checkbox"]');
-  assert.ok(button('Generate Message').querySelector('svg'), 'kit generation icon exists');
+  assert.ok(button('Generate Message').querySelector('[data-agent="codex"]'));
   assert.ok(button('Generate Message').disabled);
-  let hint = d.querySelector('.ij2499-settings-hint'); assert.ok(hint, 'hint appears on first Commit opening before files are checked or generation starts');
-  assert.match(hint.textContent, /Generate a commit message from selected changes\. Customize generation in Air settings\./);
-  assert.notEqual(hint.parentElement.style.left, '', 'hint is positioned after the initial generation ref is attached');
-  await click(button('Got It', hint));
-  assert.equal(w.localStorage.getItem('aiux594-v4:petclinic:air:settings-hint:v1'), 'seen');
-  w.mountCommit('acknowledged'); await wait(60);
-  assert.ok(!d.querySelector('.ij2499-settings-hint'), 'Got It stays dismissed when Commit reopens');
-  w.localStorage.removeItem('aiux594-v4:petclinic:air:settings-hint:v1');
-  w.mountCommit('first-settings-entry'); await wait(60);
-  hint = d.querySelector('.ij2499-settings-hint'); assert.ok(hint);
-  await click(button('Air settings', hint));
-  assert.ok(d.querySelector('#settings-prompt'), 'first-opening tip opens real generation settings before generation');
-  assert.ok(d.querySelector('[data-testid="settings-agent"]'));
-  assert.ok(d.querySelector('[data-testid="settings-model"]'));
   assert.ok(!d.querySelector('.ij2499-settings-hint'));
+  await click(button('Commit Options'));
+  assert.match(d.querySelector('[data-testid="popup-model"]').textContent, /GPT-5 mini/);
+  await click(button('Open in Settings…'));
+  assert.ok(d.querySelector('#settings-prompt'));
   await click(button('Cancel', d.querySelector('[aria-modal="true"]')));
-  assert.equal(w.localStorage.getItem('aiux594-v4:petclinic:air:settings-hint:v1'), 'seen');
-  assert.ok(button('Generate Message').disabled);
   await click(d.querySelector('.commit-file-open'));
   assert.equal(w.openedFiles.length, 1);
   assert.ok(button('Generate Message').disabled, 'opening diff must not check file');
@@ -336,7 +333,12 @@ async function checkBrowserLayout() {
   assert.deepEqual([...popup.querySelectorAll('.ij2499-air-fields .ij2499-selector-label')].map(el => el.textContent), ['Agent:', 'Model:']);
   await click(popup.querySelector('[data-testid="popup-agent"] .toolbar-button'));
   let selector = d.querySelector('.ij2499-selector-menu'); assert.ok(selector);
-  assert.equal(selector.querySelector('[aria-checked="true"]').textContent.trim(), 'JunieDefault');
+  assert.equal(selector.querySelector('[aria-checked="true"]').textContent.trim(), 'CodexDefault');
+  await click([...selector.querySelectorAll('.popup-cell-adv-name')].find(el => el.textContent === 'Claude Agent'));
+  assert.match(popup.querySelector('[data-testid="popup-model"]').textContent, /Claude Haiku/);
+  assert.ok(button('Generate Message').querySelector('svg'));
+  await click(popup.querySelector('[data-testid="popup-agent"] .toolbar-button'));
+  selector = d.querySelector('.ij2499-selector-menu');
   await click([...selector.querySelectorAll('.popup-cell-adv-name')].find(el => el.textContent === 'Codex'));
   assert.ok(d.querySelector('.ij2499-options'), 'choosing agent keeps Commit Options open');
   assert.match(popup.querySelector('[data-testid="popup-model"]').textContent, /GPT-5/);
@@ -348,7 +350,7 @@ async function checkBrowserLayout() {
   await wait(25);
   selector.querySelector('[role="menu"]').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   await wait(25);
-  assert.match(popup.querySelector('[data-testid="popup-model"]').textContent, /GPT-5 mini/);
+  assert.equal(popup.querySelector('[data-testid="popup-model"] .toolbar-button-text').textContent, 'GPT-5');
   assert.ok(!d.querySelector('.ij2499-selector-menu'));
   await click(popup.querySelector('[data-testid="popup-model"] .toolbar-button'));
   selector = d.querySelector('.ij2499-selector-menu');
@@ -388,9 +390,16 @@ async function checkBrowserLayout() {
   w.history.replaceState(null, '', '?entry=commit&scenario=error'); w.mountCommit('error'); await wait(60);
   await edit(message(), 'Keep on failure'); await click(button('Generate Message')); await wait(3050);
   assert.equal(message().value, 'Keep on failure'); assert.ok(button('Retry'));
+  assert.match(d.querySelector('.ij2499-status-error').textContent, /timed out/);
+  await click(button('Continue in Chat'));
+  assert.equal(w.chatRequests.length, 1);
+  assert.equal(w.chatRequests[0].draft, 'Keep on failure');
+  assert.equal(w.chatRequests[0].settings.prompt, 'numbered Russian $GIT_BRANCH_NAME');
+  assert.ok(w.chatRequests[0].files.length > 0);
+  assert.equal(message().value, 'Keep on failure');
   await click(button('Retry')); await wait(3050); assert.notEqual(message().value, 'Keep on failure');
   assert.ok(!d.querySelector('.ij2499-status'), 'successful Retry clears the error without adding a success row');
-  assert.ok(!d.querySelector('.ij2499-settings-hint'), 'acknowledged hint stays dismissed after remount and generation');
+  assert.ok(!d.querySelector('.ij2499-settings-hint'), 'banner stays absent after remount and generation');
   await click(button('Commit Options')); assert.equal(d.querySelector('#popup-prompt').value, 'numbered Russian $GIT_BRANCH_NAME');
   w.mountCommit('scope', { id: 'visit-scope', name: 'Visit fix', files: [{ label: 'VisitController.java' }] }); await wait(60);
   assert.equal(d.querySelectorAll('.commit-file-node input:checked').length, 1);

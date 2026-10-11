@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { DEFAULT_SETTINGS, STORAGE_KEY, generateDemoMessage, getCheckedFiles, normalizeSettings, readSettings } from './airCommitState.js';
+import { AGENTS, DEFAULT_SETTINGS, STORAGE_KEY, generateDemoMessage, getCheckedFiles, normalizeSettings, readSettings } from './airCommitState.js';
 
-const SETTINGS_CHANGED = 'aiux594-v4:air-settings-changed';
+const SETTINGS_CHANGED = 'ijai2499:air-settings-changed';
 
 export function useAirCommitPreferences() {
   const [settings, setSettings] = useState(() => {
@@ -14,7 +14,7 @@ export function useAirCommitPreferences() {
     return () => window.removeEventListener(SETTINGS_CHANGED, sync);
   }, []);
   useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); setStorageError(false); }
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...settings, defaultsVersion: 2 })); setStorageError(false); }
     catch { setStorageError(true); }
   }, [settings]);
   const changeSettings = useCallback(value => {
@@ -30,7 +30,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
   const { settings, changeSettings: saveSettings, storageError } = useAirCommitPreferences();
   const [job, setJob] = useState(null);
   const [status, setStatus] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const requestId = useRef(0);
   const messageRef = useRef(null);
   const failNext = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error');
@@ -40,7 +40,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
   const cancel = useCallback((notice = '') => {
     requestId.current += 1;
     setJob(null);
-    setError('');
+    setError(null);
     setStatus(notice);
   }, []);
   useLayoutEffect(() => { cancel(); }, [selectionKey, branch, scopeId, settings, cancel]);
@@ -51,7 +51,12 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
       setJob(null);
       if (failNext.current) {
         failNext.current = false;
-        setError('Couldn’t generate the message. Try again.');
+        const agent = AGENTS.find(item => item.value === job.settings.agent);
+        setError({
+          title: 'Couldn’t generate a commit message',
+          description: `${agent.label} did not respond before the request timed out. Your draft is preserved.`,
+          request: job,
+        });
       } else {
         setMessage(generateDemoMessage(job));
         setStatus('');
@@ -63,7 +68,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId }) {
 
   function generate() {
     if (!checkedFiles.length || job) return;
-    setError(''); setStatus('');
+    setError(null); setStatus('');
     setJob({ id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })), settings: { ...settings }, branch });
   }
   function editMessage(value) { cancel(); setMessage(value); }

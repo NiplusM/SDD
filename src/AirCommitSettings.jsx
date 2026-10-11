@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, Dialog, DialogGroupHeader, Dropdown, Icon, IconButton, Input, Link, Popup, PopupCell, PositionedPopup, SettingsDialog, ToolbarButton, TreeNode } from '@jetbrains/int-ui-kit';
-import { AGENTS, DEFAULT_PROMPT, normalizeSettings } from './airCommitState.js';
+import { AGENTS, DEFAULT_PROMPT, DEFAULT_SETTINGS, normalizeSettings } from './airCommitState.js';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import './AirCommit.css';
 
@@ -72,7 +72,7 @@ function AirSelectorMenu({ title, options, value, defaultValue, anchor, onChange
 function AirFields({ value, onChange, prefix, disabled = false, compact = false, branch, openSettings }) {
   const agent = AGENTS.find(a => a.value === value.agent)
   const textareaRef = useRef(null)
-  const changeAgent = id => onChange(normalizeSettings({ ...value, agent: id }))
+  const changeAgent = id => onChange(normalizeSettings({ ...value, agent: id, model: null }))
   const [selector, setSelector] = useState(null)
   function openSelector(kind, event) {
     const element = event.currentTarget
@@ -104,7 +104,7 @@ function AirFields({ value, onChange, prefix, disabled = false, compact = false,
       {selector && <AirSelectorMenu title={selector.kind === 'agent' ? 'Agent' : 'Model'}
         options={selector.kind === 'agent' ? agentOptions : modelOptions}
         value={selector.kind === 'agent' ? value.agent : value.model}
-        defaultValue={selector.kind === 'agent' ? AGENTS[0].value : agent.models[0]}
+        defaultValue={selector.kind === 'agent' ? DEFAULT_SETTINGS.agent : agent.models[0]}
         anchor={selector} onChange={selector.kind === 'agent' ? changeAgent : model => onChange({ ...value, model })}
         close={() => setSelector(null)} />}
       <div className="ij2499-prompt-block">
@@ -188,45 +188,6 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
     </PositionedPopup>
     {preference && createPortal(<CommitPreferenceDialog preference={preference} value={git[preference]} close={() => setPreference(null)} save={value => setGit({ ...git, [preference]: value })} />, document.body)}</>
   )
-}
-
-export function CommitSettingsHint({ anchor, close, openSettings }) {
-  const ref = useRef(null)
-  useLayoutEffect(() => {
-    function position() {
-      const target = anchor?.current?.querySelector('.ij2499-generate')
-      if (!ref.current || !target?.isConnected) return
-      const rect = target.getBoundingClientRect()
-      const hint = ref.current.getBoundingClientRect()
-      const panel = target.closest('.commit-tool-window')?.getBoundingClientRect()
-      const left = Math.max(8, Math.min((panel?.left ?? rect.left) + 16, window.innerWidth - hint.width - 8))
-      ref.current.style.left = `${left}px`
-      ref.current.style.top = `${Math.max(8, Math.min(rect.top - hint.height - 8, window.innerHeight - hint.height - 8))}px`
-    }
-    position()
-    const observer = new ResizeObserver(position)
-    observer.observe(ref.current)
-    window.addEventListener('resize', position)
-    window.addEventListener('scroll', position, true)
-    return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
-  }, [anchor])
-  useEffect(() => {
-    function escape(event) { if (event.key === 'Escape') close() }
-    document.addEventListener('keydown', escape)
-    return () => document.removeEventListener('keydown', escape)
-  }, [close])
-  return createPortal(<div ref={ref} className="ij2499-settings-hint-position" role="status" aria-live="polite">
-    <div className="ij2499-settings-hint theme-dark">
-      <IconButton className="ij2499-hint-close" icon="general/close" tooltip="Dismiss tip" aria-label="Dismiss tip" onClick={close} />
-      <div className="ij2499-hint-content">
-        <p className="ij2499-hint-text">Generate a commit message from selected changes. Customize generation in Air settings.</p>
-        <div className="ij2499-hint-actions">
-          <Link onClick={close}>Got It</Link>
-          <Link aria-label="Air settings" onClick={openSettings}>Open Settings…</Link>
-        </div>
-      </div>
-    </div>
-  </div>, document.body)
 }
 
 export function AirGenerationSettingsSection({ settings, onChange, storageError, branch, breadcrumb }) {

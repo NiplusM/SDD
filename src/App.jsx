@@ -1,6 +1,6 @@
 import { useAirCommit, useAirCommitPreferences } from './useAirCommit.js';
-import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitSettingsHint } from './AirCommitSettings.jsx';
-import { AGENTS, GENERATE_ICON, SETTINGS_HINT_STORAGE_KEY, readSettingsHintDismissed } from './airCommitState.js';
+import { CommitOptions, AirSettings, AirGenerationSettingsSection } from './AirCommitSettings.jsx';
+import { AGENTS, generateDemoMessage } from './airCommitState.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
@@ -1125,21 +1125,6 @@ function CommitChangeCounters({ added = 0, removed = 0 }) {
   );
 }
 
-// Match the supplied generation symbol using the published kit arrows.
-// The kit's current variant has a play badge; clip that quadrant and use the
-// reference's blue A. Keep this task-specific composition out of the library.
-function CommitGenerationIcon() {
-  const clipId = useId();
-  const Arrows = getIcon(`${GENERATE_ICON}_dark`);
-  return (
-    <svg className="ij2499-generation-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <defs><clipPath id={clipId}><path d="M0 0H16V8H8V16H0Z" /></clipPath></defs>
-      <g clipPath={`url(#${clipId})`}><Arrows width={16} height={16} /></g>
-      <path className="ij2499-generation-a" d="M8.5 15.5L11.7 8.5L14.9 15.5M9.4 13.5H14" fill="none" strokeWidth="1.15" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 // Custom Commit tool window. Keeps the commit chrome, a grouped/collapsible file
 // tree with checkboxes, and the bottom panel (amend + summary + Commit).
 function CommitToolWindow({
@@ -1147,6 +1132,7 @@ function CommitToolWindow({
   onOpenFile = null,
   onReviewContextChange = null,
   onOpenAirSettings = null,
+  onContinueInChat = null,
   scopeRequest = null,
   repositoryContext = null,
 }) {
@@ -1156,11 +1142,7 @@ function CommitToolWindow({
   const [committedIds, setCommittedIds] = useState(() => new Set());
   const [optionsAnchor, setOptionsAnchor] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [hintDismissed, setHintDismissed] = useState(() => {
-    try { return readSettingsHintDismissed(window.localStorage, window.location.search); } catch { return false; }
-  });
   const gearRef = useRef(null);
-  const generationRef = useRef(null);
   const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
     advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
     cleanup: 'Project Default', tests: 'All Tests' });
@@ -1215,12 +1197,7 @@ function CommitToolWindow({
     setMessage('');
     setAmend(false);
   }
-  function dismissSettingsHint() {
-    setHintDismissed(true);
-    try { window.localStorage.setItem(SETTINGS_HINT_STORAGE_KEY, 'seen'); } catch { /* Keep the dismissal for this session. */ }
-  }
   function openAirSettings() {
-    dismissSettingsHint();
     setOptionsAnchor(null);
     if (onOpenAirSettings) { onOpenAirSettings(); return; }
     setSettingsOpen(true);
@@ -1383,7 +1360,7 @@ function CommitToolWindow({
 
         <div className="commit-bottom-panel">
           <div className="commit-amend-toolbar">
-            <div className="commit-amend-left" ref={generationRef}>
+            <div className="commit-amend-left">
               <label className="commit-amend-label">
                 <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
                 <span>Amend</span>
@@ -1391,7 +1368,7 @@ function CommitToolWindow({
               <IconButton icon="general/history" tooltip="Show History" />
               {air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
                   onClick={() => air.cancel('Generation stopped.')} />
-                : <ToolbarButton className="ij2499-generate" icon={<CommitGenerationIcon />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate}
+                : <ToolbarButton className="ij2499-generate" icon={<AiChatAgentIcon icon={air.settings.agent} />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate}
                     title={air.checkedFiles.length ? 'Generate a commit message with Air' : 'Select files using the checkboxes to generate a commit message'} />}
             </div>
             <span className="commit-modified-count ij2499-change-counts" title={summary.description}
@@ -1427,7 +1404,14 @@ function CommitToolWindow({
           </div>
           {!air.job && (air.status || air.error || !air.checkedFiles.length) &&
             <div className={`ij2499-status ${air.error ? 'ij2499-status-error' : ''}`} role={air.error ? 'alert' : 'status'} aria-live="polite">
-              {air.error ? <>{air.error}<Link disabled={!air.canGenerate} onClick={air.generate}>Retry</Link></>
+              {air.error ? <>
+                <span className="ij2499-error-title">{air.error.title}</span>
+                <span className="ij2499-error-description">{air.error.description}</span>
+                <div className="ij2499-error-actions">
+                  <Link disabled={!air.canGenerate} onClick={air.generate}>Retry</Link>
+                  <Link onClick={() => onContinueInChat?.({ ...air.error.request, draft: message, error: air.error.description })}>Continue in Chat</Link>
+                </div>
+              </>
                 : air.status || 'Select files to generate a commit message.'}
             </div>}
           <div className="commit-actions">
@@ -1442,7 +1426,7 @@ function CommitToolWindow({
               <Button type="secondary" disabled={!air.canCommit} onClick={() => commit(true)}>Commit and Push</Button>
             </div>
             <span ref={gearRef} className="ij2499-gear"><IconButton icon="general/settings" tooltip="Commit Options" aria-pressed={!!optionsAnchor}
-              onClick={() => { dismissSettingsHint(); const element = gearRef.current.querySelector('button'); setOptionsAnchor(optionsAnchor ? null : { rect: element.getBoundingClientRect(), element }); }} /></span>
+              onClick={() => { const element = gearRef.current.querySelector('button'); setOptionsAnchor(optionsAnchor ? null : { rect: element.getBoundingClientRect(), element }); }} /></span>
           </div>
           {commitResult && (
             <div className="commit-success" role="status">
@@ -1452,8 +1436,6 @@ function CommitToolWindow({
           )}
         </div>
       </div>
-      {!hintDismissed && !air.job && !air.error && !optionsAnchor && !settingsOpen &&
-        <CommitSettingsHint anchor={generationRef} close={dismissSettingsHint} openSettings={openAirSettings} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
         openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}
@@ -21341,6 +21323,7 @@ function AiChatTabView({
   useEffect(() => {
     const previous = previousComposerAttachmentStateRef.current;
     const chatChanged = previous.chatId !== chatId;
+    const keepInitialCommitPrompt = chatChanged && Boolean(scenario?.commitGenerationContext);
     const previousIds = new Set(chatChanged ? [] : previous.ids);
     const addedIds = editorComposerAttachmentIds.filter((id) => !previousIds.has(id));
     const representedComposerAttachmentIds = new Set(
@@ -21362,7 +21345,7 @@ function AiChatTabView({
           .map((part) => part.attachmentId),
       );
       const unrepresentedAttachmentIds = attachmentIdsToInsert.filter((id) => !representedAttachmentIds.has(id));
-      if (unrepresentedAttachmentIds.length > 0 && composerText.length > 0) {
+      if (unrepresentedAttachmentIds.length > 0 && composerText.length > 0 && !keepInitialCommitPrompt) {
         composerContentPartIdRef.current += 1;
         next.push({
           id: `text-${composerContentPartIdRef.current}`,
@@ -21382,7 +21365,7 @@ function AiChatTabView({
     });
 
     if (attachmentIdsToInsert.length > 0) {
-      if (composerText.length > 0) setComposerText('');
+      if (composerText.length > 0 && !keepInitialCommitPrompt) setComposerText('');
       focusComposerAtEnd();
     }
 
@@ -23588,6 +23571,7 @@ export default function App() {
     initialEffort = null,
     initialAccess = null,
     reviewFeatureTitle = '',
+    commitGenerationContext = null,
     temporary = false,
     select = true,
   } = {}) => {
@@ -23617,6 +23601,7 @@ export default function App() {
       initialEffort,
       initialAccess,
       reviewFeatureTitle,
+      commitGenerationContext,
       temporary: Boolean(temporary),
       attachmentLabel,
       attachments: Array.isArray(attachments) ? attachments : [],
@@ -34235,6 +34220,7 @@ export default function App() {
       }));
     let messageAttachments = snapshotAttachments(attachments);
     const targetChatId = chatId;
+    const commitGenerationContext = getAiChatScenarioById(targetChatId)?.commitGenerationContext;
     const reviewSession = isReviewCommand ? getAiChatScenarioById(targetChatId) : null;
     // Direct /review in the current chat uses that chat's complete change context
     // without opening the shared launch dialog. Explicit composer attachments still
@@ -34755,7 +34741,17 @@ export default function App() {
         || new Set(scopedReviewFindings.map((f) => f.sourceLabel)).size;
       const commentRunFileCount = new Set(noteItems.map((note) => note.sourceLabel).filter(Boolean)).size || commentAttachments.length;
       const commentRunCommentCount = noteItems.length || commentAttachments.length;
-      const fullResponse = isReviewCommand
+      const fullResponse = commitGenerationContext && !isReviewCommand
+        ? generateDemoMessage({
+            ...commitGenerationContext,
+            settings: {
+              ...commitGenerationContext.settings,
+              prompt: [commitGenerationContext.settings.prompt,
+                ...(aiChatSentMessagesByChatId[targetChatId] ?? []).filter(message => message.role !== 'assistant').map(message => message.text),
+                messageText].join('\n'),
+            },
+          })
+        : isReviewCommand
         ? `Reviewed ${reviewFileCount} file${reviewFileCount === 1 ? '' : 's'} and found ${scopedReviewFindings.length} issue${scopedReviewFindings.length === 1 ? '' : 's'} — see the synchronized result in Review Preview or Full Review.`
         : commentAttachments.length > 0
           ? `Reviewed ${commentRunFileCount} file${commentRunFileCount === 1 ? '' : 's'} and processed ${commentRunCommentCount} comment${commentRunCommentCount === 1 ? '' : 's'} — see ${commentRunCommentCount === 1 ? 'it' : 'them'} in the diff and in the AI Review folder.`
@@ -34766,7 +34762,8 @@ export default function App() {
       // run's "Files" tab only exists to announce what's about to land in
       // the Done card, so it gets a much shorter floor than a real review or
       // a comment-response run.
-      const runFloorMs = isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 1800 + plainRunChangeCards.length * 800 : 18000);
+      const runFloorMs = commitGenerationContext && !isReviewCommand ? 3000
+        : isReviewCommand ? 25000 : (plainRunChangeCards.length > 0 ? 1800 + plainRunChangeCards.length * 800 : 18000);
       const runStartedAt = Date.now();
       let index = 0;
       const finishRun = () => {
@@ -34958,7 +34955,7 @@ export default function App() {
       };
       const streamNextChunk = () => {
         delete aiChatTabCommentResponseTimersRef.current[timerKey];
-        index = Math.min(fullResponse.length, index + 2);
+        index = Math.min(fullResponse.length, index + (commitGenerationContext ? 8 : 2));
         const nextText = fullResponse.slice(0, index);
         const isComplete = index >= fullResponse.length;
         handleSelectedAiChatSentMessagesChange(
@@ -35862,6 +35859,39 @@ export default function App() {
       workspaceContext,
     });
   }, [getAiChatScenarioById, openCommitToolWindow]);
+
+  const continueCommitGenerationInChat = useCallback((request) => {
+    const scopeRequests = buildCommitReviewScopeRequests();
+    const attachments = request.files.map((file) => ({
+      id: `commit-generation-${request.id}-${file.id}`,
+      label: `Diff ${file.label}`,
+      icon: 'vcs/diff',
+      sourceLabel: file.label,
+      sourcePath: `${file.path}/${file.label}`,
+      diffRequest: scopeRequests.find(item => item.source.tabId === `commit-review-scope-${file.id}`),
+    }));
+    const agent = AGENTS.find(item => item.value === request.settings.agent);
+    setReviewSplitChatId(null);
+    setReviewSplitFileTabIds([]);
+    createEmptyAiChatSession({
+      title: 'Commit message generation',
+      icon: request.settings.agent,
+      initialModel: request.settings.model,
+      initialEffort: 'Medium',
+      emptyState: false,
+      userPrompt: [
+        `Generate a commit message for ${request.files.length} selected file${request.files.length === 1 ? '' : 's'}.`,
+        `Generation instructions:\n${request.settings.prompt}`,
+        request.draft ? `Existing draft:\n${request.draft}` : '',
+      ].filter(Boolean).join('\n\n'),
+      assistantHeading: agent.label,
+      assistantParagraphs: [request.error, 'The selected changes and generation instructions are attached. Send the prepared request or add instructions to continue.'],
+      initialComposerText: 'Generate the commit message from the attached changes.',
+      attachments,
+      showAttachmentsInComposer: true,
+      commitGenerationContext: request,
+    });
+  }, [createEmptyAiChatSession]);
 
   const openCommitFileReview = useCallback((file = null) => {
     if (!file?.id) return null;
@@ -37603,7 +37633,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} onOpenAirSettings={openCommitGenerationSettings} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} onOpenAirSettings={openCommitGenerationSettings} onContinueInChat={continueCommitGenerationInChat} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} activeProjectId={activeWorkspaceProjectId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onProjectSelect={handleAgentSessionsProjectSelect} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
