@@ -87,8 +87,15 @@
 .ij2499-message-editor { position: relative; }
 .ij2499-message-loading { position: absolute; top: 7px; left: 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; line-height: 16px; pointer-events: none; }
 .ij2499-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-secondary); padding: 4px 12px; font-size: 12px; line-height: 16px; }
-.ij2499-generation-error-position { position: fixed; z-index: 10010; }
-.ij2499-status-error.notification { width: 380px; max-width: calc(100vw - 32px); }
+.ij2499-generation-banner-slot { padding: 8px 12px 0; }
+.ij2499-generation-banner.banner { background: var(--layer-1-bg); border-color: var(--layer-1-border); --banner-action-color: var(--text-link); }
+.ij2499-generation-banner .banner-content { padding-top: 0; align-items: center; }
+.ij2499-generation-banner .banner-body { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding-right: 0; }
+.ij2499-generation-banner .banner-text { font-size: 13px; font-weight: 400; line-height: 18px; }
+.ij2499-generation-banner .banner-actions { padding-bottom: 0; gap: 8px; }
+.ij2499-generation-banner .banner-action .link-text { font-size: 13px; font-weight: 400; }
+.ij2499-configuration-value { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; min-width: 0; }
+.ij2499-configuration-value [data-agent] { flex-shrink: 0; }
 .ij2499-gear { display: inline-flex; }
 .ij2499-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
@@ -173,3 +180,5 @@
   background: var(--layer-1-bg, #202124);
 }
 .ij2499-comment-toolbar .plan-diff-send-comments-button.button { margin-right: 0; }
+
+.ij2499-commit-chat .aiux543-answer p { white-space: pre-wrap; }

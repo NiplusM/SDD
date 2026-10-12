@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Button, Checkbox, Dialog, DialogGroupHeader, Dropdown, Icon, IconButton, Input, Link, Notification, Popup, PopupCell, PositionedPopup, SettingsDialog, ToolbarButton, TreeNode } from '@jetbrains/int-ui-kit';
+import { Button, Checkbox, Dialog, DialogGroupHeader, Dropdown, Icon, IconButton, Input, Link, Banner, Popup, PopupCell, PositionedPopup, SettingsDialog, ToolbarButton, TreeNode } from '@jetbrains/int-ui-kit';
 import { AGENTS, DEFAULT_PROMPT, DEFAULT_SETTINGS, normalizeSettings } from './airCommitState.js';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import './AirCommit.css';
@@ -69,7 +69,7 @@ function AirSelectorMenu({ title, options, value, defaultValue, anchor, onChange
   </div>, document.body)
 }
 
-function AirFields({ value, onChange, prefix, disabled = false, compact = false, openSettings }) {
+function AirFields({ value, onChange, prefix, disabled = false, compact = false, readOnlyConfiguration = false, openSettings }) {
   const agent = AGENTS.find(a => a.value === value.agent)
   const textareaRef = useRef(null)
   const changeAgent = id => onChange(normalizeSettings({ ...value, agent: id, model: null }))
@@ -84,15 +84,15 @@ function AirFields({ value, onChange, prefix, disabled = false, compact = false,
     <div className="ij2499-air-fields">
       <div className="ij2499-selector-row" data-testid={`${prefix}-agent`}>
         <span className="ij2499-selector-label">Agent:</span>
-        <ToolbarButton text={agent.label} icon={<AiChatAgentIcon icon={agent.value} />} showChevron disabled={disabled} aria-label={`Agent: ${agent.label}`}
+        {readOnlyConfiguration ? <span className="ij2499-configuration-value"><AiChatAgentIcon icon={agent.value} />{agent.label}</span> : <ToolbarButton text={agent.label} icon={<AiChatAgentIcon icon={agent.value} />} showChevron disabled={disabled} aria-label={`Agent: ${agent.label}`}
           aria-haspopup="menu" aria-expanded={selector?.kind === 'agent'}
-          onClick={event => openSelector('agent', event)} />
+          onClick={event => openSelector('agent', event)} />}
       </div>
       <div className="ij2499-selector-row" data-testid={`${prefix}-model`}>
         <span className="ij2499-selector-label">Model:</span>
-        <ToolbarButton text={value.model} showChevron disabled={disabled} aria-label={`Model: ${value.model}`}
+        {readOnlyConfiguration ? <span className="ij2499-configuration-value">{value.model}</span> : <ToolbarButton text={value.model} showChevron disabled={disabled} aria-label={`Model: ${value.model}`}
           aria-haspopup="menu" aria-expanded={selector?.kind === 'model'}
-          onClick={event => openSelector('model', event)} />
+          onClick={event => openSelector('model', event)} />}
       </div>
       {selector && <AirSelectorMenu title={selector.kind === 'agent' ? 'Agent' : 'Model'}
         options={selector.kind === 'agent' ? agentOptions : modelOptions}
@@ -169,7 +169,7 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
             <Checkbox className="ij2499-upload-default" label="Always use selected server or group of servers" checked={git.alwaysUpload} onChange={alwaysUpload => setGit({ ...git, alwaysUpload })} />
           </div></section>
           <section><DialogGroupHeader title="Air" role="heading" aria-level={3} /><div className="ij2499-option-fields">
-            <AirFields value={settings} onChange={changeSettings} prefix="popup" compact openSettings={openSettings} />
+            <AirFields value={settings} onChange={changeSettings} prefix="popup" compact readOnlyConfiguration openSettings={openSettings} />
             {storageError && <p role="status" className="ij2499-help">Settings apply to this session. Browser storage is unavailable.</p>}
           </div>
           </section>
@@ -180,37 +180,12 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
   )
 }
 
-export function CommitGenerationError({ anchor, error, retry, onContinue, close }) {
-  const ref = useRef(null)
-  useLayoutEffect(() => {
-    function position() {
-      const target = anchor.current?.querySelector('.ij2499-generate')
-      if (!ref.current || !target?.isConnected) return
-      const rect = target.getBoundingClientRect()
-      const notification = ref.current.getBoundingClientRect()
-      const panel = target.closest('.commit-tool-window').getBoundingClientRect()
-      ref.current.style.left = `${Math.max(8, Math.min(panel.left + 16, window.innerWidth - notification.width - 8))}px`
-      ref.current.style.top = `${Math.max(8, rect.top - notification.height - 8)}px`
-    }
-    position()
-    const observer = new ResizeObserver(position)
-    observer.observe(ref.current)
-    observer.observe(anchor.current)
-    window.addEventListener('resize', position)
-    window.addEventListener('scroll', position, true)
-    return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
-  }, [anchor])
-  useEffect(() => {
-    function escape(event) { if (event.key === 'Escape') close() }
-    document.addEventListener('keydown', escape)
-    return () => document.removeEventListener('keydown', escape)
-  }, [close])
-  return createPortal(<div ref={ref} className="ij2499-generation-error-position theme-dark">
-    <Notification className="ij2499-status-error" type="error" title={error.title} aria-live="polite"
-      onClose={close} forceHoverButtons actions={[{ label: 'Retry', onClick: retry }, { label: 'Continue in Chat', onClick: onContinue }]}>
-      {error.description}
-    </Notification>
-  </div>, document.body)
+export function CommitGenerationBanner({ issue, onOpenChat }) {
+  return <Banner className="ij2499-generation-banner" type={issue.kind} showCloseButton={false}
+    role={issue.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+    actions={[{ label: 'Open chat', onClick: onOpenChat }]}>
+    {issue.title}
+  </Banner>
 }
 
 export function AirGenerationSettingsSection({ settings, onChange, storageError, branch, breadcrumb }) {

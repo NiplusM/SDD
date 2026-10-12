@@ -146,7 +146,8 @@ function ChatsHistoryToolWindow({
   ), [unassignedChangesFiles]);
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
   const projectGroups = useMemo(() => {
-    const sessionRows = flatRows.slice(0, 9);
+    const generationRows = flatRows.filter(row => row.projectId === 'spring-petclinic');
+    const sessionRows = flatRows.filter(row => !row.projectId).slice(0, 9);
     return [
       {
         id: 'spring-petclinic',
@@ -155,7 +156,7 @@ function ChatsHistoryToolWindow({
         initials: 'SP',
         status: 'Opened Project',
         color: 'blue',
-        rows: sessionRows.slice(0, 5),
+        rows: [...generationRows, ...sessionRows.slice(0, 5)],
       },
       {
         id: 'sdd-mvp',
@@ -281,7 +282,7 @@ function ChatsHistoryToolWindow({
               <div className="agent-sessions-list">
                 {project.rows.map((row, rowIndex) => {
                   const expanded = Boolean(expandedRows[row.id]);
-                  const showCost = rowIndex < 4;
+                  const showCost = !row.projectId && rowIndex < 4;
                   return (
                     <React.Fragment key={row.id}>
                     <div
@@ -315,7 +316,7 @@ function ChatsHistoryToolWindow({
                       </span>
                       <span className="agent-sessions-session-agent">
                         <AiChatAgentIcon
-                          icon={selectedId === row.id ? 'claude' : (row.agent || 'claude')}
+                          icon={row.projectId ? row.agent : (selectedId === row.id ? 'claude' : (row.agent || 'claude'))}
                           title={row.title}
                         />
                       </span>

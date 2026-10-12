@@ -1,5 +1,5 @@
 import { useAirCommit, useAirCommitPreferences } from './useAirCommit.js';
-import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitGenerationError } from './AirCommitSettings.jsx';
+import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitGenerationBanner } from './AirCommitSettings.jsx';
 import { AGENTS, generateDemoMessage } from './airCommitState.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -1134,6 +1134,8 @@ function CommitToolWindow({
   onReviewContextChange = null,
   onOpenAirSettings = null,
   onContinueInChat = null,
+  onGenerationStart = null,
+  onGenerationFinish = null,
   scopeRequest = null,
   repositoryContext = null,
 }) {
@@ -1144,7 +1146,6 @@ function CommitToolWindow({
   const [optionsAnchor, setOptionsAnchor] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const gearRef = useRef(null);
-  const generationRef = useRef(null);
   const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
     advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
     cleanup: 'Project Default', tests: 'All Tests' });
@@ -1187,7 +1188,8 @@ function CommitToolWindow({
     ].filter((group) => group.children.length > 0);
   }, [commitFiles, scopeRequest]);
   const air = useAirCommit({ files: commitFiles, checkedIds,
-    branch: repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME, scopeId: scopeRequest?.id });
+    branch: repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME, scopeId: scopeRequest?.id,
+    onGenerationStart, onGenerationFinish });
   const { message, editMessage: setMessage } = air;
   const lastScope = useRef(null);
   function commit() {
@@ -1359,7 +1361,7 @@ function CommitToolWindow({
 
         <div className="commit-bottom-panel">
           <div className="commit-amend-toolbar">
-            <div className="commit-amend-left" ref={generationRef}>
+            <div className="commit-amend-left">
               <label className="commit-amend-label">
                 <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
                 <span>Amend</span>
@@ -1402,10 +1404,13 @@ function CommitToolWindow({
               </div>}
             </div>
           </div>
-          {!air.job && !air.error && (air.status || !air.checkedFiles.length) &&
+          {!air.job && !air.issue && (air.status || !air.checkedFiles.length) &&
             <div className="ij2499-status" role="status" aria-live="polite">
               {air.status || 'Select files to generate a commit message.'}
             </div>}
+          {!air.job && air.issue && <div className="ij2499-generation-banner-slot">
+            <CommitGenerationBanner issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />
+          </div>}
           <div className="commit-actions">
             <div className="commit-buttons">
               <Button
@@ -1423,8 +1428,6 @@ function CommitToolWindow({
 
         </div>
       </div>
-      {!air.job && air.error && <CommitGenerationError anchor={generationRef} error={air.error} retry={air.retry} close={() => air.cancel()}
-        onContinue={() => onContinueInChat?.({ ...air.error.request, draft: message, error: air.error.description })} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
         openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}
@@ -23373,6 +23376,7 @@ export default function App() {
   const suppressDoneCommentsChangeTimerRef = useRef(null);
   const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
   // Read-only mirror, for callbacks that run from timers and must see current titles.
+  const commitGenerationCancelByChatIdRef = useRef({});
   const aiChatDraftSessionsByIdRef = useRef(aiChatDraftSessionsById);
   aiChatDraftSessionsByIdRef.current = aiChatDraftSessionsById;
   const showNewContextOptionsIndicator =
@@ -23522,8 +23526,9 @@ export default function App() {
       title: item.title || 'New Chat',
       agent: item.icon === 'codex' || item.icon === 'junie' ? item.icon : 'claude',
       time: item.time || 'now',
+      projectId: aiChatDraftSessionsById[item.id]?.commitGenerationContext ? 'spring-petclinic' : undefined,
     })),
-    [aiChatDraftListItems],
+    [aiChatDraftListItems, aiChatDraftSessionsById],
   );
   const selectionChatTargets = useMemo(() => {
     const seen = new Set();
@@ -35523,6 +35528,8 @@ export default function App() {
   // review result. File-level progress states are intentionally not exposed.
   const handleAiChatTabStop = useCallback((chatId) => {
     if (!chatId) return;
+    const cancelCommitGeneration = commitGenerationCancelByChatIdRef.current[chatId];
+    if (cancelCommitGeneration) { cancelCommitGeneration(); return; }
     const runSnapshot = agentRunByChatId[chatId] ?? {};
     const stoppedReview = runSnapshot.kind === 'review';
     const stoppedFiles = Array.isArray(runSnapshot.files) ? runSnapshot.files : [];
@@ -35867,7 +35874,7 @@ export default function App() {
     });
   }, [getAiChatScenarioById, openCommitToolWindow]);
 
-  const continueCommitGenerationInChat = useCallback((request) => {
+  const startCommitGenerationChat = useCallback((request, cancelGeneration) => {
     const scopeRequests = buildCommitReviewScopeRequests();
     const attachments = request.files.map((file) => ({
       id: `commit-generation-${request.id}-${file.id}`,
@@ -35877,26 +35884,59 @@ export default function App() {
       sourcePath: `${file.path}/${file.label}`,
       diffRequest: scopeRequests.find(item => item.source.tabId === `commit-review-scope-${file.id}`),
     }));
-    setReviewSplitChatId(null);
-    setReviewSplitFileTabIds([]);
-    createEmptyAiChatSession({
-      title: 'Commit message generation',
+    const contextLabel = request.files.length === 1 ? request.files[0].label
+      : (request.files.every(file => file.groupId === request.files[0].groupId)
+          ? (request.files[0].groupLabel || `${request.files.length} selected files`) : `${request.files.length} selected files`);
+    const session = createEmptyAiChatSession({
+      title: `Generate commit message · ${contextLabel}`,
       icon: request.settings.agent,
       initialModel: request.settings.model,
       initialEffort: 'Medium',
       emptyState: false,
       userPrompt: 'Generate a commit message from the selected changes.',
       assistantHeading: AGENTS.find((agent) => agent.value === request.settings.agent)?.label ?? 'Agent',
-      assistantParagraphs: [
-        `Commit message generation failed. The request using ${request.settings.model} timed out before a result was returned.`,
-        'The draft in the Commit tool window was left unchanged. The selected diffs and generation settings have been carried into this chat.',
-        'You can continue here: ask me to try again or add instructions for the commit message. I’ll use the attached changes and your generation settings.',
-      ],
       attachments,
       showAttachmentsInComposer: false,
       commitGenerationContext: request,
+      select: false,
     });
-  }, [createEmptyAiChatSession]);
+    commitGenerationCancelByChatIdRef.current[session.id] = cancelGeneration;
+    openChatInEditorTab(session.id, { title: session.title, icon: session.icon, activate: false });
+    setAgentRunByChatId(prev => ({ ...prev, [session.id]: { kind: 'commit-generation', status: 'processing' } }));
+    return session.id;
+  }, [createEmptyAiChatSession, openChatInEditorTab]);
+
+  const finishCommitGenerationChat = useCallback((request, result) => {
+    if (!request.chatId) return;
+    delete commitGenerationCancelByChatIdRef.current[request.chatId];
+    const paragraphs = result.kind === 'success' ? [result.message]
+      : result.kind === 'info' ? [
+          result.description,
+          'Reply to approve access or paste the diff, then ask me to continue. The selected files and generation settings are already attached to this request.',
+        ]
+      : result.kind === 'cancelled' ? [result.description, 'Your draft in Commit was left unchanged. You can continue with the attached changes here.']
+      : [
+          result.code === 'stopped' ? 'Commit message generation was stopped before a result was returned.'
+            : `Commit message generation failed. The request using ${request.settings.model} timed out before a result was returned.`,
+          'The draft in the Commit tool window was left unchanged. The selected diffs and generation settings are already in this chat.',
+          'You can continue here: ask me to try again or add instructions for the commit message.',
+        ];
+    setAiChatDraftSessionsById(prev => prev[request.chatId] ? { ...prev, [request.chatId]: {
+      ...prev[request.chatId], assistantParagraphs: paragraphs,
+      commitGenerationContext: { ...request, resultKind: result.kind },
+    } } : prev);
+    setAgentRunByChatId(prev => ({ ...prev, [request.chatId]: {
+      ...prev[request.chatId], status: result.kind === 'error' ? 'failed' : 'done',
+    } }));
+  }, []);
+
+  const continueCommitGenerationInChat = useCallback((request) => {
+    if (!request.chatId) return;
+    setReviewSplitChatId(null);
+    setReviewSplitFileTabIds([]);
+    setSelectedAiChatId(request.chatId);
+    openChatInEditorTab(request.chatId);
+  }, [openChatInEditorTab]);
 
   const openCommitFileReview = useCallback((file = null) => {
     if (!file?.id) return null;
@@ -37655,7 +37695,7 @@ export default function App() {
         defaultOpenToolWindows={ideDefaultOpenToolWindows}
 
         leftPanelContent={(id, ctx) => {
-          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} onOpenAirSettings={openCommitGenerationSettings} onContinueInChat={continueCommitGenerationInChat} />;
+          if (id === 'commit') return <CommitToolWindow ctx={ctx} scopeRequest={commitScopeRequest} repositoryContext={commitWorkspaceContext} onOpenFile={openCommitFileReview} onReviewContextChange={setCommitReviewContext} onOpenAirSettings={openCommitGenerationSettings} onContinueInChat={continueCommitGenerationInChat} onGenerationStart={startCommitGenerationChat} onGenerationFinish={finishCommitGenerationChat} />;
           if (id === 'agent-tasks') return <AgentTasksPanel ctx={ctx} tasks={agentTaskPanelTasks} selected={activeAgentTaskPanelSelectionId} onAdd={openNewAgentTask} onTaskSelect={handleAgentTaskSelect} dismissedSuccessTaskIds={dismissedAgentTaskSuccessIds} onDismissSuccess={(taskId) => setDismissedAgentTaskSuccessIds((prev) => prev.includes(taskId) ? prev : [...prev, taskId])} planTreesByTaskId={agentTaskPlanTreesByTaskId} onPlanTreeNodeSelect={handleAgentTaskPlanTreeNodeSelect} focusedNodeId={agentTasksFocusedNodeId} />;
           if (id === 'chat-history') return <ChatsHistoryToolWindow ctx={ctx} activeChatId={activeAiChatTabChatId} activeProjectId={activeWorkspaceProjectId} chatRows={aiChatHistoryRows} onOpenChatInTab={openChatInEditorTab} onOpenNewSession={() => createEmptyAiChatSession()} onProjectSelect={handleAgentSessionsProjectSelect} onOpenChangesList={openHistoryChangesListInReviewScope} onOpenUnassignedChanges={openHistoryUnassignedChangesInReviewScope} unassignedChangesFiles={UNASSIGNED_HISTORY_CHANGE_FILES} onOpenCommit={openCommitToolWindow} onOpenFile={openHistoryChangedFileInReviewScope} onOpenFileInNewTab={openHistoryChangedFileInNewTab} onJumpToFileSource={jumpHistoryFileToSource} onAddFileToAgentContext={addHistoryFileToAgentContext} vetSchedulesLineCount={VET_SCHEDULES_SERIALIZED_LINE_COUNT} onSettings={() => setIsSettingsDialogOpen(true)} />;
           return defaultLeftPanelContent(id, ctx);
