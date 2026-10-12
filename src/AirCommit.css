@@ -92,7 +92,8 @@
 .ij2499-gear { display: inline-flex; }
 .ij2499-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header { height: 36px; min-height: 36px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--layer-0-border); color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }
+/* Match the first tab icon center and the editor tabs More slot. */
+.aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header { height: 36px; min-height: 36px; padding: 0 4px 0 14px; border-bottom: 1px solid var(--layer-0-border); color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }
 .aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .aiux543-chat-project-branch { max-width: none; color: var(--text-muted); }
 .aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .aiux543-chat-project-context-item > .icon { color: var(--text-muted); }
 .aiux543-chat-project-changes-toolbar.ij2499-chat-branch-header .toolbar-button-text { color: var(--text-muted); font-size: 14px; font-weight: 400; line-height: 20px; }

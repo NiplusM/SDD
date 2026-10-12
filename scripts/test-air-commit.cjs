@@ -15,6 +15,22 @@ async function checkBrowserLayout() {
   const browser = await chromium.launch({ headless: true });
   const outputDir = path.join(root, 'test-results', 'air-commit');
   fs.mkdirSync(outputDir, { recursive: true });
+  const checkChatHeaderAlignment = async page => {
+    const centers = await page.evaluate(() => {
+      const center = selector => {
+        const bounds = document.querySelector(selector).getBoundingClientRect();
+        return bounds.x + bounds.width / 2;
+      };
+      return {
+        agent: center('.main-window-editor-tabs .tab-wrapper:first-child .tab-icon'),
+        branch: center('.ij2499-chat-branch-header .aiux543-chat-project-context-item > .icon'),
+        tabsMore: center('.main-window-editor-tabs .editor-tabs-more-button > .icon'),
+        branchMore: center('.ij2499-chat-branch-header .toolbar-icon-button > .icon'),
+      };
+    });
+    assert.ok(Math.abs(centers.branch - centers.agent) <= 0.5, 'branch icon is directly below the first tab agent icon');
+    assert.ok(Math.abs(centers.branchMore - centers.tabsMore) <= 0.5, 'Branch actions ellipsis is directly below the editor tabs More ellipsis');
+  };
   try {
     if (!process.argv.includes('--handoff-only')) {
     for (const viewport of [{ width: 1656, height: 1032 }, { width: 1386, height: 875 }, { width: 1000, height: 700 }]) {
@@ -125,6 +141,7 @@ async function checkBrowserLayout() {
       await page.locator('.main-window-editor-tabs').getByText('Refactor VisitController.java time slots', { exact: true }).click();
       const header = page.locator('.ij2499-chat-branch-header');
       await header.waitFor();
+      await checkChatHeaderAlignment(page);
       assert.match(await header.locator('.aiux543-chat-project-branch').innerText(), /code-notes-v3-release/);
       assert.equal(await header.locator('.aiux543-chat-project-name, .aiux543-chat-project-icon, .aiux543-chat-header-all-changes-counts').count(), 0);
       assert.ok(await header.getByRole('button', { name: 'Open Branch Changes', exact: true }).isVisible());
@@ -330,6 +347,7 @@ async function checkBrowserLayout() {
       assert.match(await chat.innerText(), /GPT-5 mini/);
       const composer = chat.locator('.aiux543-chat-input');
       await composer.waitFor();
+      await checkChatHeaderAlignment(page);
       assert.equal(await composer.inputValue(), '', 'handoff composer stays empty');
       assert.equal(await page.locator('.commit-file-node input:checked').count(), 1);
       await page.screenshot({ path: path.join(outputDir, `continue-in-chat-${width}.png`) });
@@ -371,6 +389,7 @@ async function checkBrowserLayout() {
       const chat = page.locator('.ij2499-commit-chat');
       const composer = chat.locator('.aiux543-chat-input');
       await composer.waitFor();
+      await checkChatHeaderAlignment(page);
       const initialMessage = chat.locator('.ai-chat-user-card').first();
       assert.equal(await chat.locator('.ai-chat-user-card').count(), 1);
       assert.match(await initialMessage.innerText(), /Generate a commit message from the selected changes\./);
@@ -401,6 +420,7 @@ async function checkBrowserLayout() {
         await page.locator('.ai-review-editor-split-pane.is-review .tab-close').first().click();
         await page.locator('.main-window-editor-tabs').getByText('Commit message generation', { exact: true }).click();
         await composer.waitFor();
+        await checkChatHeaderAlignment(page);
         assert.equal(await composer.inputValue(), '', 'handoff composer stays empty');
         assert.equal(await initialMessage.locator('.ai-chat-sent-attachment-chip').count(), 4, 'opening a diff preserves all four sent attachments');
       }
