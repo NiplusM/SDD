@@ -195,7 +195,7 @@
 .ij2499-chat-request-choice.button { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px; width: 100%; min-height: 44px; height: auto; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: left; color: var(--text-default); font-size: 14px; font-weight: 400; line-height: 20px; }
 .ij2499-chat-request-choice.button.is-selected { border-color: var(--control-focus-border-brand); background: color-mix(in srgb, var(--control-focus-border-brand) 12%, var(--editor-bg)); }
 /* The selected row border is the focus indicator; avoid a second button outline. */
-.ij2499-chat-request-choice.button:focus-visible { outline: none; }
+.ij2499-chat-request .ij2499-chat-request-choice.button::after { content: none; }
 .ij2499-chat-request-choice-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .ij2499-chat-request-number { width: 14px; flex-shrink: 0; color: var(--text-muted); }
 .is-selected > .ij2499-chat-request-number { color: var(--text-link); }

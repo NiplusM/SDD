@@ -171,8 +171,8 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await request.press('ArrowDown');
     assert.equal(await request.getByRole('radio').nth(1).getAttribute('aria-checked'), 'true');
     await request.press('ArrowUp');
-    const focusStyle = await request.getByRole('radio').first().evaluate(element => ({ border: getComputedStyle(element).borderTopWidth, outline: getComputedStyle(element).outlineStyle }));
-    assert.equal(focusStyle.border, '1px'); assert.equal(focusStyle.outline, 'none', 'selected row has one reference border without a doubled focus outline');
+    const focusStyle = await request.getByRole('radio').first().evaluate(element => ({ border: getComputedStyle(element).borderTopWidth, outline: getComputedStyle(element).outlineStyle, focusLayer: getComputedStyle(element, '::after').content }));
+    assert.equal(focusStyle.border, '1px'); assert.equal(focusStyle.outline, 'none'); assert.equal(focusStyle.focusLayer, 'none', 'selected border is the only focus layer; the kit pseudo-element is suppressed');
     await page.screenshot({ path: path.join(outputDir, `confirmation-request-chat-${width}.png`) });
     await request.getByRole('button', { name: 'Confirm ↵', exact: true }).click();
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
