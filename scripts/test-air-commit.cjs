@@ -70,6 +70,18 @@ async function checkBrowserLayout() {
       const labelStyle = await scopeLabel.evaluate(element => ({ fontSize: getComputedStyle(element).fontSize, weight: getComputedStyle(element).fontWeight }));
       assert.equal(labelStyle.fontSize, '14px');
       assert.equal(labelStyle.weight, '400');
+      const scopeSpacing = await scopeLabel.evaluate(element => {
+        const divider = element.previousElementSibling;
+        const session = divider.previousElementSibling;
+        const labelRange = document.createRange(); labelRange.selectNodeContents(element);
+        const sessionRange = document.createRange(); sessionRange.selectNodeContents(session.querySelector('.toolbar-button-text'));
+        const dividerBounds = divider.getBoundingClientRect();
+        return { before: dividerBounds.left - sessionRange.getBoundingClientRect().right,
+          after: labelRange.getBoundingClientRect().left - dividerBounds.right,
+          height: element.getBoundingClientRect().height };
+      });
+      assert.equal(scopeSpacing.after, scopeSpacing.before, 'scope and session text have equal insets around the separator');
+      assert.equal(scopeSpacing.height, 26, 'fixed scope label aligns with the toolbar row');
       assert.equal(await scopeLabel.locator('.dropdown, .dropdown-chevron, button').count(), 0, 'Commit diff has one fixed branch scope without a menu or chevron');
       await scopeLabel.click();
       assert.equal(await diffHeader.locator('.ij2499-diff-scope .dropdown-menu').count(), 0);
