@@ -32531,7 +32531,7 @@ export default function App() {
     // Shown once per session, and only for the first comment submitted in a diff:
     // document and plain-file comments never trigger it.
     const maybeShowCommentShortcutHint = () => {
-      if (hasShownCommentShortcutHint || metadata?.isEditing || typeof metadata?.rowId !== 'string' || metadata.rowId.length === 0) {
+      if (prototypeEntryPoint === 'commit' || hasShownCommentShortcutHint || metadata?.isEditing || typeof metadata?.rowId !== 'string' || metadata.rowId.length === 0) {
         return;
       }
       // isPlainFileOverlayTab is mutually exclusive with isDiffTab, so this also
@@ -32987,6 +32987,7 @@ export default function App() {
       activePlanDiffTarget,
       activePlanDiffCommentsReadOnly,
       hasShownCommentShortcutHint,
+      prototypeEntryPoint,
       activeEditorTabId,
       activeSourceEditorTabId,
 	    activeRelatedDiffCommentIssues,

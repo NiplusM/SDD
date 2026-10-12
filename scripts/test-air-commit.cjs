@@ -55,6 +55,7 @@ async function checkCommentToolbar() {
       await page.locator('[data-demo-id="diff-comment-cancel"]').click();
       await saveNote(page, 8, 'Keep the logging message useful.');
       const bar = page.locator('.ij2499-comment-toolbar');
+      assert.equal(await page.locator('.plan-diff-comment-shortcut-hint').count(), 0, 'saved notes do not show shortcut onboarding');
       assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '1 of 1 comment');
       assert.ok(await bar.getByRole('button', { name: 'Previous Comment', exact: true }).isDisabled());
       assert.ok(await bar.getByRole('button', { name: 'Next Comment', exact: true }).isDisabled());
