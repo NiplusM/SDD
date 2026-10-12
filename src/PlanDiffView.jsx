@@ -8,6 +8,7 @@ import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCoun
 import openAiIconUrl from './assets/openAI.svg';
 
 const PLAN_DIFF_DEFAULT_CARET_LEFT = 12;
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 export const REVIEW_FINDING_STATUS_IDS = ['open', 'accepted', 'dismissed', 'deleted', 'pending-update'];
 const REVIEW_FINDING_STATUS_LABELS = {
   open: 'Open',
@@ -639,6 +640,39 @@ function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onN
         disabled={currentIndex >= commentRowIds.length - 1}
         onClick={() => goTo(currentIndex + 1)}
       />
+    </div>
+  );
+}
+
+// Reuses the archived V3 comment-only bottom toolbar and its kit controls.
+export function PlanDiffFloatingCommentToolbar({
+  commentCount = 0,
+  sendCommentsDisabled = false,
+  onSendComments = null,
+  commentRowIds = [],
+  activeCommentRowId = null,
+  onNavigateComment = null,
+}) {
+  if (commentCount === 0 || !onSendComments) return null;
+  return (
+    <div className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
+      <PlanDiffCommentNavControl
+        commentRowIds={commentRowIds}
+        activeRowId={activeCommentRowId}
+        onNavigate={onNavigateComment}
+      />
+      <Button
+        type="primary"
+        size="slim"
+        className="plan-diff-send-comments-button"
+        disabled={sendCommentsDisabled}
+        aria-label={sendCommentsDisabled
+          ? 'Comments are being processed by the agent.'
+          : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
+        onClick={() => onSendComments(commentCount)}
+      >
+        Send Comments
+      </Button>
     </div>
   );
 }
@@ -4728,8 +4762,6 @@ export function PlanDiffOverlay({
     onUiStateChangeRef.current = onUiStateChange;
   }, [onUiStateChange]);
 
-  const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
-
   const updateShortcutHintPosition = useCallback(() => {
     if (!commentShortcutHintRowId || typeof window === 'undefined' || typeof document === 'undefined') {
       setShortcutHintPosition(null);
@@ -4778,7 +4810,7 @@ export function PlanDiffOverlay({
         placement,
       };
     });
-  }, [clamp, commentShortcutHintRowId]);
+  }, [commentShortcutHintRowId]);
 
   useLayoutEffect(() => {
     updateShortcutHintPosition();
@@ -7549,6 +7581,7 @@ export function PlanDiffEditorArea({
   // Keep Diff and Source focused on file navigation and content. Session
   // identity and actions live in the owning chat/commit surfaces instead.
   showSessionToolbar = false,
+  showFloatingCommentToolbar = false,
   commentContextLabel = '',
   commentContextIcon = 'claude',
   commentContextSessionLabel = '',
@@ -8040,6 +8073,16 @@ export function PlanDiffEditorArea({
 	          pendingCommentRowIds={pendingCommentRowIds}
 	          commentShortcutHintRowId={commentShortcutHintRowId}
 	        />
+          {showFloatingCommentToolbar && !isArchivedSnapshot && !commentsReadOnly && (
+            <PlanDiffFloatingCommentToolbar
+              commentCount={commentCount}
+              sendCommentsDisabled={sendCommentsDisabled}
+              onSendComments={onSendComments}
+              commentRowIds={commentRowIds}
+              activeCommentRowId={activeCommentRowId}
+              onNavigateComment={onNavigateComment}
+            />
+          )}
           </div>
         </div>,
         overlayHost

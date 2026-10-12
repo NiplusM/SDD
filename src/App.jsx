@@ -7,6 +7,7 @@ import { WelcomeProjectsPanel, WelcomeGradientArea } from './WelcomeScreen.jsx';
 import {
   PlanDiffEditorArea,
   PlanDiffEditorToolbar,
+  PlanDiffFloatingCommentToolbar,
   PlanDiffOverlay,
   PlanDiffCommentCodeSnippet,
   tokenizeCodeFragment,
@@ -19268,6 +19269,7 @@ function AiReviewSplitFileView({
   severityFilter = 'all',
   activeChatId = '',
   activeChatTitle = 'AI Review',
+  showFloatingCommentToolbar = false,
   commentCount = 0,
   sendCommentsDisabled = false,
   onSendComments = null,
@@ -19497,6 +19499,19 @@ function AiReviewSplitFileView({
     };
   });
 
+  const navigateScopeComment = (targetKey) => {
+    const target = scopeCommentTargets.find((candidate) => candidate.key === targetKey);
+    if (!target) return;
+    setFileCommentUiState((prev) => ({
+      ...(prev ?? {}),
+      scopeTabId: target.tabId,
+      scopeCommentKey: target.key,
+      activeRowId: target.rowId,
+      caretState: { ...(prev?.caretState ?? {}), rowId: target.rowId },
+    }));
+    if (target.tabId !== file.tabId) onNavigateFile?.(target.tabId);
+  };
+
   return (
     <div className="aiux-review-split-file-view">
       <PlanDiffEditorToolbar
@@ -19521,18 +19536,7 @@ function AiReviewSplitFileView({
         onSendComments={onSendComments}
         commentRowIds={scopeCommentTargets.map((target) => target.key)}
         activeCommentRowId={activeScopeCommentTarget?.key ?? null}
-        onNavigateComment={(targetKey) => {
-          const target = scopeCommentTargets.find((candidate) => candidate.key === targetKey);
-          if (!target) return;
-          setFileCommentUiState((prev) => ({
-            ...(prev ?? {}),
-            scopeTabId: target.tabId,
-            scopeCommentKey: target.key,
-            activeRowId: target.rowId,
-            caretState: { ...(prev?.caretState ?? {}), rowId: target.rowId },
-          }));
-          if (target.tabId !== file.tabId) onNavigateFile?.(target.tabId);
-        }}
+        onNavigateComment={navigateScopeComment}
         // Side-scenario 3: the source is the file the diff was built from, so
         // it is resolved by name, and the caret lands on the difference being
         // read rather than at the top of the file.
@@ -19688,6 +19692,16 @@ function AiReviewSplitFileView({
           uiState={fileCommentUiState}
           onUiStateChange={setFileCommentUiState}
         />
+        )}
+        {showFloatingCommentToolbar && !readOnly && !file.commentsReadOnly && !file.isArchivedSnapshot && (
+          <PlanDiffFloatingCommentToolbar
+            commentCount={scopeCommentTargets.length}
+            sendCommentsDisabled={sendCommentsDisabled}
+            onSendComments={onSendComments}
+            commentRowIds={scopeCommentTargets.map((target) => target.key)}
+            activeCommentRowId={activeScopeCommentTarget?.key ?? null}
+            onNavigateComment={navigateScopeComment}
+          />
         )}
       </div>
     </div>
@@ -31831,6 +31845,8 @@ export default function App() {
   );
   const activeDiffOriginChatId = activePlanDiffContextChatId
     ?? ((isPlainFileOverlayTab || isCommitOriginDiffWithoutSession) ? null : planDiffContextChatId);
+  const activeDiffSendCommentsChatId = activeDiffOriginChatId
+    ?? (activeTabContent?.diffOpenedFromCommitToolWindow ? activePlanDiffCommentChatId : null);
   const hasActivePlainFileCommentSession = !isPlainFileOverlayTab || Boolean(activePlanDiffContextChatId);
   const commitCommentTargetScenario = commitCommentTargetChatId
     ? getAiChatScenarioById(commitCommentTargetChatId)
@@ -36114,6 +36130,7 @@ export default function App() {
     if (selectedAiChatId !== targetChatId) return;
     const withComments = aiChatComposerDiffAttachments.filter((attachment) => (
       Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
+      && (!aiChatAutoSendRequest.diffTabId || attachment.diffTabId === aiChatAutoSendRequest.diffTabId)
     ));
     // Scoped ("Send AI Note to Agent" / reply / quick-fix): send only the one
     // submitted comment. Unscoped ("Send All"): send every attached note.
@@ -36138,7 +36155,7 @@ export default function App() {
     }
     if (noteAttachments.length === 0) return;
     handledAutoSendNonceRef.current = aiChatAutoSendRequest.nonce;
-    handleAiChatTabSend(targetChatId, '', noteAttachments);
+    handleAiChatTabSend(targetChatId, aiChatAutoSendRequest.message ?? '', noteAttachments);
     setAiChatAutoSendRequest(null);
   }, [aiChatAutoSendRequest, aiChatComposerDiffAttachments, selectedAiChatId, handleAiChatTabSend]);
 
@@ -37079,6 +37096,7 @@ export default function App() {
                       severityFilter={reviewSeverityFilter}
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
+                      showFloatingCommentToolbar={prototypeEntryPoint === 'commit'}
                       commentCount={visibleReviewSplitNoteCount}
                       sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
                       onSendComments={(count) => {
@@ -37430,6 +37448,7 @@ export default function App() {
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
+                    showFloatingCommentToolbar={prototypeEntryPoint === 'commit'}
                     contextSelections={activeEditorQuoteSelections}
                     composerAttachments={aiChatComposerDiffAttachments}
                     viewerData={activePlanDiffViewerData}
@@ -37439,7 +37458,7 @@ export default function App() {
                     documentContextIcon="fileTypes/markdown"
                     documentContextSessionLabel={activePlanDiffDocumentContextSessionLabel}
                     documentContextSourceTabId={activePlanDiffDocumentSourceTabId}
-                    defaultSubmitAttachMode={requiresExplicitDiffCommentSession
+                    defaultSubmitAttachMode={prototypeEntryPoint === 'commit' || requiresExplicitDiffCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
                     lockSubmitTarget={prototypeEntryPoint === 'chat' || Boolean(
@@ -37479,20 +37498,39 @@ export default function App() {
                           activeDiffOriginChatId,
                         ) : null)}
                     commentCount={activeDiffSendableCommentCount}
-                    sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffOriginChatId]?.status)}
-                    onSendComments={activeDiffOriginChatId ? (count) => {
-                      handleAiChatTabSend(
-                        activeDiffOriginChatId,
-                        buildSendCommentsMessage(count),
-                        getSendableCommentAttachments(aiChatComposerDiffAttachments),
-                      );
-                      if (activeDiffOriginSourceTabId) {
-                        openChangedFileInReviewScope(
-                          { source: { tabId: activeDiffOriginSourceTabId } },
-                          activeDiffOriginChatId,
-                        );
+                    sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffSendCommentsChatId]?.status)}
+                    onSendComments={activeDiffSendCommentsChatId ? (count) => {
+                      if (prototypeEntryPoint === 'commit') {
+                        setAiChatComposerDiffTabByChatId((prev) => ({ ...prev, [activeDiffSendCommentsChatId]: activeTabId }));
+                        setSelectedAiChatId(activeDiffSendCommentsChatId);
+                        setAiChatAutoSendRequest({
+                          chatId: activeDiffSendCommentsChatId,
+                          nonce: Date.now(),
+                          diffTabId: activeTabId,
+                          message: buildSendCommentsMessage(count),
+                        });
+                        if (activeTabContent?.diffOpenedFromCommitToolWindow) {
+                          setReviewSplitChatId(activeDiffSendCommentsChatId);
+                          setReviewSplitFileTabIds([activeTabId]);
+                          setReviewSplitActiveTabId(activeTabId);
+                          setReviewSplitChangeScopeOptions([]);
+                        } else {
+                          openChatInEditorTab(activeDiffSendCommentsChatId);
+                        }
                       } else {
-                        openChatInEditorTab(activeDiffOriginChatId);
+                        handleAiChatTabSend(
+                          activeDiffSendCommentsChatId,
+                          buildSendCommentsMessage(count),
+                          getSendableCommentAttachments(aiChatComposerDiffAttachments),
+                        );
+                        if (activeDiffOriginSourceTabId) {
+                          openChangedFileInReviewScope(
+                            { source: { tabId: activeDiffOriginSourceTabId } },
+                            activeDiffSendCommentsChatId,
+                          );
+                        } else {
+                          openChatInEditorTab(activeDiffSendCommentsChatId);
+                        }
                       }
                     } : null}
                     commentContextIcon={commitCommentTargetListItem?.icon ?? commitCommentTargetScenario?.icon ?? planDiffContextChatIcon}

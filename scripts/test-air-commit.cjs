@@ -9,6 +9,104 @@ const root = path.resolve(__dirname, '..');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Browser mode checks geometry that JSDOM cannot compute. Run against the built
 // preview with: node scripts/test-air-commit.cjs --browser http://127.0.0.1:5189
+async function checkCommentToolbar() {
+  const { chromium } = require('playwright');
+  const previewUrl = process.argv[process.argv.indexOf('--browser') + 1] || 'http://127.0.0.1:5193';
+  const browser = await chromium.launch({ headless: true });
+  const outputDir = path.join(root, 'test-results', 'air-commit');
+  fs.mkdirSync(outputDir, { recursive: true });
+  const checkPlacement = async page => {
+    const geometry = await page.locator('.ij2499-comment-toolbar').evaluate(element => {
+      const bar = element.getBoundingClientRect();
+      const pane = element.parentElement.getBoundingClientRect();
+      return { centerOffset: bar.x + bar.width / 2 - pane.x - pane.width / 2,
+        bottomInset: pane.bottom - bar.bottom, fits: bar.left >= pane.left && bar.right <= pane.right };
+    });
+    assert.ok(Math.abs(geometry.centerOffset) < 0.5, 'comment control is centered within the editor pane');
+    assert.equal(geometry.bottomInset, 6, 'comment control keeps the reference bottom inset');
+    assert.ok(geometry.fits, 'comment control fits within the editor pane');
+  };
+  const saveNote = async (page, index, text) => {
+    const row = page.locator('[data-plan-diff-row-id]').nth(index);
+    await row.hover();
+    await row.locator('.plan-diff-gutter-icon-slot').click();
+    await page.locator('[data-demo-id="diff-comment-input"]').fill(text);
+    const chooser = page.getByRole('button', { name: 'Choose Note attachment target: Choose chat session', exact: true });
+    if (await chooser.count()) {
+      await chooser.click();
+      await page.getByText('Review Visit model fields', { exact: true }).last().click();
+    }
+    await page.locator('[data-demo-id="diff-comment-submit"]').click();
+    await page.locator('.ij2499-comment-toolbar').waitFor();
+    await page.keyboard.press('Escape');
+  };
+  try {
+    for (const width of [1656, 1000]) {
+      const page = await browser.newPage({ viewport: { width, height: 875 } });
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.goto(`${previewUrl}/?entry=commit`);
+      await page.locator('.plan-diff-overlay').waitFor();
+      assert.equal(await page.locator('.ij2499-comment-toolbar').count(), 0, 'no control before a note is saved');
+      await page.locator('[data-plan-diff-row-id]').nth(8).hover();
+      await page.locator('[data-plan-diff-row-id]').nth(8).locator('.plan-diff-gutter-icon-slot').click();
+      await page.locator('[data-demo-id="diff-comment-input"]').fill('An unsaved note');
+      assert.equal(await page.locator('.ij2499-comment-toolbar').count(), 0, 'an unsaved draft does not show the control');
+      await page.locator('[data-demo-id="diff-comment-cancel"]').click();
+      await saveNote(page, 8, 'Keep the logging message useful.');
+      const bar = page.locator('.ij2499-comment-toolbar');
+      assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '1 of 1 comment');
+      assert.ok(await bar.getByRole('button', { name: 'Previous Comment', exact: true }).isDisabled());
+      assert.ok(await bar.getByRole('button', { name: 'Next Comment', exact: true }).isDisabled());
+      await saveNote(page, 14, 'Keep the controller initialization clear.');
+      assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '2 of 2 comments');
+      await bar.getByRole('button', { name: 'Previous Comment', exact: true }).click();
+      assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '1 of 2 comments');
+      await bar.getByRole('button', { name: 'Next Comment', exact: true }).click();
+      assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '2 of 2 comments');
+      await checkPlacement(page);
+      await page.screenshot({ path: path.join(outputDir, `comment-toolbar-${width}.png`) });
+      await bar.locator('.plan-diff-send-comments-button').click();
+      await page.locator('.aiux543-chat-editor-host').waitFor();
+      assert.match(await page.locator('.ai-review-editor-split-pane.is-chat .tab-selected').innerText(), /Review Visit.*model fields/);
+      const sent = page.locator('.ai-chat-user-card').last();
+      assert.match(await sent.innerText(), /I left 2 comments/);
+      assert.match(await sent.innerText(), /Keep the logging message useful/);
+      assert.match(await sent.innerText(), /Keep the controller initialization clear/);
+      assert.equal(await sent.locator('.ai-chat-sent-attachment-chip').count(), 1, 'both saved notes travel in the file attachment');
+      assert.ok(await page.locator('.commit-tool-window').isVisible(), 'sending comments retains Commit');
+      await page.getByRole('button', { name: 'Comments are being processed by the agent.', exact: true }).waitFor();
+      assert.ok(await bar.locator('.plan-diff-send-comments-button').isDisabled(), 'duplicate send is disabled while the agent processes comments');
+      await checkPlacement(page);
+      await page.screenshot({ path: path.join(outputDir, `comment-toolbar-sending-${width}.png`) });
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+    const page = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+    await page.goto(`${previewUrl}/?entry=commit`);
+    await page.getByRole('button', { name: 'Jump to Source (F4)', exact: true }).click();
+    await page.locator('.pce-textarea').evaluate(element => {
+      element.focus(); element.setSelectionRange(0, 11);
+      element.dispatchEvent(new Event('select', { bubbles: true }));
+    });
+    await page.getByRole('button', { name: 'Add Note', exact: true }).click();
+    await page.locator('[data-demo-id="diff-comment-input"]').fill('Keep the controller annotation.');
+    await page.getByRole('button', { name: 'Choose Note attachment target: Choose chat session', exact: true }).click();
+    await page.getByText('Review Visit model fields', { exact: true }).last().click();
+    await page.locator('[data-demo-id="diff-comment-submit"]').click();
+    const bar = page.locator('.ij2499-comment-toolbar');
+    await bar.waitFor();
+    assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '1 of 1 comment');
+    await checkPlacement(page);
+    await page.screenshot({ path: path.join(outputDir, 'comment-toolbar-source.png') });
+    await bar.locator('.plan-diff-send-comments-button').click();
+    await page.locator('.aiux543-chat-editor-host').waitFor();
+    assert.match(await page.locator('.ai-chat-user-card').last().innerText(), /Keep the controller annotation/);
+    await page.close();
+    console.log('PASS: comment-only bottom control; saved-note gating; one/two-note navigation; reference placement at two widths; explicit recipient; real comment attachments; pending duplicate-send prevention; source-file notes.');
+  } finally { await browser.close(); }
+}
+
 async function checkBrowserLayout() {
   const { chromium } = require('playwright');
   const previewUrl = process.argv[process.argv.indexOf('--browser') + 1] || 'http://127.0.0.1:5189';
@@ -446,6 +544,7 @@ async function checkBrowserLayout() {
   } finally { await browser.close(); }
 }
 (async () => {
+  if (process.argv.includes('--comments-only')) { await checkCommentToolbar(); return; }
   if (process.argv.includes('--browser')) { await checkBrowserLayout(); return; }
   const build = await esbuild.build({
     stdin: { contents: `import React from 'react'; import { createRoot } from 'react-dom/client';
