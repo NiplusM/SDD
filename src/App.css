@@ -22425,18 +22425,6 @@ button.aiux543-answer-change-card:focus-visible {
   font-weight: 600;
 }
 
-.commit-success {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 12px 10px;
-  padding: 6px 8px;
-  border: 1px solid #315f43;
-  border-radius: 4px;
-  background: #20372a;
-  color: #8bd5a0;
-  font: 400 11px/16px Inter, system-ui, sans-serif;
-}
 
 .commit-buttons {
   display: inline-flex;

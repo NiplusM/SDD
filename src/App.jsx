@@ -1147,7 +1147,6 @@ function CommitToolWindow({
   const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
     advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
     cleanup: 'Project Default', tests: 'All Tests' });
-  const [commitResult, setCommitResult] = useState(null);
 
   const commitFiles = useMemo(() => {
     const knownFiles = [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES];
@@ -1190,9 +1189,8 @@ function CommitToolWindow({
     branch: repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME, scopeId: scopeRequest?.id });
   const { message, editMessage: setMessage } = air;
   const lastScope = useRef(null);
-  function commit(push = false) {
+  function commit() {
     if (!air.canCommit) return;
-    setCommitResult({ count: air.checkedFiles.length, message: message.trim(), push, amend });
     setCommittedIds(previous => new Set([...previous, ...air.checkedFiles.map(file => file.id)]));
     setCheckedIds(new Set());
     setMessage('');
@@ -1214,7 +1212,6 @@ function CommitToolWindow({
     setCheckedIds(new Set(commitFiles.filter((file) => requestedLabels.has(file.label)).map((file) => file.id)));
     setCollapsedGroups(new Set(['scope-other-changes']));
     setMessage('');
-    setCommitResult(null);
   }, [commitFiles, scopeRequest]);
   const reviewSourceAttachments = useMemo(() => (
     commitFiles
@@ -1417,17 +1414,12 @@ function CommitToolWindow({
               >
                 Commit
               </Button>
-              <Button type="secondary" disabled={!air.canCommit} onClick={() => commit(true)}>Commit and Push</Button>
+              <Button type="secondary" disabled={!air.canCommit} onClick={() => commit()}>Commit and Push</Button>
             </div>
             <span ref={gearRef} className="ij2499-gear"><IconButton icon="general/settings" tooltip="Commit Options" aria-pressed={!!optionsAnchor}
               onClick={() => { const element = gearRef.current.querySelector('button'); setOptionsAnchor(optionsAnchor ? null : { rect: element.getBoundingClientRect(), element }); }} /></span>
           </div>
-          {commitResult && (
-            <div className="commit-success" role="status">
-              <Icon name="general/check" size={16} />
-              <span>{commitResult.count} selected file{commitResult.count === 1 ? '' : 's'} {commitResult.amend ? 'amended' : 'committed'}{commitResult.push ? ' and pushed' : ''} as “{commitResult.message}”. Unselected changes remain uncommitted.</span>
-            </div>
-          )}
+
         </div>
       </div>
       {!air.job && air.error && <CommitGenerationError anchor={generationRef} error={air.error} retry={air.retry} close={() => air.cancel()}

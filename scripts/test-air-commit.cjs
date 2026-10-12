@@ -269,6 +269,17 @@ async function checkBrowserLayout() {
     await defaultError.waitFor();
     assert.equal(await defaultMessage.inputValue(), defaultDraft, 'every repeat generation after a success shows the recoverable error');
     await defaultPage.screenshot({ path: path.join(outputDir, 'default-repeat-generation-error.png') });
+    await defaultError.getByRole('button', { name: 'Retry', exact: true }).click();
+    await defaultPage.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    await defaultGenerate.waitFor();
+    const fileCountBeforeCommit = await defaultPage.locator('.commit-file-node').count();
+    await defaultPage.locator('.commit-buttons').getByRole('button', { name: 'Commit', exact: true }).click();
+    assert.equal(await defaultPage.locator('.commit-file-node').count(), fileCountBeforeCommit - 4, 'Commit removes only the selected files');
+    assert.equal(await defaultPage.locator('.commit-file-node input:checked').count(), 0);
+    assert.equal(await defaultMessage.inputValue(), '');
+    assert.ok(await defaultGenerate.isDisabled());
+    assert.equal(await defaultPage.locator('.commit-success').count(), 0, 'Commit does not insert a custom green status block');
+    await defaultPage.screenshot({ path: path.join(outputDir, 'after-commit-no-success-banner.png') });
     await defaultPage.close();
 
     for (const width of [1656, 1000]) {
@@ -546,7 +557,7 @@ async function checkBrowserLayout() {
   const count = d.querySelectorAll('.commit-file-node').length;
   await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - 1);
   assert.ok(button('Generate Message').disabled); assert.equal(message().value, '');
-  assert.match(d.querySelector('.commit-success').textContent, /1 selected file committed/);
+  assert.ok(!d.querySelector('.commit-success'), 'Commit does not add an inline success banner');
 
   w.history.replaceState(null, '', '?entry=commit&scenario=error'); w.mountCommit('error'); await wait(60);
   await edit(message(), 'Keep on failure'); await click(button('Generate Message')); await wait(3050);
