@@ -188,7 +188,7 @@ async function checkBrowserLayout() {
       const scopeSpacing = await scopeLabel.evaluate(element => {
         const divider = element.previousElementSibling;
         const session = divider.previousElementSibling;
-        const labelRange = document.createRange(); labelRange.selectNodeContents(element);
+        const labelRange = document.createRange(); labelRange.selectNodeContents(element.querySelector('.toolbar-button-text'));
         const sessionRange = document.createRange(); sessionRange.selectNodeContents(session.querySelector('.toolbar-button-text'));
         const dividerBounds = divider.getBoundingClientRect();
         return { before: dividerBounds.left - sessionRange.getBoundingClientRect().right,
@@ -197,8 +197,10 @@ async function checkBrowserLayout() {
       });
       assert.equal(scopeSpacing.after, scopeSpacing.before, 'scope and session text have equal insets around the separator');
       assert.equal(scopeSpacing.height, 26, 'fixed scope label aligns with the toolbar row');
-      assert.equal(await scopeLabel.locator('.dropdown, .dropdown-chevron, button').count(), 0, 'Commit diff has one fixed branch scope without a menu or chevron');
-      await scopeLabel.click();
+      assert.ok(await scopeLabel.isDisabled(), 'the only available branch scope is disabled');
+      assert.equal(await scopeLabel.evaluate(element => getComputedStyle(element).opacity), '0.5', 'fixed scope uses the kit disabled appearance');
+      assert.equal(await scopeLabel.locator('.dropdown, .dropdown-chevron, .toolbar-button-chevron').count(), 0, 'Commit diff has one fixed branch scope without a menu or chevron');
+      await scopeLabel.evaluate(element => element.click());
       assert.equal(await diffHeader.locator('.ij2499-diff-scope .dropdown-menu').count(), 0);
       const surfaces = await diffHeader.evaluate(element => ({ toolbar: getComputedStyle(element.closest('.plan-diff-toolbar-shell')).backgroundColor, editor: getComputedStyle(element.closest('.plan-diff-editor-area')).backgroundColor }));
       assert.equal(surfaces.toolbar, surfaces.editor, 'toolbar underlay matches the editor canvas');

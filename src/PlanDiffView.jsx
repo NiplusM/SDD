@@ -1250,7 +1250,7 @@ function CommitDiffScopeDropdown({ value, options, onChange }) {
     };
   }, [positionMenu]);
   if (options.length === 1) {
-    return <span className="ij2499-diff-scope text-ui-default">{options[0].label}</span>;
+    return <ToolbarButton className="ij2499-diff-scope is-fixed" text={options[0].label} disabled />;
   }
   return (
     <span ref={ref} className="ij2499-diff-scope" onClick={positionMenu} onKeyDown={event => { positionMenu(); if (event.key === 'Escape') event.stopPropagation(); }}>
