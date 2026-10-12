@@ -109,6 +109,23 @@ async function checkCommentToolbar() {
 }
 
 async function checkGenerationChats(browser, outputDir, previewUrl) {
+  const checkBanner = async (page, banner) => {
+    const geometry = await banner.evaluate(element => {
+      const panel = document.querySelector('.commit-tool-window').getBoundingClientRect();
+      const field = document.querySelector('.commit-message-textarea').getBoundingClientRect();
+      const action = document.querySelector('.commit-amend-left').getBoundingClientRect();
+      const bounds = element.getBoundingClientRect();
+      const probe = document.createElement('span'); probe.style.background = 'var(--layer-1-bg)'; element.append(probe);
+      const neutral = getComputedStyle(probe).backgroundColor; probe.remove();
+      return { left: bounds.left - panel.left, right: panel.right - bounds.right,
+        fieldLeft: bounds.left - field.left, fieldRight: bounds.right - field.right,
+        gap: action.top - bounds.bottom, neutral, background: getComputedStyle(element).backgroundColor };
+    });
+    assert.ok(Math.abs(geometry.left - geometry.right) < 0.5, 'banner has symmetric left/right insets');
+    assert.ok(Math.abs(geometry.fieldLeft) < 0.5 && Math.abs(geometry.fieldRight) < 0.5, 'banner aligns with both message field edges');
+    assert.equal(geometry.gap, 8, 'banner is 8 px above the generation action');
+    assert.equal(geometry.background, geometry.neutral, 'both banner types use the neutral kit surface');
+  };
   for (const width of [1656, 1000]) {
     const page = await browser.newPage({ viewport: { width, height: 875 } });
     const errors = [];
@@ -124,112 +141,115 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     const options = page.locator('.ij2499-options');
     assert.match(await options.locator('[data-testid="popup-agent"]').innerText(), /Codex/);
     assert.match(await options.locator('[data-testid="popup-model"]').innerText(), /GPT-5 mini/);
-    assert.equal(await options.locator('[data-testid="popup-agent"] button, [data-testid="popup-model"] button, .ij2499-configuration-value .toolbar-button-chevron').count(), 0);
-    await options.locator('[data-testid="popup-model"]').scrollIntoViewIfNeeded();
-    await options.screenshot({ path: path.join(outputDir, `options-read-only-${width}.png`) });
+    assert.equal(await options.locator('[data-testid="popup-agent"] button, [data-testid="popup-model"] button').count(), 0);
     await page.keyboard.press('Escape');
     await message.fill('Keep this draft.');
+    const originalBounds = await message.boundingBox();
     await generate.click();
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
-    assert.equal(await tabs.count(), 1, 'Generate creates a discoverable chat before completion');
-    assert.match(await page.locator('.main-window-editor-tabs .tab-selected').innerText(), /Diff VisitController/);
-    await generate.waitFor();
+    assert.equal(await tabs.count(), 1, 'the first request immediately creates its chat');
+    assert.equal(await message.getAttribute('aria-busy'), 'true');
+    const info = page.locator('.ij2499-generation-banner.banner-info');
+    await info.waitFor();
+    assert.match(await info.innerText(), /Input needed/);
+    assert.equal(await message.inputValue(), 'Keep this draft.', 'awaiting input does not generate prematurely');
+    assert.ok(await generate.isDisabled(), 'a paused request must be confirmed before starting another');
+    assert.equal((await message.boundingBox()).y, originalBounds.y, 'floating banner does not shift the editor');
+    await checkBanner(page, info);
+    await page.screenshot({ path: path.join(outputDir, `confirmation-info-banner-${width}.png`) });
+    await info.getByRole('button', { name: 'Open chat', exact: true }).click();
+    const chat = page.locator('.ij2499-commit-chat');
+    const request = chat.getByRole('region', { name: 'Commit generation access request', exact: true });
+    await request.waitFor();
+    assert.equal(await tabs.count(), 1);
+    const initialMessage = chat.locator('.ai-chat-user-card').first();
+    assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
+    assert.equal(await initialMessage.getByRole('button', { name: /^Show (all|less)/ }).count(), 0);
+    assert.equal(await chat.locator('.aiux543-chat-input').count(), 0, 'the request replaces the normal composer');
+    assert.equal(await request.getByRole('radio').count(), 3);
+    assert.equal(await request.getByRole('radio').first().getAttribute('aria-checked'), 'true');
+    await request.press('ArrowDown');
+    assert.equal(await request.getByRole('radio').nth(1).getAttribute('aria-checked'), 'true');
+    await request.press('ArrowUp');
+    const focusStyle = await request.getByRole('radio').first().evaluate(element => ({ border: getComputedStyle(element).borderTopWidth, outline: getComputedStyle(element).outlineStyle }));
+    assert.equal(focusStyle.border, '1px'); assert.equal(focusStyle.outline, 'none', 'selected row has one reference border without a doubled focus outline');
+    await page.screenshot({ path: path.join(outputDir, `confirmation-request-chat-${width}.png`) });
+    await request.getByRole('button', { name: 'Confirm ↵', exact: true }).click();
+    await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    assert.equal(await tabs.count(), 1, 'confirmation resumes the existing request/chat');
+    assert.equal(await info.count(), 0);
+    assert.equal(await request.count(), 0);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
     const successfulDraft = await message.inputValue();
     for (const name of selectedFiles) assert.ok(successfulDraft.includes(name));
-    assert.equal(await page.locator('.ij2499-generation-banner').count(), 0);
-    await tabs.first().click();
-    const chat = page.locator('.ij2499-commit-chat');
-    await chat.waitFor();
-    assert.equal(await chat.locator('.ai-chat-user-card .ai-chat-sent-attachment-chip').count(), 4);
-    assert.match(await chat.locator('.aiux543-answer').innerText(), /VisitController/);
+    assert.equal(await chat.locator('.ai-chat-user-card').count(), 2, 'confirmation is recorded in the same conversation');
+    assert.match(await chat.locator('.ai-chat-user-card').last().innerText(), /Allow for this request/);
+    assert.equal(await chat.locator('.aiux543-answer').last().locator('p').innerText(), successfulDraft);
     assert.equal(await chat.locator('.aiux543-chat-input').inputValue(), '');
-    await page.screenshot({ path: path.join(outputDir, `generation-success-chat-${width}.png`) });
-    for (const kind of ['info', 'error']) {
-      await generate.click();
-      await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
-      const countBeforeOpen = kind === 'info' ? 2 : 3;
-      assert.equal(await tabs.count(), countBeforeOpen, 'each generation creates its session immediately');
-      const banner = page.locator(`.ij2499-generation-banner.banner-${kind}`);
-      await banner.waitFor();
-      assert.match(await banner.innerText(), kind === 'info' ? /Permission required/ : /generation failed/);
-      assert.equal(await message.inputValue(), successfulDraft, 'corner case preserves the existing draft');
-      const layout = await banner.evaluate(element => {
-        const bounds = element.getBoundingClientRect();
-        const pane = element.closest('.commit-tool-window');
-        const field = pane.querySelector('.commit-message-textarea').getBoundingClientRect();
-        const actions = pane.querySelector('.commit-actions').getBoundingClientRect();
-        return { belowMessage: bounds.top >= field.bottom, aboveActions: bounds.bottom <= actions.top,
-          fits: bounds.left >= pane.getBoundingClientRect().left && bounds.right <= pane.getBoundingClientRect().right,
-          background: getComputedStyle(element).backgroundColor,
-          neutralBackground: getComputedStyle(pane).getPropertyValue('--layer-1-bg').trim() };
-      });
-      assert.ok(layout.belowMessage && layout.aboveActions && layout.fits, 'banner is at the bottom of Commit, between message and actions');
-      const expectedGray = await banner.evaluate(element => {
-        const probe = document.createElement('span'); probe.style.background = 'var(--layer-1-bg)'; element.append(probe);
-        const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
-      });
-      assert.equal(layout.background, expectedGray, 'both corner cases use the requested neutral kit surface');
-      await page.screenshot({ path: path.join(outputDir, `generation-${kind}-banner-${width}.png`) });
-      await banner.getByRole('button', { name: 'Open chat', exact: true }).click();
-      await chat.waitFor();
-      assert.equal(await tabs.count(), countBeforeOpen, 'banner opens the already-created session');
-      const initialMessage = chat.locator('.ai-chat-user-card').first();
-      assert.match(await initialMessage.innerText(), /Generate a commit message from the selected changes/);
-      assert.deepEqual(await initialMessage.locator('.ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
-      assert.equal(await initialMessage.getByRole('button', { name: /^Show (all|less)/ }).count(), 0);
-      assert.equal(await chat.locator('.aiux543-chat-input').inputValue(), '');
-      assert.equal(await chat.locator('.aiux543-answer h3').first().innerText(), 'Codex');
-      assert.match(await chat.locator('.aiux543-answer').first().innerText(), kind === 'info' ? /permission.*selected local changes/s : /GPT-5 mini.*timed out/s);
-      await banner.getByRole('button', { name: 'Open chat', exact: true }).click();
-      assert.equal(await tabs.count(), countBeforeOpen, 'reopening the banner does not create a duplicate chat');
-      await page.screenshot({ path: path.join(outputDir, `generation-${kind}-chat-${width}.png`) });
-    }
+    assert.ok(await generate.isEnabled());
+    await page.screenshot({ path: path.join(outputDir, `confirmation-result-commit-${width}.png`) });
+    await generate.click();
+    await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    assert.equal(await tabs.count(), 2);
+    const error = page.locator('.ij2499-generation-banner.banner-error');
+    await error.waitFor();
+    assert.equal(await message.inputValue(), successfulDraft, 'second generation fails and retains the confirmed result');
+    await checkBanner(page, error);
+    await page.screenshot({ path: path.join(outputDir, `confirmation-repeat-error-${width}.png`) });
+    await error.getByRole('button', { name: 'Open chat', exact: true }).click();
+    assert.equal(await tabs.count(), 2, 'error opens the second request’s existing chat');
+    assert.equal(await request.count(), 0);
+    assert.match(await chat.locator('.aiux543-answer').innerText(), /GPT-5 mini.*timed out/s);
+    assert.deepEqual(await chat.locator('.ai-chat-user-card .ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
+    await error.getByRole('button', { name: 'Open chat', exact: true }).click();
+    assert.equal(await tabs.count(), 2);
     const composer = chat.locator('.aiux543-chat-input');
     await composer.fill('One-line Conventional Commits in Russian.');
     await composer.press('Enter');
     await page.waitForFunction(() => [...document.querySelectorAll('.ij2499-commit-chat .aiux543-answer')].some(element => element.textContent.includes('chore: обновить'))
       && !document.querySelector('.ij2499-commit-chat .ai-chat-streaming-caret'));
-    assert.equal(await chat.locator('.ai-chat-user-card').count(), 2);
-    assert.equal(await chat.locator('.aiux543-answer').count(), 2);
     assert.equal(await message.inputValue(), successfulDraft);
-    await page.locator('.ij2499-generation-banner').getByRole('button', { name: 'Open chat', exact: true }).click();
-    assert.equal(await chat.locator('.ai-chat-user-card').count(), 2, 'the original chat retains the continued conversation');
-    // A stopped request is another interrupted generation and routes to its own existing session.
+    // Stopping from the chat cancels the same running Commit request.
+    const newTabIndex = await page.locator('.main-window-editor-tabs .tab-wrapper').evaluateAll(elements => elements.findIndex(element => element.querySelector('.tab-selected')) + 1);
     await generate.click();
-    await page.getByRole('button', { name: 'Stop generation', exact: true }).click();
-    const stoppedBanner = page.locator('.ij2499-generation-banner.banner-error');
-    await stoppedBanner.waitFor();
-    assert.match(await stoppedBanner.innerText(), /generation stopped/);
-    assert.equal(await message.inputValue(), successfulDraft);
-    assert.equal(await tabs.count(), 4);
-    await stoppedBanner.getByRole('button', { name: 'Open chat', exact: true }).click();
-    assert.match(await chat.locator('.aiux543-answer').innerText(), /generation was stopped/);
+    await page.locator('.main-window-editor-tabs .tab-wrapper').nth(newTabIndex).locator('.tab-label').click();
+    await chat.getByRole('button', { name: 'Stop', exact: true }).click();
+    await error.waitFor();
+    assert.match(await error.innerText(), /generation stopped/);
     await page.waitForTimeout(3100);
-    assert.equal(await message.inputValue(), successfulDraft, 'stopped timer cannot overwrite the draft');
-    // Creation uses the existing main-project session list, not an external worktree/session group.
-    for (let index = 0; index < 2; index++) {
-      const newTabIndex = await page.locator('.main-window-editor-tabs .tab-wrapper').evaluateAll(elements => elements.findIndex(element => element.querySelector('.tab-selected')) + 1);
-      await generate.click();
-      if (index === 1) {
-        await page.locator('.main-window-editor-tabs .tab-wrapper').nth(newTabIndex).locator('.tab-label').click();
-        await chat.getByRole('button', { name: 'Stop', exact: true }).click();
-      } else await page.getByRole('button', { name: 'Stop generation', exact: true }).click();
-      await stoppedBanner.waitFor();
-      assert.match(await stoppedBanner.innerText(), /generation stopped/);
-    }
-    const stripe = page.locator('.main-window-stripe-left [title="Agent Sessions"], .main-window-stripe-left [aria-label="Agent Sessions"]');
-    assert.ok(await stripe.count(), 'the main-project session list is available');
-    await stripe.first().click();
-    const rows = page.locator('.agent-sessions-session').filter({ hasText: 'Generate commit message ·' });
-    assert.equal(await rows.count(), 6, 'generation sessions remain listed beyond the original five-row fixture');
-    for (const row of await rows.all()) {
-      assert.match(await row.locator('xpath=ancestor::section[contains(@class, "agent-sessions-project")][1]').locator('.agent-sessions-project-row').innerText(), /spring-petclinic/);
-      assert.equal(await row.locator('[data-agent="codex"]').count(), 1);
-    }
-    await page.screenshot({ path: path.join(outputDir, `generation-main-project-sessions-${width}.png`) });
+    assert.equal(await message.inputValue(), successfulDraft, 'a cancelled timer cannot overwrite the confirmed draft');
     assert.deepEqual(errors, []);
     await page.close();
   }
+  // Custom answer, keyboard submission and rejection use the same request control.
+  const page = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+  await page.goto(`${previewUrl}/?entry=commit`);
+  await page.getByRole('button', { name: 'Generate Message', exact: true }).click();
+  const info = page.locator('.ij2499-generation-banner.banner-info');
+  await info.waitFor();
+  await info.getByRole('button', { name: 'Open chat', exact: true }).click();
+  const request = page.getByRole('region', { name: 'Commit generation access request', exact: true });
+  await request.press('4');
+  assert.ok(await request.getByRole('button', { name: 'Confirm ↵', exact: true }).isDisabled());
+  const input = request.getByRole('textbox', { name: 'Custom generation instructions', exact: true });
+  await input.fill('One-line Conventional Commits in Russian.');
+  await input.press('Enter');
+  await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.value.startsWith('chore: обновить'));
+  assert.equal((await page.getByRole('textbox', { name: 'Commit Message', exact: true }).inputValue()).split('\n').length, 1);
+  await page.close();
+  const rejected = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+  await rejected.goto(`${previewUrl}/?entry=commit`);
+  await rejected.getByRole('button', { name: 'Generate Message', exact: true }).click();
+  const rejectedInfo = rejected.locator('.ij2499-generation-banner.banner-info');
+  await rejectedInfo.waitFor();
+  await rejectedInfo.getByRole('button', { name: 'Open chat', exact: true }).click();
+  const rejectedRequest = rejected.getByRole('region', { name: 'Commit generation access request', exact: true });
+  await rejectedRequest.getByRole('radio').nth(2).click();
+  await rejectedRequest.getByRole('button', { name: 'Confirm ↵', exact: true }).click();
+  await rejected.locator('.ij2499-generation-banner.banner-error').waitFor();
+  assert.equal(await rejectedRequest.count(), 0);
+  assert.equal(await rejected.getByRole('textbox', { name: 'Commit Message', exact: true }).inputValue(), '');
+  await rejected.close();
 }
 
 async function checkBrowserLayout() {
@@ -457,7 +477,7 @@ async function checkBrowserLayout() {
 
     }
     await checkGenerationChats(browser, outputDir, previewUrl);
-    console.log('PASS: current Commit prototype, read-only configuration, gray bottom banners, immediate generation chats, existing-chat handoff, selected-file context and preserved draft.');
+    console.log('PASS: first loading/information request; symmetric banner above Generate; reference choices and confirmation; same-chat resume fills Commit; repeat error preserves draft; keyboard/custom instructions; Stop and comment-compatible UI.');
   } finally { await browser.close(); }
 }
 (async () => {
@@ -469,7 +489,7 @@ async function checkBrowserLayout() {
       import App, { CommitToolWindow } from './src/App.jsx'; window.React = React;
       window.openedFiles = []; window.chatRequests = []; window.generationRequests = []; const root = createRoot(document.getElementById('root'));
       window.mountCommit = (key, scopeRequest = null) => root.render(<ThemeProvider defaultTheme="dark"><CommitToolWindow key={key} scopeRequest={scopeRequest}
-        ctx={{ focusedPanel: 'left', setFocusedPanel() {}, setShowLeftPanel() {} }} onOpenFile={file => window.openedFiles.push(file)} onContinueInChat={request => window.chatRequests.push(request)} onGenerationStart={request => { window.generationRequests.push(request); return 'test-chat-' + window.generationRequests.length; }} /></ThemeProvider>);
+        ctx={{ focusedPanel: 'left', setFocusedPanel() {}, setShowLeftPanel() {} }} onOpenFile={file => window.openedFiles.push(file)} onContinueInChat={request => window.chatRequests.push(request)} onGenerationStart={(request, cancel, confirm) => { window.confirmGeneration = confirm; window.generationRequests.push(request); return 'test-chat-' + window.generationRequests.length; }} /></ThemeProvider>);
       window.mountCommit('first'); window.mountFull = () => root.render(<App />);`, loader: 'jsx', resolveDir: root },
     bundle: true, write: false, jsx: 'automatic', format: 'iife', logLevel: 'silent',
     define: { 'import.meta.env.DEV': 'false' }, loader: { '.css': 'empty', '.svg': 'dataurl' },
@@ -524,6 +544,9 @@ async function checkBrowserLayout() {
   await click(button('Generate Message')); await click(check());
   await wait(3050); assert.equal(message().value, 'Manual edit'); assert.ok(button('Generate Message').disabled);
   await click(check()); await click(button('Generate Message')); await wait(3050);
+  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Input needed/);
+  assert.ok(button('Generate Message').disabled);
+  w.confirmGeneration({ choiceId: 'allow-once', label: 'Allow for this request' }); await wait(3050);
   assert.ok(!message().readOnly); assert.ok(!d.querySelector('.ij2499-message-loading'));
   assert.ok(button('Generate Message')); assert.ok(!button('Stop generation'));
   assert.match(message().value, /VisitController.java/); assert.doesNotMatch(message().value, /application.properties|VetSchedule/);
@@ -531,8 +554,8 @@ async function checkBrowserLayout() {
   assert.ok(!d.querySelector('.ij2499-settings-hint'), 'generation does not bring back an acknowledged hint');
   const successfulDraft = message().value;
   await click(button('Generate Message')); await wait(3050);
-  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Permission required/);
-  assert.equal(message().value, successfulDraft, 'request for access preserves the successful draft');
+  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /generation failed/);
+  assert.equal(message().value, successfulDraft, 'the second request preserves the successful draft');
   await click(button('Open chat'));
   await click(button('Generate Message')); await wait(3050);
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /generation failed/);
@@ -599,6 +622,16 @@ async function checkBrowserLayout() {
   await edit(message(), 'Commit one scoped file'); await click(button('Commit'));
   assert.equal(d.querySelectorAll('.commit-file-node input:checked').length, 0);
   assert.ok(button('Generate Message').disabled, 'scoped commit must not recheck other files');
+  w.history.replaceState(null, '', '?entry=commit&scenario=info');
+  w.mountCommit('paused-stale'); await wait(60);
+  await click(button('Generate Message')); await wait(3050);
+  const staleConfirm = w.confirmGeneration;
+  await edit(message(), 'Changed while awaiting input');
+  assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false);
+  await click(button('Generate Message')); await wait(3050);
+  assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false, 'old chat confirmation cannot resume a newer request');
+  assert.ok(button('Generate Message').disabled);
+  assert.equal(message().value, 'Changed while awaiting input');
   w.history.replaceState(null, '', '?entry=commit');
   w.HTMLElement.prototype.scrollIntoView = function () {};
   w.mountFull(); await wait(150);

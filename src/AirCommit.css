@@ -87,7 +87,8 @@
 .ij2499-message-editor { position: relative; }
 .ij2499-message-loading { position: absolute; top: 7px; left: 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; line-height: 16px; pointer-events: none; }
 .ij2499-status { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-secondary); padding: 4px 12px; font-size: 12px; line-height: 16px; }
-.ij2499-generation-banner-slot { padding: 8px 12px 0; }
+.ij2499-generation-banner-position { position: fixed; z-index: 10010; box-sizing: border-box; }
+.ij2499-generation-banner-position .banner { box-sizing: border-box; width: 100%; }
 .ij2499-generation-banner.banner { background: var(--layer-1-bg); border-color: var(--layer-1-border); --banner-action-color: var(--text-link); }
 .ij2499-generation-banner .banner-content { padding-top: 0; align-items: center; }
 .ij2499-generation-banner .banner-body { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding-right: 0; }
@@ -182,3 +183,29 @@
 .ij2499-comment-toolbar .plan-diff-send-comments-button.button { margin-right: 0; }
 
 .ij2499-commit-chat .aiux543-answer p { white-space: pre-wrap; }
+
+/* Reference in-chat request: one numbered choice group replaces the composer while paused. */
+.ij2499-chat-request-dock { flex: 0 0 auto; width: min(750px, calc(100% - 32px)); margin: 0 auto 12px; }
+.ij2499-chat-request { padding: 8px; border: 1px solid transparent; border-radius: 8px; outline: none; background: linear-gradient(var(--editor-bg), var(--editor-bg)) padding-box, linear-gradient(110deg, var(--control-focus-border-brand), var(--control-border) 50%) border-box; color: var(--text-default); font-size: 14px; line-height: 20px; }
+.ij2499-chat-request-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.ij2499-chat-request-pager { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; color: var(--text-muted); white-space: nowrap; }
+.ij2499-chat-request-pager .toolbar-button { width: 16px; height: 20px; padding: 0; }
+.ij2499-chat-request-pager .toolbar-button-content { padding: 0; }
+.ij2499-chat-request-choices { display: flex; flex-direction: column; }
+.ij2499-chat-request-choice.button { display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px; width: 100%; min-height: 44px; height: auto; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent; text-align: left; color: var(--text-default); font-size: 14px; font-weight: 400; line-height: 20px; }
+.ij2499-chat-request-choice.button.is-selected { border-color: var(--control-focus-border-brand); background: color-mix(in srgb, var(--control-focus-border-brand) 12%, var(--editor-bg)); }
+/* The selected row border is the focus indicator; avoid a second button outline. */
+.ij2499-chat-request-choice.button:focus-visible { outline: none; }
+.ij2499-chat-request-choice-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ij2499-chat-request-number { width: 14px; flex-shrink: 0; color: var(--text-muted); }
+.is-selected > .ij2499-chat-request-number { color: var(--text-link); }
+.ij2499-chat-request-description { color: var(--text-muted); font-size: 13px; line-height: 18px; }
+.ij2499-chat-request-arrows { align-self: center; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+.ij2499-chat-request-custom { display: flex; align-items: center; gap: 8px; padding: 4px 6px; min-height: 28px; border: 1px solid transparent; border-radius: 6px; }
+.ij2499-chat-request-custom.is-selected { border-color: var(--control-focus-border-brand); }
+.ij2499-chat-request-input { flex: 1; min-width: 0; }
+.ij2499-chat-request-custom .input-wrapper { padding: 0; }
+.ij2499-chat-request-custom .input { background: transparent; border: 0; height: 24px; min-height: 24px; padding: 0; font-size: 14px; font-weight: 400; }
+.ij2499-chat-request-custom .input:focus { outline: none; box-shadow: none; }
+.ij2499-chat-request-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+.ij2499-chat-request-shortcut { margin-left: 4px; color: var(--text-muted); }

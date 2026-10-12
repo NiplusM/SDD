@@ -1,5 +1,5 @@
 import { useAirCommit, useAirCommitPreferences } from './useAirCommit.js';
-import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitGenerationBanner } from './AirCommitSettings.jsx';
+import { CommitOptions, AirSettings, AirGenerationSettingsSection, CommitGenerationBanner, CommitGenerationRequest } from './AirCommitSettings.jsx';
 import { AGENTS, generateDemoMessage } from './airCommitState.js';
 import { Fragment, cloneElement, isValidElement, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
@@ -1146,6 +1146,7 @@ function CommitToolWindow({
   const [optionsAnchor, setOptionsAnchor] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const gearRef = useRef(null);
+  const generationRef = useRef(null);
   const [git, setGit] = useState({ author: '', signOff: false, checks: ['Analyze code', 'Check TODO'],
     advancedAfterCommit: true, alwaysUpload: true, upload: '<None>', inspection: 'Project Default', todo: 'All TODO items',
     cleanup: 'Project Default', tests: 'All Tests' });
@@ -1361,7 +1362,7 @@ function CommitToolWindow({
 
         <div className="commit-bottom-panel">
           <div className="commit-amend-toolbar">
-            <div className="commit-amend-left">
+            <div className="commit-amend-left" ref={generationRef}>
               <label className="commit-amend-label">
                 <Checkbox checked={amend} onChange={() => setAmend((v) => !v)} />
                 <span>Amend</span>
@@ -1369,7 +1370,7 @@ function CommitToolWindow({
               <IconButton icon="general/history" tooltip="Show History" />
               {air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
                   onClick={() => air.cancel('Generation stopped.')} />
-                : <Tooltip text={air.checkedFiles.length ? 'Generate Commit Message' : 'Select files to generate a commit message'} placement="bottom" delay={500}>
+                : <Tooltip text={!air.checkedFiles.length ? 'Select files to generate a commit message' : air.issue?.kind === 'info' ? 'Provide the requested information in chat' : 'Generate Commit Message'} placement="bottom" delay={500}>
                     <ToolbarButton className="ij2499-generate" icon={<AiChatAgentIcon icon={air.settings.agent} />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate} />
                   </Tooltip>}
             </div>
@@ -1408,9 +1409,6 @@ function CommitToolWindow({
             <div className="ij2499-status" role="status" aria-live="polite">
               {air.status || 'Select files to generate a commit message.'}
             </div>}
-          {!air.job && air.issue && <div className="ij2499-generation-banner-slot">
-            <CommitGenerationBanner issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />
-          </div>}
           <div className="commit-actions">
             <div className="commit-buttons">
               <Button
@@ -1428,6 +1426,7 @@ function CommitToolWindow({
 
         </div>
       </div>
+      {!air.job && air.issue && <CommitGenerationBanner anchor={generationRef} issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
         openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}
@@ -20765,6 +20764,7 @@ function AiChatTabView({
   onDiffCommentsOptionSeen = null,
   agentRun = null,
   onStopMessage = null,
+  onConfirmCommitGeneration = null,
   onOpenReviewDiff = null,
   onCompleteReview = null,
   onCancelReview = null,
@@ -22011,7 +22011,9 @@ function AiChatTabView({
         })()}
       </div>
 
-      <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
+      {scenario?.commitGenerationContext?.resultKind === 'info' ? (
+        <div className="ij2499-chat-request-dock"><CommitGenerationRequest key={chatId} onConfirm={answer => onConfirmCommitGeneration?.(chatId, answer)} /></div>
+      ) : <div className={`aiux543-composer-sticky${isAgentRunProcessing ? ' is-agent-running' : ''}${isNewSessionState ? ' is-new-session' : ''}`}>
         {false && showAiReviewPrompt && reviewPromptFiles.length > 0 && (
           <AiReviewComposerPrompt
             onCreateSpec={onCreateSpec}
@@ -22299,7 +22301,7 @@ function AiChatTabView({
           onOpenInFiles={handleComposerAttachmentOpen}
           onClearAll={handleClearAllComposerAttachmentsFromMenu}
         />
-      </div>
+      </div>}
       {addContextPopupRect && (
         <AiChatAddContextPopup
           triggerRect={addContextPopupRect}
@@ -23377,6 +23379,7 @@ export default function App() {
   const [aiChatDraftSessionsById, setAiChatDraftSessionsById] = useState({});
   // Read-only mirror, for callbacks that run from timers and must see current titles.
   const commitGenerationCancelByChatIdRef = useRef({});
+  const commitGenerationConfirmByChatIdRef = useRef({});
   const aiChatDraftSessionsByIdRef = useRef(aiChatDraftSessionsById);
   aiChatDraftSessionsByIdRef.current = aiChatDraftSessionsById;
   const showNewContextOptionsIndicator =
@@ -35874,7 +35877,7 @@ export default function App() {
     });
   }, [getAiChatScenarioById, openCommitToolWindow]);
 
-  const startCommitGenerationChat = useCallback((request, cancelGeneration) => {
+  const startCommitGenerationChat = useCallback((request, cancelGeneration, confirmGeneration) => {
     const scopeRequests = buildCommitReviewScopeRequests();
     const attachments = request.files.map((file) => ({
       id: `commit-generation-${request.id}-${file.id}`,
@@ -35901,6 +35904,7 @@ export default function App() {
       select: false,
     });
     commitGenerationCancelByChatIdRef.current[session.id] = cancelGeneration;
+    commitGenerationConfirmByChatIdRef.current[session.id] = confirmGeneration;
     openChatInEditorTab(session.id, { title: session.title, icon: session.icon, activate: false });
     setAgentRunByChatId(prev => ({ ...prev, [session.id]: { kind: 'commit-generation', status: 'processing' } }));
     return session.id;
@@ -35908,11 +35912,30 @@ export default function App() {
 
   const finishCommitGenerationChat = useCallback((request, result) => {
     if (!request.chatId) return;
-    delete commitGenerationCancelByChatIdRef.current[request.chatId];
+    if (!['info', 'resuming'].includes(result.kind)) {
+      delete commitGenerationCancelByChatIdRef.current[request.chatId];
+      delete commitGenerationConfirmByChatIdRef.current[request.chatId];
+    }
+    if (result.kind === 'resuming') {
+      delete commitGenerationConfirmByChatIdRef.current[request.chatId];
+      setAiChatDraftSessionsById(prev => prev[request.chatId] ? { ...prev, [request.chatId]: {
+        ...prev[request.chatId], commitGenerationContext: { ...request, resultKind: 'generating' },
+      } } : prev);
+      handleSelectedAiChatSentMessagesChange(prev => [...prev, {
+        id: `commit-confirmation-${request.id}`, role: 'user', text: result.answer, attachments: [],
+      }], request.chatId);
+      setAgentRunByChatId(prev => ({ ...prev, [request.chatId]: { ...prev[request.chatId], status: 'processing' } }));
+      return;
+    }
+    if (result.kind === 'success' && request.confirmation) {
+      handleSelectedAiChatSentMessagesChange(prev => [...prev, {
+        id: `commit-result-${request.id}`, role: 'assistant', text: result.message,
+      }], request.chatId);
+    }
     const paragraphs = result.kind === 'success' ? [result.message]
       : result.kind === 'info' ? [
           result.description,
-          'Reply to approve access or paste the diff, then ask me to continue. The selected files and generation settings are already attached to this request.',
+          'Choose an option below and confirm to continue. The selected files and generation settings are already attached to this request.',
         ]
       : result.kind === 'cancelled' ? [result.description, 'Your draft in Commit was left unchanged. You can continue with the attached changes here.']
       : [
@@ -35922,13 +35945,17 @@ export default function App() {
           'You can continue here: ask me to try again or add instructions for the commit message.',
         ];
     setAiChatDraftSessionsById(prev => prev[request.chatId] ? { ...prev, [request.chatId]: {
-      ...prev[request.chatId], assistantParagraphs: paragraphs,
+      ...prev[request.chatId], assistantParagraphs: result.kind === 'success' && request.confirmation ? prev[request.chatId].assistantParagraphs : paragraphs,
       commitGenerationContext: { ...request, resultKind: result.kind },
     } } : prev);
     setAgentRunByChatId(prev => ({ ...prev, [request.chatId]: {
-      ...prev[request.chatId], status: result.kind === 'error' ? 'failed' : 'done',
+      ...prev[request.chatId], status: result.kind === 'info' ? 'awaiting-input' : result.kind === 'error' ? 'failed' : 'done',
     } }));
-  }, []);
+  }, [handleSelectedAiChatSentMessagesChange]);
+
+  const confirmCommitGeneration = useCallback((chatId, answer) => (
+    commitGenerationConfirmByChatIdRef.current[chatId]?.(answer) ?? false
+  ), []);
 
   const continueCommitGenerationInChat = useCallback((request) => {
     if (!request.chatId) return;
@@ -37099,6 +37126,7 @@ export default function App() {
                       onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
                       agentRun={agentRunByChatId[reviewSplitChatId] ?? null}
                       onStopMessage={handleAiChatTabStop}
+                      onConfirmCommitGeneration={confirmCommitGeneration}
                       onOpenReviewDiff={openReviewDiffTab}
                       onCompleteReview={handleCompleteReviewDecision}
                       onCancelReview={cancelReview}
@@ -37317,6 +37345,7 @@ export default function App() {
                       onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
                       agentRun={agentRunByChatId[specSplitChatId] ?? null}
                       onStopMessage={handleAiChatTabStop}
+                      onConfirmCommitGeneration={confirmCommitGeneration}
                       onOpenReviewDiff={openReviewDiffTab}
                       onCompleteReview={handleCompleteReviewDecision}
                       onCancelReview={cancelReview}
@@ -37413,6 +37442,7 @@ export default function App() {
                   onDiffCommentsOptionSeen={() => setDiffCommentsOptionIsNew(false)}
                   agentRun={agentRunByChatId[activeAiChatTabChatId] ?? null}
                   onStopMessage={handleAiChatTabStop}
+                      onConfirmCommitGeneration={confirmCommitGeneration}
                   onOpenReviewDiff={openReviewDiffTab}
                   onCompleteReview={handleCompleteReviewDecision}
                   onCancelReview={cancelReview}

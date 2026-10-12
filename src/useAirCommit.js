@@ -67,13 +67,12 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
     if (!job) return;
     const timer = window.setTimeout(() => {
       if (job.id !== requestId.current) return;
-      jobRef.current = null;
       setJob(null);
-      completedCount.current += 1;
       let result;
       if (job.outcome === 'info') {
-        result = { kind: 'info', title: 'Permission required to read changes.',
-          description: 'I need permission to read the selected local changes before I can generate a commit message.' };
+        jobRef.current = { ...job, phase: 'awaiting-input' };
+        result = { kind: 'info', title: 'Input needed to generate a message.',
+          description: 'I need your confirmation before reading the selected local changes.' };
       } else if (job.outcome === 'error') {
         result = { kind: 'error', code: 'timeout', title: 'Commit message generation failed.',
           description: 'The request timed out before a result was returned. Your draft is preserved.' };
@@ -84,6 +83,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
         messageRef.current?.focus();
         result = { kind: 'success', message: generatedMessage };
       }
+      if (result.kind !== 'info') { jobRef.current = null; completedCount.current += 1; }
       callbacks.current.onGenerationFinish?.(job, result);
       if (result.kind === 'info' || result.kind === 'error') setIssue({ ...result, request: job });
     }, 3000);
@@ -93,18 +93,28 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   function generate() {
     if (!checkedFiles.length || jobRef.current) return;
     setIssue(null); setStatus('');
-    const outcome = completedCount.current === 0
-      ? (['info', 'error'].includes(initialScenario.current) ? initialScenario.current : 'success')
-      : (completedCount.current === 1 ? 'info' : 'error');
+    const outcome = completedCount.current === 0 && initialScenario.current !== 'error' ? 'info' : 'error';
     const request = { id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })),
       settings: { ...settings }, branch, draft: message, outcome };
-    request.chatId = callbacks.current.onGenerationStart?.(request, () => cancel('Generation stopped.')) ?? null;
+    request.chatId = callbacks.current.onGenerationStart?.(request, () => cancel('Generation stopped.'), answer => confirm(request.id, answer)) ?? null;
     jobRef.current = request;
     setJob(request);
+  }
+  function confirm(expectedId, answer) {
+    const pending = jobRef.current;
+    if (!pending || pending.phase !== 'awaiting-input' || pending.id !== requestId.current || pending.id !== expectedId) return false;
+    if (answer?.choiceId === 'reject' || answer?.choiceId === 'skip') { cancel('Generation stopped.'); return true; }
+    const resumed = { ...pending, phase: 'generating', outcome: 'success', confirmation: answer.label,
+      settings: { ...pending.settings, prompt: [pending.settings.prompt, answer.instructions].filter(Boolean).join('\n') } };
+    jobRef.current = resumed;
+    setIssue(null);
+    setJob(resumed);
+    callbacks.current.onGenerationFinish?.(resumed, { kind: 'resuming', answer: answer.label });
+    return true;
   }
   function editMessage(value) { cancel(); setMessage(value); }
   function changeSettings(value) { cancel(); saveSettings(value); }
   return { message, messageRef, editMessage, settings, changeSettings, storageError, job, generate, cancel,
-    status, issue, checkedFiles, canGenerate: checkedFiles.length > 0 && !job,
+    status, issue, checkedFiles, canGenerate: checkedFiles.length > 0 && !job && issue?.kind !== 'info',
     canCommit: checkedFiles.length > 0 && !job && Boolean(message.trim()) };
 }

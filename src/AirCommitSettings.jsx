@@ -180,12 +180,91 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
   )
 }
 
-export function CommitGenerationBanner({ issue, onOpenChat }) {
-  return <Banner className="ij2499-generation-banner" type={issue.kind} showCloseButton={false}
-    role={issue.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
-    actions={[{ label: 'Open chat', onClick: onOpenChat }]}>
-    {issue.title}
-  </Banner>
+export function CommitGenerationBanner({ anchor, issue, onOpenChat }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    function position() {
+      const panel = anchor.current?.closest('.commit-tool-window')
+      const field = panel?.querySelector('.commit-message-textarea')
+      const target = anchor.current
+      if (!ref.current || !field || !target) return
+      const bounds = field.getBoundingClientRect()
+      ref.current.style.width = `${bounds.width}px`
+      ref.current.style.left = `${bounds.left}px`
+      ref.current.style.top = `${Math.max(8, target.getBoundingClientRect().top - ref.current.getBoundingClientRect().height - 8)}px`
+    }
+    position()
+    const observer = new ResizeObserver(position)
+    observer.observe(ref.current)
+    if (anchor.current) observer.observe(anchor.current.closest('.commit-tool-window'))
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    return () => { observer.disconnect(); window.removeEventListener('resize', position); window.removeEventListener('scroll', position, true) }
+  }, [anchor])
+  return createPortal(<div ref={ref} className="ij2499-generation-banner-position theme-dark">
+    <Banner className="ij2499-generation-banner" type={issue.kind} showCloseButton={false}
+      role={issue.kind === 'error' ? 'alert' : 'status'} aria-live="polite"
+      actions={[{ label: 'Open chat', onClick: onOpenChat }]}>
+      {issue.title}
+    </Banner>
+  </div>, document.body)
+}
+
+const COMMIT_ACCESS_CHOICES = [
+  { id: 'allow-once', label: 'Allow for this request', description: 'Read only the selected changes' },
+  { id: 'allow-session', label: 'Allow for this session', description: 'Keep this access for follow-up requests' },
+  { id: 'reject', label: 'Do not read the changes', description: 'Stop commit message generation' },
+]
+
+export function CommitGenerationRequest({ onConfirm }) {
+  const [selected, setSelected] = useState(0)
+  const [custom, setCustom] = useState('')
+  const ref = useRef(null)
+  const inputRef = useRef(null)
+  const canConfirm = selected < 3 || Boolean(custom.trim())
+  useEffect(() => { ref.current?.focus() }, [])
+  function choose(index) {
+    setSelected(index)
+    requestAnimationFrame(() => index === 3 ? inputRef.current?.querySelector('input')?.focus() : ref.current?.querySelectorAll('.ij2499-chat-request-choice')[index]?.focus())
+  }
+  function confirm() {
+    if (!canConfirm) return
+    const choice = COMMIT_ACCESS_CHOICES[selected]
+    onConfirm(choice ? { choiceId: choice.id, label: choice.label }
+      : { choiceId: 'custom', label: custom.trim(), instructions: custom.trim() })
+  }
+  function keyDown(event) {
+    if (event.key === 'Escape') { event.preventDefault(); onConfirm({ choiceId: 'skip', label: 'Skipped access request' }); return }
+    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); confirm(); return }
+    if (event.target instanceof HTMLInputElement) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault(); choose((selected + (event.key === 'ArrowDown' ? 1 : 3)) % 4)
+    } else if (/^[1-4]$/.test(event.key)) { event.preventDefault(); choose(Number(event.key) - 1) }
+  }
+  return <section ref={ref} className="ij2499-chat-request" role="region" aria-label="Commit generation access request" tabIndex={0} onKeyDown={keyDown}>
+    <header className="ij2499-chat-request-header">
+      <span>May I read the selected changes?</span>
+      <span className="ij2499-chat-request-pager"><ToolbarButton icon="general/chevronLeft" disabled aria-label="Previous question" /><span>1 of 1</span><ToolbarButton icon="general/chevronRight" disabled aria-label="Next question" /></span>
+    </header>
+    <div className="ij2499-chat-request-choices" role="radiogroup" aria-label="Access choices">
+      {COMMIT_ACCESS_CHOICES.map((choice, index) => <Button key={choice.id} type="secondary"
+        className={`ij2499-chat-request-choice${selected === index ? ' is-selected' : ''}`}
+        role="radio" aria-checked={selected === index} tabIndex={selected === index ? 0 : -1} onClick={() => choose(index)}>
+        <span className="ij2499-chat-request-number">{index + 1}</span>
+        <span className="ij2499-chat-request-choice-copy"><span>{choice.label}</span><span className="ij2499-chat-request-description">{choice.description}</span></span>
+        {selected === index && <span className="ij2499-chat-request-arrows" aria-hidden="true">↑↓</span>}
+      </Button>)}
+      <div className={`ij2499-chat-request-custom${selected === 3 ? ' is-selected' : ''}`}>
+        <span className="ij2499-chat-request-number">4</span>
+        <label ref={inputRef} className="ij2499-chat-request-input"><span className="ij2499-sr-only">Custom generation instructions</span><Input placeholder="Type something…" value={custom}
+          onFocus={() => setSelected(3)} onChange={event => setCustom(event.target.value)} /></label>
+      </div>
+    </div>
+    <footer className="ij2499-chat-request-actions">
+      <Button type="secondary" size="slim" onClick={() => onConfirm({ choiceId: 'skip', label: 'Skipped access request' })}>Skip <span className="ij2499-chat-request-shortcut">Esc</span></Button>
+      <Button type="primary" size="slim" disabled={!canConfirm} onClick={confirm}>Confirm ↵</Button>
+    </footer>
+  </section>
 }
 
 export function AirGenerationSettingsSection({ settings, onChange, storageError, branch, breadcrumb }) {
