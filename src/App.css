@@ -25400,3 +25400,32 @@ button.aiux543-answer-change-card:focus-visible {
   flex: 0 1 auto;
   max-width: 100%;
 }
+
+/* IJ Air attachment chip: icon, label and an always-visible close button
+   after the label (the shared composer chip reveals it only on hover). */
+.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action {
+  padding: 0 6px 0 7px;
+  background: #27282a;
+}
+
+.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action:is(:hover, :focus-visible, :focus-within) {
+  background: var(--tab-tab-bg-hovered, #393B40);
+}
+
+.tui-session__comment-chip .ai-chat-attachment-close-button {
+  position: static;
+  width: 16px;
+  margin-left: -2px;
+  padding: 0;
+  background: none;
+  color: #868a91;
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.tui-session__comment-chip .ai-chat-attachment-close-button:is(:hover, :focus-visible),
+.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action:active .ai-chat-attachment-close-button {
+  background: none;
+  color: #dfe1e5;
+}

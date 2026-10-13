@@ -21072,7 +21072,17 @@ function TuiSessionView({
           <AiChatAttachmentStrip
             attachments={noteAttachments}
             onOpen={onOpenAttachment}
-            onRemove={(attachment) => onRemoveComposerAttachment?.(attachment, { chatId })}
+            onRemove={(attachment) => {
+              onRemoveComposerAttachment?.(attachment, { chatId });
+              // Like the chat composer, dismiss the chip right away: the same
+              // notes can also be mirrored in the agent's Last Turn diff tab.
+              const index = noteAttachments.indexOf(attachment);
+              onComposerDraftChange?.(chatId, {
+                text: '',
+                contentParts: [],
+                dismissedAttachmentKeys: [...dismissedKeys, getDraftKey(attachment, Math.max(0, index))],
+              });
+            }}
             removeLabel={(attachment) => `Remove ${attachment?.label ?? 'comments'}`}
             renderCodeSnippet={getCommentCodeSnippet}
             className="tui-session__comment-chips"
