@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS, STORAGE_KEY, generateDemoMessage, getCheckedFiles, normalizeSettings, readSettings } from './airCommitState.js';
 
-const SETTINGS_CHANGED = 'ijai2499:air-settings-changed';
+const SETTINGS_CHANGED = 'ijai2751:air-settings-changed';
 
 export function useAirCommitPreferences() {
   const [settings, setSettings] = useState(() => {

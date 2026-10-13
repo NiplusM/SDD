@@ -1,4 +1,4 @@
-export const STORAGE_KEY = 'ijai2499:petclinic:air:v1';
+export const STORAGE_KEY = 'ijai2751:petclinic:air:v1';
 export const AGENTS = [
   { value: 'junie', label: 'Junie', models: ['Claude Sonnet 4.5', 'GPT-5'] },
   { value: 'claude', label: 'Claude Agent', models: ['Claude Haiku 4.5', 'Claude Sonnet 4.5'] },
