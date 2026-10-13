@@ -735,33 +735,29 @@ export function PlanDiffFloatingCommentToolbar({
           <div className="ij2499-comment-selection-header">Comments to send <span>{selectedCount} of {commentCount} selected</span></div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
-              <TreeNode key={chatId} flat className="ij2499-comment-session" hasChildren isExpanded
-                label={<span className="ij2499-comment-selection-row">
-                  {checkbox(session.items, `Select comments in ${session.label}`)}
-                  <AiChatAgentIcon icon={session.icon} />
-                  <span>{session.label}</span>
-                </span>}
-              >
+              <section key={chatId} className="ij2499-comment-session" aria-label={session.label}>
+                <TreeNode flat className="ij2499-comment-session-context"
+                  label={<span className="ij2499-comment-selection-row">
+                    {checkbox(session.items, `Select comments in ${session.label}`)}
+                    <AiChatAgentIcon icon={session.icon} />
+                    <span title={session.label}>{session.label}</span>
+                  </span>}
+                />
                 {[...session.files].map(([tabId, file]) => (
-                  <TreeNode key={tabId} flat className="ij2499-comment-file" hasChildren isExpanded
-                    label={<span className="ij2499-comment-selection-row">
-                      {checkbox(file.items, `Select comments in ${file.label}`)}
-                      <Icon name={file.icon} size={16} />
-                      <span>{file.label}</span>
-                    </span>}
+                  <TreeNode key={tabId} level={1} className="ij2499-comment-file" hasChildren isExpanded
+                    label={file.label} icon={file.icon}
+                    prefix={checkbox(file.items, `Select comments in ${file.label}`)}
                   >
                     {file.items.map((item) => (
                       <TreeNode key={item.key} flat className="ij2499-comment-leaf"
-                        label={<span className="ij2499-comment-selection-row">
-                          {checkbox([item], `Send comment: ${item.text}`)}
-                          <span title={item.text}>{item.text}</span>
-                        </span>}
+                        prefix={checkbox([item], `Send comment: ${item.text}`)}
+                        label={<span title={item.text}>{item.text}</span>}
                         secondaryText={item.lineLabel}
                       />
                     ))}
                   </TreeNode>
                 ))}
-              </TreeNode>
+              </section>
             ))}
           </div>
         </section>

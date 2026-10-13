@@ -226,11 +226,12 @@
 .ij2499-comment-selection-tree .tree-node-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ij2499-comment-selection-tree .tree-node-secondary { flex-shrink: 0; font-size: 12px; }
 
-/* Chat is a group heading; file and comments share one shallow inset. */
+/* Session is context, while the expandable tree has only file → comment. */
 .ij2499-comment-selection-tree .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
-.ij2499-comment-selection-tree .ij2499-comment-file { margin-left: 12px; }
-.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { color: var(--text-muted); }
-.ij2499-comment-selection-tree .ij2499-comment-session > .tree-node { font-weight: 500; }
+.ij2499-comment-selection-tree .ij2499-comment-session-context > .tree-node { padding-left: 20px !important; color: var(--text-muted); font-size: 12px; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { padding-left: 0 !important; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node .tree-node-toggle { flex-shrink: 0; margin-right: 0; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 36px !important; }
 
 .ij2499-comment-selection-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ij2499-comment-selection-row > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

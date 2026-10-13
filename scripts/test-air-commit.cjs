@@ -88,14 +88,20 @@ async function checkCommentToolbar() {
       assert.equal(geometry.surface, geometry.barSurface, 'both islands use the same dark kit surface');
       await page.screenshot({ path: path.join(outputDir, `comment-selection-${width}.png`) });
       assert.equal(await bar.locator('.plan-diff-comment-nav-count .toolbar-button-chevron').count(), 0, 'comment counter has no chevron');
-      assert.equal(await island.locator('.tree-node-toggle, .tree-node-spacer').count(), 0, 'grouped rows do not add tree chevrons or spacers');
+      assert.equal(await island.locator('.tree-node-toggle').count(), 1, 'only the file is an expandable tree root');
+      assert.equal(await island.locator('.ij2499-comment-session-context .tree-node-toggle').count(), 0, 'session is context rather than a third tree level');
+      assert.equal(await island.locator('.ij2499-comment-file > .tree-node-children > .ij2499-comment-leaf').count(), 2, 'comments are file children');
       const insets = await island.evaluate(element => {
         const x = selector => element.querySelector(selector).getBoundingClientRect().x;
-        return { file: x('.ij2499-comment-file .checkbox-wrapper') - x('.ij2499-comment-session .checkbox-wrapper'),
+        return { file: x('.ij2499-comment-file .checkbox-wrapper') - x('.ij2499-comment-session-context .checkbox-wrapper'),
           comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper') };
       });
-      assert.equal(insets.file, 12, 'file group has one shallow inset below the chat heading');
-      assert.equal(insets.comment, 0, 'comments align with the file instead of nesting again');
+      assert.equal(insets.file, 0, 'session context and file checkbox share the parent column');
+      assert.equal(insets.comment, 16, 'comments have one tree indentation step');
+      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      assert.equal(await island.getByRole('checkbox').count(), 2, 'file collapse hides only its comments');
+      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      assert.equal(await island.getByRole('checkbox').count(), 4);
       const keyboardCheckbox = island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true });
       await keyboardCheckbox.focus();
       await page.keyboard.press('Space');
