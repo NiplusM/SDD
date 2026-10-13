@@ -217,21 +217,29 @@
 .ij2499-comment-toolbar .plan-diff-comment-nav-count[aria-expanded="true"] .toolbar-button-content { background: var(--icon-button-hover-bg); }
 .ij2499-comment-selection-island { position: absolute; bottom: calc(100% + 9px); left: -1px; width: calc(100% + 2px); box-sizing: border-box; padding: 8px; border: 1px solid var(--layer-1-border); border-radius: 8px; background: var(--layer-1-bg); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16); color: var(--text-default); }
 .ij2499-comment-selection-header { display: flex; justify-content: space-between; gap: 8px; padding: 0 4px 6px; font-size: 13px; line-height: 18px; }
-.ij2499-comment-selection-header > span { color: var(--text-muted); white-space: nowrap; }
+.ij2499-comment-selection-header > span:last-child { color: var(--text-muted); white-space: nowrap; }
+.ij2499-comment-selection-heading { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .ij2499-comment-selection-tree { max-height: 240px; overflow: auto; }
 .ij2499-comment-selection-tree .tree-node { min-width: 0; height: 24px; border-radius: 4px; font-weight: 400; }
-.ij2499-comment-selection-tree .tree-node-container > .tree-node { padding-right: 4px; }
 /* Checkbox retains its visible native control and an accessible label; tree label carries the visible text. */
 .ij2499-comment-selection-checkbox .checkbox-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.ij2499-comment-selection-tree .tree-node-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ij2499-comment-selection-tree .tree-node-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ij2499-comment-selection-tree .tree-node-secondary { flex-shrink: 0; font-size: 12px; }
 
-/* Session owns its files, but its compact heading adds no indentation level. */
-.ij2499-comment-selection-tree .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
-.ij2499-comment-selection-tree .ij2499-comment-session-context > .tree-node { padding-left: 38px !important; color: var(--text-muted); font-size: 12px; }
-
-.ij2499-comment-selection-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ij2499-comment-selection-row > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ij2499-comment-selection-row > svg,
-.ij2499-comment-selection-row > .icon { flex-shrink: 0; }
+/* Compatibility with current upstream TreeNode guidance (embedded kit is 0.3):
+   8px base + 16px per level; fixed 16px columns without historical margins. */
+.ij2499-comment-selection-tree .tree-node-container { width: 100%; overflow: hidden; }
+.ij2499-comment-selection-tree .tree-node { gap: 4px; padding-top: 4px; padding-right: 8px; padding-bottom: 4px; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { padding-left: 8px !important; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 24px !important; }
+.ij2499-comment-selection-tree .tree-node-toggle,
+.ij2499-comment-selection-tree .tree-node-spacer,
+.ij2499-comment-selection-tree .tree-node-icon { flex-shrink: 0; width: 16px; height: 16px; margin-right: 0; }
+.ij2499-comment-selection-tree .tree-node-icon { justify-content: flex-start; }
 .ij2499-comment-selection-checkbox.checkbox-container { flex-shrink: 0; padding: 0; gap: 0; }
+
+/* Session is a group header outside the two-level file/comment tree. */
+.ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
+.ij2499-comment-session-header { display: flex; align-items: center; gap: 4px; min-width: 0; height: 24px; padding: 0 8px; color: var(--text-muted); font-size: 12px; line-height: 16px; }
+.ij2499-comment-session-agent { display: flex; align-items: center; flex-shrink: 0; width: 16px; height: 16px; }
+.ij2499-comment-session-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

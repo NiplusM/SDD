@@ -732,17 +732,20 @@ export function PlanDiffFloatingCommentToolbar({
     <div ref={toolbarRef} className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
       {selectionOpen && (
         <section id="ij2499-comment-selection" className="ij2499-comment-selection-island" aria-label="Comments to send">
-          <div className="ij2499-comment-selection-header">Comments to send <span>{selectedCount} of {commentCount} selected</span></div>
+          <div className="ij2499-comment-selection-header">
+            <span className="ij2499-comment-selection-heading">
+              {checkbox(commentItems, 'Select all comments')}
+              Comments to send
+            </span>
+            <span>{selectedCount} of {commentCount} selected</span>
+          </div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
-              <TreeNode key={chatId} flat hasChildren isExpanded
-                className="ij2499-comment-session ij2499-comment-session-context"
-                label={<span className="ij2499-comment-selection-row">
-                  {checkbox(session.items, `Select comments in ${session.label}`)}
-                  <AiChatAgentIcon icon={session.icon} />
-                  <span title={session.label}>{session.label}</span>
-                </span>}
-              >
+              <section key={chatId} className="ij2499-comment-session" aria-label={session.label}>
+                <div className="ij2499-comment-session-header">
+                  <span className="ij2499-comment-session-agent"><AiChatAgentIcon icon={session.icon} /></span>
+                  <span className="ij2499-comment-session-title" title={session.label}>{session.label}</span>
+                </div>
                 {[...session.files].map(([tabId, file]) => (
                   <TreeNode key={tabId} level={1} className="ij2499-comment-file" hasChildren isExpanded
                     label={file.label} icon={file.icon}
@@ -757,7 +760,7 @@ export function PlanDiffFloatingCommentToolbar({
                     ))}
                   </TreeNode>
                 ))}
-              </TreeNode>
+              </section>
             ))}
           </div>
         </section>
