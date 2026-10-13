@@ -25360,57 +25360,43 @@ button.aiux543-answer-change-card:focus-visible {
   color: #e08855;
 }
 
-.tui-session__context {
+/* Comments panel: diff notes addressed to this TUI session. Overflow stays
+   visible so a chip's hover preview opens above the panel. */
+.tui-session__comments {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   min-height: 40px;
+  box-sizing: border-box;
   padding: 8px 12px;
   border-top: 1px solid #393b40;
+  background: #1e1f22;
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 13px;
-  overflow: hidden;
+  line-height: 16px;
 }
 
-.tui-session__context-label {
+.tui-session__comments-label {
   flex: 0 0 auto;
+  align-self: flex-start;
+  padding-top: 4px;
   color: #dfe1e5;
 }
 
-.tui-session__context-chips.ai-chat-attachments {
-  display: contents;
-}
-
-.tui-session__context-chip.ai-chat-attachment-chip {
-  flex: 0 1 auto;
-  max-width: 360px;
-  padding-left: 10px;
-}
-
-/* Reference chips: label and an always-visible close button, no leading icon. */
-.tui-session__context-chip .ai-chat-attachment-icon {
-  display: none;
-}
-
-.tui-session__context-chip.ai-chat-attachment-chip.has-remove-action {
-  gap: 6px;
-  padding: 0 6px 0 10px;
-}
-
-.tui-session__context-chip .ai-chat-attachment-close-button {
-  position: static;
-  width: 16px;
+.tui-session__comment-chips.ai-chat-attachments {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-width: 0;
+  margin: 0;
   padding: 0;
-  background: none;
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
 }
 
-.tui-session__context-chip .ai-chat-attachment-close-button:is(:hover, :focus-visible),
-.tui-session__context-chip.ai-chat-attachment-chip.has-remove-action:active .ai-chat-attachment-close-button {
-  background: none;
-  color: #dfe1e5;
+.tui-session__comment-chip.ai-chat-attachment-chip {
+  flex: 0 1 auto;
+  max-width: 100%;
 }

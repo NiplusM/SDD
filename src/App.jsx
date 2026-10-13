@@ -16568,11 +16568,6 @@ const AI_CHAT_SCENARIOS = {
         finishedAt: '11:40',
       },
     ],
-    tuiContext: [
-      { id: 'tui-context-file', label: 'src/main/java/org…rk/samples/petclinic/model/BaseEntity.java', contextLine: `file: ${TUI_SESSION_SOURCE_ROOT}/model/BaseEntity.java` },
-      { id: 'tui-context-symbol', label: 'BaseEntity', contextLine: 'symbol: BaseEntity' },
-      { id: 'tui-context-selection', label: 'Selection (33-33)', contextLine: 'snippet: lines=33-33 selection=true' },
-    ],
   },
   'refactor-time-slots': {
     title: 'Refactor VisitController.java time slots',
@@ -20887,7 +20882,7 @@ function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
 
 // IJAI-2751: Codex running in a terminal (TUI) inside an editor tab. Notes from
 // diffs reach it through the same composer attachments as a Chat UI session;
-// here they appear in the IDE Context bar below the terminal and are sent as
+// here they appear in the Comments panel below the terminal and are sent as
 // the next prompt's IDE Context.
 function TuiSessionView({
   chatId,
@@ -20905,7 +20900,6 @@ function TuiSessionView({
   getCommentCodeSnippet,
 }) {
   const [inputText, setInputText] = useState('');
-  const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
   const [messageTimes, setMessageTimes] = useState({});
   const [interruptedMessageIds, setInterruptedMessageIds] = useState(() => new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -20929,8 +20923,6 @@ function TuiSessionView({
     .map((attachment, index) => getDraftKey(attachment, index)));
   const noteAttachments = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .filter((attachment, index) => !dismissedKeys.has(getDraftKey(attachment, index)) && !sentKeys.has(getDraftKey(attachment, index)));
-  const ideContext = (Array.isArray(scenario?.tuiContext) ? scenario.tuiContext : [])
-    .filter((item) => !removedContextIds.has(item.id));
 
   useEffect(() => {
     setMessageTimes((current) => {
@@ -20963,16 +20955,15 @@ function TuiSessionView({
   }, [sentMessages, noteAttachments.length, isRunning]);
 
   const handleSubmit = () => {
-    const text = inputText.trim();
-    if (isRunning || (!text && noteAttachments.length === 0)) return;
-    const contextLines = [
-      ...ideContext.map((item) => item.contextLine),
-      ...noteAttachments.flatMap(getTuiAttachmentContextLines),
-    ];
+    const typedText = inputText.trim();
+    if (isRunning || (!typedText && noteAttachments.length === 0)) return;
+    const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
+    const text = typedText || buildSendCommentsMessage(commentCount);
+    const contextLines = noteAttachments.flatMap(getTuiAttachmentContextLines);
     onSendMessage?.(chatId, text, noteAttachments, {
       contentParts: [
-        ...(text ? [{ type: 'text', text }] : []),
-        { type: 'tui-context', lines: contextLines },
+        { type: 'text', text },
+        ...(contextLines.length > 0 ? [{ type: 'tui-context', lines: contextLines }] : []),
       ],
     });
     // Sent notes leave the Context bar; a new note on the same file has a new
@@ -21046,7 +21037,9 @@ function TuiSessionView({
             ref={inputRef}
             className="tui-session__input"
             value={inputText}
-            placeholder={isRunning ? '' : 'Ask Codex to do anything'}
+            placeholder={isRunning
+              ? ''
+              : (noteAttachments.length > 0 ? 'Press Enter to send comments' : 'Ask Codex to do anything')}
             aria-label={`Message ${sessionTitle}`}
             spellCheck={false}
             onChange={(event) => setInputText(event.target.value)}
@@ -21073,28 +21066,17 @@ function TuiSessionView({
         </div>
         <div className="tui-session__line tui-session__muted">? for shortcuts</div>
       </div>
-      {ideContext.length > 0 || noteAttachments.length > 0 ? (
-        <div className="tui-session__context" aria-label="IDE Context">
-          <span className="tui-session__context-label">Context</span>
+      {noteAttachments.length > 0 ? (
+        <div className="tui-session__comments" aria-label="Comments">
+          <span className="tui-session__comments-label">Comments</span>
           <AiChatAttachmentStrip
-            attachments={[
-              ...ideContext.map((item) => ({ ...item, isTuiContext: true, hideInlineCount: true })),
-              ...noteAttachments,
-            ]}
-            onOpen={(attachment) => {
-              if (!attachment?.isTuiContext) onOpenAttachment?.(attachment);
-            }}
-            onRemove={(attachment) => {
-              if (attachment?.isTuiContext) {
-                setRemovedContextIds((current) => new Set([...current, attachment.id]));
-                return;
-              }
-              onRemoveComposerAttachment?.(attachment, { chatId });
-            }}
-            removeLabel={(attachment) => `Remove ${attachment?.label ?? 'item'} from context`}
+            attachments={noteAttachments}
+            onOpen={onOpenAttachment}
+            onRemove={(attachment) => onRemoveComposerAttachment?.(attachment, { chatId })}
+            removeLabel={(attachment) => `Remove ${attachment?.label ?? 'comments'}`}
             renderCodeSnippet={getCommentCodeSnippet}
-            className="tui-session__context-chips"
-            chipClassName="tui-session__context-chip"
+            className="tui-session__comment-chips"
+            chipClassName="tui-session__comment-chip"
           />
         </div>
       ) : null}
