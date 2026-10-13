@@ -190,10 +190,28 @@ function buildSendCommentsMessage(count) {
   return `I left ${count} comment${count === 1 ? '' : 's'} on the diff. Please take a look.`;
 }
 
-function getSendableCommentAttachments(attachments = []) {
-  return (Array.isArray(attachments) ? attachments : []).filter((attachment) => (
-    Number.isFinite(attachment?.commentCount) && attachment.commentCount > 0
-  ));
+function getSendableCommentAttachments(attachments = [], selectedComments = null) {
+  return (Array.isArray(attachments) ? attachments : []).flatMap((attachment) => {
+    if (!Number.isFinite(attachment?.commentCount) || attachment.commentCount <= 0) return [];
+    if (!Array.isArray(selectedComments)) return [attachment];
+    const chosen = selectedComments.filter((item) => item.tabId === attachment.diffTabId);
+    const diffComments = Object.fromEntries(Object.entries(normalizeStoredDiffCommentsState(attachment.diffComments))
+      .map(([rowId, comments]) => [rowId, comments.filter((comment) => chosen.some((item) => (
+        item.rowId === rowId && item.text === getStoredCommentText(comment)
+      )))])
+      .filter(([, comments]) => comments.length > 0));
+    const commentCount = Object.values(diffComments).flat().length;
+    return commentCount > 0 ? [{ ...attachment, diffComments, commentCount }] : [];
+  });
+}
+
+function subtractSentDiffComments(comments, sentComments) {
+  const sent = normalizeStoredDiffCommentsState(sentComments);
+  return Object.fromEntries(Object.entries(normalizeStoredDiffCommentsState(comments))
+    .map(([rowId, rowComments]) => [rowId, rowComments.filter((comment) => (
+      !(sent[rowId] ?? []).some((item) => getStoredCommentText(item) === getStoredCommentText(comment))
+    ))])
+    .filter(([, rowComments]) => rowComments.length > 0));
 }
 const AI_CHAT_AGENTS = [
   { id: 'junie', label: 'Junie by JetBrains', buttonLabel: 'Junie', model: 'Claude Sonnet 4.1' },
@@ -19430,11 +19448,18 @@ function AiReviewSplitFileView({
     return orderedRowIds.flatMap((rowId) => (
       (scopeComments[rowId] ?? [])
         .filter((comment) => !(comment && typeof comment === 'object' && comment.author === 'agent'))
-        .map((_, commentIndex) => ({
-          key: `${scopeFile.tabId}\u0000${rowId}\u0000${commentIndex}`,
+        .map((comment, commentIndex) => ({
+          key: JSON.stringify([activeChatId, scopeFile.tabId, rowId, getStoredCommentText(comment)]),
           tabId: scopeFile.tabId,
           rowId,
           commentIndex,
+          text: getStoredCommentText(comment),
+          lineLabel: getStoredCommentLineLabel(comment),
+          fileLabel: scopeFile.name,
+          fileIcon: getCommitFileIcon(scopeFile.name),
+          chatId: activeChatId,
+          chatLabel: activeChatTitle,
+          chatIcon: agentIcon,
         }))
     ));
   });
@@ -19698,6 +19723,7 @@ function AiReviewSplitFileView({
         {showFloatingCommentToolbar && !readOnly && !file.commentsReadOnly && !file.isArchivedSnapshot && (
           <PlanDiffFloatingCommentToolbar
             commentCount={scopeCommentTargets.length}
+            commentItems={scopeCommentTargets}
             sendCommentsDisabled={sendCommentsDisabled}
             onSendComments={onSendComments}
             commentRowIds={scopeCommentTargets.map((target) => target.key)}
@@ -31889,11 +31915,29 @@ export default function App() {
         )
       : normalizeStoredDiffCommentsState(activeTabContent?.initialDiffComments),
   );
-  const activeDiffSendableCommentCount = Object.values(activeDiffSendableCommentsMap).flat().length;
-  // Same order the diff itself renders in, so "1 of N" walks top to bottom.
-  const activeDiffCommentRowIds = (activePlanDiffData?.rows ?? [])
-    .map((row) => row.id)
-    .filter((rowId) => (activeDiffSendableCommentsMap[rowId] ?? []).length > 0);
+  const activeDiffOrderedCommentRowIds = [
+    ...(activePlanDiffData?.rows ?? []).map((row) => row.id),
+    ...Object.keys(activeDiffSendableCommentsMap).filter((rowId) => !(activePlanDiffData?.rows ?? []).some((row) => row.id === rowId)),
+  ];
+  const activeDiffCommentItems = activeDiffOrderedCommentRowIds.flatMap((rowId) => (
+    (activeDiffSendableCommentsMap[rowId] ?? [])
+      .filter((comment) => comment?.author !== 'agent')
+      .map((comment) => ({
+        key: JSON.stringify([activeDiffSendCommentsChatId, activeTabId, rowId, getStoredCommentText(comment)]),
+        navigationKey: rowId,
+        tabId: activeTabId,
+        rowId,
+        text: getStoredCommentText(comment),
+        lineLabel: getStoredCommentLineLabel(comment),
+        fileLabel: activePlanDiffData?.sourceTabLabel ?? activeEditorTabMeta?.label ?? 'File',
+        fileIcon: getCommitFileIcon(activePlanDiffData?.sourceTabLabel ?? activeEditorTabMeta?.label ?? ''),
+        chatId: activeDiffSendCommentsChatId,
+        chatLabel: getAiChatScenarioById(activeDiffSendCommentsChatId)?.title ?? planDiffContextChatTitle,
+        chatIcon: getAiChatListItemById(activeDiffSendCommentsChatId)?.icon ?? planDiffContextChatIcon,
+      }))
+  ));
+  const activeDiffSendableCommentCount = activeDiffCommentItems.length;
+  const activeDiffCommentRowIds = activeDiffOrderedCommentRowIds.filter((rowId) => (activeDiffSendableCommentsMap[rowId] ?? []).length > 0);
   const openMarkdownDocumentTabs = ideTabs.filter((tab) => (
     tab?.id?.startsWith('agent-task-') || tab?.label?.endsWith('.md')
   ));
@@ -33666,12 +33710,18 @@ export default function App() {
         const existing = next[tabId];
         if (!existing) continue;
         const previousSessions = normalizeDiffSessionCommentsByChatId(existing.diffSessionCommentsByChatId);
-        const { [targetChatId]: _removed, ...remaining } = previousSessions;
+        const remaining = { ...previousSessions };
+        const remainingComments = subtractSentDiffComments(previousSessions[targetChatId]?.comments, attachment.diffComments);
+        if (Object.keys(remainingComments).length > 0) {
+          remaining[targetChatId] = { ...previousSessions[targetChatId], comments: remainingComments };
+        } else {
+          delete remaining[targetChatId];
+        }
         next[tabId] = {
           ...existing,
           initialDiffComments: preserveInitialDiffComments
             ? existing.initialDiffComments
-            : {},
+            : subtractSentDiffComments(existing.initialDiffComments, attachment.diffComments),
           diffSessionCommentsByChatId: remaining,
         };
       }
@@ -36203,7 +36253,7 @@ export default function App() {
     // Scoped ("Send AI Note to Agent" / reply / quick-fix): send only the one
     // submitted comment. Unscoped ("Send All"): send every attached note.
     const scope = aiChatAutoSendRequest.only;
-    let noteAttachments = withComments;
+    let noteAttachments = getSendableCommentAttachments(withComments, aiChatAutoSendRequest.selectedComments);
     if (scope) {
       noteAttachments = [];
       for (const attachment of withComments) {
@@ -37168,11 +37218,11 @@ export default function App() {
                       showFloatingCommentToolbar={prototypeEntryPoint === 'commit'}
                       commentCount={visibleReviewSplitNoteCount}
                       sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
-                      onSendComments={(count) => {
+                      onSendComments={(count, selectedComments) => {
                         handleAiChatTabSend(
                           reviewSplitChatId,
                           buildSendCommentsMessage(count),
-                          getSendableCommentAttachments(aiChatComposerDiffAttachments),
+                          getSendableCommentAttachments(aiChatComposerDiffAttachments, selectedComments),
                         );
                         openChatInEditorTab(reviewSplitChatId);
                       }}
@@ -37569,8 +37619,9 @@ export default function App() {
                           activeDiffOriginChatId,
                         ) : null)}
                     commentCount={activeDiffSendableCommentCount}
+                    commentItems={activeDiffCommentItems}
                     sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[activeDiffSendCommentsChatId]?.status)}
-                    onSendComments={activeDiffSendCommentsChatId ? (count) => {
+                    onSendComments={activeDiffSendCommentsChatId ? (count, selectedComments) => {
                       if (prototypeEntryPoint === 'commit') {
                         setAiChatComposerDiffTabByChatId((prev) => ({ ...prev, [activeDiffSendCommentsChatId]: activeTabId }));
                         setSelectedAiChatId(activeDiffSendCommentsChatId);
@@ -37578,6 +37629,7 @@ export default function App() {
                           chatId: activeDiffSendCommentsChatId,
                           nonce: Date.now(),
                           diffTabId: activeTabId,
+                          selectedComments,
                           message: buildSendCommentsMessage(count),
                         });
                         if (activeTabContent?.diffOpenedFromCommitToolWindow) {
@@ -37592,7 +37644,7 @@ export default function App() {
                         handleAiChatTabSend(
                           activeDiffSendCommentsChatId,
                           buildSendCommentsMessage(count),
-                          getSendableCommentAttachments(aiChatComposerDiffAttachments),
+                          getSendableCommentAttachments(aiChatComposerDiffAttachments, selectedComments),
                         );
                         if (activeDiffOriginSourceTabId) {
                           openChangedFileInReviewScope(

@@ -610,7 +610,7 @@ function PlanDiffToolbarIconButton({ label, icon, onClick = null }) {
 // reviewer works through drafted comments one at a time the same way they
 // work through files, so it gets the same prev/count/next pattern instead of
 // a bare counter on the send button.
-function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onNavigate = null }) {
+function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onNavigate = null, onToggleSelection = null, selectionOpen = false }) {
   if (!Array.isArray(commentRowIds) || commentRowIds.length === 0) return null;
 
   const rawIndex = commentRowIds.indexOf(activeRowId);
@@ -630,9 +630,21 @@ function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onN
         disabled={currentIndex <= 0}
         onClick={() => goTo(currentIndex - 1)}
       />
-      <span className="plan-diff-comment-nav-count">
-        {`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
-      </span>
+      {onToggleSelection ? (
+        <ToolbarButton
+          className="plan-diff-comment-nav-count"
+          title="Choose comments to send"
+          aria-expanded={selectionOpen}
+          aria-controls="ij2499-comment-selection"
+          onClick={onToggleSelection}
+          text={`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
+          showChevron
+        />
+      ) : (
+        <span className="plan-diff-comment-nav-count">
+          {`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
+        </span>
+      )}
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
         className="plan-diff-viewing-file-arrow"
@@ -644,32 +656,136 @@ function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onN
   );
 }
 
-// Reuses the archived V3 comment-only bottom toolbar and its kit controls.
+// Saved comments keep their own identities so changing a checkbox does not
+// change navigation, and pending response metadata does not reset selection.
 export function PlanDiffFloatingCommentToolbar({
   commentCount = 0,
+  commentItems = [],
   sendCommentsDisabled = false,
   onSendComments = null,
   commentRowIds = [],
   activeCommentRowId = null,
   onNavigateComment = null,
 }) {
+  const [selectionOpen, setSelectionOpen] = useState(false);
+  const [excludedKeys, setExcludedKeys] = useState(() => new Set());
+  const [lastNavigatedKey, setLastNavigatedKey] = useState(null);
+  const toolbarRef = useRef(null);
+  const selectedItems = commentItems.filter((item) => !excludedKeys.has(item.key));
+  const selectedCount = commentItems.length > 0 ? selectedItems.length : commentCount;
+  const sessions = new Map();
+  commentItems.forEach((item) => {
+    if (!sessions.has(item.chatId)) sessions.set(item.chatId, { label: item.chatLabel, icon: item.chatIcon, files: new Map(), items: [] });
+    const session = sessions.get(item.chatId);
+    session.items.push(item);
+    if (!session.files.has(item.tabId)) session.files.set(item.tabId, { label: item.fileLabel, icon: item.fileIcon, items: [] });
+    session.files.get(item.tabId).items.push(item);
+  });
+  const toggleItems = (items, checked) => setExcludedKeys((previous) => {
+    const next = new Set(previous);
+    items.forEach((item) => checked ? next.delete(item.key) : next.add(item.key));
+    return next;
+  });
+  const checkbox = (items, label) => {
+    const count = items.filter((item) => !excludedKeys.has(item.key)).length;
+    return <Checkbox
+      label={label}
+      checked={count === items.length}
+      indeterminate={count > 0 && count < items.length}
+      disabled={sendCommentsDisabled}
+      // The editor dock is portaled into another React root. That root may
+      // restore checked before this portal receives the delegated input click.
+      // Use the controlled selection; label and keyboard activation both emit
+      // one input click, and group selection remains deterministic.
+      onClick={(event) => {
+        if (event.target instanceof HTMLInputElement && event.target.type === 'checkbox' && !sendCommentsDisabled) {
+          toggleItems(items, count !== items.length);
+        }
+      }}
+      className="ij2499-comment-selection-checkbox"
+    />;
+  };
+  useEffect(() => {
+    if (!selectionOpen) return undefined;
+    const dismiss = (event) => {
+      if (!toolbarRef.current?.contains(event.target)) setSelectionOpen(false);
+    };
+    const escape = (event) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      setSelectionOpen(false);
+      toolbarRef.current?.querySelector('.plan-diff-comment-nav-count')?.focus();
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape, true);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', escape, true);
+    };
+  }, [selectionOpen]);
   if (commentCount === 0 || !onSendComments) return null;
+  const navIds = commentItems.length > 0 ? commentItems.map((item) => item.key) : commentRowIds;
+  const activeKey = commentItems.find((item) => item.key === activeCommentRowId)?.key
+    ?? commentItems.find((item) => item.key === lastNavigatedKey && item.navigationKey === activeCommentRowId)?.key
+    ?? commentItems.find((item) => item.navigationKey === activeCommentRowId)?.key
+    ?? activeCommentRowId;
   return (
-    <div className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
+    <div ref={toolbarRef} className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
+      {selectionOpen && (
+        <section id="ij2499-comment-selection" className="ij2499-comment-selection-island" aria-label="Comments to send">
+          <div className="ij2499-comment-selection-header">Comments to send <span>{selectedCount} of {commentCount} selected</span></div>
+          <div className="ij2499-comment-selection-tree">
+            {[...sessions].map(([chatId, session]) => (
+              <TreeNode key={chatId} level={1} className="ij2499-comment-session" hasChildren isExpanded
+                label={<span className="ij2499-comment-selection-row">
+                  {checkbox(session.items, `Select comments in ${session.label}`)}
+                  <AiChatAgentIcon icon={session.icon} />
+                  <span>{session.label}</span>
+                </span>}
+              >
+                {[...session.files].map(([tabId, file]) => (
+                  <TreeNode key={tabId} level={2} className="ij2499-comment-file" hasChildren isExpanded
+                    label={<span className="ij2499-comment-selection-row">
+                      {checkbox(file.items, `Select comments in ${file.label}`)}
+                      <Icon name={file.icon} size={16} />
+                      <span>{file.label}</span>
+                    </span>}
+                  >
+                    {file.items.map((item) => (
+                      <TreeNode key={item.key} level={3} className="ij2499-comment-leaf"
+                        label={<span className="ij2499-comment-selection-row">
+                          {checkbox([item], `Send comment: ${item.text}`)}
+                          <span title={item.text}>{item.text}</span>
+                        </span>}
+                        secondaryText={item.lineLabel}
+                      />
+                    ))}
+                  </TreeNode>
+                ))}
+              </TreeNode>
+            ))}
+          </div>
+        </section>
+      )}
       <PlanDiffCommentNavControl
-        commentRowIds={commentRowIds}
-        activeRowId={activeCommentRowId}
-        onNavigate={onNavigateComment}
+        commentRowIds={navIds}
+        activeRowId={activeKey}
+        onNavigate={(key) => {
+          setLastNavigatedKey(key);
+          onNavigateComment?.(commentItems.find((item) => item.key === key)?.navigationKey ?? key);
+        }}
+        onToggleSelection={commentItems.length > 0 ? () => setSelectionOpen((open) => !open) : null}
+        selectionOpen={selectionOpen}
       />
       <Button
         type="primary"
         size="slim"
         className="plan-diff-send-comments-button"
-        disabled={sendCommentsDisabled}
+        disabled={sendCommentsDisabled || selectedCount === 0}
         aria-label={sendCommentsDisabled
           ? 'Comments are being processed by the agent.'
-          : `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`}
-        onClick={() => onSendComments(commentCount)}
+          : `Send ${selectedCount} ${selectedCount === 1 ? 'comment' : 'comments'} to the chat.`}
+        onClick={() => { setSelectionOpen(false); onSendComments(selectedCount, commentItems.length > 0 ? selectedItems : null); }}
       >
         Send Comments
       </Button>
@@ -7599,6 +7715,7 @@ export function PlanDiffEditorArea({
   // toolbar — commentCount comes from the host since comment state here is
   // owned by the nested PlanDiffOverlay, not this component.
   commentCount = 0,
+  commentItems = [],
   sendCommentsDisabled = false,
   onSendComments = null,
   // Prev/next through drafted comments, shown next to the chat label on the
@@ -8076,6 +8193,7 @@ export function PlanDiffEditorArea({
           {showFloatingCommentToolbar && !isArchivedSnapshot && !commentsReadOnly && (
             <PlanDiffFloatingCommentToolbar
               commentCount={commentCount}
+              commentItems={commentItems}
               sendCommentsDisabled={sendCommentsDisabled}
               onSendComments={onSendComments}
               commentRowIds={commentRowIds}

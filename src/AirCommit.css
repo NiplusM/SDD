@@ -209,3 +209,30 @@
 .ij2499-chat-request-custom .input:focus { outline: none; box-shadow: none; }
 .ij2499-chat-request-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
 .ij2499-chat-request-shortcut { margin-left: 4px; color: var(--text-muted); }
+
+/* The selector expands upward as a second island in the same editor dock. */
+.ij2499-comment-toolbar .plan-diff-comment-nav-count.toolbar-button { width: auto; min-width: 0; height: 26px; font: inherit; }
+.ij2499-comment-toolbar .plan-diff-comment-nav-count .toolbar-button-content { display: flex; gap: 4px; padding: 3px 4px; border-radius: 4px; }
+.ij2499-comment-toolbar .plan-diff-comment-nav-count:hover .toolbar-button-content,
+.ij2499-comment-toolbar .plan-diff-comment-nav-count[aria-expanded="true"] .toolbar-button-content { background: var(--icon-button-hover-bg); }
+.ij2499-comment-selection-island { position: absolute; bottom: calc(100% + 9px); left: -1px; width: calc(100% + 2px); box-sizing: border-box; padding: 8px; border: 1px solid var(--layer-1-border); border-radius: 8px; background: var(--layer-1-bg); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16); color: var(--text-default); }
+.ij2499-comment-selection-header { display: flex; justify-content: space-between; gap: 8px; padding: 0 4px 6px; font-size: 13px; line-height: 18px; }
+.ij2499-comment-selection-header > span { color: var(--text-muted); white-space: nowrap; }
+.ij2499-comment-selection-tree { max-height: 240px; overflow: auto; }
+.ij2499-comment-selection-tree .tree-node { min-width: 0; height: 24px; border-radius: 4px; font-weight: 400; }
+.ij2499-comment-selection-tree .tree-node-container > .tree-node { padding-right: 4px; }
+/* Checkbox retains its visible native control and an accessible label; tree label carries the visible text. */
+.ij2499-comment-selection-checkbox .checkbox-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ij2499-comment-selection-tree .tree-node-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ij2499-comment-selection-tree .tree-node-secondary { flex-shrink: 0; font-size: 12px; }
+
+.ij2499-comment-toolbar .plan-diff-comment-nav-count[aria-expanded="false"] .toolbar-button-chevron { transform: rotate(180deg); }
+.ij2499-comment-selection-tree .ij2499-comment-session > .tree-node { padding-left: 0 !important; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { padding-left: 16px !important; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 32px !important; }
+
+.ij2499-comment-selection-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ij2499-comment-selection-row > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ij2499-comment-selection-row > svg,
+.ij2499-comment-selection-row > .icon { flex-shrink: 0; }
+.ij2499-comment-selection-checkbox.checkbox-container { flex-shrink: 0; padding: 0; gap: 0; }

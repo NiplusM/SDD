@@ -67,19 +67,87 @@ async function checkCommentToolbar() {
       assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '2 of 2 comments');
       await checkPlacement(page);
       await page.screenshot({ path: path.join(outputDir, `comment-toolbar-${width}.png`) });
+      await bar.locator('.plan-diff-comment-nav-count').click();
+      const island = page.getByRole('region', { name: 'Comments to send', exact: true });
+      await island.waitFor();
+      assert.match(await island.innerText(), /Review Visit.*model fields/);
+      assert.match(await island.innerText(), /VisitController.java/);
+      assert.equal(await island.getByRole('checkbox').count(), 4, 'session, file, and both saved notes have checkboxes');
+      assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'all notes start selected');
+      const geometry = await island.evaluate(element => {
+        const panel = element.getBoundingClientRect();
+        const bar = element.parentElement.getBoundingClientRect();
+        const pane = element.parentElement.parentElement.getBoundingClientRect();
+        return { gap: bar.top - panel.bottom, left: panel.left - bar.left, right: panel.right - bar.right,
+          fits: panel.left >= pane.left && panel.right <= pane.right, surface: getComputedStyle(element).backgroundColor,
+          barSurface: getComputedStyle(element.parentElement).backgroundColor };
+      });
+      assert.equal(geometry.gap, 8, 'second island is 8px above the original bar');
+      assert.equal(geometry.left, 0); assert.equal(geometry.right, 0);
+      assert.ok(geometry.fits, 'comment selector fits in the editor pane');
+      assert.equal(geometry.surface, geometry.barSurface, 'both islands use the same dark kit surface');
+      await page.screenshot({ path: path.join(outputDir, `comment-selection-${width}.png`) });
+      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      assert.equal(await island.getByRole('checkbox').count(), 2, 'file chevron collapses its comments');
+      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      const keyboardCheckbox = island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true });
+      await keyboardCheckbox.focus();
+      await page.keyboard.press('Space');
+      assert.equal(await keyboardCheckbox.isChecked(), false, 'Space toggles the native checkbox');
+      await page.keyboard.press('Space');
+      assert.equal(await keyboardCheckbox.isChecked(), true);
+      await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
+      assert.ok(await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).evaluate(input => input.indeterminate));
+      assert.ok(await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).evaluate(input => input.indeterminate));
+      await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
+      await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
+      assert.ok(await bar.locator('.plan-diff-send-comments-button').isDisabled(), 'no selected comments disables Send');
+      await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
+      assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'session checkbox selects every descendant');
+      if (width === 1656) {
+        await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
+      }
+      await page.keyboard.press('Escape');
+      assert.equal(await island.count(), 0, 'Escape closes the selector');
+      await bar.locator('.plan-diff-comment-nav-count').click();
+      await island.waitFor();
+      assert.equal(await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).isChecked(), width !== 1656, 'selection survives closing and reopening');
+      await page.screenshot({ path: path.join(outputDir, `comment-selection-ready-${width}.png`) });
       await bar.locator('.plan-diff-send-comments-button').click();
       await page.locator('.aiux543-chat-editor-host').waitFor();
       assert.match(await page.locator('.ai-review-editor-split-pane.is-chat .tab-selected').innerText(), /Review Visit.*model fields/);
       const sent = page.locator('.ai-chat-user-card').last();
-      assert.match(await sent.innerText(), /I left 2 comments/);
-      assert.match(await sent.innerText(), /Keep the logging message useful/);
+      assert.match(await sent.innerText(), width === 1656 ? /I left 1 comment/ : /I left 2 comments/);
+      if (width === 1656) assert.doesNotMatch(await sent.innerText(), /Keep the logging message useful/);
+      else assert.match(await sent.innerText(), /Keep the logging message useful/);
       assert.match(await sent.innerText(), /Keep the controller initialization clear/);
-      assert.equal(await sent.locator('.ai-chat-sent-attachment-chip').count(), 1, 'both saved notes travel in the file attachment');
+      assert.equal(await sent.locator('.ai-chat-sent-attachment-chip').count(), 1, 'checked notes travel in the file attachment');
       assert.ok(await page.locator('.commit-tool-window').isVisible(), 'sending comments retains Commit');
       await page.getByRole('button', { name: 'Comments are being processed by the agent.', exact: true }).waitFor();
       assert.ok(await bar.locator('.plan-diff-send-comments-button').isDisabled(), 'duplicate send is disabled while the agent processes comments');
       await checkPlacement(page);
       await page.screenshot({ path: path.join(outputDir, `comment-toolbar-sending-${width}.png`) });
+      if (width === 1656) {
+        await bar.locator('.plan-diff-comment-nav-count').click();
+        await island.waitFor();
+        assert.ok(await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).count(), 'unchecked comment remains saved in the split diff');
+        assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.disabled))), 'selection is locked during processing');
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'Stop', exact: true }).click();
+        await page.waitForFunction(() => {
+          const button = document.querySelector('.ij2499-comment-toolbar .plan-diff-send-comments-button');
+          return button && !button.disabled;
+        }, null, { timeout: 30000 });
+        await bar.locator('.plan-diff-comment-nav-count').click();
+        await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
+        await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
+        await bar.locator('.plan-diff-send-comments-button').click();
+        const following = page.locator('.ai-chat-user-card').last();
+        await following.waitFor();
+        assert.match(await following.innerText(), /I left 1 comment/);
+        assert.match(await following.innerText(), /Keep the logging message useful/);
+        assert.doesNotMatch(await following.innerText(), /Keep the controller initialization clear/);
+      }
       assert.deepEqual(errors, []);
       await page.close();
     }
@@ -99,12 +167,15 @@ async function checkCommentToolbar() {
     await bar.waitFor();
     assert.equal(await bar.locator('.plan-diff-comment-nav-count').innerText(), '1 of 1 comment');
     await checkPlacement(page);
+    await bar.locator('.plan-diff-comment-nav-count').click();
+    await page.getByRole('region', { name: 'Comments to send', exact: true }).waitFor();
+    assert.ok(await page.getByRole('checkbox', { name: 'Send comment: Keep the controller annotation.', exact: true }).isChecked());
     await page.screenshot({ path: path.join(outputDir, 'comment-toolbar-source.png') });
     await bar.locator('.plan-diff-send-comments-button').click();
     await page.locator('.aiux543-chat-editor-host').waitFor();
     assert.match(await page.locator('.ai-chat-user-card').last().innerText(), /Keep the controller annotation/);
     await page.close();
-    console.log('PASS: comment-only bottom control; saved-note gating; one/two-note navigation; reference placement at two widths; explicit recipient; real comment attachments; pending duplicate-send prevention; source-file notes.');
+    console.log('PASS: comment islands; session/file/note selection and partial state; no-selection gating; selected-only attachments; unchecked notes remain sendable; navigation and two-width geometry; explicit recipient; pending duplicate-send prevention; source-file selection.');
   } finally { await browser.close(); }
 }
 
