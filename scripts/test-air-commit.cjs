@@ -72,7 +72,9 @@ async function checkCommentToolbar() {
       await island.waitFor();
       assert.match(await island.innerText(), /Review Visit.*model fields/);
       assert.match(await island.innerText(), /VisitController.java/);
-      assert.equal(await island.getByRole('checkbox').count(), 4, 'bulk selection, session, and both saved notes have checkboxes');
+      assert.equal(await island.getByRole('checkbox').count(), 3, 'session and both saved notes have checkboxes');
+      assert.equal(await island.locator('.ij2499-comment-selection-header').count(), 0, 'redundant Comments to send header is absent');
+      assert.match(await island.locator('.ij2499-comment-session > .tree-node .tree-node-secondary').innerText(), /2 comments/);
       assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'all notes start selected');
       const geometry = await island.evaluate(element => {
         const panel = element.getBoundingClientRect();
@@ -96,6 +98,14 @@ async function checkCommentToolbar() {
         assert.equal(await item.locator('.ij2499-comment-item-file').innerText(), 'VisitController.java', 'every comment carries its own file context');
         assert.match(await item.locator('.ij2499-comment-item-line').innerText(), /Line \d+/);
         assert.equal(await item.locator('input[type=checkbox]').count(), 1, 'one checkbox selects the file/comment item');
+        const layout = await item.evaluate(element => {
+          const body = element.querySelector('.ij2499-comment-item-text');
+          const context = element.querySelector('.ij2499-comment-item-context');
+          return { gap: context.getBoundingClientRect().top - body.getBoundingClientRect().bottom,
+            bodyColor: getComputedStyle(body).color, contextColor: getComputedStyle(context).color };
+        });
+        assert.equal(layout.gap, 4, 'file caption follows the comment body within the same item');
+        assert.notEqual(layout.bodyColor, layout.contextColor, 'comment body is primary; source caption is secondary');
       }
       const insets = await island.evaluate(element => {
         const x = selector => element.querySelector(selector).getBoundingClientRect().x;
@@ -113,9 +123,9 @@ async function checkCommentToolbar() {
       const columns = await island.locator('.tree-node-toggle, .tree-node-spacer, .tree-node-icon').evaluateAll(items => items.map(item => ({ width:item.getBoundingClientRect().width, margin:getComputedStyle(item).marginRight })));
       assert.ok(columns.every(column => column.width === 16 && column.margin === '0px'), 'tree columns are fixed 16px without old margins');
       await island.locator('.ij2499-comment-session > .tree-node .tree-node-toggle').click();
-      assert.equal(await island.getByRole('checkbox').count(), 2, 'session collapse hides its combined comment items');
+      assert.equal(await island.getByRole('checkbox').count(), 1, 'session collapse leaves only its selection checkbox');
       await island.locator('.ij2499-comment-session > .tree-node .tree-node-toggle').click();
-      assert.equal(await island.getByRole('checkbox').count(), 4);
+      assert.equal(await island.getByRole('checkbox').count(), 3);
       const keyboardCheckbox = island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true });
       await keyboardCheckbox.focus();
       await page.keyboard.press('Space');
@@ -124,12 +134,11 @@ async function checkCommentToolbar() {
       assert.equal(await keyboardCheckbox.isChecked(), true);
       await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
       assert.ok(await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).evaluate(input => input.indeterminate));
-      assert.ok(await island.getByRole('checkbox', { name: 'Select all comments', exact: true }).evaluate(input => input.indeterminate));
       await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
       await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
       assert.ok(await bar.locator('.plan-diff-send-comments-button').isDisabled(), 'no selected comments disables Send');
-      await island.getByRole('checkbox', { name: 'Select all comments', exact: true }).locator('..').click();
-      assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'bulk checkbox selects every comment');
+      await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
+      assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'session checkbox selects every comment');
       if (width === 1656) {
         await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
       }

@@ -216,9 +216,6 @@
 .ij2499-comment-toolbar .plan-diff-comment-nav-count:hover .toolbar-button-content,
 .ij2499-comment-toolbar .plan-diff-comment-nav-count[aria-expanded="true"] .toolbar-button-content { background: var(--icon-button-hover-bg); }
 .ij2499-comment-selection-island { position: absolute; bottom: calc(100% + 9px); left: -1px; width: calc(100% + 2px); box-sizing: border-box; padding: 8px; border: 1px solid var(--layer-1-border); border-radius: 8px; background: var(--layer-1-bg); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16); color: var(--text-default); }
-.ij2499-comment-selection-header { display: flex; justify-content: space-between; gap: 8px; padding: 0 4px 6px; font-size: 13px; line-height: 18px; }
-.ij2499-comment-selection-header > span:last-child { color: var(--text-muted); white-space: nowrap; }
-.ij2499-comment-selection-heading { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .ij2499-comment-selection-tree { max-height: 240px; overflow: auto; }
 .ij2499-comment-selection-tree .tree-node { min-width: 0; height: 24px; border-radius: 4px; font-weight: 400; }
 /* Checkbox retains its visible native control and an accessible label; tree label carries the visible text. */
@@ -240,9 +237,10 @@
 
 /* Two tree levels: session → comment. File context belongs to each comment. */
 .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
-.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { height: auto; min-height: 44px; align-items: flex-start; }
-.ij2499-comment-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ij2499-comment-item-context { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 12px; line-height: 16px; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { height: auto; min-height: 46px; align-items: flex-start; }
+.ij2499-comment-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ij2499-comment-item-context { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-muted); font-size: 12px; line-height: 16px; }
 .ij2499-comment-item-file { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ij2499-comment-item-line { flex-shrink: 0; white-space: nowrap; }
-.ij2499-comment-item-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; font-size: 13px; line-height: 18px; }
+.ij2499-comment-item-context > .icon { flex-shrink: 0; }
+.ij2499-comment-item-line { flex-shrink: 0; margin-left: 4px; white-space: nowrap; }
+.ij2499-comment-item-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-default); font-size: 13px; line-height: 18px; }

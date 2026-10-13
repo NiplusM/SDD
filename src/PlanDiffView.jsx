@@ -730,30 +730,25 @@ export function PlanDiffFloatingCommentToolbar({
     <div ref={toolbarRef} className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
       {selectionOpen && (
         <section id="ij2499-comment-selection" className="ij2499-comment-selection-island" aria-label="Comments to send">
-          <div className="ij2499-comment-selection-header">
-            <span className="ij2499-comment-selection-heading">
-              {checkbox(commentItems, 'Select all comments')}
-              Comments to send
-            </span>
-            <span>{selectedCount} of {commentCount} selected</span>
-          </div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
               <TreeNode key={chatId} level={1} className="ij2499-comment-session" hasChildren isExpanded
                 label={<span title={session.label}>{session.label}</span>}
+                secondaryText={`${session.items.length} ${session.items.length === 1 ? 'comment' : 'comments'}`}
                 icon={<AiChatAgentIcon icon={session.icon} />}
                 prefix={checkbox(session.items, `Select comments in ${session.label}`)}
               >
                 {session.items.map((item) => (
                   <TreeNode key={item.key} level={2} className="ij2499-comment-leaf"
-                    icon={item.fileIcon}
+                    icon="general/balloon"
                     prefix={checkbox([item], `Send comment: ${item.text}`)}
                     label={<span className="ij2499-comment-item">
+                      <span className="ij2499-comment-item-text" title={item.text}>{item.text}</span>
                       <span className="ij2499-comment-item-context">
+                        <Icon name={item.fileIcon} size={16} />
                         <span className="ij2499-comment-item-file" title={item.fileLabel}>{item.fileLabel}</span>
                         {item.lineLabel && <span className="ij2499-comment-item-line">{item.lineLabel}</span>}
                       </span>
-                      <span className="ij2499-comment-item-text" title={item.text}>{item.text}</span>
                     </span>}
                   />
                 ))}
