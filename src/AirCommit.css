@@ -226,10 +226,11 @@
 .ij2499-comment-selection-tree .tree-node-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ij2499-comment-selection-tree .tree-node-secondary { flex-shrink: 0; font-size: 12px; }
 
-.ij2499-comment-toolbar .plan-diff-comment-nav-count[aria-expanded="false"] .toolbar-button-chevron { transform: rotate(180deg); }
-.ij2499-comment-selection-tree .ij2499-comment-session > .tree-node { padding-left: 0 !important; }
-.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { padding-left: 16px !important; }
-.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 32px !important; }
+/* Chat is a group heading; file and comments share one shallow inset. */
+.ij2499-comment-selection-tree .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
+.ij2499-comment-selection-tree .ij2499-comment-file { margin-left: 12px; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { color: var(--text-muted); }
+.ij2499-comment-selection-tree .ij2499-comment-session > .tree-node { font-weight: 500; }
 
 .ij2499-comment-selection-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .ij2499-comment-selection-row > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

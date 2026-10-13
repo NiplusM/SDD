@@ -87,9 +87,15 @@ async function checkCommentToolbar() {
       assert.ok(geometry.fits, 'comment selector fits in the editor pane');
       assert.equal(geometry.surface, geometry.barSurface, 'both islands use the same dark kit surface');
       await page.screenshot({ path: path.join(outputDir, `comment-selection-${width}.png`) });
-      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
-      assert.equal(await island.getByRole('checkbox').count(), 2, 'file chevron collapses its comments');
-      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      assert.equal(await bar.locator('.plan-diff-comment-nav-count .toolbar-button-chevron').count(), 0, 'comment counter has no chevron');
+      assert.equal(await island.locator('.tree-node-toggle, .tree-node-spacer').count(), 0, 'grouped rows do not add tree chevrons or spacers');
+      const insets = await island.evaluate(element => {
+        const x = selector => element.querySelector(selector).getBoundingClientRect().x;
+        return { file: x('.ij2499-comment-file .checkbox-wrapper') - x('.ij2499-comment-session .checkbox-wrapper'),
+          comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper') };
+      });
+      assert.equal(insets.file, 12, 'file group has one shallow inset below the chat heading');
+      assert.equal(insets.comment, 0, 'comments align with the file instead of nesting again');
       const keyboardCheckbox = island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true });
       await keyboardCheckbox.focus();
       await page.keyboard.press('Space');

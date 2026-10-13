@@ -638,7 +638,6 @@ function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onN
           aria-controls="ij2499-comment-selection"
           onClick={onToggleSelection}
           text={`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
-          showChevron
         />
       ) : (
         <span className="plan-diff-comment-nav-count">
@@ -736,7 +735,7 @@ export function PlanDiffFloatingCommentToolbar({
           <div className="ij2499-comment-selection-header">Comments to send <span>{selectedCount} of {commentCount} selected</span></div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
-              <TreeNode key={chatId} level={1} className="ij2499-comment-session" hasChildren isExpanded
+              <TreeNode key={chatId} flat className="ij2499-comment-session" hasChildren isExpanded
                 label={<span className="ij2499-comment-selection-row">
                   {checkbox(session.items, `Select comments in ${session.label}`)}
                   <AiChatAgentIcon icon={session.icon} />
@@ -744,7 +743,7 @@ export function PlanDiffFloatingCommentToolbar({
                 </span>}
               >
                 {[...session.files].map(([tabId, file]) => (
-                  <TreeNode key={tabId} level={2} className="ij2499-comment-file" hasChildren isExpanded
+                  <TreeNode key={tabId} flat className="ij2499-comment-file" hasChildren isExpanded
                     label={<span className="ij2499-comment-selection-row">
                       {checkbox(file.items, `Select comments in ${file.label}`)}
                       <Icon name={file.icon} size={16} />
@@ -752,7 +751,7 @@ export function PlanDiffFloatingCommentToolbar({
                     </span>}
                   >
                     {file.items.map((item) => (
-                      <TreeNode key={item.key} level={3} className="ij2499-comment-leaf"
+                      <TreeNode key={item.key} flat className="ij2499-comment-leaf"
                         label={<span className="ij2499-comment-selection-row">
                           {checkbox([item], `Send comment: ${item.text}`)}
                           <span title={item.text}>{item.text}</span>
