@@ -25386,14 +25386,25 @@ button.aiux543-answer-change-card:focus-visible {
   color: #dfe1e5;
 }
 
-.tui-session__comment-chips.ai-chat-attachments {
+.tui-session__comment-chips {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 6px 8px;
   min-width: 0;
+}
+
+.tui-session__comment-strip.ai-chat-attachments {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   padding: 0;
+}
+
+/* IJ Air highlights the hovered note and opens its code beside the list. */
+.tui-session__comment-chip button.ai-chat-attachment-hover-note.is-navigable:hover {
+  background: #2e436e;
 }
 
 .tui-session__comment-chip.ai-chat-attachment-chip {

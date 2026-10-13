@@ -20979,6 +20979,13 @@ function TuiSessionView({
     setInputText('');
   };
 
+  // Same navigation as the chat composer: a chip opens its diff, a note in the
+  // hover card opens its row.
+  const openNoteAttachment = (attachment, rowId = null) => {
+    if (!attachment) return;
+    onOpenAttachment?.(attachment, { messageId: scenario?.messageId, chatId, archived: false, rowId });
+  };
+
   const renderSentMessages = () => sentMessages.map((message) => {
     if (message?.role === 'assistant') {
       const times = messageTimes[message.id];
@@ -21069,25 +21076,33 @@ function TuiSessionView({
       {noteAttachments.length > 0 ? (
         <div className="tui-session__comments" aria-label="Comments">
           <span className="tui-session__comments-label">Comments</span>
-          <AiChatAttachmentStrip
-            attachments={noteAttachments}
-            onOpen={onOpenAttachment}
-            onRemove={(attachment) => {
-              onRemoveComposerAttachment?.(attachment, { chatId });
-              // Like the chat composer, dismiss the chip right away: the same
-              // notes can also be mirrored in the agent's Last Turn diff tab.
-              const index = noteAttachments.indexOf(attachment);
-              onComposerDraftChange?.(chatId, {
-                text: '',
-                contentParts: [],
-                dismissedAttachmentKeys: [...dismissedKeys, getDraftKey(attachment, Math.max(0, index))],
-              });
-            }}
-            removeLabel={(attachment) => `Remove ${attachment?.label ?? 'comments'}`}
-            renderCodeSnippet={getCommentCodeSnippet}
-            className="tui-session__comment-chips"
-            chipClassName="tui-session__comment-chip"
-          />
+          <div className="tui-session__comment-chips">
+            {noteAttachments.map((attachment, index) => (
+              <AiChatAttachmentStrip
+                key={getAiChatAttachmentSequenceKey(attachment, index)}
+                attachments={[{
+                  ...attachment,
+                  label: attachment?.sourceLabel ? `Diff ${attachment.sourceLabel}` : attachment?.label,
+                }]}
+                onOpen={() => openNoteAttachment(attachment)}
+                onNavigateComment={(item) => openNoteAttachment(attachment, item?.rowId ?? null)}
+                onRemove={() => {
+                  onRemoveComposerAttachment?.(attachment, { chatId });
+                  // Like the chat composer, dismiss the chip right away: the same
+                  // notes can also be mirrored in the agent's Last Turn diff tab.
+                  onComposerDraftChange?.(chatId, {
+                    text: '',
+                    contentParts: [],
+                    dismissedAttachmentKeys: [...dismissedKeys, getDraftKey(attachment, index)],
+                  });
+                }}
+                removeLabel={`Remove ${attachment?.sourceLabel ?? 'comments'}`}
+                renderCodeSnippet={getCommentCodeSnippet}
+                className="tui-session__comment-strip"
+                chipClassName="tui-session__comment-chip"
+              />
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
