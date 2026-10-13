@@ -228,19 +228,15 @@
 .ij2499-comment-selection-tree .tree-node-container { width: 100%; overflow: hidden; }
 .ij2499-comment-selection-tree .tree-node { gap: 4px; padding-top: 4px; padding-right: 8px; padding-bottom: 4px; }
 .ij2499-comment-selection-tree .ij2499-comment-session > .tree-node { padding-left: 8px !important; }
-.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 24px !important; }
+.ij2499-comment-selection-tree .ij2499-comment-file > .tree-node { padding-left: 24px !important; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { padding-left: 40px !important; }
 .ij2499-comment-selection-tree .tree-node-toggle,
 .ij2499-comment-selection-tree .tree-node-spacer,
 .ij2499-comment-selection-tree .tree-node-icon { flex-shrink: 0; width: 16px; height: 16px; margin-right: 0; }
 .ij2499-comment-selection-tree .tree-node-icon { justify-content: flex-start; }
 .ij2499-comment-selection-checkbox.checkbox-container { flex-shrink: 0; padding: 0; gap: 0; }
 
-/* Two tree levels: session → comment. File context belongs to each comment. */
+/* Files own their selectable comments; chat roots only expand the tree. */
 .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
-.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { height: auto; min-height: 46px; align-items: flex-start; }
-.ij2499-comment-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.ij2499-comment-item-context { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-muted); font-size: 12px; line-height: 16px; }
-.ij2499-comment-item-file { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ij2499-comment-item-context > .icon { flex-shrink: 0; }
-.ij2499-comment-item-line { flex-shrink: 0; margin-left: 4px; white-space: nowrap; }
-.ij2499-comment-item-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-default); font-size: 13px; line-height: 18px; }
+.ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { height: auto; min-height: 24px; align-items: flex-start; }
+.ij2499-comment-item-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-default); font-size: 13px; line-height: 16px; }
