@@ -89,7 +89,8 @@ async function checkCommentToolbar() {
       await page.screenshot({ path: path.join(outputDir, `comment-selection-${width}.png`) });
       assert.equal(await bar.locator('.plan-diff-comment-nav-count .toolbar-button-chevron').count(), 0, 'comment counter has no chevron');
       assert.equal(await island.locator('.tree-node-toggle').count(), 1, 'only the file is an expandable tree root');
-      assert.equal(await island.locator('.ij2499-comment-session-context .tree-node-toggle').count(), 0, 'session is context rather than a third tree level');
+      assert.equal(await island.locator('.ij2499-comment-session-context > .tree-node .tree-node-toggle').count(), 0, 'session is context rather than a third tree level');
+      assert.equal(await island.locator('.ij2499-comment-session > .tree-node-children > .ij2499-comment-file').count(), 1, 'file remains a child of its session');
       assert.equal(await island.locator('.ij2499-comment-file > .tree-node-children > .ij2499-comment-leaf').count(), 2, 'comments are file children');
       const insets = await island.evaluate(element => {
         const x = selector => element.querySelector(selector).getBoundingClientRect().x;
@@ -97,7 +98,13 @@ async function checkCommentToolbar() {
           comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper') };
       });
       assert.equal(insets.file, 0, 'session context and file checkbox share the parent column');
-      assert.equal(insets.comment, 16, 'comments have one tree indentation step');
+      assert.equal(insets.comment, 18, 'native tree spacer/chevron columns keep a single child indentation step');
+      assert.equal(await island.locator('.ij2499-comment-leaf > .tree-node .tree-node-spacer').count(), 2, 'child rows use the native tree spacer');
+      const levels = await island.evaluate(element => ({
+        parent: getComputedStyle(element.querySelector('.ij2499-comment-file > .tree-node')).paddingLeft,
+        child: getComputedStyle(element.querySelector('.ij2499-comment-leaf > .tree-node')).paddingLeft,
+      }));
+      assert.deepEqual(levels, { parent: '16px', child: '32px' }, 'file/comment rows use native level 1/2 insets');
       await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
       assert.equal(await island.getByRole('checkbox').count(), 2, 'file collapse hides only its comments');
       await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();

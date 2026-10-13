@@ -735,21 +735,21 @@ export function PlanDiffFloatingCommentToolbar({
           <div className="ij2499-comment-selection-header">Comments to send <span>{selectedCount} of {commentCount} selected</span></div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
-              <section key={chatId} className="ij2499-comment-session" aria-label={session.label}>
-                <TreeNode flat className="ij2499-comment-session-context"
-                  label={<span className="ij2499-comment-selection-row">
-                    {checkbox(session.items, `Select comments in ${session.label}`)}
-                    <AiChatAgentIcon icon={session.icon} />
-                    <span title={session.label}>{session.label}</span>
-                  </span>}
-                />
+              <TreeNode key={chatId} flat hasChildren isExpanded
+                className="ij2499-comment-session ij2499-comment-session-context"
+                label={<span className="ij2499-comment-selection-row">
+                  {checkbox(session.items, `Select comments in ${session.label}`)}
+                  <AiChatAgentIcon icon={session.icon} />
+                  <span title={session.label}>{session.label}</span>
+                </span>}
+              >
                 {[...session.files].map(([tabId, file]) => (
                   <TreeNode key={tabId} level={1} className="ij2499-comment-file" hasChildren isExpanded
                     label={file.label} icon={file.icon}
                     prefix={checkbox(file.items, `Select comments in ${file.label}`)}
                   >
                     {file.items.map((item) => (
-                      <TreeNode key={item.key} flat className="ij2499-comment-leaf"
+                      <TreeNode key={item.key} level={2} className="ij2499-comment-leaf"
                         prefix={checkbox([item], `Send comment: ${item.text}`)}
                         label={<span title={item.text}>{item.text}</span>}
                         secondaryText={item.lineLabel}
@@ -757,7 +757,7 @@ export function PlanDiffFloatingCommentToolbar({
                     ))}
                   </TreeNode>
                 ))}
-              </section>
+              </TreeNode>
             ))}
           </div>
         </section>
