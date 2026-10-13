@@ -626,28 +626,28 @@ function PlanDiffCommentNavControl({ commentRowIds = [], activeRowId = null, onN
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon is-prev" />}
         className="plan-diff-viewing-file-arrow"
-        title="Previous Comment"
+        title="Previous Note"
         disabled={currentIndex <= 0}
         onClick={() => goTo(currentIndex - 1)}
       />
       {onToggleSelection ? (
         <ToolbarButton
           className="plan-diff-comment-nav-count"
-          title="Choose comments to send"
+          title="Choose notes to send"
           aria-expanded={selectionOpen}
           aria-controls="ij2499-comment-selection"
           onClick={onToggleSelection}
-          text={`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
+          text={`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'note' : 'notes'}`}
         />
       ) : (
         <span className="plan-diff-comment-nav-count">
-          {`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'comment' : 'comments'}`}
+          {`${currentIndex + 1} of ${commentRowIds.length} ${commentRowIds.length === 1 ? 'note' : 'notes'}`}
         </span>
       )}
       <ToolbarButton
         icon={<Icon name="general/chevronRight" size={16} className="plan-diff-viewing-file-icon" />}
         className="plan-diff-viewing-file-arrow"
-        title="Next Comment"
+        title="Next Note"
         disabled={currentIndex >= commentRowIds.length - 1}
         onClick={() => goTo(currentIndex + 1)}
       />
@@ -729,26 +729,26 @@ export function PlanDiffFloatingCommentToolbar({
     ?? commentItems.find((item) => item.navigationKey === activeCommentRowId)?.key
     ?? activeCommentRowId;
   return (
-    <div ref={toolbarRef} className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Comment actions">
+    <div ref={toolbarRef} className="plan-diff-session-toolbar ij2499-comment-toolbar" role="toolbar" aria-label="Note actions">
       {selectionOpen && (
-        <section id="ij2499-comment-selection" className="ij2499-comment-selection-island" aria-label="Comments to send">
+        <section id="ij2499-comment-selection" className="ij2499-comment-selection-island" aria-label="Notes to send">
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
               <TreeNode key={chatId} level={1} className="ij2499-comment-session" hasChildren isExpanded
                 label={<span title={session.label}>{session.label}</span>}
-                secondaryText={`${session.items.length} ${session.items.length === 1 ? 'comment' : 'comments'}`}
+                secondaryText={`${session.items.length} ${session.items.length === 1 ? 'note' : 'notes'}`}
                 icon={<AiChatAgentIcon icon={session.icon} />}
               >
                 {[...session.files].map(([tabId, file]) => (
                   <TreeNode key={tabId} level={2} className="ij2499-comment-file" hasChildren isExpanded
                     label={<span title={file.label}>{file.label}</span>}
                     icon={file.icon}
-                    prefix={checkbox(file.items, `Select comments in ${file.label}`)}
+                    prefix={checkbox(file.items, `Select notes in ${file.label}`)}
                   >
                     {file.items.map((item) => (
                       <TreeNode key={item.key} level={3} className="ij2499-comment-leaf"
                         icon="general/balloon"
-                        prefix={checkbox([item], `Send comment: ${item.text}`)}
+                        prefix={checkbox([item], `Send note: ${item.text}`)}
                         secondaryText={item.lineLabel}
                         label={<span className="ij2499-comment-item-text" title={item.text}>{item.text}</span>}
                       />
@@ -776,11 +776,11 @@ export function PlanDiffFloatingCommentToolbar({
         className="plan-diff-send-comments-button"
         disabled={sendCommentsDisabled || selectedCount === 0}
         aria-label={sendCommentsDisabled
-          ? 'Comments are being processed by the agent.'
-          : `Send ${selectedCount} ${selectedCount === 1 ? 'comment' : 'comments'} to the chat.`}
+          ? 'Notes are being processed by the agent.'
+          : `Send ${selectedCount} ${selectedCount === 1 ? 'note' : 'notes'} to the chat.`}
         onClick={() => { setSelectionOpen(false); onSendComments(selectedCount, commentItems.length > 0 ? selectedItems : null); }}
       >
-        Send Comments
+        Send Notes
       </Button>
     </div>
   );
@@ -7583,11 +7583,11 @@ export function PlanDiffEditorToolbar({
                       aria-label={sendCommentsDisabled
                         ? 'Comments are being processed by the agent.'
                         : commentCount > 0
-                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                        ? `Send ${commentCount} ${commentCount === 1 ? 'note' : 'notes'} to the chat.`
                         : 'No comments to send yet.'}
                       onClick={() => onSendComments(commentCount)}
                     >
-                      Send Comments
+                      Send Notes
                     </Button>
                   )}
                 </>
@@ -7869,11 +7869,11 @@ export function PlanDiffEditorArea({
                       aria-label={sendCommentsDisabled
                         ? 'Comments are being processed by the agent.'
                         : commentCount > 0
-                        ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                        ? `Send ${commentCount} ${commentCount === 1 ? 'note' : 'notes'} to the chat.`
                         : 'No comments to send yet.'}
                       onClick={() => onSendComments(commentCount)}
                     >
-                      Send Comments
+                      Send Notes
                     </Button>
                   )}
                   <PlanDiffSettingsMenu settings={areaViewerSettings} onSettingsChange={setAreaViewerSettings} />
@@ -8080,11 +8080,11 @@ export function PlanDiffEditorArea({
                             aria-label={sendCommentsDisabled
                               ? 'Comments are being processed by the agent.'
                               : commentCount > 0
-                              ? `Send ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} to the chat.`
+                              ? `Send ${commentCount} ${commentCount === 1 ? 'note' : 'notes'} to the chat.`
                               : 'No comments to send yet.'}
                             onClick={() => onSendComments(commentCount)}
                           >
-                            Send Comments
+                            Send Notes
                           </Button>
                         )}
                       </>

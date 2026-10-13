@@ -187,7 +187,7 @@ function buildCommitComposerMessage(scope) {
 // they're added — this message is just what prompts the agent to act on the
 // ones that piled up since the composer was last touched.
 function buildSendCommentsMessage(count) {
-  return `I left ${count} comment${count === 1 ? '' : 's'} on the diff. Please take a look.`;
+  return `I left ${count} note${count === 1 ? '' : 's'} on the diff. Please take a look.`;
 }
 
 function getSendableCommentAttachments(attachments = [], selectedComments = null) {
@@ -20958,7 +20958,7 @@ function TuiSessionView({
     const typedText = inputText.trim();
     if (isRunning || (!typedText && noteAttachments.length === 0)) return;
     const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
-    const text = typedText || `I left ${commentCount} note${commentCount === 1 ? '' : 's'} on the diff. Please take a look.`;
+    const text = typedText || buildSendCommentsMessage(commentCount);
     const contextLines = noteAttachments.flatMap(getTuiAttachmentContextLines);
     onSendMessage?.(chatId, text, noteAttachments, {
       contentParts: [

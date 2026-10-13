@@ -323,7 +323,6 @@ export function AttachmentCommentHoverCard({
                         [
                           foreignSourceLabel(item),
                           item.lineLabel,
-                          item.lineLabel ? scopeLabel : null,
                           (!item.lineLabel && item.isSelectionContextPreview) ? `Quote ${index + 1}` : null,
                           (!item.lineLabel && !item.isSelectionContextPreview) ? resolvedItemLabel : null,
                         ].filter(Boolean).join(' · '),
