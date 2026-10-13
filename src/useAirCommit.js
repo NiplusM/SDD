@@ -36,7 +36,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   const callbacks = useRef(null);
   callbacks.current = { onGenerationStart, onGenerationFinish };
   const messageRef = useRef(null);
-  const generationCount = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error' ? 1 : 0);
+  const scenario = useRef(new URLSearchParams(window.location.search).get('scenario') ?? 'info');
+  const hasAgent = scenario.current !== 'no-agents';
   const checkedFiles = getCheckedFiles(files, checkedIds);
   const selectionKey = JSON.stringify(checkedFiles.map(file => [file.id, file.status, file.path]));
 
@@ -91,10 +92,9 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   }, [job]);
 
   function generate() {
-    if (!checkedFiles.length || jobRef.current) return;
+    if (!hasAgent || !checkedFiles.length || jobRef.current) return;
     setIssue(null); setStatus('');
-    const attempt = generationCount.current++;
-    const outcome = attempt === 0 ? 'info' : attempt === 1 ? 'error' : 'success';
+    const outcome = ['info', 'error', 'success'].includes(scenario.current) ? scenario.current : 'info';
     const request = { id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })),
       settings: { ...settings }, branch, draft: message, outcome };
     request.chatId = callbacks.current.onGenerationStart?.(request, () => cancel('Generation stopped.'), answer => confirm(request.id, answer)) ?? null;
@@ -116,6 +116,6 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   function editMessage(value) { cancel(); setMessage(value); }
   function changeSettings(value) { cancel(); saveSettings(value); }
   return { message, messageRef, editMessage, settings, changeSettings, storageError, job, generate, cancel,
-    status, issue, checkedFiles, canGenerate: checkedFiles.length > 0 && !job && issue?.kind !== 'info',
+    status, issue, checkedFiles, hasAgent, canGenerate: hasAgent && checkedFiles.length > 0 && !job && issue?.kind !== 'info',
     canCommit: checkedFiles.length > 0 && !job && Boolean(message.trim()) };
 }

@@ -1386,11 +1386,11 @@ function CommitToolWindow({
                 <span>Amend</span>
               </label>
               <IconButton icon="general/history" tooltip="Show History" />
-              {air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
+              {air.hasAgent && (air.job ? <IconButton className="ij2499-stop" icon="run/stop" tooltip="Stop generation" aria-label="Stop generation"
                   onClick={() => air.cancel('Generation stopped.')} />
                 : <Tooltip text={!air.checkedFiles.length ? 'Select files to generate a commit message' : air.issue?.kind === 'info' ? 'Provide the requested information in chat' : 'Generate Commit Message'} placement="bottom" delay={500}>
                     <ToolbarButton className="ij2499-generate" icon={<AiChatAgentIcon icon={air.settings.agent} />} text="Generate Message" disabled={!air.canGenerate} onClick={air.generate} />
-                  </Tooltip>}
+                  </Tooltip>)}
             </div>
             <span className="commit-modified-count ij2499-change-counts" title={summary.description}
               aria-label={`${air.checkedFiles.length} files selected${summary.description ? `: ${summary.description}` : ''}`}>
@@ -1446,7 +1446,7 @@ function CommitToolWindow({
       </div>
       {air.issue && <CommitGenerationBanner anchor={generationRef} issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
-        openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
+        openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} hasAgent={air.hasAgent} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}
         branch={repositoryContext?.branch ?? REVIEW_CURRENT_BRANCH_NAME} storageError={air.storageError} />, document.body)}
     </ToolWindow>

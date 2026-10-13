@@ -238,7 +238,7 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     const page = await browser.newPage({ viewport: { width, height: 875 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`${previewUrl}/?entry=commit`);
+    await page.goto(`${previewUrl}/?entry=commit&scenario=info`);
     const generate = page.getByRole('button', { name: 'Generate Message', exact: true });
     const message = page.getByRole('textbox', { name: 'Commit Message', exact: true });
     await generate.waitFor();
@@ -312,41 +312,56 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     assert.ok(await generate.isEnabled());
     await page.screenshot({ path: path.join(outputDir, `confirmation-result-commit-${width}.png`) });
     await generate.click();
+    await info.waitFor();
+    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Waiting for confirmation…', 'repeated info generation remains an information request');
+    await page.getByRole('button', { name: 'Stop generation', exact: true }).click();
+    assert.equal(await message.inputValue(), successfulDraft);
+    await page.goto(`${previewUrl}/?entry=commit&scenario=error`);
+    assert.equal(await message.inputValue(), '', 'error case starts without the information case result');
+    assert.equal(await tabs.count(), 0, 'previous scenario chats are absent');
+    await generate.click();
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
-    assert.equal(await tabs.count(), 2);
+    assert.equal(await tabs.count(), 1);
     const error = page.locator('.ij2499-generation-banner.banner-error');
     await error.waitFor();
-    assert.equal(await message.inputValue(), successfulDraft, 'second generation fails and retains the confirmed result');
+    assert.equal(await message.inputValue(), '', 'error case leaves its initially empty field empty');
     await checkBanner(page, error);
     await page.screenshot({ path: path.join(outputDir, `confirmation-repeat-error-${width}.png`) });
     await error.getByRole('button', { name: 'Open chat', exact: true }).click();
-    assert.equal(await tabs.count(), 2, 'error opens the second request’s existing chat');
+    assert.equal(await tabs.count(), 1, 'error opens its existing request chat');
     assert.equal(await request.count(), 0);
     assert.match(await chat.locator('.aiux543-answer').innerText(), /GPT-5 mini.*timed out/s);
     assert.deepEqual(await chat.locator('.ai-chat-user-card .ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
     await error.getByRole('button', { name: 'Open chat', exact: true }).click();
-    assert.equal(await tabs.count(), 2);
+    assert.equal(await tabs.count(), 1);
     const composer = chat.locator('.aiux543-chat-input');
     await composer.fill('One-line Conventional Commits in Russian.');
     await composer.press('Enter');
     await page.waitForFunction(() => [...document.querySelectorAll('.ij2499-commit-chat .aiux543-answer')].some(element => element.textContent.includes('chore: обновить'))
       && !document.querySelector('.ij2499-commit-chat .ai-chat-streaming-caret'));
-    assert.equal(await message.inputValue(), successfulDraft);
-    await message.fill('Third attempt draft.');
+    assert.equal(await message.inputValue(), '', 'chat follow-up does not fill Commit after the failed request');
+    await generate.click();
+    await error.waitFor();
+    assert.equal(await message.inputValue(), '', 'repeated error generation stays in the error case');
+    assert.equal(await tabs.count(), 2);
+    await page.goto(`${previewUrl}/?entry=commit&scenario=success`);
+    assert.equal(await message.inputValue(), '', 'success case starts with its own empty field');
+    assert.equal(await tabs.count(), 0);
+    await message.fill('Successful case draft.');
     await generate.click();
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
-    assert.equal(await tabs.count(), 3, 'third press creates a new generation chat');
+    assert.equal(await tabs.count(), 1, 'success case creates its own generation chat');
     await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
     const thirdDraft = await message.inputValue();
-    assert.notEqual(thirdDraft, 'Third attempt draft.', 'third generation replaces the draft with its successful result');
+    assert.notEqual(thirdDraft, 'Successful case draft.', 'successful generation replaces its own draft');
     for (const name of selectedFiles) assert.ok(thirdDraft.includes(name));
     assert.equal(await error.count(), 0);
     assert.equal(await info.count(), 0);
     assert.equal(await page.locator('.ij2499-message-loading').count(), 0);
-    await tabs.nth(2).locator('.tab-label').click();
-    assert.equal(await chat.locator('.aiux543-answer p').innerText(), thirdDraft, 'third request result is also shown in its chat');
+    await tabs.first().locator('.tab-label').click();
+    assert.equal(await chat.locator('.aiux543-answer p').innerText(), thirdDraft, 'successful request result is also shown in its chat');
     assert.deepEqual(await chat.locator('.ai-chat-user-card .ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
-    await page.screenshot({ path: path.join(outputDir, `generation-third-success-${width}.png`) });
+    await page.screenshot({ path: path.join(outputDir, `generation-isolated-success-${width}.png`) });
     // Stopping from the chat cancels the same running Commit request.
     const newTabIndex = await page.locator('.main-window-editor-tabs .tab-wrapper').evaluateAll(elements => elements.findIndex(element => element.querySelector('.tab-selected')) + 1);
     await generate.click();
@@ -355,7 +370,7 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await error.waitFor();
     assert.match(await error.innerText(), /generation stopped/);
     await page.waitForTimeout(3100);
-    assert.equal(await message.inputValue(), thirdDraft, 'a cancelled timer cannot overwrite the third successful draft');
+    assert.equal(await message.inputValue(), thirdDraft, 'a cancelled timer cannot overwrite the successful case draft');
     assert.deepEqual(errors, []);
     await page.close();
   }
@@ -406,6 +421,20 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
   await stopped.waitForTimeout(3100);
   assert.equal(await stoppedMessage.inputValue(), 'Preserve this draft while awaiting confirmation.');
   await stopped.close();
+  const agentless = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+  await agentless.goto(`${previewUrl}/?entry=commit&scenario=no-agents`);
+  const agentlessMessage = agentless.getByRole('textbox', { name: 'Commit Message', exact: true });
+  assert.equal(await agentlessMessage.inputValue(), '');
+  assert.equal(await agentlessMessage.getAttribute('aria-busy'), 'false');
+  assert.equal(await agentless.getByRole('button', { name: 'Generate Message', exact: true }).count(), 0);
+  assert.equal(await agentless.locator('.ij2499-message-loading, .ij2499-generation-banner').count(), 0);
+  await agentless.getByRole('button', { name: 'Commit Options', exact: true }).click();
+  assert.equal(await agentless.locator('[data-testid="popup-agent"], [data-testid="popup-model"]').count(), 0, 'agentless options do not claim an installed agent');
+  await agentless.keyboard.press('Escape');
+  await agentless.screenshot({ path: path.join(outputDir, 'generation-no-agents.png') });
+  await agentlessMessage.fill('Manually written commit message');
+  assert.ok(await agentless.locator('.commit-tool-window').getByRole('button', { name: 'Commit', exact: true }).isEnabled());
+  await agentless.close();
 }
 
 async function checkBrowserLayout() {
@@ -633,7 +662,7 @@ async function checkBrowserLayout() {
 
     }
     await checkGenerationChats(browser, outputDir, previewUrl);
-    console.log('PASS: first loading/information request; symmetric banner above Generate; reference choices and confirmation; same-chat resume fills Commit; second error preserves draft; third generation succeeds; keyboard/custom instructions; Stop and comment-compatible UI.');
+    console.log('PASS: first loading/information request; symmetric banner above Generate; reference choices and confirmation; same-chat resume fills Commit; independent error leaves an empty field; independent success; no agents; repeated cases stay fixed; keyboard/custom instructions; Stop and comment-compatible UI.');
   } finally { await browser.close(); }
 }
 (async () => {
@@ -699,7 +728,7 @@ async function checkBrowserLayout() {
   await wait(3050); assert.equal(message().value, 'Manual edit');
   await click(button('Generate Message')); await click(check());
   await wait(3050); assert.equal(message().value, 'Manual edit'); assert.ok(button('Generate Message').disabled);
-  w.mountCommit('three-attempt-sequence'); await wait(60);
+  w.mountCommit('information-case'); await wait(60);
   await click(check()); await click(button('Generate Message')); await wait(3050);
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Confirm access in chat to continue generation\./);
   assert.ok(button('Stop generation'));
@@ -714,15 +743,19 @@ async function checkBrowserLayout() {
   assert.ok(!d.querySelector('.ij2499-status'), 'successful generation does not add a status row');
   assert.ok(!d.querySelector('.ij2499-settings-hint'), 'generation does not bring back an acknowledged hint');
   const successfulDraft = message().value;
+  w.history.replaceState(null, '', '?entry=commit&scenario=error'); w.mountCommit('error-case'); await wait(60);
+  assert.equal(message().value, '', 'isolated error starts empty');
   await click(button('Generate Message')); await wait(3050);
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /generation failed/);
-  assert.equal(message().value, successfulDraft, 'the second request preserves the successful draft');
+  assert.equal(message().value, '', 'isolated error does not inherit a generated message');
   await click(button('Open chat'));
-  await edit(message(), 'Third attempt draft');
+  w.history.replaceState(null, '', '?entry=commit&scenario=success'); w.mountCommit('success-case'); await wait(60);
+  assert.equal(message().value, '', 'isolated success starts empty');
+  await edit(message(), 'Successful case draft');
   await click(button('Generate Message')); await wait(3050);
-  assert.equal(d.querySelector('.ij2499-generation-banner'), null, 'third generation succeeds without an error banner');
+  assert.equal(d.querySelector('.ij2499-generation-banner'), null, 'success case completes without an error banner');
   assert.match(message().value, /VisitController.java/);
-  assert.notEqual(message().value, 'Third attempt draft');
+  assert.notEqual(message().value, 'Successful case draft');
 
   await click(button('Commit Options'));
   const popup = d.querySelector('.ij2499-options'); assert.ok(popup.classList.contains('theme-dark'));
@@ -767,7 +800,8 @@ async function checkBrowserLayout() {
   assert.match(message().value, /Обновить VisitController.java/);
   await edit(message(), 'Commit this change');
   const count = d.querySelectorAll('.commit-file-node').length;
-  await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - 1);
+  const includedCount = d.querySelectorAll('.commit-file-node input:checked').length;
+  await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - includedCount);
   assert.ok(button('Generate Message').disabled); assert.equal(message().value, '');
   assert.ok(!d.querySelector('.commit-success'), 'Commit does not add an inline success banner');
 

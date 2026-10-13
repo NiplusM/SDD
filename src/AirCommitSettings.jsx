@@ -128,7 +128,7 @@ function CommitPreferenceDialog({ preference, value, save, close }) {
   </div>
 }
 
-export function CommitOptions({ anchor, close, settings, changeSettings, openSettings, git, setGit, storageError }) {
+export function CommitOptions({ anchor, close, settings, changeSettings, openSettings, git, setGit, storageError, hasAgent = true }) {
   const ref = useRef(null)
   const [preference, setPreference] = useState(null)
   const availableHeight = Math.max(anchor.rect.top, window.innerHeight - anchor.rect.bottom) - 24
@@ -168,11 +168,11 @@ export function CommitOptions({ anchor, close, settings, changeSettings, openSet
             </div>
             <Checkbox className="ij2499-upload-default" label="Always use selected server or group of servers" checked={git.alwaysUpload} onChange={alwaysUpload => setGit({ ...git, alwaysUpload })} />
           </div></section>
-          <section><DialogGroupHeader title="Air" role="heading" aria-level={3} /><div className="ij2499-option-fields">
+          {hasAgent && <section><DialogGroupHeader title="Air" role="heading" aria-level={3} /><div className="ij2499-option-fields">
             <AirFields value={settings} onChange={changeSettings} prefix="popup" compact readOnlyConfiguration openSettings={openSettings} />
             {storageError && <p role="status" className="ij2499-help">Settings apply to this session. Browser storage is unavailable.</p>}
           </div>
-          </section>
+          </section>}
         </div>
       </Popup>
     </PositionedPopup>
