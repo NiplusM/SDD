@@ -23635,9 +23635,9 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  const [ideOpenWindows, setIdeOpenWindows] = useState(() => (
-    getPrototypeEntryPoint() === 'commit' ? ['commit'] : []
-  ));
+  // IJAI-2751 reviews changes without the Commit tool window: it is never open
+  // and has no stripe button.
+  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState('spring-petclinic');
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(() => (
     getPrototypeEntryPoint() === 'file'
@@ -38127,9 +38127,7 @@ export default function App() {
         projectTreeData={projectTreeData}
 
         leftStripeItems={[
-          ...(isAttachedWorkspaceProject
-            ? MY_LEFT_STRIPE.filter((item) => item.id !== 'commit')
-            : MY_LEFT_STRIPE),
+          ...MY_LEFT_STRIPE.filter((item) => item.id !== 'commit'),
           { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },
