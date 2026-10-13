@@ -434,6 +434,11 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
   await agentless.screenshot({ path: path.join(outputDir, 'generation-no-agents.png') });
   await agentlessMessage.fill('Manually written commit message');
   assert.ok(await agentless.locator('.commit-tool-window').getByRole('button', { name: 'Commit', exact: true }).isEnabled());
+  await agentless.locator('.commit-tool-window').getByRole('button', { name: 'Commit', exact: true }).click();
+  assert.equal(await agentlessMessage.inputValue(), '');
+  assert.equal(await agentless.locator('.ij2499-status').count(), 0, 'manual Commit does not add generation guidance');
+  assert.equal(await agentless.locator('.commit-custom-group').filter({ hasText: 'Add request logging to visit workflows' }).count(), 0, 'committed empty group is removed');
+  await agentless.screenshot({ path: path.join(outputDir, 'generation-no-agents-after-commit.png') });
   await agentless.close();
 }
 
@@ -804,6 +809,8 @@ async function checkBrowserLayout() {
   await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - includedCount);
   assert.ok(button('Generate Message').disabled); assert.equal(message().value, '');
   assert.ok(!d.querySelector('.commit-success'), 'Commit does not add an inline success banner');
+  assert.ok(!d.querySelector('.ij2499-status'), 'post-commit field has no selection guidance');
+  assert.ok(![...d.querySelectorAll('.commit-custom-group')].some(group => !group.querySelector('.commit-file-node')), 'post-commit tree excludes empty groups');
 
   w.history.replaceState(null, '', '?entry=commit&scenario=error'); w.mountCommit('error'); await wait(60);
   await edit(message(), 'Keep on failure'); await click(button('Generate Message')); await wait(3050);

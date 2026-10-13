@@ -1186,7 +1186,8 @@ function CommitToolWindow({
     return [...requestedEntries, ...knownFiles.filter((file) => !labels.has(file.label))].filter(file => !committedIds.has(file.id));
   }, [scopeRequest, committedIds]);
   const groups = useMemo(() => {
-    if (!scopeRequest) return buildCommitGroups(commitFiles.filter(file => COMMIT_CHANGE_FILES.some(known => known.id === file.id)), 'chat');
+    if (!scopeRequest) return buildCommitGroups(commitFiles.filter(file => COMMIT_CHANGE_FILES.some(known => known.id === file.id)), 'chat')
+      .filter(group => group.children.length > 0);
     const requestedLabels = new Set((scopeRequest.files ?? []).map((file) => file.label));
     const scopedFiles = commitFiles.filter((file) => requestedLabels.has(file.label));
     const otherFiles = commitFiles.filter((file) => !requestedLabels.has(file.label));
@@ -1423,10 +1424,6 @@ function CommitToolWindow({
               </div>}
             </div>
           </div>
-          {!air.job && !air.issue && (air.status || !air.checkedFiles.length) &&
-            <div className="ij2499-status" role="status" aria-live="polite">
-              {air.status || 'Select files to generate a commit message.'}
-            </div>}
           <div className="commit-actions">
             <div className="commit-buttons">
               <Button
