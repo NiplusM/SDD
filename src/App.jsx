@@ -33471,6 +33471,15 @@ export default function App() {
         nonce: Date.now(),
       });
     }
+    // A TUI session is a terminal: it opens in its own editor tab instead of
+    // beside the diff.
+    if (shouldSwitchChat && contextChatId && aiChatScenarios[contextChatId]?.interface === 'tui') {
+      setReviewSplitChatId(null);
+      setReviewSplitFileTabIds([]);
+      setSelectedAiChatId(contextChatId);
+      openChatInEditorTabRef.current?.(contextChatId);
+      return;
+    }
     const reviewFileTabId = isReviewEditorSplitActive
       ? reviewSplitActiveTabId
       : ((isDiffTab || isPlainFileOverlayTab) ? activeTabId : null);
@@ -38026,7 +38035,8 @@ export default function App() {
                           selectedComments,
                           message: buildSendCommentsMessage(count),
                         });
-                        if (activeTabContent?.diffOpenedFromCommitToolWindow) {
+                        // A TUI session is a terminal: it opens in its own tab, not beside the diff.
+                        if (activeTabContent?.diffOpenedFromCommitToolWindow && aiChatScenarios[activeDiffSendCommentsChatId]?.interface !== 'tui') {
                           setReviewSplitChatId(activeDiffSendCommentsChatId);
                           setReviewSplitFileTabIds([activeTabId]);
                           setReviewSplitActiveTabId(activeTabId);
