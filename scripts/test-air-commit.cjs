@@ -94,9 +94,11 @@ async function checkCommentToolbar() {
       assert.equal(await island.locator('.ij2499-comment-file > .tree-node-children > .ij2499-comment-leaf').count(), 2, 'comments are file children');
       const insets = await island.evaluate(element => {
         const x = selector => element.querySelector(selector).getBoundingClientRect().x;
-        return { comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper') };
+        return { comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper'),
+          text: x('.ij2499-comment-leaf > .tree-node .tree-node-label') - x('.ij2499-comment-file > .tree-node .tree-node-label') };
       });
       assert.equal(insets.comment, 16, 'comment has the same guideline child step from its file');
+      assert.equal(insets.text, 16, 'comment text follows the same child step; icon-free rows reserve the icon column');
       assert.equal(await island.locator('.ij2499-comment-leaf > .tree-node .tree-node-spacer').count(), 2, 'child rows use the native tree spacer');
       const levels = await island.evaluate(element => ({
         parent: getComputedStyle(element.querySelector('.ij2499-comment-file > .tree-node')).paddingLeft,

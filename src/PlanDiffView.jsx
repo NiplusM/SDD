@@ -753,6 +753,7 @@ export function PlanDiffFloatingCommentToolbar({
                   >
                     {file.items.map((item) => (
                       <TreeNode key={item.key} level={2} className="ij2499-comment-leaf"
+                        icon={<span aria-hidden="true" />}
                         prefix={checkbox([item], `Send comment: ${item.text}`)}
                         label={<span title={item.text}>{item.text}</span>}
                         secondaryText={item.lineLabel}
