@@ -64,13 +64,14 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
     if (pending) callbacks.current.onGenerationFinish?.(pending, { kind: 'cancelled', description: 'Generation was cancelled when Commit closed.' });
   }, []);
   useEffect(() => {
-    if (!job) return;
+    if (!job || job.phase === 'awaiting-input') return;
     const timer = window.setTimeout(() => {
       if (job.id !== requestId.current) return;
-      setJob(null);
       let result;
       if (job.outcome === 'info') {
-        jobRef.current = { ...job, phase: 'awaiting-input' };
+        const pending = { ...job, phase: 'awaiting-input' };
+        jobRef.current = pending;
+        setJob(pending);
         result = { kind: 'info', title: 'Input needed to generate a message.',
           description: 'I need your confirmation before reading the selected local changes.' };
       } else if (job.outcome === 'error') {
@@ -83,7 +84,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
         messageRef.current?.focus();
         result = { kind: 'success', message: generatedMessage };
       }
-      if (result.kind !== 'info') { jobRef.current = null; completedCount.current += 1; }
+      if (result.kind !== 'info') { setJob(null); jobRef.current = null; completedCount.current += 1; }
       callbacks.current.onGenerationFinish?.(job, result);
       if (result.kind === 'info' || result.kind === 'error') setIssue({ ...result, request: job });
     }, 3000);

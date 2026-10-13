@@ -1444,7 +1444,7 @@ function CommitToolWindow({
 
         </div>
       </div>
-      {!air.job && air.issue && <CommitGenerationBanner anchor={generationRef} issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />}
+      {air.issue && <CommitGenerationBanner anchor={generationRef} issue={air.issue} onOpenChat={() => onContinueInChat?.(air.issue.request)} />}
       {optionsAnchor && <CommitOptions anchor={optionsAnchor} close={() => setOptionsAnchor(null)} settings={air.settings} changeSettings={air.changeSettings}
         openSettings={openAirSettings} git={git} setGit={setGit} storageError={air.storageError} />}
       {settingsOpen && createPortal(<AirSettings settings={air.settings} save={air.changeSettings} close={closeSettings}

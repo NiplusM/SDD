@@ -260,8 +260,13 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     const info = page.locator('.ij2499-generation-banner.banner-info');
     await info.waitFor();
     assert.match(await info.innerText(), /Input needed/);
-    assert.equal(await message.inputValue(), 'Keep this draft.', 'awaiting input does not generate prematurely');
-    assert.ok(await generate.isDisabled(), 'a paused request must be confirmed before starting another');
+    assert.equal(await message.inputValue(), '', 'loading presentation remains while the saved draft is preserved');
+    assert.equal(await message.getAttribute('aria-busy'), 'true', 'awaiting information is still an active generation');
+    assert.ok(await message.evaluate(element => element.readOnly));
+    assert.ok(await page.locator('.ij2499-message-loading').isVisible());
+    assert.ok(await page.getByRole('button', { name: 'Stop generation', exact: true }).isVisible());
+    assert.equal(await generate.count(), 0, 'Stop remains in the generation slot while awaiting input');
+    assert.ok(await page.locator('.commit-tool-window').getByRole('button', { name: 'Commit', exact: true }).isDisabled());
     assert.equal((await message.boundingBox()).y, originalBounds.y, 'floating banner does not shift the editor');
     await checkBanner(page, info);
     await page.screenshot({ path: path.join(outputDir, `confirmation-info-banner-${width}.png`) });
@@ -281,6 +286,13 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await request.press('ArrowUp');
     const focusStyle = await request.getByRole('radio').first().evaluate(element => ({ border: getComputedStyle(element).borderTopWidth, outline: getComputedStyle(element).outlineStyle, focusLayer: getComputedStyle(element, '::after').content }));
     assert.equal(focusStyle.border, '1px'); assert.equal(focusStyle.outline, 'none'); assert.equal(focusStyle.focusLayer, 'none', 'selected border is the only focus layer; the kit pseudo-element is suppressed');
+    if (width === 1656) {
+      await page.waitForTimeout(3200);
+      assert.equal(await message.getAttribute('aria-busy'), 'true', 'waiting does not schedule another generation timer');
+      assert.ok(await page.locator('.ij2499-message-loading').isVisible());
+      assert.equal(await tabs.count(), 1);
+      assert.equal(await request.count(), 1);
+    }
     await page.screenshot({ path: path.join(outputDir, `confirmation-request-chat-${width}.png`) });
     await request.getByRole('button', { name: 'Confirm ↵', exact: true }).click();
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
@@ -358,6 +370,24 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
   assert.equal(await rejectedRequest.count(), 0);
   assert.equal(await rejected.getByRole('textbox', { name: 'Commit Message', exact: true }).inputValue(), '');
   await rejected.close();
+  const stopped = await browser.newPage({ viewport: { width: 1386, height: 875 } });
+  await stopped.goto(`${previewUrl}/?entry=commit`);
+  const stoppedMessage = stopped.getByRole('textbox', { name: 'Commit Message', exact: true });
+  await stoppedMessage.fill('Preserve this draft while awaiting confirmation.');
+  await stopped.getByRole('button', { name: 'Generate Message', exact: true }).click();
+  await stopped.locator('.ij2499-generation-banner.banner-info').waitFor();
+  await stopped.getByRole('button', { name: 'Stop generation', exact: true }).click();
+  const stoppedError = stopped.locator('.ij2499-generation-banner.banner-error');
+  await stoppedError.waitFor();
+  assert.match(await stoppedError.innerText(), /generation stopped/);
+  assert.equal(await stoppedMessage.inputValue(), 'Preserve this draft while awaiting confirmation.');
+  assert.equal(await stoppedMessage.getAttribute('aria-busy'), 'false');
+  assert.equal(await stopped.locator('.ij2499-message-loading').count(), 0);
+  await stoppedError.getByRole('button', { name: 'Open chat', exact: true }).click();
+  assert.equal(await stopped.getByRole('region', { name: 'Commit generation access request', exact: true }).count(), 0, 'Stop dismisses the pending confirmation in the existing chat');
+  await stopped.waitForTimeout(3100);
+  assert.equal(await stoppedMessage.inputValue(), 'Preserve this draft while awaiting confirmation.');
+  await stopped.close();
 }
 
 async function checkBrowserLayout() {
@@ -653,7 +683,11 @@ async function checkBrowserLayout() {
   await wait(3050); assert.equal(message().value, 'Manual edit'); assert.ok(button('Generate Message').disabled);
   await click(check()); await click(button('Generate Message')); await wait(3050);
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Input needed/);
-  assert.ok(button('Generate Message').disabled);
+  assert.ok(button('Stop generation'));
+  assert.ok(!button('Generate Message'));
+  assert.equal(message().getAttribute('aria-busy'), 'true');
+  assert.ok(message().readOnly);
+  assert.ok(d.querySelector('.ij2499-message-loading'));
   w.confirmGeneration({ choiceId: 'allow-once', label: 'Allow for this request' }); await wait(3050);
   assert.ok(!message().readOnly); assert.ok(!d.querySelector('.ij2499-message-loading'));
   assert.ok(button('Generate Message')); assert.ok(!button('Stop generation'));
@@ -738,7 +772,10 @@ async function checkBrowserLayout() {
   assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false);
   await click(button('Generate Message')); await wait(3050);
   assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false, 'old chat confirmation cannot resume a newer request');
-  assert.ok(button('Generate Message').disabled);
+  assert.ok(button('Stop generation'));
+  assert.ok(!button('Generate Message'));
+  assert.equal(message().value, '');
+  await click(button('Stop generation'));
   assert.equal(message().value, 'Changed while awaiting input');
   w.history.replaceState(null, '', '?entry=commit');
   w.HTMLElement.prototype.scrollIntoView = function () {};
