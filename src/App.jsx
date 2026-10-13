@@ -36415,10 +36415,15 @@ export default function App() {
   const commitDiffSession = activeCommitDiffFile?.groupId
     ? COMMIT_CHAT_GROUPS.find(group => group.id === activeCommitDiffFile.groupId)
     : null;
+  // Branch Changes lists every change on the file's branch; Session Changes
+  // narrows the diff's N/M files to the owning session.
+  const [commitDiffScopeId, setCommitDiffScopeId] = useState('branch-changes');
+  const activeCommitDiffScopeId = commitDiffSession ? commitDiffScopeId : 'branch-changes';
   const commitDiffFiles = activeCommitDiffFile ? [...new Map(
     [...COMMIT_CHANGE_FILES, ...UNASSIGNED_COMMIT_SCOPE_FILES]
       .filter(file => getReviewFileLocation(file.label, file.path).branch
         === getReviewFileLocation(activeCommitDiffFile.label, activeCommitDiffFile.path).branch)
+      .filter(file => activeCommitDiffScopeId !== 'session-changes' || file.groupId === activeCommitDiffFile.groupId)
       .map(file => [reviewFileSessionKey(file.path, file.label), file])
   ).values()] : [];
   const commitDiffFileIndex = Math.max(0, commitDiffFiles.findIndex(file => (
@@ -36427,10 +36432,12 @@ export default function App() {
   const commitDiffToolbar = activeCommitDiffFile ? {
     files: commitDiffFiles,
     currentFileIndex: commitDiffFileIndex,
-    scopeId: 'branch-changes',
+    scopeId: activeCommitDiffScopeId,
     scopeOptions: [
       { id: 'branch-changes', label: 'Branch Changes', section: 'branch' },
+      ...(commitDiffSession ? [{ id: 'session-changes', label: 'Session Changes', section: 'session' }] : []),
     ],
+    onScopeChange: setCommitDiffScopeId,
     onSelectFile: id => openCommitFileReview(commitDiffFiles.find(file => file.id === id)),
     onPreviousFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex - 1]),
     onNextFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex + 1]),
