@@ -16531,6 +16531,12 @@ const AI_CHAT_SCENARIOS = {
     attachmentLabel: null,
     tuiModelLabel: 'GPT-6.1-Sol medium',
     tuiWorkingDirectory: PROJECT_ROOT_PATH,
+    // IDE Context for the next prompt, shown in the Context bar with the notes.
+    tuiContext: [
+      { id: 'tui-context-file', label: 'src/main/java/org…rk/samples/petclinic/model/BaseEntity.java', icon: 'fileTypes/java', contextLine: `file: ${TUI_SESSION_SOURCE_ROOT}/model/BaseEntity.java` },
+      { id: 'tui-context-symbol', label: 'BaseEntity', icon: 'nodes/class', contextLine: 'symbol: BaseEntity' },
+      { id: 'tui-context-selection', label: 'Selection (33-33)', icon: 'general/listFiles', contextLine: 'snippet: lines=33-33 selection=true' },
+    ],
     tuiTurns: [
       {
         id: 'tui-turn-time-controller',
@@ -20902,7 +20908,7 @@ function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
 
 // IJAI-2751: Codex running in a terminal (TUI) inside an editor tab. Notes from
 // diffs reach it through the same composer attachments as a Chat UI session;
-// here they appear in the Notes panel below the terminal and are sent as
+// here they appear in the Context bar below the terminal, next to the IDE context and are sent as
 // the next prompt's IDE Context.
 function TuiSessionView({
   chatId,
@@ -20920,6 +20926,7 @@ function TuiSessionView({
   getCommentCodeSnippet,
 }) {
   const [inputText, setInputText] = useState('');
+  const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
   const [messageTimes, setMessageTimes] = useState({});
   const [interruptedMessageIds, setInterruptedMessageIds] = useState(() => new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -20943,6 +20950,9 @@ function TuiSessionView({
     .map((attachment, index) => getDraftKey(attachment, index)));
   const noteAttachments = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .filter((attachment, index) => !dismissedKeys.has(getDraftKey(attachment, index)) && !sentKeys.has(getDraftKey(attachment, index)));
+
+  const ideContext = (Array.isArray(scenario?.tuiContext) ? scenario.tuiContext : [])
+    .filter((item) => !removedContextIds.has(item.id));
 
   useEffect(() => {
     setMessageTimes((current) => {
@@ -20979,11 +20989,14 @@ function TuiSessionView({
     if (isRunning || (!typedText && noteAttachments.length === 0)) return;
     const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
     const text = typedText || buildSendCommentsMessage(commentCount);
-    const contextLines = noteAttachments.flatMap(getTuiAttachmentContextLines);
+    const contextLines = [
+      ...ideContext.map((item) => item.contextLine),
+      ...noteAttachments.flatMap(getTuiAttachmentContextLines),
+    ];
     onSendMessage?.(chatId, text, noteAttachments, {
       contentParts: [
         { type: 'text', text },
-        ...(contextLines.length > 0 ? [{ type: 'tui-context', lines: contextLines }] : []),
+        ...(contextLines.length > 0 ? [{ type: 'tui-context', lines: contextLines, ideLines: ideContext.map((item) => item.contextLine) }] : []),
       ],
     });
     // Sent notes leave the Context bar; a new note on the same file has a new
@@ -21031,7 +21044,10 @@ function TuiSessionView({
     const noteAttachmentsInMessage = (Array.isArray(message?.attachments) ? message.attachments : [])
       .filter((attachment) => attachment?.diffComments);
     const contextLines = noteAttachmentsInMessage.length > 0
-      ? noteAttachmentsInMessage.flatMap(getTuiAttachmentContextEntries)
+      ? [
+          ...(Array.isArray(tuiContextPart?.ideLines) ? tuiContextPart.ideLines : []),
+          ...noteAttachmentsInMessage.flatMap(getTuiAttachmentContextEntries),
+        ]
       : (Array.isArray(tuiContextPart?.lines) ? tuiContextPart.lines : []);
     return (
       <TuiUserBlock
@@ -21102,10 +21118,20 @@ function TuiSessionView({
         </div>
         <div className="tui-session__line tui-session__muted">? for shortcuts</div>
       </div>
-      {noteAttachments.length > 0 ? (
-        <div className="tui-session__notes" aria-label="Notes">
-          <span className="tui-session__notes-label">Notes</span>
-          <div className="tui-session__note-chips">
+      {ideContext.length > 0 || noteAttachments.length > 0 ? (
+        <div className="tui-session__context" aria-label="Context">
+          <span className="tui-session__context-label">Context</span>
+          <div className="tui-session__context-chips">
+            {ideContext.map((item) => (
+              <AiChatAttachmentStrip
+                key={item.id}
+                attachments={[{ id: item.id, label: item.label, icon: item.icon }]}
+                onRemove={() => setRemovedContextIds((current) => new Set([...current, item.id]))}
+                removeLabel={`Remove ${item.label} from context`}
+                className="tui-session__note-strip"
+                chipClassName="tui-session__note-chip"
+              />
+            ))}
             {noteAttachments.map((attachment, index) => (
               <AiChatAttachmentStrip
                 key={getAiChatAttachmentSequenceKey(attachment, index)}

@@ -25360,9 +25360,9 @@ button.aiux543-answer-change-card:focus-visible {
   color: #e08855;
 }
 
-/* Notes panel: diff notes addressed to this TUI session. Overflow stays
+/* Context bar: IDE context and diff notes addressed to this TUI session. Overflow stays
    visible so a chip's hover preview opens above the panel. */
-.tui-session__notes {
+.tui-session__context {
   position: relative;
   z-index: 2;
   display: flex;
@@ -25379,14 +25379,14 @@ button.aiux543-answer-change-card:focus-visible {
   line-height: 16px;
 }
 
-.tui-session__notes-label {
+.tui-session__context-label {
   flex: 0 0 auto;
   align-self: flex-start;
   padding-top: 4px;
   color: #dfe1e5;
 }
 
-.tui-session__note-chips {
+.tui-session__context-chips {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
