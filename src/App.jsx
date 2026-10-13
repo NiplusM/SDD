@@ -16345,7 +16345,21 @@ const AI_CHAT_VISIT_MODEL_ATTRIBUTES_ATTACHMENTS = [
   },
 ];
 
+// IJAI-2751: a Codex session running in a TUI. It opens in an editor tab as a
+// terminal transcript instead of the chat view, and is listed in Agent Sessions
+// and the comment session picker like any chat session.
+const TUI_SESSION_CHAT_ID = 'tui-add-controller';
+const TUI_SESSION_PROJECT_ROOT = PROJECT_ROOT_PATH.replace(/^~/, '/Users/nikita');
+const TUI_SESSION_SOURCE_ROOT = `${TUI_SESSION_PROJECT_ROOT}/src/main/java/org/springframework/samples/petclinic`;
+
 const AI_CHAT_RECENT_ITEMS = [
+  {
+    id: TUI_SESSION_CHAT_ID,
+    title: 'Add new controller',
+    time: '1m',
+    icon: 'codex',
+    interface: 'tui',
+  },
   {
     id: 'refactor-time-slots',
     title: 'Refactor VisitController.java time slots',
@@ -16505,6 +16519,61 @@ function buildSpecStatusScenarioEntries(specId, label) {
 }
 
 const AI_CHAT_SCENARIOS = {
+  [TUI_SESSION_CHAT_ID]: {
+    title: 'Add new controller',
+    icon: 'codex',
+    interface: 'tui',
+    messageId: `${TUI_SESSION_CHAT_ID}-message`,
+    userPrompt: 'Add a controller that returns the available visit time slots',
+    assistantParagraphs: [],
+    changeCard: null,
+    result: [],
+    attachmentLabel: null,
+    tuiModelLabel: 'GPT-6.1-Sol medium',
+    tuiWorkingDirectory: PROJECT_ROOT_PATH,
+    tuiTurns: [
+      {
+        id: 'tui-turn-time-controller',
+        prompt: 'Add a controller that returns the available visit time slots',
+        context: {
+          file: `${TUI_SESSION_SOURCE_ROOT}/system/TimeController.java`,
+          symbol: 'web',
+          snippetLines: '22-22',
+          snippet: 'import org.springframework.web.bind.annotation.RestController;',
+        },
+        response: [
+          { text: 'Added ' },
+          { text: 'TimeController.java', link: true },
+          { text: ' with GET /api/visits/slots. It returns the hourly slots that ' },
+          { text: 'VisitController', link: true },
+          { text: ' already exposes to the booking form.' },
+        ],
+        workedFor: '41s',
+        finishedAt: 'Oct 12 at 17:03',
+      },
+      {
+        id: 'tui-turn-base-entity',
+        prompt: 'Make BaseEntity safe to cache between requests',
+        context: {
+          file: `${TUI_SESSION_SOURCE_ROOT}/model/BaseEntity.java`,
+          symbol: 'BaseEntity',
+          snippetLines: '33-33',
+          snippet: 'public class BaseEntity implements Serializable {',
+        },
+        response: [
+          { text: 'BaseEntity', link: true },
+          { text: ' already implements Serializable. What should be cached: owners, pets or visits?' },
+        ],
+        workedFor: '5s',
+        finishedAt: '11:40',
+      },
+    ],
+    tuiContext: [
+      { id: 'tui-context-file', label: 'src/main/java/org…rk/samples/petclinic/model/BaseEntity.java', contextLine: `file: ${TUI_SESSION_SOURCE_ROOT}/model/BaseEntity.java` },
+      { id: 'tui-context-symbol', label: 'BaseEntity', contextLine: 'symbol: BaseEntity' },
+      { id: 'tui-context-selection', label: 'Selection (33-33)', contextLine: 'snippet: lines=33-33 selection=true' },
+    ],
+  },
   'refactor-time-slots': {
     title: 'Refactor VisitController.java time slots',
     userPrompt: 'Refactor VisitController.java so available visit time slots are initialized once and exposed through @ModelAttribute("timeSlots").',
@@ -20741,6 +20810,294 @@ function AiChatUserMessage({
           </div>
         </FinalAnchoredPopup>
       </span>
+    </div>
+  );
+}
+
+const TUI_RUNNING_STATUSES = new Set(['queued', 'processing', 'updating']);
+
+function formatTuiClock(timestamp) {
+  const date = new Date(timestamp);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatTuiDuration(milliseconds) {
+  const seconds = Math.max(1, Math.round(milliseconds / 1000));
+  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function getTuiAttachmentContextLines(attachment) {
+  const label = attachment?.sourceLabel ?? attachment?.label ?? 'file';
+  const commitFile = COMMIT_CHANGE_FILES.find((file) => file.label === label);
+  const path = commitFile
+    ? `${commitFile.path}/${commitFile.label}`.replace(PROJECT_ROOT_PATH, TUI_SESSION_PROJECT_ROOT)
+    : label;
+  const comments = getAiChatAttachmentCommentPreviewItems(attachment);
+  if (comments.length === 0) return [`file: ${path}`];
+  return [
+    `file: ${path}`,
+    'comments:',
+    ...comments.map((item) => `- ${item.lineLabel ? `${item.lineLabel}: ` : ''}${item.text}`),
+  ];
+}
+
+function TuiUserBlock({ prompt, contextLines = [], snippet = null }) {
+  return (
+    <div className="tui-session__user-block">
+      <div className="tui-session__line"><span className="tui-session__caret">›</span>{prompt || ' '}</div>
+      {contextLines.length > 0 || snippet ? (
+        <>
+          <div className="tui-session__line tui-session__line--gap">### IDE Context</div>
+          {contextLines.map((line, index) => (
+            <div key={`${index}-${line}`} className={`tui-session__line${line.startsWith('- ') || line === 'comments:' ? '' : ' tui-session__line--gap'}`}>{line}</div>
+          ))}
+          {snippet ? (
+            <>
+              <div className="tui-session__line">```java</div>
+              <div className="tui-session__line">{snippet}</div>
+              <div className="tui-session__line">```</div>
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
+  return (
+    <div className="tui-session__agent-block">
+      {parts.length > 0 || text ? (
+        <div className="tui-session__line tui-session__agent-line">
+          <span className="tui-session__bullet">•</span>
+          <span>
+            {parts.length > 0
+              ? parts.map((part, index) => (
+                  <span key={index} className={part.link ? 'tui-session__link' : undefined}>{part.text}</span>
+                ))
+              : text}
+          </span>
+        </div>
+      ) : null}
+      {working ? <div className="tui-session__line tui-session__muted tui-session__line--gap">{working}</div> : null}
+      {meta ? <div className="tui-session__line tui-session__muted tui-session__line--gap">{meta}</div> : null}
+    </div>
+  );
+}
+
+// IJAI-2751: Codex running in a terminal (TUI) inside an editor tab. Notes from
+// diffs reach it through the same composer attachments as a Chat UI session;
+// here they appear in the IDE Context bar below the terminal and are sent as
+// the next prompt's IDE Context.
+function TuiSessionView({
+  chatId,
+  scenario,
+  title,
+  sentMessages = [],
+  agentRun = null,
+  composerDiffAttachments = [],
+  composerDraft = null,
+  onSendMessage,
+  onStopMessage,
+  onComposerDraftChange,
+  onOpenAttachment,
+  onRemoveComposerAttachment,
+  getCommentCodeSnippet,
+}) {
+  const [inputText, setInputText] = useState('');
+  const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
+  const [messageTimes, setMessageTimes] = useState({});
+  const [interruptedMessageIds, setInterruptedMessageIds] = useState(() => new Set());
+  const [now, setNow] = useState(() => Date.now());
+  const outputRef = useRef(null);
+  const inputRef = useRef(null);
+  const isRunning = TUI_RUNNING_STATUSES.has(agentRun?.status);
+  const sessionTitle = title || scenario?.title || 'Codex';
+
+  // Sending moves the notes into the agent's Last Turn diff tab, so a sent batch
+  // is identified by its file and note text rather than by the diff tab id.
+  const getDraftKey = (attachment, index = 0) => {
+    const attachmentId = getAiChatAttachmentSequenceKey(attachment, index);
+    if (attachment?.diffTabId && attachment?.diffComments) {
+      return `${attachment.sourceLabel ?? attachmentId}\u0000${getSentDiffCommentAttachmentSignature(attachment.diffComments)}`;
+    }
+    return `${attachmentId}\u0000${JSON.stringify(getAiChatAttachmentCommentPreviewItems(attachment).map((item) => item?.text ?? ''))}`;
+  };
+  const dismissedKeys = new Set(Array.isArray(composerDraft?.dismissedAttachmentKeys) ? composerDraft.dismissedAttachmentKeys : []);
+  const sentKeys = new Set(sentMessages
+    .flatMap((message) => (Array.isArray(message?.attachments) ? message.attachments : []))
+    .map((attachment, index) => getDraftKey(attachment, index)));
+  const noteAttachments = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
+    .filter((attachment, index) => !dismissedKeys.has(getDraftKey(attachment, index)) && !sentKeys.has(getDraftKey(attachment, index)));
+  const ideContext = (Array.isArray(scenario?.tuiContext) ? scenario.tuiContext : [])
+    .filter((item) => !removedContextIds.has(item.id));
+
+  useEffect(() => {
+    setMessageTimes((current) => {
+      let changed = false;
+      const next = { ...current };
+      sentMessages.forEach((message) => {
+        if (message?.role !== 'assistant') return;
+        const entry = next[message.id];
+        if (!entry) {
+          next[message.id] = { startedAt: Date.now(), finishedAt: message.streaming ? null : Date.now() };
+          changed = true;
+        } else if (!entry.finishedAt && !message.streaming && !isRunning) {
+          next[message.id] = { ...entry, finishedAt: Date.now() };
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [isRunning, sentMessages]);
+
+  useEffect(() => {
+    if (!isRunning) return undefined;
+    const intervalId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isRunning]);
+
+  useLayoutEffect(() => {
+    const output = outputRef.current;
+    if (output) output.scrollTop = output.scrollHeight;
+  }, [sentMessages, noteAttachments.length, isRunning]);
+
+  const handleSubmit = () => {
+    const text = inputText.trim();
+    if (isRunning || (!text && noteAttachments.length === 0)) return;
+    const contextLines = [
+      ...ideContext.map((item) => item.contextLine),
+      ...noteAttachments.flatMap(getTuiAttachmentContextLines),
+    ];
+    onSendMessage?.(chatId, text, noteAttachments, {
+      contentParts: [
+        ...(text ? [{ type: 'text', text }] : []),
+        { type: 'tui-context', lines: contextLines },
+      ],
+    });
+    // Sent notes leave the Context bar; a new note on the same file has a new
+    // key and appears again.
+    onComposerDraftChange?.(chatId, {
+      text: '',
+      contentParts: [],
+      dismissedAttachmentKeys: [
+        ...dismissedKeys,
+        ...noteAttachments.map((attachment, index) => getDraftKey(attachment, index)),
+      ],
+    });
+    setInputText('');
+  };
+
+  const renderSentMessages = () => sentMessages.map((message) => {
+    if (message?.role === 'assistant') {
+      const times = messageTimes[message.id];
+      const finished = times?.finishedAt && !message.streaming;
+      return (
+        <TuiAgentBlock
+          key={message.id}
+          text={message.text}
+          working={!finished && isRunning
+            ? `Working (${formatTuiDuration(now - (times?.startedAt ?? now))} • esc to interrupt)`
+            : null}
+          meta={finished
+            ? (interruptedMessageIds.has(message.id)
+                ? '■ Conversation interrupted'
+                : `Worked for ${formatTuiDuration(times.finishedAt - times.startedAt)} • ${formatTuiClock(times.finishedAt)}`)
+            : null}
+        />
+      );
+    }
+    const tuiContextPart = Array.isArray(message?.contentParts)
+      ? message.contentParts.find((part) => part?.type === 'tui-context')
+      : null;
+    const contextLines = Array.isArray(tuiContextPart?.lines)
+      ? tuiContextPart.lines
+      : (Array.isArray(message?.attachments) ? message.attachments.flatMap(getTuiAttachmentContextLines) : []);
+    return <TuiUserBlock key={message.id} prompt={message.text} contextLines={contextLines} />;
+  });
+
+  return (
+    <div className="tui-session">
+      <div
+        className="tui-session__terminal"
+        ref={outputRef}
+        onMouseUp={() => {
+          if (!window.getSelection()?.toString()) inputRef.current?.focus();
+        }}
+      >
+        {(Array.isArray(scenario?.tuiTurns) ? scenario.tuiTurns : []).map((turn) => (
+          <Fragment key={turn.id}>
+            <TuiUserBlock
+              prompt={turn.prompt}
+              contextLines={[
+                `file: ${turn.context.file}`,
+                `symbol: ${turn.context.symbol}`,
+                `snippet: lines=${turn.context.snippetLines} selection=true`,
+              ]}
+              snippet={turn.context.snippet}
+            />
+            <TuiAgentBlock parts={turn.response} meta={`Worked for ${turn.workedFor} • ${turn.finishedAt}`} />
+          </Fragment>
+        ))}
+        {renderSentMessages()}
+        <div className="tui-session__input-block">
+          <span className="tui-session__caret">›</span>
+          <input
+            ref={inputRef}
+            className="tui-session__input"
+            value={inputText}
+            placeholder={isRunning ? '' : 'Ask Codex to do anything'}
+            aria-label={`Message ${sessionTitle}`}
+            spellCheck={false}
+            onChange={(event) => setInputText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                handleSubmit();
+              } else if (event.key === 'Escape' && isRunning) {
+                event.preventDefault();
+                event.stopPropagation();
+                const runningMessage = [...sentMessages].reverse().find((message) => message?.role === 'assistant');
+                if (runningMessage) setInterruptedMessageIds((current) => new Set([...current, runningMessage.id]));
+                onStopMessage?.(chatId);
+              }
+            }}
+          />
+        </div>
+        <div className="tui-session__line tui-session__status">
+          <span>{scenario?.tuiModelLabel ?? 'GPT-5 medium'}</span>
+          <span className="tui-session__muted"> · </span>
+          <span className="tui-session__path">{scenario?.tuiWorkingDirectory ?? '~'}</span>
+          <span className="tui-session__muted"> · </span>
+          <span className="tui-session__title">{sessionTitle}</span>
+        </div>
+        <div className="tui-session__line tui-session__muted">? for shortcuts</div>
+      </div>
+      {ideContext.length > 0 || noteAttachments.length > 0 ? (
+        <div className="tui-session__context" aria-label="IDE Context">
+          <span className="tui-session__context-label">Context</span>
+          <AiChatAttachmentStrip
+            attachments={[
+              ...ideContext.map((item) => ({ ...item, isTuiContext: true, hideInlineCount: true })),
+              ...noteAttachments,
+            ]}
+            onOpen={(attachment) => {
+              if (!attachment?.isTuiContext) onOpenAttachment?.(attachment);
+            }}
+            onRemove={(attachment) => {
+              if (attachment?.isTuiContext) {
+                setRemovedContextIds((current) => new Set([...current, attachment.id]));
+                return;
+              }
+              onRemoveComposerAttachment?.(attachment, { chatId });
+            }}
+            removeLabel={(attachment) => `Remove ${attachment?.label ?? 'item'} from context`}
+            renderCodeSnippet={getCommentCodeSnippet}
+            className="tui-session__context-chips"
+            chipClassName="tui-session__context-chip"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -36730,6 +37087,24 @@ export default function App() {
 
     return null;
   }, [getTaskRuntimeState, runStatesByTab]);
+  const renderTuiSessionView = (chatId, title) => (
+    <TuiSessionView
+      key={`tui-${chatId}`}
+      chatId={chatId}
+      scenario={aiChatScenarios[chatId]}
+      title={title}
+      sentMessages={aiChatSentMessagesByChatId[chatId] ?? []}
+      agentRun={agentRunByChatId[chatId] ?? null}
+      composerDiffAttachments={selectedAiChatId === chatId ? aiChatComposerDiffAttachments : []}
+      composerDraft={aiChatComposerDraftByChatId[chatId] ?? null}
+      onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
+      onStopMessage={handleAiChatTabStop}
+      onComposerDraftChange={handleAiChatComposerDraftChange}
+      onOpenAttachment={handleOpenChatAttachment}
+      onRemoveComposerAttachment={handleRemoveComposerAttachment}
+      getCommentCodeSnippet={getCommentCodeSnippet}
+    />
+  );
   const renderedIdeTabs = useMemo(() => (
     ideTabs.map((tab) => {
       const shouldUseDiffIcon =
@@ -37139,6 +37514,9 @@ export default function App() {
                 }}
                 leftPane={(
                   <div className="aiux543-chat-editor-host">
+                    {aiChatScenarios[reviewSplitChatId]?.interface === 'tui'
+                      ? renderTuiSessionView(reviewSplitChatId, reviewSplitChatLabel)
+                      : (
                     <AiChatTabView
                       key={`split-${reviewSplitChatId}`}
                       chatId={reviewSplitChatId}
@@ -37194,6 +37572,7 @@ export default function App() {
                       onEditAnnotation={null}
                       onOpenChangedFile={(file) => openCommentTarget(file, reviewSplitChatId)}
                     />
+                      )}
                   </div>
                 )}
                 rightPane={(
@@ -37455,6 +37834,9 @@ export default function App() {
             : isAiChatTab
             ? (
               <div className="aiux543-chat-editor-host">
+                {aiChatScenarios[activeAiChatTabChatId]?.interface === 'tui'
+                  ? renderTuiSessionView(activeAiChatTabChatId, activeEditorTabMeta?.label)
+                  : (
                 <AiChatTabView
                   key={activeAiChatTabChatId}
                   chatId={activeAiChatTabChatId}
@@ -37525,6 +37907,7 @@ export default function App() {
                     setGlobalReviewDialogOpen(true);
                   }}
                 />
+                  )}
               </div>
             )
             : isAgentTaskTab

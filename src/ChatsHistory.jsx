@@ -147,7 +147,7 @@ function ChatsHistoryToolWindow({
   const flatRows = useMemo(() => buildAiux550HistoryRows(chatRows), [chatRows]);
   const projectGroups = useMemo(() => {
     const generationRows = flatRows.filter(row => row.projectId === 'spring-petclinic');
-    const sessionRows = flatRows.filter(row => !row.projectId).slice(0, 9);
+    const sessionRows = flatRows.filter(row => !row.projectId).slice(0, 10);
     return [
       {
         id: 'spring-petclinic',
@@ -156,7 +156,7 @@ function ChatsHistoryToolWindow({
         initials: 'SP',
         status: 'Opened Project',
         color: 'blue',
-        rows: [...generationRows, ...sessionRows.slice(0, 5)],
+        rows: [...generationRows, ...sessionRows.slice(0, 6)],
       },
       {
         id: 'sdd-mvp',
@@ -165,7 +165,7 @@ function ChatsHistoryToolWindow({
         initials: 'SD',
         status: 'Attached',
         color: 'neutral',
-        rows: sessionRows.slice(5, 9),
+        rows: sessionRows.slice(6, 10),
       },
     ];
   }, [flatRows]);
@@ -316,7 +316,7 @@ function ChatsHistoryToolWindow({
                       </span>
                       <span className="agent-sessions-session-agent">
                         <AiChatAgentIcon
-                          icon={row.projectId ? row.agent : (selectedId === row.id ? 'claude' : (row.agent || 'claude'))}
+                          icon={row.projectId || row.interface === 'tui' ? row.agent : (selectedId === row.id ? 'claude' : (row.agent || 'claude'))}
                           title={row.title}
                         />
                       </span>
@@ -753,6 +753,14 @@ function buildAiux550HistoryRows(dynamicRows = []) {
   const staticRows = [
     ...normalizedDynamicRows.map(withAiux550CollapsedChildren),
     ...[
+      {
+        // IJAI-2751: Codex running in a TUI; opens as a terminal editor tab.
+        id: 'tui-add-controller',
+        title: 'Add new controller',
+        agent: 'codex',
+        interface: 'tui',
+        time: '1m',
+      },
       {
         id: 'refactor-time-slots',
         title: 'Refactor VisitController.java time slots',
