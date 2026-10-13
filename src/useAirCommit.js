@@ -36,8 +36,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   const callbacks = useRef(null);
   callbacks.current = { onGenerationStart, onGenerationFinish };
   const messageRef = useRef(null);
-  const completedCount = useRef(0);
-  const initialScenario = useRef(new URLSearchParams(window.location.search).get('scenario'));
+  const generationCount = useRef(new URLSearchParams(window.location.search).get('scenario') === 'error' ? 1 : 0);
   const checkedFiles = getCheckedFiles(files, checkedIds);
   const selectionKey = JSON.stringify(checkedFiles.map(file => [file.id, file.status, file.path]));
 
@@ -84,7 +83,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
         messageRef.current?.focus();
         result = { kind: 'success', message: generatedMessage };
       }
-      if (result.kind !== 'info') { setJob(null); jobRef.current = null; completedCount.current += 1; }
+      if (result.kind !== 'info') { setJob(null); jobRef.current = null; }
       callbacks.current.onGenerationFinish?.(job, result);
       if (result.kind === 'info' || result.kind === 'error') setIssue({ ...result, request: job });
     }, 3000);
@@ -94,7 +93,8 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
   function generate() {
     if (!checkedFiles.length || jobRef.current) return;
     setIssue(null); setStatus('');
-    const outcome = completedCount.current === 0 && initialScenario.current !== 'error' ? 'info' : 'error';
+    const attempt = generationCount.current++;
+    const outcome = attempt === 0 ? 'info' : attempt === 1 ? 'error' : 'success';
     const request = { id: ++requestId.current, files: checkedFiles.map(file => ({ ...file })),
       settings: { ...settings }, branch, draft: message, outcome };
     request.chatId = callbacks.current.onGenerationStart?.(request, () => cancel('Generation stopped.'), answer => confirm(request.id, answer)) ?? null;

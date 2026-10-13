@@ -329,6 +329,21 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await page.waitForFunction(() => [...document.querySelectorAll('.ij2499-commit-chat .aiux543-answer')].some(element => element.textContent.includes('chore: обновить'))
       && !document.querySelector('.ij2499-commit-chat .ai-chat-streaming-caret'));
     assert.equal(await message.inputValue(), successfulDraft);
+    await message.fill('Third attempt draft.');
+    await generate.click();
+    await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
+    assert.equal(await tabs.count(), 3, 'third press creates a new generation chat');
+    await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
+    const thirdDraft = await message.inputValue();
+    assert.notEqual(thirdDraft, 'Third attempt draft.', 'third generation replaces the draft with its successful result');
+    for (const name of selectedFiles) assert.ok(thirdDraft.includes(name));
+    assert.equal(await error.count(), 0);
+    assert.equal(await info.count(), 0);
+    assert.equal(await page.locator('.ij2499-message-loading').count(), 0);
+    await tabs.nth(2).locator('.tab-label').click();
+    assert.equal(await chat.locator('.aiux543-answer p').innerText(), thirdDraft, 'third request result is also shown in its chat');
+    assert.deepEqual(await chat.locator('.ai-chat-user-card .ai-chat-attachment-name').allTextContents(), selectedFiles.map(name => `Diff ${name}`));
+    await page.screenshot({ path: path.join(outputDir, `generation-third-success-${width}.png`) });
     // Stopping from the chat cancels the same running Commit request.
     const newTabIndex = await page.locator('.main-window-editor-tabs .tab-wrapper').evaluateAll(elements => elements.findIndex(element => element.querySelector('.tab-selected')) + 1);
     await generate.click();
@@ -337,7 +352,7 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await error.waitFor();
     assert.match(await error.innerText(), /generation stopped/);
     await page.waitForTimeout(3100);
-    assert.equal(await message.inputValue(), successfulDraft, 'a cancelled timer cannot overwrite the confirmed draft');
+    assert.equal(await message.inputValue(), thirdDraft, 'a cancelled timer cannot overwrite the third successful draft');
     assert.deepEqual(errors, []);
     await page.close();
   }
@@ -615,7 +630,7 @@ async function checkBrowserLayout() {
 
     }
     await checkGenerationChats(browser, outputDir, previewUrl);
-    console.log('PASS: first loading/information request; symmetric banner above Generate; reference choices and confirmation; same-chat resume fills Commit; repeat error preserves draft; keyboard/custom instructions; Stop and comment-compatible UI.');
+    console.log('PASS: first loading/information request; symmetric banner above Generate; reference choices and confirmation; same-chat resume fills Commit; second error preserves draft; third generation succeeds; keyboard/custom instructions; Stop and comment-compatible UI.');
   } finally { await browser.close(); }
 }
 (async () => {
@@ -681,6 +696,7 @@ async function checkBrowserLayout() {
   await wait(3050); assert.equal(message().value, 'Manual edit');
   await click(button('Generate Message')); await click(check());
   await wait(3050); assert.equal(message().value, 'Manual edit'); assert.ok(button('Generate Message').disabled);
+  w.mountCommit('three-attempt-sequence'); await wait(60);
   await click(check()); await click(button('Generate Message')); await wait(3050);
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Input needed/);
   assert.ok(button('Stop generation'));
@@ -699,9 +715,11 @@ async function checkBrowserLayout() {
   assert.match(d.querySelector('.ij2499-generation-banner').textContent, /generation failed/);
   assert.equal(message().value, successfulDraft, 'the second request preserves the successful draft');
   await click(button('Open chat'));
+  await edit(message(), 'Third attempt draft');
   await click(button('Generate Message')); await wait(3050);
-  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /generation failed/);
-  assert.equal(message().value, successfulDraft);
+  assert.equal(d.querySelector('.ij2499-generation-banner'), null, 'third generation succeeds without an error banner');
+  assert.match(message().value, /VisitController.java/);
+  assert.notEqual(message().value, 'Third attempt draft');
 
   await click(button('Commit Options'));
   const popup = d.querySelector('.ij2499-options'); assert.ok(popup.classList.contains('theme-dark'));
@@ -742,7 +760,8 @@ async function checkBrowserLayout() {
   await click(button('Commit Options')); assert.equal(d.querySelector('#popup-prompt').value, 'numbered Russian $GIT_BRANCH_NAME');
   d.querySelector('.ij2499-options-content').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(25);
   await click(button('Generate Message')); await wait(3050);
-  assert.ok(d.querySelector('.ij2499-generation-banner.banner-error'));
+  assert.equal(d.querySelector('.ij2499-generation-banner'), null, 'later requests continue succeeding');
+  assert.match(message().value, /Обновить VisitController.java/);
   await edit(message(), 'Commit this change');
   const count = d.querySelectorAll('.commit-file-node').length;
   await click(button('Commit')); assert.equal(d.querySelectorAll('.commit-file-node').length, count - 1);
@@ -770,7 +789,7 @@ async function checkBrowserLayout() {
   const staleConfirm = w.confirmGeneration;
   await edit(message(), 'Changed while awaiting input');
   assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false);
-  await click(button('Generate Message')); await wait(3050);
+  await click(button('Generate Message'));
   assert.equal(staleConfirm({ choiceId: 'allow-once', label: 'Old answer' }), false, 'old chat confirmation cannot resume a newer request');
   assert.ok(button('Stop generation'));
   assert.ok(!button('Generate Message'));
