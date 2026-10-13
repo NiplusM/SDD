@@ -257,9 +257,11 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     await page.getByRole('button', { name: 'Stop generation', exact: true }).waitFor();
     assert.equal(await tabs.count(), 1, 'the first request immediately creates its chat');
     assert.equal(await message.getAttribute('aria-busy'), 'true');
+    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Generating…');
     const info = page.locator('.ij2499-generation-banner.banner-info');
     await info.waitFor();
     assert.match(await info.innerText(), /Input needed/);
+    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Waiting for information…');
     assert.equal(await message.inputValue(), '', 'loading presentation remains while the saved draft is preserved');
     assert.equal(await message.getAttribute('aria-busy'), 'true', 'awaiting information is still an active generation');
     assert.ok(await message.evaluate(element => element.readOnly));
@@ -299,6 +301,7 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     assert.equal(await tabs.count(), 1, 'confirmation resumes the existing request/chat');
     assert.equal(await info.count(), 0);
     assert.equal(await request.count(), 0);
+    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Generating…', 'confirmation restores generation progress text');
     await page.waitForFunction(() => document.querySelector('[aria-label="Commit Message"]')?.getAttribute('aria-busy') === 'false');
     const successfulDraft = await message.inputValue();
     for (const name of selectedFiles) assert.ok(successfulDraft.includes(name));
