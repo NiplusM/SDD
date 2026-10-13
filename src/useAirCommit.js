@@ -71,7 +71,7 @@ export function useAirCommit({ files, checkedIds, branch, scopeId, onGenerationS
         const pending = { ...job, phase: 'awaiting-input' };
         jobRef.current = pending;
         setJob(pending);
-        result = { kind: 'info', title: 'Input needed to generate a message.',
+        result = { kind: 'info', title: 'Confirm access in chat to continue generation.',
           description: 'I need your confirmation before reading the selected local changes.' };
       } else if (job.outcome === 'error') {
         result = { kind: 'error', code: 'timeout', title: 'Commit message generation failed.',

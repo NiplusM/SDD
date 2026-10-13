@@ -1419,7 +1419,7 @@ function CommitToolWindow({
                 onChange={(event) => setMessage(event.target.value)}
               />
               {air.job && <div className="ij2499-message-loading" role="status" aria-live="polite">
-                <Loader size={14} /><span>{air.job.phase === 'awaiting-input' ? 'Waiting for information…' : 'Generating…'}</span>
+                <Loader size={14} /><span>{air.job.phase === 'awaiting-input' ? 'Waiting for confirmation…' : 'Generating…'}</span>
               </div>}
             </div>
           </div>

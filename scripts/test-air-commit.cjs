@@ -260,8 +260,8 @@ async function checkGenerationChats(browser, outputDir, previewUrl) {
     assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Generating…');
     const info = page.locator('.ij2499-generation-banner.banner-info');
     await info.waitFor();
-    assert.match(await info.innerText(), /Input needed/);
-    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Waiting for information…');
+    assert.match(await info.innerText(), /Confirm access in chat to continue generation\./);
+    assert.equal(await page.locator('.ij2499-message-loading').innerText(), 'Waiting for confirmation…');
     assert.equal(await message.inputValue(), '', 'loading presentation remains while the saved draft is preserved');
     assert.equal(await message.getAttribute('aria-busy'), 'true', 'awaiting information is still an active generation');
     assert.ok(await message.evaluate(element => element.readOnly));
@@ -701,7 +701,7 @@ async function checkBrowserLayout() {
   await wait(3050); assert.equal(message().value, 'Manual edit'); assert.ok(button('Generate Message').disabled);
   w.mountCommit('three-attempt-sequence'); await wait(60);
   await click(check()); await click(button('Generate Message')); await wait(3050);
-  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Input needed/);
+  assert.match(d.querySelector('.ij2499-generation-banner').textContent, /Confirm access in chat to continue generation\./);
   assert.ok(button('Stop generation'));
   assert.ok(!button('Generate Message'));
   assert.equal(message().getAttribute('aria-busy'), 'true');
