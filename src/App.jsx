@@ -20882,7 +20882,7 @@ function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
 
 // IJAI-2751: Codex running in a terminal (TUI) inside an editor tab. Notes from
 // diffs reach it through the same composer attachments as a Chat UI session;
-// here they appear in the Comments panel below the terminal and are sent as
+// here they appear in the Notes panel below the terminal and are sent as
 // the next prompt's IDE Context.
 function TuiSessionView({
   chatId,
@@ -20958,7 +20958,7 @@ function TuiSessionView({
     const typedText = inputText.trim();
     if (isRunning || (!typedText && noteAttachments.length === 0)) return;
     const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
-    const text = typedText || buildSendCommentsMessage(commentCount);
+    const text = typedText || `I left ${commentCount} note${commentCount === 1 ? '' : 's'} on the diff. Please take a look.`;
     const contextLines = noteAttachments.flatMap(getTuiAttachmentContextLines);
     onSendMessage?.(chatId, text, noteAttachments, {
       contentParts: [
@@ -21046,7 +21046,7 @@ function TuiSessionView({
             value={inputText}
             placeholder={isRunning
               ? ''
-              : (noteAttachments.length > 0 ? 'Press Enter to send comments' : 'Ask Codex to do anything')}
+              : (noteAttachments.length > 0 ? 'Press Enter to send notes' : 'Ask Codex to do anything')}
             aria-label={`Message ${sessionTitle}`}
             spellCheck={false}
             onChange={(event) => setInputText(event.target.value)}
@@ -21074,9 +21074,9 @@ function TuiSessionView({
         <div className="tui-session__line tui-session__muted">? for shortcuts</div>
       </div>
       {noteAttachments.length > 0 ? (
-        <div className="tui-session__comments" aria-label="Comments">
-          <span className="tui-session__comments-label">Comments</span>
-          <div className="tui-session__comment-chips">
+        <div className="tui-session__notes" aria-label="Notes">
+          <span className="tui-session__notes-label">Notes</span>
+          <div className="tui-session__note-chips">
             {noteAttachments.map((attachment, index) => (
               <AiChatAttachmentStrip
                 key={getAiChatAttachmentSequenceKey(attachment, index)}
@@ -21096,10 +21096,10 @@ function TuiSessionView({
                     dismissedAttachmentKeys: [...dismissedKeys, getDraftKey(attachment, index)],
                   });
                 }}
-                removeLabel={`Remove ${attachment?.sourceLabel ?? 'comments'}`}
+                removeLabel={`Remove ${attachment?.sourceLabel ?? 'notes'}`}
                 renderCodeSnippet={getCommentCodeSnippet}
-                className="tui-session__comment-strip"
-                chipClassName="tui-session__comment-chip"
+                className="tui-session__note-strip"
+                chipClassName="tui-session__note-chip"
               />
             ))}
           </div>

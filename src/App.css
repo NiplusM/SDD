@@ -25360,9 +25360,9 @@ button.aiux543-answer-change-card:focus-visible {
   color: #e08855;
 }
 
-/* Comments panel: diff notes addressed to this TUI session. Overflow stays
+/* Notes panel: diff notes addressed to this TUI session. Overflow stays
    visible so a chip's hover preview opens above the panel. */
-.tui-session__comments {
+.tui-session__notes {
   position: relative;
   z-index: 2;
   display: flex;
@@ -25379,14 +25379,14 @@ button.aiux543-answer-change-card:focus-visible {
   line-height: 16px;
 }
 
-.tui-session__comments-label {
+.tui-session__notes-label {
   flex: 0 0 auto;
   align-self: flex-start;
   padding-top: 4px;
   color: #dfe1e5;
 }
 
-.tui-session__comment-chips {
+.tui-session__note-chips {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -25394,7 +25394,7 @@ button.aiux543-answer-change-card:focus-visible {
   min-width: 0;
 }
 
-.tui-session__comment-strip.ai-chat-attachments {
+.tui-session__note-strip.ai-chat-attachments {
   display: flex;
   min-width: 0;
   max-width: 100%;
@@ -25403,27 +25403,27 @@ button.aiux543-answer-change-card:focus-visible {
 }
 
 /* IJ Air highlights the hovered note and opens its code beside the list. */
-.tui-session__comment-chip button.ai-chat-attachment-hover-note.is-navigable:hover {
+.tui-session__note-chip button.ai-chat-attachment-hover-note.is-navigable:hover {
   background: #2e436e;
 }
 
-.tui-session__comment-chip.ai-chat-attachment-chip {
+.tui-session__note-chip.ai-chat-attachment-chip {
   flex: 0 1 auto;
   max-width: 100%;
 }
 
 /* IJ Air attachment chip: icon, label and an always-visible close button
    after the label (the shared composer chip reveals it only on hover). */
-.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action {
+.tui-session__note-chip.ai-chat-attachment-chip.has-remove-action {
   padding: 0 6px 0 7px;
   background: #27282a;
 }
 
-.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action:is(:hover, :focus-visible, :focus-within) {
+.tui-session__note-chip.ai-chat-attachment-chip.has-remove-action:is(:hover, :focus-visible, :focus-within) {
   background: var(--tab-tab-bg-hovered, #393B40);
 }
 
-.tui-session__comment-chip .ai-chat-attachment-close-button {
+.tui-session__note-chip .ai-chat-attachment-close-button {
   position: static;
   width: 16px;
   margin-left: -2px;
@@ -25435,8 +25435,8 @@ button.aiux543-answer-change-card:focus-visible {
   transform: none;
 }
 
-.tui-session__comment-chip .ai-chat-attachment-close-button:is(:hover, :focus-visible),
-.tui-session__comment-chip.ai-chat-attachment-chip.has-remove-action:active .ai-chat-attachment-close-button {
+.tui-session__note-chip .ai-chat-attachment-close-button:is(:hover, :focus-visible),
+.tui-session__note-chip.ai-chat-attachment-chip.has-remove-action:active .ai-chat-attachment-close-button {
   background: none;
   color: #dfe1e5;
 }
