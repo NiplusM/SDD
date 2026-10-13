@@ -72,7 +72,7 @@ async function checkCommentToolbar() {
       await island.waitFor();
       assert.match(await island.innerText(), /Review Visit.*model fields/);
       assert.match(await island.innerText(), /VisitController.java/);
-      assert.equal(await island.getByRole('checkbox').count(), 4, 'bulk selection, file, and both saved notes have checkboxes');
+      assert.equal(await island.getByRole('checkbox').count(), 4, 'bulk selection, session, and both saved notes have checkboxes');
       assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'all notes start selected');
       const geometry = await island.evaluate(element => {
         const panel = element.getBoundingClientRect();
@@ -88,28 +88,33 @@ async function checkCommentToolbar() {
       assert.equal(geometry.surface, geometry.barSurface, 'both islands use the same dark kit surface');
       await page.screenshot({ path: path.join(outputDir, `comment-selection-${width}.png`) });
       assert.equal(await bar.locator('.plan-diff-comment-nav-count .toolbar-button-chevron').count(), 0, 'comment counter has no chevron');
-      assert.equal(await island.locator('.tree-node-toggle').count(), 1, 'only the file is a tree parent');
-      assert.equal(await island.locator('.ij2499-comment-session-header .tree-node, .ij2499-comment-session-header input').count(), 0, 'session is text context without a third selectable tree row');
-      assert.equal(await island.locator('.ij2499-comment-session > .ij2499-comment-file').count(), 1, 'file stays grouped under its owning session');
-      assert.equal(await island.locator('.ij2499-comment-file > .tree-node-children > .ij2499-comment-leaf').count(), 2, 'comments are file children');
+      assert.equal(await island.locator('.tree-node-toggle').count(), 1, 'only the session is a tree parent');
+      assert.equal(await island.locator('.ij2499-comment-file').count(), 0, 'file is metadata rather than a third tree row');
+      assert.equal(await island.locator('.ij2499-comment-session > .tree-node-children > .ij2499-comment-leaf').count(), 2, 'comments are direct children of their session');
+      for (const text of ['Keep the logging message useful.', 'Keep the controller initialization clear.']) {
+        const item = island.locator('.ij2499-comment-leaf').filter({ has: page.locator('.ij2499-comment-item-text', { hasText: text }) });
+        assert.equal(await item.locator('.ij2499-comment-item-file').innerText(), 'VisitController.java', 'every comment carries its own file context');
+        assert.match(await item.locator('.ij2499-comment-item-line').innerText(), /Line \d+/);
+        assert.equal(await item.locator('input[type=checkbox]').count(), 1, 'one checkbox selects the file/comment item');
+      }
       const insets = await island.evaluate(element => {
         const x = selector => element.querySelector(selector).getBoundingClientRect().x;
-        return { comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-file .checkbox-wrapper'),
-          text: x('.ij2499-comment-leaf > .tree-node .tree-node-label') - x('.ij2499-comment-file > .tree-node .tree-node-label') };
+        return { comment: x('.ij2499-comment-leaf .checkbox-wrapper') - x('.ij2499-comment-session > .tree-node .checkbox-wrapper'),
+          text: x('.ij2499-comment-leaf > .tree-node .tree-node-label') - x('.ij2499-comment-session > .tree-node .tree-node-label') };
       });
-      assert.equal(insets.comment, 16, 'comment has the same guideline child step from its file');
-      assert.equal(insets.text, 16, 'comment text follows the same child step; icon-free rows reserve the icon column');
+      assert.equal(insets.comment, 16, 'comment has one guideline child step from its session');
+      assert.equal(insets.text, 16, 'the combined item label follows the same child step');
       assert.equal(await island.locator('.ij2499-comment-leaf > .tree-node .tree-node-spacer').count(), 2, 'child rows use the native tree spacer');
       const levels = await island.evaluate(element => ({
-        parent: getComputedStyle(element.querySelector('.ij2499-comment-file > .tree-node')).paddingLeft,
+        parent: getComputedStyle(element.querySelector('.ij2499-comment-session > .tree-node')).paddingLeft,
         child: getComputedStyle(element.querySelector('.ij2499-comment-leaf > .tree-node')).paddingLeft,
       }));
       assert.deepEqual(levels, { parent: '8px', child: '24px' }, 'both tree levels match the current upstream formula');
       const columns = await island.locator('.tree-node-toggle, .tree-node-spacer, .tree-node-icon').evaluateAll(items => items.map(item => ({ width:item.getBoundingClientRect().width, margin:getComputedStyle(item).marginRight })));
       assert.ok(columns.every(column => column.width === 16 && column.margin === '0px'), 'tree columns are fixed 16px without old margins');
-      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
-      assert.equal(await island.getByRole('checkbox').count(), 2, 'file collapse hides only its comments');
-      await island.locator('.ij2499-comment-file > .tree-node .tree-node-toggle').click();
+      await island.locator('.ij2499-comment-session > .tree-node .tree-node-toggle').click();
+      assert.equal(await island.getByRole('checkbox').count(), 2, 'session collapse hides its combined comment items');
+      await island.locator('.ij2499-comment-session > .tree-node .tree-node-toggle').click();
       assert.equal(await island.getByRole('checkbox').count(), 4);
       const keyboardCheckbox = island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true });
       await keyboardCheckbox.focus();
@@ -118,10 +123,10 @@ async function checkCommentToolbar() {
       await page.keyboard.press('Space');
       assert.equal(await keyboardCheckbox.isChecked(), true);
       await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
-      assert.ok(await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).evaluate(input => input.indeterminate));
+      assert.ok(await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).evaluate(input => input.indeterminate));
       assert.ok(await island.getByRole('checkbox', { name: 'Select all comments', exact: true }).evaluate(input => input.indeterminate));
-      await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
-      await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
+      await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
+      await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
       assert.ok(await bar.locator('.plan-diff-send-comments-button').isDisabled(), 'no selected comments disables Send');
       await island.getByRole('checkbox', { name: 'Select all comments', exact: true }).locator('..').click();
       assert.ok((await island.getByRole('checkbox').evaluateAll(inputs => inputs.every(input => input.checked))), 'bulk checkbox selects every comment');
@@ -160,7 +165,7 @@ async function checkCommentToolbar() {
           return button && !button.disabled;
         }, null, { timeout: 30000 });
         await bar.locator('.plan-diff-comment-nav-count').click();
-        await island.getByRole('checkbox', { name: 'Select comments in VisitController.java', exact: true }).locator('..').click();
+        await island.getByRole('checkbox', { name: /Select comments in Review Visit.*model fields/ }).locator('..').click();
         await island.getByRole('checkbox', { name: 'Send comment: Keep the logging message useful.', exact: true }).locator('..').click();
         await bar.locator('.plan-diff-send-comments-button').click();
         const following = page.locator('.ai-chat-user-card').last();

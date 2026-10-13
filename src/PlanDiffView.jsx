@@ -674,11 +674,9 @@ export function PlanDiffFloatingCommentToolbar({
   const selectedCount = commentItems.length > 0 ? selectedItems.length : commentCount;
   const sessions = new Map();
   commentItems.forEach((item) => {
-    if (!sessions.has(item.chatId)) sessions.set(item.chatId, { label: item.chatLabel, icon: item.chatIcon, files: new Map(), items: [] });
+    if (!sessions.has(item.chatId)) sessions.set(item.chatId, { label: item.chatLabel, icon: item.chatIcon, items: [] });
     const session = sessions.get(item.chatId);
     session.items.push(item);
-    if (!session.files.has(item.tabId)) session.files.set(item.tabId, { label: item.fileLabel, icon: item.fileIcon, items: [] });
-    session.files.get(item.tabId).items.push(item);
   });
   const toggleItems = (items, checked) => setExcludedKeys((previous) => {
     const next = new Set(previous);
@@ -741,27 +739,25 @@ export function PlanDiffFloatingCommentToolbar({
           </div>
           <div className="ij2499-comment-selection-tree">
             {[...sessions].map(([chatId, session]) => (
-              <section key={chatId} className="ij2499-comment-session" aria-label={session.label}>
-                <div className="ij2499-comment-session-header">
-                  <span className="ij2499-comment-session-agent"><AiChatAgentIcon icon={session.icon} /></span>
-                  <span className="ij2499-comment-session-title" title={session.label}>{session.label}</span>
-                </div>
-                {[...session.files].map(([tabId, file]) => (
-                  <TreeNode key={tabId} level={1} className="ij2499-comment-file" hasChildren isExpanded
-                    label={file.label} icon={file.icon}
-                    prefix={checkbox(file.items, `Select comments in ${file.label}`)}
-                  >
-                    {file.items.map((item) => (
-                      <TreeNode key={item.key} level={2} className="ij2499-comment-leaf"
-                        icon={<span aria-hidden="true" />}
-                        prefix={checkbox([item], `Send comment: ${item.text}`)}
-                        label={<span title={item.text}>{item.text}</span>}
-                        secondaryText={item.lineLabel}
-                      />
-                    ))}
-                  </TreeNode>
+              <TreeNode key={chatId} level={1} className="ij2499-comment-session" hasChildren isExpanded
+                label={<span title={session.label}>{session.label}</span>}
+                icon={<AiChatAgentIcon icon={session.icon} />}
+                prefix={checkbox(session.items, `Select comments in ${session.label}`)}
+              >
+                {session.items.map((item) => (
+                  <TreeNode key={item.key} level={2} className="ij2499-comment-leaf"
+                    icon={item.fileIcon}
+                    prefix={checkbox([item], `Send comment: ${item.text}`)}
+                    label={<span className="ij2499-comment-item">
+                      <span className="ij2499-comment-item-context">
+                        <span className="ij2499-comment-item-file" title={item.fileLabel}>{item.fileLabel}</span>
+                        {item.lineLabel && <span className="ij2499-comment-item-line">{item.lineLabel}</span>}
+                      </span>
+                      <span className="ij2499-comment-item-text" title={item.text}>{item.text}</span>
+                    </span>}
+                  />
                 ))}
-              </section>
+              </TreeNode>
             ))}
           </div>
         </section>
