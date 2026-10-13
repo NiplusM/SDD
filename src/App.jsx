@@ -20836,16 +20836,36 @@ function getTuiAttachmentContextLines(attachment) {
   ];
 }
 
-function TuiUserBlock({ prompt, contextLines = [], snippet = null }) {
+// IDE Context lines for notes; each note line keeps its row so it can open the diff.
+function getTuiAttachmentContextEntries(attachment) {
+  const [fileLine, ...rest] = getTuiAttachmentContextLines(attachment);
+  const items = getAiChatAttachmentCommentPreviewItems(attachment);
+  return [
+    { text: fileLine, attachment },
+    ...rest.map((text, index) => (index === 0
+      ? { text }
+      : { text, attachment, rowId: items[index - 1]?.rowId ?? null })),
+  ];
+}
+
+function TuiUserBlock({ prompt, contextLines = [], snippet = null, onOpenContext = null }) {
   return (
     <div className="tui-session__user-block">
       <div className="tui-session__line"><span className="tui-session__caret">›</span>{prompt || ' '}</div>
       {contextLines.length > 0 || snippet ? (
         <>
           <div className="tui-session__line tui-session__line--gap">### IDE Context</div>
-          {contextLines.map((line, index) => (
-            <div key={`${index}-${line}`} className={`tui-session__line${line.startsWith('- ') || line === 'comments:' ? '' : ' tui-session__line--gap'}`}>{line}</div>
-          ))}
+          {contextLines.map((entry, index) => {
+            const line = typeof entry === 'string' ? entry : entry.text;
+            const isNoteLine = line.startsWith('- ');
+            return (
+              <div key={`${index}-${line}`} className={`tui-session__line${isNoteLine || line === 'comments:' ? '' : ' tui-session__line--gap'}`}>
+                {isNoteLine && entry?.attachment && onOpenContext ? (
+                  <button type="button" className="tui-session__note-link" onClick={() => onOpenContext(entry)}>{line}</button>
+                ) : line}
+              </div>
+            );
+          })}
           {snippet ? (
             <>
               <div className="tui-session__line">```java</div>
@@ -21008,10 +21028,19 @@ function TuiSessionView({
     const tuiContextPart = Array.isArray(message?.contentParts)
       ? message.contentParts.find((part) => part?.type === 'tui-context')
       : null;
-    const contextLines = Array.isArray(tuiContextPart?.lines)
-      ? tuiContextPart.lines
-      : (Array.isArray(message?.attachments) ? message.attachments.flatMap(getTuiAttachmentContextLines) : []);
-    return <TuiUserBlock key={message.id} prompt={message.text} contextLines={contextLines} />;
+    const noteAttachmentsInMessage = (Array.isArray(message?.attachments) ? message.attachments : [])
+      .filter((attachment) => attachment?.diffComments);
+    const contextLines = noteAttachmentsInMessage.length > 0
+      ? noteAttachmentsInMessage.flatMap(getTuiAttachmentContextEntries)
+      : (Array.isArray(tuiContextPart?.lines) ? tuiContextPart.lines : []);
+    return (
+      <TuiUserBlock
+        key={message.id}
+        prompt={message.text}
+        contextLines={contextLines}
+        onOpenContext={(entry) => openNoteAttachment(entry.attachment, entry.rowId)}
+      />
+    );
   });
 
   return (
@@ -36954,6 +36983,58 @@ export default function App() {
     const diffRequest = attachment.diffRequest ?? null;
     if (!diffRequest) return;
 
+    // A TUI session is a terminal tab: its notes open the diff in its own tab,
+    // scrolled to the note, instead of a review split beside the session.
+    if (aiChatScenarios[contextChatId]?.interface === 'tui') {
+      setReviewSplitChatId(null);
+      setReviewSplitFileTabIds([]);
+      // The notes can move with the agent's turn (e.g. into its Last Turn diff
+      // of the same file), so open the tab that holds them now.
+      const noteRowIds = Object.keys(visibleAttachmentComments);
+      const holdsNotes = (tabId) => {
+        const session = normalizeDiffSessionCommentsByChatId(ideTabContentsRef.current[tabId]?.diffSessionCommentsByChatId)[contextChatId];
+        const rowIds = Object.keys(normalizeStoredDiffCommentsState(session?.comments));
+        return Boolean(ideTabContentsRef.current[tabId]?.diffData)
+          && rowIds.some((rowId) => noteRowIds.length === 0 || noteRowIds.includes(rowId));
+      };
+      const noteTabId = [attachment.diffTabId, ...Object.keys(ideTabContentsRef.current)]
+        .find((tabId) => tabId && holdsNotes(tabId));
+      if (noteTabId) {
+        let noteTabIndex = ideTabs.findIndex((tab) => tab.id === noteTabId);
+        if (noteTabIndex < 0) {
+          noteTabIndex = Math.min(Math.max(activeEditorTab ?? 0, 0) + 1, ideTabs.length);
+          const noteTab = {
+            id: noteTabId,
+            label: `Diff ${attachment.sourceLabel ?? diffRequest?.source?.label ?? 'File'}`,
+            icon: DIFF_TAB_ICON_NAME,
+            closable: true,
+            sourceTabId: ideTabContentsRef.current[noteTabId]?.diffSourceTabId ?? null,
+          };
+          setIdeTabs([...ideTabs.slice(0, noteTabIndex), noteTab, ...ideTabs.slice(noteTabIndex)]);
+        }
+        setScreen('ide');
+        setActiveEditorTab(noteTabIndex);
+        if (scrollRowId) {
+          updatePlanDiffUiStateForTab({
+            activeRowId: scrollRowId,
+            commentRowId: null,
+            commentValue: '',
+            commentEditingIndex: null,
+            caretState: { rowId: scrollRowId, left: 12 },
+          }, noteTabId);
+        }
+        return;
+      }
+      openPlanDiffTab({
+        ...diffRequest,
+        initialDiffCommentsOverride: visibleAttachmentComments,
+        contextMessageId: messageId,
+        contextChatId,
+        navigation: scrollRowId ? { activeRowId: scrollRowId } : null,
+      });
+      return;
+    }
+
     openPlanDiffInReviewSplit({
       ...diffRequest,
       initialDiffCommentsOverride: visibleAttachmentComments,
@@ -36962,7 +37043,7 @@ export default function App() {
       contextChatId,
       navigation: scrollRowId ? { expandedCommentRowId: scrollRowId } : null,
     }, contextChatId);
-  }, [handleOpenPlainFileArchive, handleOpenSddDocument, ideTabs, openChatInEditorTab, openEditorTabByLabel, openPlanDiffInReviewSplit, selectedAiChatId]);
+  }, [activeEditorTab, aiChatScenarios, handleOpenPlainFileArchive, handleOpenSddDocument, ideTabs, openChatInEditorTab, openEditorTabByLabel, openPlanDiffInReviewSplit, openPlanDiffTab, selectedAiChatId, updatePlanDiffUiStateForTab]);
 
   const handleActivePlanDiffUiStateChange = useCallback((uiState) => {
     updatePlanDiffUiStateForTab(uiState, activeTabId);

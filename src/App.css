@@ -25440,3 +25440,21 @@ button.aiux543-answer-change-card:focus-visible {
   background: none;
   color: #dfe1e5;
 }
+
+/* Note lines in a sent prompt's IDE Context open the note in its diff tab. */
+.tui-session__note-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  cursor: pointer;
+}
+
+.tui-session__note-link:is(:hover, :focus-visible) {
+  color: #548af7;
+  text-decoration: underline;
+  outline: none;
+}
