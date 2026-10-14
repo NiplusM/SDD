@@ -37738,7 +37738,7 @@ export default function App() {
                       severityFilter={reviewSeverityFilter}
                       activeChatId={reviewSplitChatId}
                       activeChatTitle={reviewSplitChatLabel}
-                      showFloatingCommentToolbar={prototypeEntryPoint === 'commit'}
+                      showFloatingCommentToolbar={false /* IJAI-2751: note send toolbar hidden for now; was prototypeEntryPoint === 'commit' */}
                       commentCount={visibleReviewSplitNoteCount}
                       sendCommentsDisabled={['queued', 'processing', 'updating'].includes(agentRunByChatId[reviewSplitChatId]?.status)}
                       onSendComments={(count, selectedComments) => {
@@ -38096,7 +38096,7 @@ export default function App() {
                 ? (
                   <PlanDiffEditorArea
                     diffData={activePlanDiffData}
-                    showFloatingCommentToolbar={prototypeEntryPoint === 'commit'}
+                    showFloatingCommentToolbar={false /* IJAI-2751: note send toolbar hidden for now; was prototypeEntryPoint === 'commit' */}
                     contextSelections={activeEditorQuoteSelections}
                     composerAttachments={aiChatComposerDiffAttachments}
                     viewerData={activePlanDiffViewerData}
