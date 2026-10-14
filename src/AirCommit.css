@@ -240,3 +240,9 @@
 .ij2499-comment-session + .ij2499-comment-session { margin-top: 8px; }
 .ij2499-comment-selection-tree .ij2499-comment-leaf > .tree-node { height: auto; min-height: 24px; align-items: flex-start; }
 .ij2499-comment-item-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-default); font-size: 13px; line-height: 16px; }
+
+/* IJAI-2751: a written note without a chat session. The session control
+   takes the kit error border and the kit validation tooltip explains it. */
+.diff-comment-submit-target-wrap { position: relative; display: inline-flex; min-width: 0; }
+.diff-comment-submit-target-label.is-invalid { box-shadow: 0 0 0 1px var(--control-focus-border-error, #e55765); border-radius: 4px; }
+.diff-comment-submit-target-error { position: absolute; top: 50%; left: calc(100% + 8px); z-index: 30; width: max-content; max-width: 320px; transform: translateY(-50%); }

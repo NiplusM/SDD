@@ -1,6 +1,6 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, IconButton, Button, Checkbox, Dialog, Dropdown, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarSeparator, TooltipHelp, TreeNode } from '@jetbrains/int-ui-kit';
+import { Icon, IconButton, Button, Checkbox, Dialog, Dropdown, Input, PositionedPopup, Popup, PopupCell, Badge, Loader, SegmentedControl, ToolbarButton, ToolbarSeparator, TooltipHelp, TreeNode, ValidationTooltip } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
@@ -3021,6 +3021,9 @@ export function DiffInlineCommentPopup({
   const [submitActionMenuRect, setSubmitActionMenuRect] = useState(null);
   const [selectedSubmitAction, setSelectedSubmitAction] = useState('default');
   const [submitAttachTarget, setSubmitAttachTarget] = useState(null);
+  // Shown when Add Note is pressed before a chat session is chosen.
+  const [submitTargetError, setSubmitTargetError] = useState(false);
+  const submitTargetErrorId = useId();
   const [hasCreatedNewChatTarget, setHasCreatedNewChatTarget] = useState(false);
   const [agentReplyDrafts, setAgentReplyDrafts] = useState({});
   const agentReplyTextareaRefs = useRef({});
@@ -3085,7 +3088,9 @@ export function DiffInlineCommentPopup({
     ?? normalizedSubmitActionOptions[0];
   const selectedPrimarySubmitButtonLabel = selectedSubmitActionOption.label;
   const hasCommentText = typeof value === 'string' && value.trim().length > 0;
-  const canSubmitComment = hasCommentText && (!requireSubmitTargetChoice || Boolean(submitAttachTarget));
+  // Add Note stays available without a session so pressing it can explain
+  // what is missing instead of silently doing nothing.
+  const canSubmitComment = hasCommentText;
   const normalizedDefaultSubmitTargetLabel = typeof defaultSubmitTargetLabel === 'string'
     ? defaultSubmitTargetLabel.trim()
     : '';
@@ -3264,6 +3269,13 @@ export function DiffInlineCommentPopup({
     // do not pin the comment to one of them, the recipient cannot be guessed —
     // ask instead of sending somewhere plausible. Only the first attempt is
     // interrupted; once a target is picked the send goes through.
+    if (requireSubmitTargetChoice && !submitAttachTarget && submitTargetRef.current) {
+      // The note is written but has no recipient: flag the session control and
+      // keep the note in the form until a session is chosen.
+      setSubmitTargetError(true);
+      submitTargetRef.current.focus({ preventScroll: true });
+      return;
+    }
     if (requireSubmitTargetChoice && !submitAttachTarget) {
       // Anchor on the target chip when this form shows one, otherwise on the
       // submit button — the compact note form has no chip. If neither is on
@@ -3333,6 +3345,7 @@ export function DiffInlineCommentPopup({
     }
     setSubmitAttachMode(target.attachMode);
     setSubmitAttachTarget(target);
+    setSubmitTargetError(false);
     if (target.createdNewChat) {
       setHasCreatedNewChatTarget(true);
     }
@@ -3477,7 +3490,9 @@ export function DiffInlineCommentPopup({
           <button
             type="button"
             ref={submitTargetRef}
-            className={`diff-comment-submit-target-label text-ui-small${submitOptionsRect ? ' is-selected' : ''}`}
+            className={`diff-comment-submit-target-label text-ui-small${submitOptionsRect ? ' is-selected' : ''}${submitTargetError && !submitAttachTarget ? ' is-invalid' : ''}`}
+            aria-invalid={submitTargetError && !submitAttachTarget ? true : undefined}
+            aria-describedby={submitTargetError && !submitAttachTarget ? submitTargetErrorId : undefined}
             title={selectedSubmitTargetLabel}
             aria-label={`Choose Note attachment target: ${selectedSubmitTargetLabel}`}
             aria-haspopup="menu"
@@ -3946,7 +3961,18 @@ export function DiffInlineCommentPopup({
         >
           {normalizedComposeHeaderLabel.length === 0 && showSubmitTargetLabel && !isEditing && selectedSubmitTargetLabel.length > 0 && (
             <div className="spec-done-comment-popup-compose-header">
-              {renderSubmitTargetButton()}
+              <span className="diff-comment-submit-target-wrap">
+                {renderSubmitTargetButton()}
+                {submitTargetError && requireSubmitTargetChoice && !submitAttachTarget ? (
+                  <ValidationTooltip
+                    id={submitTargetErrorId}
+                    role="alert"
+                    type="error"
+                    text="Choose a chat session for this note"
+                    className="diff-comment-submit-target-error"
+                  />
+                ) : null}
+              </span>
             </div>
           )}
           <div className="spec-done-comment-popup-input-wrap">
