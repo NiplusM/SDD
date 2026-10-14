@@ -14184,6 +14184,15 @@ function getAgentTaskTabId(taskId) {
 const DEFAULT_OPEN_CHAT_ID = 'refactor-time-slots';
 const DEFAULT_OPEN_CHAT_TAB_ID = `ai-chat-${DEFAULT_OPEN_CHAT_ID}`;
 
+// IJAI-2751 has two subsections: `flow=tui` starts in the TUI session, which
+// owns every diff note; `flow=commit` starts in the Commit tool window, where
+// each note picks its chat session.
+function getIjai2751Flow() {
+  if (typeof window === 'undefined') return 'tui';
+  return new URLSearchParams(window.location.search).get('flow') === 'commit' ? 'commit' : 'tui';
+}
+const IJAI2751_FLOW = getIjai2751Flow();
+
 function getPrototypeEntryPoint() {
   if (typeof window === 'undefined') return null;
   const entry = new URLSearchParams(window.location.search).get('entry');
@@ -23732,9 +23741,11 @@ export default function App() {
   const [agentTaskExecutionTimings, setAgentTaskExecutionTimings] = useState({});
   const [agentTaskTimeTick, setAgentTaskTimeTick] = useState(() => Date.now());
   const [selectedTask, setSelectedTask] = useState('t1');
-  // IJAI-2751 reviews changes without the Commit tool window: it is never open
-  // and has no stripe button.
-  const [ideOpenWindows, setIdeOpenWindows] = useState([]);
+  // The TUI subsection reviews without the Commit tool window (never open, no
+  // stripe button); the Commit subsection opens with it.
+  const [ideOpenWindows, setIdeOpenWindows] = useState(() => (
+    IJAI2751_FLOW === 'commit' && getPrototypeEntryPoint() === 'commit' ? ['commit'] : []
+  ));
   const [activeWorkspaceProjectId, setActiveWorkspaceProjectId] = useState('spring-petclinic');
   const [plainFileGutterCommentsEnabled, setPlainFileGutterCommentsEnabled] = useState(() => (
     getPrototypeEntryPoint() === 'file'
@@ -24462,7 +24473,10 @@ export default function App() {
   // Recipient selected for notes while reviewing one Commit tool-window
   // change set. It intentionally spans its files, but is reset for a new
   // Commit flow.
-  const [commitCommentTargetChatId, setCommitCommentTargetChatId] = useState(null);
+  // In the TUI subsection every diff note belongs to the TUI session.
+  const [commitCommentTargetChatId, setCommitCommentTargetChatId] = useState(() => (
+    IJAI2751_FLOW === 'tui' && getPrototypeEntryPoint() === 'commit' ? TUI_SESSION_CHAT_ID : null
+  ));
   const [commitScopeRequest, setCommitScopeRequest] = useState(null);
   const [commitWorkspaceContext, setCommitWorkspaceContext] = useState(null);
   const lastControlKeyTimeRef = useRef(0);
@@ -36522,9 +36536,13 @@ export default function App() {
     onSelectFile: id => openCommitFileReview(commitDiffFiles.find(file => file.id === id)),
     onPreviousFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex - 1]),
     onNextFile: () => openCommitFileReview(commitDiffFiles[commitDiffFileIndex + 1]),
-    sessionIcon: commitDiffSession?.agent ?? 'aiAssistant/toolWindowChat@20x20',
-    // Session navigation does not choose the recipient of a draft diff comment.
-    onOpenSession: commitDiffSession ? () => openChatInEditorTab(commitDiffSession.id) : null,
+    // TUI subsection: Go to Session returns to the TUI session that owns the
+    // review. Commit subsection: no Go to Session; each note picks its session.
+    showGoToSession: IJAI2751_FLOW === 'tui',
+    sessionIcon: IJAI2751_FLOW === 'tui' ? 'codex' : (commitDiffSession?.agent ?? 'aiAssistant/toolWindowChat@20x20'),
+    onOpenSession: IJAI2751_FLOW === 'tui'
+      ? () => openChatInEditorTab(TUI_SESSION_CHAT_ID)
+      : (commitDiffSession ? () => openChatInEditorTab(commitDiffSession.id) : null),
   } : null;
 
   const initialCommitDiffOpened = useRef(false);
@@ -36533,6 +36551,14 @@ export default function App() {
     initialCommitDiffOpened.current = true;
     openCommitFileReview(COMMIT_CHANGE_FILES.find(file => file.label === 'VisitController.java'));
   }, [prototypeEntryPoint, openCommitFileReview]);
+  // The TUI subsection opens on the TUI session, with the diff in the next tab.
+  const initialTuiSessionOpened = useRef(false);
+  useEffect(() => {
+    if (prototypeEntryPoint !== 'commit' || IJAI2751_FLOW !== 'tui' || initialTuiSessionOpened.current) return;
+    if (!ideTabs.some((tab) => tab.id?.startsWith('plan-diff-commit-review-scope-'))) return;
+    initialTuiSessionOpened.current = true;
+    openChatInEditorTab(TUI_SESSION_CHAT_ID);
+  }, [ideTabs, openChatInEditorTab, prototypeEntryPoint]);
 
   const openChatChangeScope = useCallback((chatId, scopeId) => (
     openLatestChangedFilesReviewScope(chatId, {
@@ -38109,11 +38135,13 @@ export default function App() {
                     defaultSubmitAttachMode={prototypeEntryPoint === 'commit' || requiresExplicitDiffCommentSession
                       ? 'current'
                       : activePlanDiffDefaultSubmitAttachMode}
-                    lockSubmitTarget={prototypeEntryPoint === 'chat' || Boolean(
-                      isDiffTab
-                      && activePlanDiffContextChatId
-                      && !activeTabContent?.diffOpenedFromCommitToolWindow
-                    )}
+                    lockSubmitTarget={prototypeEntryPoint === 'chat'
+                      || (IJAI2751_FLOW === 'tui' && Boolean(activeTabContent?.diffOpenedFromCommitToolWindow))
+                      || Boolean(
+                        isDiffTab
+                        && activePlanDiffContextChatId
+                        && !activeTabContent?.diffOpenedFromCommitToolWindow
+                      )}
                     requireSubmitTargetChoice={requiresExplicitDiffCommentSession}
                     defaultSubmitTargetLabel={requiresExplicitDiffCommentSession
                       ? 'Choose chat session'
@@ -38293,7 +38321,7 @@ export default function App() {
         projectTreeData={projectTreeData}
 
         leftStripeItems={[
-          ...MY_LEFT_STRIPE.filter((item) => item.id !== 'commit'),
+          ...(IJAI2751_FLOW === 'commit' ? MY_LEFT_STRIPE : MY_LEFT_STRIPE.filter((item) => item.id !== 'commit')),
           { id: 'chat-history', icon: <AiChatAirIcon size={20} />, tooltip: 'Agent Sessions', section: 'top' },
           { id: 'terminal',    icon: 'toolwindows/terminal@20x20',  tooltip: 'Terminal',   panel: 'bottom', section: 'bottom' },
           { id: 'git',         icon: 'toolwindows/vcs@20x20',       tooltip: 'Git',        panel: 'bottom', section: 'bottom' },

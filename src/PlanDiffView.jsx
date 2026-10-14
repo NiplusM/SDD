@@ -7911,15 +7911,19 @@ export function PlanDiffEditorArea({
                       icon="collapse"
                       onClick={() => setAreaViewerSettings(prev => ({ ...prev, collapseUnchanged: !prev.collapseUnchanged }))}
                     />
-                    <ToolbarSeparator className="plan-diff-toolbar-separator" />
-                    <ToolbarButton
-                      className="ij2499-go-to-session"
-                      icon={<AiChatAgentIcon icon={commitToolbar.sessionIcon} />}
-                      disabled={!commitToolbar.onOpenSession}
-                      text="Go to Session"
-                      title="Go to Session"
-                      onClick={commitToolbar.onOpenSession}
-                    />
+                    {commitToolbar.showGoToSession !== false ? (
+                      <>
+                        <ToolbarSeparator className="plan-diff-toolbar-separator" />
+                        <ToolbarButton
+                          className="ij2499-go-to-session"
+                          icon={<AiChatAgentIcon icon={commitToolbar.sessionIcon} />}
+                          disabled={!commitToolbar.onOpenSession}
+                          text="Go to Session"
+                          title="Go to Session"
+                          onClick={commitToolbar.onOpenSession}
+                        />
+                      </>
+                    ) : null}
                     <ToolbarSeparator className="plan-diff-toolbar-separator" />
                     <CommitDiffScopeDropdown
                       value={commitToolbar.scopeId}
