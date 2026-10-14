@@ -20927,7 +20927,7 @@ function TuiSessionView({
 }) {
   const [inputText, setInputText] = useState('');
   const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
-  // Session Context answers to the terminal input: it lights up while the input
+  // Attached Context answers to the terminal input: it lights up while the input
   // has focus and is cleared when its items go out with a message.
   const [inputFocused, setInputFocused] = useState(false);
   const [messageTimes, setMessageTimes] = useState({});
@@ -21012,7 +21012,7 @@ function TuiSessionView({
         ...(contextLines.length > 0 ? [{ type: 'tui-context', lines: contextLines, ideLines: ideContext.map((item) => item.contextLine) }] : []),
       ],
     });
-    // Everything in Session Context went out with this prompt, so it clears. A
+    // Everything in Attached Context went out with this prompt, so it clears. A
     // new note on the same file has a new key and appears again.
     dismissContextItems(ideContext, noteAttachments.map((attachment, index) => getDraftKey(attachment, index)));
     setInputText('');
@@ -21129,12 +21129,12 @@ function TuiSessionView({
       {ideContext.length > 0 || noteAttachments.length > 0 ? (
         <div
           className={`tui-session__context${inputFocused ? ' is-input-focused' : ''}`}
-          aria-label="Session Context"
+          aria-label="Attached Context"
         >
           {/* Sits in the prompt's column and points back up at the input; the
               title and chips start in the input's text column. */}
           <span className="tui-session__context-link" aria-hidden="true">↳</span>
-          <span className="tui-session__context-label">Session Context</span>
+          <span className="tui-session__context-label">Attached Context</span>
           <div className="tui-session__context-chips">
             {ideContext.map((item) => (
               <AiChatAttachmentStrip
