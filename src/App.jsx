@@ -21119,8 +21119,8 @@ function TuiSessionView({
         <div className="tui-session__line tui-session__muted">? for shortcuts</div>
       </div>
       {ideContext.length > 0 || noteAttachments.length > 0 ? (
-        <div className="tui-session__context" aria-label="Context">
-          <span className="tui-session__context-label">Context</span>
+        <div className="tui-session__context" aria-label="Session Context">
+          <span className="tui-session__context-label">Session Context</span>
           <div className="tui-session__context-chips">
             {ideContext.map((item) => (
               <AiChatAttachmentStrip
