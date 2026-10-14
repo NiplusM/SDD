@@ -20928,9 +20928,8 @@ function TuiSessionView({
   const [inputText, setInputText] = useState('');
   const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
   // Session Context answers to the terminal input: it lights up while the input
-  // has focus and flashes the chips that just went out with a message.
+  // has focus and is cleared when its items go out with a message.
   const [inputFocused, setInputFocused] = useState(false);
-  const [contextJustSent, setContextJustSent] = useState(false);
   const [messageTimes, setMessageTimes] = useState({});
   const [interruptedMessageIds, setInterruptedMessageIds] = useState(() => new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -20955,8 +20954,18 @@ function TuiSessionView({
   const noteAttachments = (Array.isArray(composerDiffAttachments) ? composerDiffAttachments : [])
     .filter((attachment, index) => !dismissedKeys.has(getDraftKey(attachment, index)) && !sentKeys.has(getDraftKey(attachment, index)));
 
+  // Cleared IDE context is kept in the session draft, so it stays cleared when
+  // the tab remounts.
   const ideContext = (Array.isArray(scenario?.tuiContext) ? scenario.tuiContext : [])
-    .filter((item) => !removedContextIds.has(item.id));
+    .filter((item) => !removedContextIds.has(item.id) && !dismissedKeys.has(`tui-context:${item.id}`));
+  const dismissContextItems = (items, extraKeys = []) => {
+    setRemovedContextIds((current) => new Set([...current, ...items.map((item) => item.id)]));
+    onComposerDraftChange?.(chatId, {
+      text: '',
+      contentParts: [],
+      dismissedAttachmentKeys: [...dismissedKeys, ...extraKeys, ...items.map((item) => `tui-context:${item.id}`)],
+    });
+  };
 
   useEffect(() => {
     setMessageTimes((current) => {
@@ -20991,8 +21000,6 @@ function TuiSessionView({
   const handleSubmit = () => {
     const typedText = inputText.trim();
     if (isRunning || (!typedText && noteAttachments.length === 0)) return;
-    setContextJustSent(true);
-    window.setTimeout(() => setContextJustSent(false), 700);
     const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
     const text = typedText || buildSendCommentsMessage(commentCount);
     const contextLines = [
@@ -21005,16 +21012,9 @@ function TuiSessionView({
         ...(contextLines.length > 0 ? [{ type: 'tui-context', lines: contextLines, ideLines: ideContext.map((item) => item.contextLine) }] : []),
       ],
     });
-    // Sent notes leave the Context bar; a new note on the same file has a new
-    // key and appears again.
-    onComposerDraftChange?.(chatId, {
-      text: '',
-      contentParts: [],
-      dismissedAttachmentKeys: [
-        ...dismissedKeys,
-        ...noteAttachments.map((attachment, index) => getDraftKey(attachment, index)),
-      ],
-    });
+    // Everything in Session Context went out with this prompt, so it clears. A
+    // new note on the same file has a new key and appears again.
+    dismissContextItems(ideContext, noteAttachments.map((attachment, index) => getDraftKey(attachment, index)));
     setInputText('');
   };
 
@@ -21128,7 +21128,7 @@ function TuiSessionView({
       </div>
       {ideContext.length > 0 || noteAttachments.length > 0 ? (
         <div
-          className={`tui-session__context${inputFocused ? ' is-input-focused' : ''}${contextJustSent ? ' is-just-sent' : ''}`}
+          className={`tui-session__context${inputFocused ? ' is-input-focused' : ''}`}
           aria-label="Session Context"
         >
           {/* Sits in the prompt's column and points back up at the input; the
@@ -21140,7 +21140,7 @@ function TuiSessionView({
               <AiChatAttachmentStrip
                 key={item.id}
                 attachments={[{ id: item.id, label: item.label, icon: item.icon }]}
-                onRemove={() => setRemovedContextIds((current) => new Set([...current, item.id]))}
+                onRemove={() => dismissContextItems([item])}
                 removeLabel={`Remove ${item.label} from context`}
                 className="tui-session__note-strip"
                 chipClassName="tui-session__note-chip"

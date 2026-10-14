@@ -25417,16 +25417,6 @@ button.aiux543-answer-change-card:focus-visible {
   white-space: nowrap;
 }
 
-/* The chips that went out with a message flash once. */
-.tui-session__context.is-just-sent .tui-session__note-chip.ai-chat-attachment-chip {
-  animation: tui-session-context-sent 700ms ease-out;
-}
-
-@keyframes tui-session-context-sent {
-  0% { box-shadow: 0 0 0 1px #548af7; }
-  100% { box-shadow: 0 0 0 1px transparent; }
-}
-
 .tui-session__context-chips {
   display: flex;
   flex: 1 1 auto;
