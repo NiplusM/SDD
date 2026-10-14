@@ -20927,6 +20927,10 @@ function TuiSessionView({
 }) {
   const [inputText, setInputText] = useState('');
   const [removedContextIds, setRemovedContextIds] = useState(() => new Set());
+  // Session Context answers to the terminal input: it lights up while the input
+  // has focus and flashes the chips that just went out with a message.
+  const [inputFocused, setInputFocused] = useState(false);
+  const [contextJustSent, setContextJustSent] = useState(false);
   const [messageTimes, setMessageTimes] = useState({});
   const [interruptedMessageIds, setInterruptedMessageIds] = useState(() => new Set());
   const [now, setNow] = useState(() => Date.now());
@@ -20987,6 +20991,8 @@ function TuiSessionView({
   const handleSubmit = () => {
     const typedText = inputText.trim();
     if (isRunning || (!typedText && noteAttachments.length === 0)) return;
+    setContextJustSent(true);
+    window.setTimeout(() => setContextJustSent(false), 700);
     const commentCount = noteAttachments.reduce((total, attachment) => total + (Number(attachment?.commentCount) || 0), 0);
     const text = typedText || buildSendCommentsMessage(commentCount);
     const contextLines = [
@@ -21094,6 +21100,8 @@ function TuiSessionView({
               : (noteAttachments.length > 0 ? 'Press Enter to send notes' : 'Ask Codex to do anything')}
             aria-label={`Message ${sessionTitle}`}
             spellCheck={false}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
             onChange={(event) => setInputText(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -21119,7 +21127,13 @@ function TuiSessionView({
         <div className="tui-session__line tui-session__muted">? for shortcuts</div>
       </div>
       {ideContext.length > 0 || noteAttachments.length > 0 ? (
-        <div className="tui-session__context" aria-label="Session Context">
+        <div
+          className={`tui-session__context${inputFocused ? ' is-input-focused' : ''}${contextJustSent ? ' is-just-sent' : ''}`}
+          aria-label="Session Context"
+        >
+          {/* Sits in the prompt's column and points back up at the input; the
+              title and chips start in the input's text column. */}
+          <span className="tui-session__context-link" aria-hidden="true">↳</span>
           <span className="tui-session__context-label">Session Context</span>
           <div className="tui-session__context-chips">
             {ideContext.map((item) => (
@@ -21158,6 +21172,9 @@ function TuiSessionView({
               />
             ))}
           </div>
+          {inputFocused && inputText.trim() && !isRunning && (
+            <span className="tui-session__context-hint">⏎ sends with message</span>
+          )}
         </div>
       ) : null}
     </div>

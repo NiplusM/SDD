@@ -25378,11 +25378,53 @@ button.aiux543-answer-change-card:focus-visible {
   line-height: 16px;
 }
 
+/* Ties the bar to the terminal input it feeds: ↳ sits in the prompt's column
+   (12 px, like ›), the title and chips start in the input's text column (28 px),
+   and both share the terminal's monospace. Muted until the input has focus. */
+.tui-session__context {
+  padding-left: 12px;
+}
+
+.tui-session__context-link {
+  flex: 0 0 8px;
+  align-self: flex-start;
+  padding-top: 5px;
+  color: #6f737a;
+  font-family: 'JetBrains Mono', monospace;
+  transition: color 120ms ease;
+}
+
 .tui-session__context-label {
   flex: 0 0 auto;
   align-self: flex-start;
-  padding-top: 4px;
+  padding-top: 5px;
+  color: #868a91;
+  font-family: 'JetBrains Mono', monospace;
+  transition: color 120ms ease;
+}
+
+.tui-session__context.is-input-focused .tui-session__context-link,
+.tui-session__context.is-input-focused .tui-session__context-label {
   color: #dfe1e5;
+}
+
+.tui-session__context-hint {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding-top: 5px;
+  color: #868a91;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+/* The chips that went out with a message flash once. */
+.tui-session__context.is-just-sent .tui-session__note-chip.ai-chat-attachment-chip {
+  animation: tui-session-context-sent 700ms ease-out;
+}
+
+@keyframes tui-session-context-sent {
+  0% { box-shadow: 0 0 0 1px #548af7; }
+  100% { box-shadow: 0 0 0 1px transparent; }
 }
 
 .tui-session__context-chips {
