@@ -25489,3 +25489,21 @@ button.aiux543-answer-change-card:focus-visible {
   text-decoration: underline;
   outline: none;
 }
+
+/* File and class names in terminal content open their diff. */
+.tui-session__file-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #548af7;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.tui-session__file-link:is(:hover, :focus-visible) {
+  text-decoration: underline;
+  outline: none;
+}

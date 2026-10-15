@@ -20851,6 +20851,54 @@ function getTuiAttachmentContextLines(attachment) {
   ];
 }
 
+// File and class names in terminal content that have a diff in this review.
+// `VisitController` and `VisitController.java` both resolve to that file.
+function getTuiDiffFileLabel(name = '') {
+  const file = COMMIT_CHANGE_FILES.find((candidate) => (
+    candidate.label === name || candidate.label === `${name}.java`
+  ));
+  return file?.label ?? null;
+}
+
+let tuiDiffLinkPattern = null;
+function getTuiDiffLinkPattern() {
+  if (tuiDiffLinkPattern) return tuiDiffLinkPattern;
+  const names = [...new Set(COMMIT_CHANGE_FILES.flatMap((file) => (
+    file.label.endsWith('.java') ? [file.label, file.label.slice(0, -'.java'.length)] : [file.label]
+  )))].sort((left, right) => right.length - left.length)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  // An optional path prefix keeps `file: /…/BaseEntity.java` one link.
+  tuiDiffLinkPattern = new RegExp(`((?:/|~/)?(?:[\\w.~-]+/)*)\\b(${names.join('|')})\\b`, 'g');
+  return tuiDiffLinkPattern;
+}
+
+function TuiLinkedText({ text = '', onOpenFile = null }) {
+  if (!onOpenFile || !text) return text;
+  const pattern = getTuiDiffLinkPattern();
+  const parts = [];
+  let lastIndex = 0;
+  for (const match of String(text).matchAll(pattern)) {
+    const label = getTuiDiffFileLabel(match[2]);
+    if (!label) continue;
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    parts.push(
+      <button
+        key={`${match.index}-${match[0]}`}
+        type="button"
+        className="tui-session__file-link"
+        title={`Open diff for ${label}`}
+        onClick={(event) => { event.stopPropagation(); onOpenFile(label); }}
+      >
+        {match[0]}
+      </button>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (parts.length === 0) return text;
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
+
 // IDE Context lines for notes; each note line keeps its row so it can open the diff.
 function getTuiAttachmentContextEntries(attachment) {
   const [fileLine, ...rest] = getTuiAttachmentContextLines(attachment);
@@ -20863,10 +20911,10 @@ function getTuiAttachmentContextEntries(attachment) {
   ];
 }
 
-function TuiUserBlock({ prompt, contextLines = [], snippet = null, onOpenContext = null }) {
+function TuiUserBlock({ prompt, contextLines = [], snippet = null, onOpenContext = null, onOpenFile = null }) {
   return (
     <div className="tui-session__user-block">
-      <div className="tui-session__line"><span className="tui-session__caret">›</span>{prompt || ' '}</div>
+      <div className="tui-session__line"><span className="tui-session__caret">›</span>{prompt ? <TuiLinkedText text={prompt} onOpenFile={onOpenFile} /> : ' '}</div>
       {contextLines.length > 0 || snippet ? (
         <>
           <div className="tui-session__line tui-session__line--gap">### IDE Context</div>
@@ -20877,7 +20925,7 @@ function TuiUserBlock({ prompt, contextLines = [], snippet = null, onOpenContext
               <div key={`${index}-${line}`} className={`tui-session__line${isNoteLine || line === 'comments:' ? '' : ' tui-session__line--gap'}`}>
                 {isNoteLine && entry?.attachment && onOpenContext ? (
                   <button type="button" className="tui-session__note-link" onClick={() => onOpenContext(entry)}>{line}</button>
-                ) : line}
+                ) : <TuiLinkedText text={line} onOpenFile={onOpenFile} />}
               </div>
             );
           })}
@@ -20894,7 +20942,7 @@ function TuiUserBlock({ prompt, contextLines = [], snippet = null, onOpenContext
   );
 }
 
-function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
+function TuiAgentBlock({ parts = [], text = '', meta = null, working = null, onOpenFile = null }) {
   return (
     <div className="tui-session__agent-block">
       {parts.length > 0 || text ? (
@@ -20902,10 +20950,19 @@ function TuiAgentBlock({ parts = [], text = '', meta = null, working = null }) {
           <span className="tui-session__bullet">•</span>
           <span>
             {parts.length > 0
-              ? parts.map((part, index) => (
-                  <span key={index} className={part.link ? 'tui-session__link' : undefined}>{part.text}</span>
-                ))
-              : text}
+              ? parts.map((part, index) => {
+                  const label = part.link ? getTuiDiffFileLabel(part.text) : null;
+                  if (label && onOpenFile) {
+                    return (
+                      <button key={index} type="button" className="tui-session__link tui-session__file-link" title={`Open diff for ${label}`} onClick={() => onOpenFile(label)}>
+                        {part.text}
+                      </button>
+                    );
+                  }
+                  // Only names with a diff are links; others stay plain text.
+                  return <TuiLinkedText key={index} text={part.text} onOpenFile={onOpenFile} />;
+                })
+              : <TuiLinkedText text={text} onOpenFile={onOpenFile} />}
           </span>
         </div>
       ) : null}
@@ -20929,6 +20986,7 @@ function TuiSessionView({
   composerDraft = null,
   onSendMessage,
   onStopMessage,
+  onOpenFileDiff,
   onComposerDraftChange,
   onOpenAttachment,
   onRemoveComposerAttachment,
@@ -21042,6 +21100,7 @@ function TuiSessionView({
         <TuiAgentBlock
           key={message.id}
           text={message.text}
+          onOpenFile={onOpenFileDiff}
           working={!finished && isRunning
             ? `Working (${formatTuiDuration(now - (times?.startedAt ?? now))} • esc to interrupt)`
             : null}
@@ -21070,6 +21129,7 @@ function TuiSessionView({
         prompt={message.text}
         contextLines={contextLines}
         onOpenContext={(entry) => openNoteAttachment(entry.attachment, entry.rowId)}
+        onOpenFile={onOpenFileDiff}
       />
     );
   });
@@ -21093,8 +21153,9 @@ function TuiSessionView({
                 `snippet: lines=${turn.context.snippetLines} selection=true`,
               ]}
               snippet={turn.context.snippet}
+              onOpenFile={onOpenFileDiff}
             />
-            <TuiAgentBlock parts={turn.response} meta={`Worked for ${turn.workedFor} • ${turn.finishedAt}`} />
+            <TuiAgentBlock parts={turn.response} meta={`Worked for ${turn.workedFor} • ${turn.finishedAt}`} onOpenFile={onOpenFileDiff} />
           </Fragment>
         ))}
         {renderSentMessages()}
@@ -37272,6 +37333,14 @@ export default function App() {
       composerDraft={aiChatComposerDraftByChatId[chatId] ?? null}
       onSendMessage={(targetChatId, text, attachments, options) => handleAiChatTabSend(targetChatId, text, attachments, options)}
       onStopMessage={handleAiChatTabStop}
+      // Terminal content links open the file's review diff in its own tab.
+      onOpenFileDiff={(label) => {
+        const file = COMMIT_CHANGE_FILES.find((candidate) => candidate.label === label);
+        if (!file) return;
+        setReviewSplitChatId(null);
+        setReviewSplitFileTabIds([]);
+        openCommitFileReview(file);
+      }}
       onComposerDraftChange={handleAiChatComposerDraftChange}
       onOpenAttachment={handleOpenChatAttachment}
       onRemoveComposerAttachment={handleRemoveComposerAttachment}
