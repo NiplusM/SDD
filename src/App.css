@@ -9113,6 +9113,12 @@ body {
   color: var(--plan-diff-line-number-color-active);
 }
 
+.plan-diff-row.is-note-hover-target,
+.plan-diff-row.is-note-hover-target > .plan-diff-row-gutter,
+.plan-diff-row.is-note-hover-target > .plan-diff-row-code {
+  background: var(--selection-bg-active, #2a4371);
+}
+
 .plan-diff-fragment {
   color: inherit;
 }

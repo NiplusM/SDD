@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@jetbrains/int-ui-kit';
 import { AiChatAgentIcon } from './AiChatListParts.jsx';
 import airIconUrl from './assets/ij-air-alpha.svg';
+import { NoteShortcutHint } from './NoteShortcutHint.jsx';
+import { getSelectionPopoverPosition, getVisibleCodeRects } from './selectionPopoverPosition.js';
 
 const EDITOR_SELECTION_TOOLBAR_ITEMS = [
   { id: 'intention', kind: 'icon', iconName: 'codeInsight/intentionBulb', accent: 'warning', ariaLabel: 'Show actions' },
@@ -35,6 +37,12 @@ const CHAT_SELECTION_ACTIONS = [
 
 export function EditorSelectionToolbar({ position, onAction = null, chatTargets = [], onMenuOpenChange = null, onDismiss = null }) {
   const rootRef = useRef(null);
+  const [keyboardSelection, setKeyboardSelection] = useState(false);
+  const [pointerSelecting, setPointerSelecting] = useState(false);
+  const selectionPointerRef = useRef(null);
+  const selectionEditorRef = useRef(null);
+  const [pointerAnchor, setPointerAnchor] = useState(null);
+  const [popoverLayout, setPopoverLayout] = useState(null);
   const [openActionMenu, setOpenActionMenu] = useState(false);
   const [openChatTargetsForActionId, setOpenChatTargetsForActionId] = useState(null);
   const [frozenPosition, setFrozenPosition] = useState(position);
@@ -52,6 +60,84 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
       ? REVIEW_DIFF_SELECTION_ACTIONS
       : [];
   const primaryAction = selectionActions[0];
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const isSelectionKey = event.shiftKey && /^(Arrow|Home$|End$|PageUp$|PageDown$)/u.test(event.key)
+        || (event.metaKey || event.ctrlKey) && event.code === 'KeyA';
+      if (isSelectionKey) {
+        setKeyboardSelection(true);
+        setPointerAnchor(null);
+        if (event.target instanceof Element) selectionEditorRef.current = event.target.closest('.editor, .plan-diff-overlay');
+      }
+      if (event.key === 'Escape') {
+        setKeyboardSelection(false);
+        if (renderPosition) onDismiss?.();
+      }
+      if (!renderPosition || surface === 'ai-chat' || !event.altKey || !event.shiftKey || event.code !== 'KeyK') return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest('.editor, .plan-diff-overlay') || target.closest('.spec-done-comment-popup, input')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setKeyboardSelection(false);
+      onAction?.('comment', rootRef.current?.getBoundingClientRect() ?? null, renderPosition);
+    };
+    const handlePointerDown = (event) => {
+      setKeyboardSelection(false);
+      if (rootRef.current?.contains(event.target)) return;
+      setPointerAnchor(null);
+      if (event.button === 0 && !rootRef.current?.contains(event.target)
+        && event.target instanceof Element && event.target.closest('.editor, .plan-diff-overlay')) {
+        selectionPointerRef.current = { x: event.clientX, y: event.clientY };
+        selectionEditorRef.current = event.target.closest('.editor, .plan-diff-overlay');
+        setPointerSelecting(true);
+      }
+    };
+    const handlePointerUp = (event) => {
+      const start = selectionPointerRef.current;
+      selectionPointerRef.current = null;
+      if (event.type !== 'pointercancel' && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 4) {
+        setPointerAnchor({ left: event.clientX, right: event.clientX, top: event.clientY, bottom: event.clientY });
+      }
+      setPointerSelecting(false);
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('pointerup', handlePointerUp, true);
+    document.addEventListener('pointercancel', handlePointerUp, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('pointerup', handlePointerUp, true);
+      document.removeEventListener('pointercancel', handlePointerUp, true);
+    };
+  }, [renderPosition, surface, onAction, onDismiss]);
+
+  useLayoutEffect(() => {
+    const element = rootRef.current;
+    if (!element || !renderPosition?.anchorRect || surface === 'ai-chat' || pointerSelecting) return undefined;
+    const updatePosition = () => {
+      const rect = element.getBoundingClientRect();
+      const next = getSelectionPopoverPosition({
+        anchor: pointerAnchor ?? renderPosition.anchorRect,
+        selection: renderPosition.selectionRect,
+        width: rect.width,
+        height: rect.height,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        codeRects: getVisibleCodeRects(selectionEditorRef.current),
+      });
+      setPopoverLayout((previous) => previous && Object.keys(next).every((key) => previous[key] === next[key]) ? previous : next);
+    };
+    updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(element);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [renderPosition, surface, keyboardSelection, pointerSelecting, pointerAnchor]);
 
   useEffect(() => {
     setOpenActionMenu(false);
@@ -100,7 +186,35 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
     }
   }, [openActionMenu]);
 
-  if (!renderPosition) return null;
+  if (!renderPosition || pointerSelecting) return null;
+
+  const usesSelectionAnchor = surface !== 'ai-chat' && Boolean(renderPosition.anchorRect);
+  const anchoredStyle = usesSelectionAnchor ? {
+    left: popoverLayout?.left ?? 0,
+    top: popoverLayout?.top ?? 0,
+    transform: 'none',
+    visibility: popoverLayout ? 'visible' : 'hidden',
+  } : null;
+
+  if (keyboardSelection && surface !== 'ai-chat') {
+    return createPortal(
+      <NoteShortcutHint
+        hintRef={rootRef}
+        placement={(popoverLayout?.placement ?? renderPosition.placement) === 'bottom' ? 'below' : 'above'}
+        style={{
+          left: Math.max(12, Math.min(renderPosition.left - 115.5, window.innerWidth - 243)),
+          top: Math.max(12, Math.min(
+            renderPosition.placement === 'bottom' ? renderPosition.top : renderPosition.top - 72,
+            window.innerHeight - 84,
+          )),
+          '--plan-diff-comment-shortcut-arrow-x': '115.5px',
+          ...anchoredStyle,
+          ...(usesSelectionAnchor ? { '--plan-diff-comment-shortcut-arrow-x': `${popoverLayout?.arrowX ?? 16}px` } : {}),
+        }}
+      />,
+      document.body,
+    );
+  }
 
   const items = renderPosition.surface === 'ai-chat' || renderPosition.surface === 'diff'
     ? CHAT_SELECTION_TOOLBAR_ITEMS
@@ -153,8 +267,8 @@ export function EditorSelectionToolbar({ position, onAction = null, chatTargets 
   return createPortal(
     <div
       ref={rootRef}
-      className={`editor-selection-toolbar editor-selection-toolbar-${renderPosition.placement}`}
-      style={{ top: renderPosition.top, left: renderPosition.left }}
+      className={`editor-selection-toolbar editor-selection-toolbar-${usesSelectionAnchor ? popoverLayout?.placement ?? 'bottom' : renderPosition.placement}`}
+      style={{ top: renderPosition.top, left: renderPosition.left, ...anchoredStyle }}
       role="toolbar"
       aria-label="Selected text actions"
       onMouseDown={preventSelectionReset}

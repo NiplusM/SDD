@@ -6,6 +6,8 @@ import { AiChatAddContextPopup } from './AiChatAddContextPopup.jsx';
 import { AiChatAttachmentStrip } from './aiChatAttachmentParts.jsx';
 import { countCommentThreadMessages, textLooksLikeQuestion } from './commentCounts.js';
 import openAiIconUrl from './assets/openAI.svg';
+import { NoteShortcutHint } from './NoteShortcutHint.jsx';
+import { getSelectionFocusRect } from './selectionPopoverPosition.js';
 
 const PLAN_DIFF_DEFAULT_CARET_LEFT = 12;
 export const REVIEW_FINDING_STATUS_IDS = ['open', 'accepted', 'dismissed', 'deleted', 'pending-update'];
@@ -2774,6 +2776,7 @@ export function DiffInlineCommentPopup({
   onHideAll,
   onReplyToAgent,
   onReturnToChat,
+  onCommentHoverChange = null,
   onQuickFix = null,
   onResolveComment = null,
   onDismissComment = null,
@@ -2786,6 +2789,20 @@ export function DiffInlineCommentPopup({
   allowAgentReplies = true,
 }) {
   const ref = useRef(null);
+  const commentHoverCallbackRef = useRef(onCommentHoverChange);
+  commentHoverCallbackRef.current = onCommentHoverChange;
+  const hoveredCommentRef = useRef(null);
+  const updateHoveredComment = (comment) => {
+    hoveredCommentRef.current = comment;
+    commentHoverCallbackRef.current?.(comment);
+  };
+  useEffect(() => () => {
+    // Hiding, deleting or editing a hovered note can unmount its card before
+    // the browser sends mouseleave. Never leave its lines highlighted.
+    if (hoveredCommentRef.current !== null) {
+      commentHoverCallbackRef.current?.(null);
+    }
+  }, []);
   // Visibility model (mirrors PlanDiffOverlay): resolved comments are collapsed
   // (hidden flag) unless reopened individually or revealed via the "Resolved"
   // filter; open comments follow the severity filter and manual hide flag.
@@ -3564,7 +3581,17 @@ export function DiffInlineCommentPopup({
   const moveUngroupedCommentMenuToHeader = showUngroupedHeader && ungroupedHeaderActions.length > 0;
 
   return (
-    <div ref={ref} className={popupClassName} onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      ref={ref}
+      className={popupClassName}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseEnter={() => updateHoveredComment(
+        normalizedCommentGroups?.flatMap((group) => group.comments).find((comment) => (
+          isCommentVisibleForRender(comment) && (!isEditing || comment.localIndex !== editingIndex)
+        )) ?? visibleUngroupedComments[0]?.comment ?? null
+      )}
+      onMouseLeave={() => updateHoveredComment(null)}
+    >
       {showUngroupedHeader && (
         <div className="spec-done-comment-popup-context-row">
           {renderCommentContextHeader({ pending: hasUngroupedPendingComments || hasProcessingUngroupedComments })}
@@ -3627,6 +3654,7 @@ export function DiffInlineCommentPopup({
               className={`spec-done-comment-popup-group ${groupSessionToneClassName}${canSwitchToGroupChat ? ' is-switchable-session' : ''}${hasMultipleGroupComments ? ' has-multiple-comments' : ''}${normalizedComposeHeaderLabel ? ' is-headerless' : ''}`}
               key={`${group.chatId || group.label}-${group.messageId || group.label}`}
               onClick={handleGroupClick}
+              onMouseEnter={() => updateHoveredComment(visibleGroupComments[0] ?? null)}
             >
               {showGroupHeader && (
                 <div className="spec-done-comment-popup-context-row">
@@ -3651,7 +3679,7 @@ export function DiffInlineCommentPopup({
                     if (shouldUseThreadLoaderSlot) hasRenderedThreadLoaderSlot = true;
 
                     return (
-                      <div key={`${group.chatId || 'comment'}-${i}`} className={`spec-done-comment-popup-item${commentEntry.pending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`}>
+                      <div key={`${group.chatId || 'comment'}-${i}`} className={`spec-done-comment-popup-item${commentEntry.pending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`} onMouseEnter={() => updateHoveredComment(commentEntry)}>
                         <div className="spec-done-comment-popup-item-body">
                           {!isAgentAuthored && (
                             <>
@@ -3702,7 +3730,7 @@ export function DiffInlineCommentPopup({
             if (shouldUseThreadLoaderSlot) hasRenderedThreadLoaderSlot = true;
 
             return (
-              <div key={index} className={`spec-done-comment-popup-item${isPending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`}>
+              <div key={index} className={`spec-done-comment-popup-item${isPending ? ' is-pending' : ''}${isAgentAuthored ? ' is-agent-authored' : ''}`} onMouseEnter={() => updateHoveredComment(comment)}>
                 <div className="spec-done-comment-popup-item-body">
                   {!isAgentAuthored && (
                     <>
@@ -3735,6 +3763,7 @@ export function DiffInlineCommentPopup({
       {showCompose && (
         <div
           className="spec-done-comment-popup-compose"
+          onMouseEnter={() => updateHoveredComment(null)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); onCancel?.(); }
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); }
@@ -4276,6 +4305,7 @@ export function PlanDiffOverlay({
   reviewScopeNoteCount = null,
 }) {
   const scrollRef = useRef(null);
+  const [hoveredNoteTarget, setHoveredNoteTarget] = useState(null);
   const canCreateInlineComments = !commentsReadOnly && allowInlineCommentCompose;
   const highlightedCommentRowIdSet = useMemo(() => {
     const ids = Array.isArray(highlightedCommentRowIds) ? highlightedCommentRowIds : [];
@@ -4781,6 +4811,68 @@ export function PlanDiffOverlay({
     setCaretKey((prev) => prev + 1);
   };
 
+  const extendKeyboardSelection = (event, rowElement) => {
+    if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/u.test(event.key)) return false;
+    const pane = rowElement.closest('.plan-diff-split-pane') ?? scrollRef.current;
+    const lines = Array.from(pane?.querySelectorAll('[data-diff-row-id] > .plan-diff-row-code > .plan-diff-row-code-text') ?? []);
+    const currentLine = rowElement.querySelector('.plan-diff-row-code-text');
+    const rowIndex = lines.indexOf(currentLine);
+    const selection = window.getSelection();
+    if (rowIndex < 0 || !selection) return false;
+
+    const getPoint = (node, offset) => {
+      const index = lines.findIndex((line) => line.contains(node));
+      if (index < 0) return null;
+      const range = document.createRange();
+      range.selectNodeContents(lines[index]);
+      range.setEnd(node, offset);
+      return { index, offset: range.toString().length };
+    };
+    if (!event.shiftKey) {
+      if (selection.isCollapsed || !getPoint(selection.anchorNode, selection.anchorOffset)
+        || !getPoint(selection.focusNode, selection.focusOffset)) return false;
+      event.preventDefault();
+      if (['ArrowLeft', 'ArrowUp', 'Home'].includes(event.key)) selection.collapseToStart();
+      else selection.collapseToEnd();
+      return true;
+    }
+    const textRect = currentLine.getBoundingClientRect();
+    const codeRect = currentLine.parentElement.getBoundingClientRect();
+    const charWidth = currentLine.textContent.length ? textRect.width / currentLine.textContent.length : 1;
+    const caretOffset = Math.max(0, Math.min(currentLine.textContent.length,
+      Math.round((caretState.left - (textRect.left - codeRect.left)) / charWidth)));
+    const anchor = getPoint(selection.anchorNode, selection.anchorOffset) ?? { index: rowIndex, offset: caretOffset };
+    const focus = getPoint(selection.focusNode, selection.focusOffset) ?? anchor;
+    let { index, offset } = focus;
+    if (event.key === 'ArrowUp') index = Math.max(0, index - 1);
+    if (event.key === 'ArrowDown') index = Math.min(lines.length - 1, index + 1);
+    if (event.key === 'Home') offset = 0;
+    if (event.key === 'End') offset = lines[index].textContent.length;
+    if (event.key === 'ArrowLeft') {
+      if (offset > 0) offset -= 1;
+      else if (index > 0) offset = lines[--index].textContent.length;
+    }
+    if (event.key === 'ArrowRight') {
+      if (offset < lines[index].textContent.length) offset += 1;
+      else if (index < lines.length - 1) { index += 1; offset = 0; }
+    }
+    offset = Math.min(offset, lines[index].textContent.length);
+    const getDomPoint = (point) => {
+      const walker = document.createTreeWalker(lines[point.index], NodeFilter.SHOW_TEXT);
+      let remaining = point.offset;
+      let node = walker.nextNode();
+      while (node) {
+        if (remaining <= node.textContent.length) return [node, remaining];
+        remaining -= node.textContent.length;
+        node = walker.nextNode();
+      }
+      return [lines[point.index], 0];
+    };
+    event.preventDefault();
+    selection.setBaseAndExtent(...getDomPoint(anchor), ...getDomPoint({ index, offset }));
+    return true;
+  };
+
   const getDiffRowLineNumber = useCallback((row) => {
     if (!row) return null;
     const normalizeLineNumber = (value) => {
@@ -5113,8 +5205,13 @@ export function PlanDiffOverlay({
     if (typeof window === 'undefined') return undefined;
 
     const finishPointerSelection = (event) => {
+      const isKeyboardSelection = event.type === 'keyup';
       const pointerSelection = pointerSelectionRef.current;
       pointerSelectionRef.current = null;
+      const textareaSnapshot = isKeyboardSelection ? captureCommentSelectionSnapshot() : null;
+      const textareaRowIds = textareaSnapshot?.type === 'textarea'
+        ? getTextareaSelectionTargetRowIds(textareaSnapshot.element)
+        : [];
       const nativeSelection = window.getSelection();
       const nativeSelectionText =
         nativeSelection && !nativeSelection.isCollapsed && nativeSelection.rangeCount > 0
@@ -5137,8 +5234,14 @@ export function PlanDiffOverlay({
         : [];
       const selectedRowIds = nativeRowIds.length > 0
         ? nativeRowIds
-        : (pointerSelection?.rowIds ?? []);
-      if (selectedRowIds.length === 0) return;
+        : textareaRowIds.length > 0 ? textareaRowIds : (isKeyboardSelection ? [] : pointerSelection?.rowIds ?? []);
+      if (selectedRowIds.length === 0) {
+        if (isKeyboardSelection) {
+          latestSelectionTargetRowIdsRef.current = [];
+          onTextSelectionChange?.(null);
+        }
+        return;
+      }
       latestSelectionTargetRowIdsRef.current = selectedRowIds;
       const pointerDistance = pointerSelection?.startPoint
         ? Math.hypot(
@@ -5146,7 +5249,7 @@ export function PlanDiffOverlay({
             event.clientY - pointerSelection.startPoint.y,
           )
         : 0;
-      if (pointerDistance < 4 && !nativeSelectionText) {
+      if (!isKeyboardSelection && pointerDistance < 4 && !nativeSelectionText) {
         onTextSelectionChange?.(null);
         return;
       }
@@ -5202,20 +5305,35 @@ export function PlanDiffOverlay({
           width: bounds.right - bounds.left,
           height: bounds.bottom - bounds.top,
         },
-        point: { x: event.clientX, y: event.clientY },
+        point: isKeyboardSelection ? null : { x: event.clientX, y: event.clientY },
+        focusRect: nativeRange ? getSelectionFocusRect(nativeSelection) : null,
         rowId: selectedRowIds[0],
         rowIds: selectedRowIds,
-        selectedText: nativeSelectionText || selectedRows.map((row) => row.text || '').join('\n').trim(),
+        selectedText: nativeSelectionText || (textareaSnapshot?.type === 'textarea'
+          ? textareaSnapshot.element.value.slice(textareaSnapshot.start, textareaSnapshot.end).trim()
+          : selectedRows.map((row) => row.text || '').join('\n').trim()),
         selectionRanges,
       });
     };
 
     window.addEventListener('mouseup', finishPointerSelection);
+    const finishKeyboardSelection = (event) => {
+      if (!/^(Arrow|Home$|End$|PageUp$|PageDown$)/u.test(event.key) && event.code !== 'KeyA') return;
+      const target = event.target instanceof Element ? event.target : null;
+      const editor = scrollRef.current?.closest('.editor');
+      if (!target || target.closest('.spec-done-comment-popup') || (
+        !scrollRef.current?.contains(target)
+        && !(target.matches('.pce-textarea') && editor?.contains(target))
+      )) return;
+      finishPointerSelection(event);
+    };
+    window.addEventListener('keyup', finishKeyboardSelection);
 
     return () => {
       window.removeEventListener('mouseup', finishPointerSelection);
+      window.removeEventListener('keyup', finishKeyboardSelection);
     };
-  }, [diffData.rows, onTextSelectionChange]);
+  }, [diffData.rows, onTextSelectionChange, captureCommentSelectionSnapshot, getTextareaSelectionTargetRowIds]);
 
   const trackPointerSelectionRow = useCallback((rowId, { start = false, point = null } = {}) => {
     if (!rowId) return;
@@ -6271,7 +6389,9 @@ export function PlanDiffOverlay({
 	              const lineNumber = splitSide === 'right' ? row.newNumber : row.oldNumber;
 	              const isHighlightedCommentTarget = highlightedCommentRowIdSet.has(row.id)
                   || isOpenCommentTarget
-                  || (isExpandedInlineCommentRow && hasRenderableRowComments);
+                  || (expandedInlineCommentRowId === row.id && hasRenderableRowComments);
+	              const isHoveredNoteTarget = hoveredNoteTarget?.rowIds.includes(row.id)
+                  && hoveredNoteTarget.side === splitSide;
 	              const contextSelectionRanges = contextSelectionRangesByRowId.get(row.id) ?? [];
 	              let rowTextOffset = 0;
 	              const renderedCodeFragments = (row.fragments ?? [{ text: row.text || ' ', tone: 'plain' }]).map((fragment, index) => (
@@ -6326,7 +6446,7 @@ export function PlanDiffOverlay({
 	              return (
 	              <div
 	                data-plan-diff-row-id={row.id}
-	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${contextSelectionRanges.length > 0 ? ' has-context-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}`}
+	                className={`plan-diff-row plan-diff-row-${row.kind}${isSplitSide ? ` plan-diff-row--split-${splitSide}` : ''}${row.id === activeRowId ? ' is-focus' : ''}${hasInlineHighlight ? ' has-inline-highlight' : ''}${isCommentSelectionHighlighted ? ' has-comment-selection-highlight' : ''}${contextSelectionRanges.length > 0 ? ' has-context-selection-highlight' : ''}${isHighlightedCommentTarget ? ' is-comment-target-highlight' : ''}${isHoveredNoteTarget ? ' is-note-hover-target' : ''}`}
                 data-diff-row-id={row.id}
                 data-demo-id={`diff-row-${row.id}`}
                 data-review-patch-id={row.reviewPatchId || undefined}
@@ -6353,6 +6473,7 @@ export function PlanDiffOverlay({
                 }}
                 onClick={() => activateRow(row.id)}
                 onKeyDown={(event) => {
+                  if (event.target === event.currentTarget && extendKeyboardSelection(event, event.currentTarget)) return;
                   if (event.key !== 'Enter' && event.key !== ' ') return;
                   event.preventDefault();
                   activateRow(row.id);
@@ -6486,6 +6607,12 @@ export function PlanDiffOverlay({
                       return (
                         <DiffInlineCommentPopup
                           key={`${group.contextType || 'chat'}-${group.chatId || group.sourceTabId || group.label}-${group.messageId || row.id}-${key}`}
+                          onCommentHoverChange={(comment) => setHoveredNoteTarget((previous) => {
+                            const owner = `${row.id}-${splitSide}-${key}`;
+                            return comment !== null
+                              ? { owner, rowIds: getDiffCommentTargetRowIdsForComment(comment, row.id), side: splitSide }
+                              : (previous?.owner === owner ? null : previous);
+                          })}
                           comments={[]}
                           commentGroups={[group]}
                           value={showGroupCompose ? commentValue : ''}
@@ -7057,27 +7184,14 @@ export function PlanDiffOverlay({
         </div>
       </div>
       {shortcutHintPosition && createPortal(
-        <div
-          className="plan-diff-comment-shortcut-hint"
-          role="tooltip"
+        <NoteShortcutHint
           style={{
             left: `${shortcutHintPosition.left}px`,
             top: `${shortcutHintPosition.top}px`,
             '--plan-diff-comment-shortcut-arrow-x': `${shortcutHintPosition.arrowX}px`,
           }}
-          data-placement={shortcutHintPosition.placement}
-        >
-          <span className="plan-diff-comment-shortcut-title">Add Notes faster</span>
-          <span className="plan-diff-comment-shortcut-copy">
-            <span>Press</span>
-            <span className="plan-diff-comment-shortcut-keys" aria-label="Option Shift K">
-              <kbd>⌥</kbd>
-              <kbd>⇧</kbd>
-              <kbd>K</kbd>
-            </span>
-            <span>from the editor</span>
-          </span>
-        </div>,
+          placement={shortcutHintPosition.placement}
+        />,
         document.body,
       )}
       {gutterContextMenu && (

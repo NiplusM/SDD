@@ -50,6 +50,7 @@ import {
 import { ChatsHistoryToolWindow, AiNotesSeverityIcon } from './ChatsHistory.jsx';
 import { ComposerFollowUpQueue } from './ComposerFollowUpQueue.jsx';
 import { AI_NOTE_DIFF_HINT, AI_NOTE_FILE_HINT } from './aiNoteHints.js';
+import { getSelectionFocusRect } from './selectionPopoverPosition.js';
 import { textLooksLikeQuestion, countCommentThreadMessages } from './commentCounts.js';
 import {
   ThemeProvider,
@@ -9572,6 +9573,8 @@ function getSelectionToolbarPosition(rect, options = {}) {
     left,
     top: placeBelow ? rect.bottom + TOOLBAR_GAP : rect.top - TOOLBAR_GAP,
     placement: placeBelow ? 'bottom' : 'top',
+    anchorRect: rect,
+    selectionRect: options.selectionRect ?? rect.selectionBounds ?? rect,
   };
 }
 
@@ -9584,9 +9587,9 @@ function getTextareaSelectionViewportRect(textarea) {
 
   const mirror = document.createElement('div');
   const focusNode = document.createElement('span');
+  const selectedNode = document.createElement('span');
   const textareaRect = textarea.getBoundingClientRect();
   const computedStyle = window.getComputedStyle(textarea);
-  const focusOffset = textarea.selectionDirection === 'backward' ? selectionStart : selectionEnd;
 
   mirror.setAttribute('aria-hidden', 'true');
   mirror.style.position = 'fixed';
@@ -9610,19 +9613,23 @@ function getTextareaSelectionViewportRect(textarea) {
   mirror.style.textIndent = computedStyle.textIndent;
   mirror.style.textAlign = computedStyle.textAlign;
   mirror.style.tabSize = computedStyle.tabSize;
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.wordBreak = 'break-word';
-  mirror.style.overflowWrap = 'break-word';
+  mirror.style.whiteSpace = computedStyle.whiteSpace;
+  mirror.style.wordBreak = computedStyle.wordBreak;
+  mirror.style.overflowWrap = computedStyle.overflowWrap;
   mirror.style.overflow = 'hidden';
 
-  mirror.append(document.createTextNode(textarea.value.slice(0, focusOffset)));
+  mirror.append(document.createTextNode(textarea.value.slice(0, selectionStart)));
   focusNode.textContent = '\u200b';
-  mirror.append(focusNode);
-  mirror.append(document.createTextNode(textarea.value.slice(focusOffset) || ' '));
+  if (textarea.selectionDirection === 'backward') selectedNode.append(focusNode);
+  selectedNode.append(document.createTextNode(textarea.value.slice(selectionStart, selectionEnd)));
+  if (textarea.selectionDirection !== 'backward') selectedNode.append(focusNode);
+  mirror.append(selectedNode);
+  mirror.append(document.createTextNode(textarea.value.slice(selectionEnd) || ' '));
   document.body.append(mirror);
 
   const mirrorRect = mirror.getBoundingClientRect();
   const focusRect = getClientRectBounds(focusNode.getClientRects());
+  const selectionRect = selectedNode.getBoundingClientRect();
 
   mirror.remove();
 
@@ -9635,6 +9642,12 @@ function getTextareaSelectionViewportRect(textarea) {
     left: textareaRect.left + (focusRect.left - mirrorRect.left) - textarea.scrollLeft,
     width: focusRect.width,
     height: focusRect.height,
+    selectionBounds: {
+      left: textareaRect.left + selectionRect.left - mirrorRect.left - textarea.scrollLeft,
+      right: textareaRect.left + selectionRect.right - mirrorRect.left - textarea.scrollLeft,
+      top: textareaRect.top + selectionRect.top - mirrorRect.top - textarea.scrollTop,
+      bottom: textareaRect.top + selectionRect.bottom - mirrorRect.top - textarea.scrollTop,
+    },
   };
 }
 
@@ -28402,7 +28415,12 @@ export default function App() {
           if (anchorInEditor) {
             const range = selection.getRangeAt(0);
             selectedTextForToolbar = selection.toString().trim();
-            rect = getRangeViewportRect(range);
+            const focusRect = getSelectionFocusRect(selection) ?? getRangeViewportRect(range);
+            rect = focusRect ? {
+              left: focusRect.left, right: focusRect.right, top: focusRect.top, bottom: focusRect.bottom,
+              width: focusRect.width, height: focusRect.height,
+              selectionBounds: range.getBoundingClientRect(),
+            } : null;
             const rowElements = Array.from(activeEditorEl.querySelectorAll('.plan-diff-row[data-diff-row-id]'));
 
             rowElements.forEach((rowElement) => {
@@ -36946,9 +36964,9 @@ export default function App() {
                           setEditorSelectionToolbarPos(null);
                           return;
                         }
-                        const anchorRect = getViewportPointRect(selectionState.point) ?? selectionState.rect;
+                        const anchorRect = selectionState.focusRect ?? getViewportPointRect(selectionState.point) ?? selectionState.rect;
                         setEditorSelectionToolbarPos({
-                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44 }),
+                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44, selectionRect: selectionState.rect }),
                           surface: 'diff',
                           reviewSplit: true,
                           fixedChatId: reviewSplitChatId,
@@ -37312,9 +37330,9 @@ export default function App() {
                           setEditorSelectionToolbarPos(null);
                           return;
                         }
-                        const anchorRect = getViewportPointRect(selectionState.point) ?? selectionState.rect;
+                        const anchorRect = selectionState.focusRect ?? getViewportPointRect(selectionState.point) ?? selectionState.rect;
                         setEditorSelectionToolbarPos({
-                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44 }),
+                          ...getSelectionToolbarPosition(anchorRect, { safeWidth: 430, safeHeight: 44, selectionRect: selectionState.rect }),
                           surface: isDiffTab ? 'diff' : 'file',
                           rowId: selectionState.rowId,
                           rowIds: selectionState.rowIds,
